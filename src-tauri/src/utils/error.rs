@@ -2,6 +2,7 @@
 //!
 //! Centralized error handling using thiserror for ergonomic error propagation.
 
+use serde::{Serialize, Serializer};
 use thiserror::Error;
 
 /// Main error type for Chicken Scratch operations
@@ -23,9 +24,12 @@ pub enum ChiknError {
     Unknown(String),
 }
 
-// Convert to Tauri-compatible error
-impl From<ChiknError> for tauri::Error {
-    fn from(err: ChiknError) -> Self {
-        tauri::Error::Anyhow(anyhow::Error::msg(err.to_string()))
+// Implement Serialize for Tauri error handling
+impl Serialize for ChiknError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
     }
 }
