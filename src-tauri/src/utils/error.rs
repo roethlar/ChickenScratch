@@ -20,6 +20,9 @@ pub enum ChiknError {
     #[error("Invalid project: {0}")]
     InvalidProject(String),
 
+    #[error("Invalid format: {0}")]
+    InvalidFormat(String),
+
     #[error("Unknown error: {0}")]
     Unknown(String),
 }

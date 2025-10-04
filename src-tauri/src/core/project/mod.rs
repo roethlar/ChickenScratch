@@ -1,6 +1,9 @@
 //! Project management module
 //!
-//! Handles .chikn project operations
+//! Handles .chikn project operations including reading, writing,
+//! and hierarchy management.
 
-// Phase 1: Placeholder
-// Will be implemented with reader, writer, format modules
+pub mod format;
+pub mod reader;
+pub mod writer;
+pub mod hierarchy;
