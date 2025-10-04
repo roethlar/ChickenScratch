@@ -64,6 +64,10 @@ pub struct DocumentMetadata {
     #[serde(default = "generate_id")]
     pub id: String,
 
+    /// Human-readable display name (e.g., "Chapter 1")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
     /// Creation timestamp
     #[serde(default = "current_timestamp")]
     pub created: String,
@@ -204,8 +208,8 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
     // Read content (.md file)
     let content = fs::read_to_string(content_path)?;
 
-    // Get document name from filename (without extension)
-    let doc_name = content_path
+    // Get filename stem (used as fallback if metadata missing)
+    let file_stem = content_path
         .file_stem()
         .and_then(|s| s.to_str())
         .ok_or_else(|| ChiknError::InvalidFormat(
@@ -219,7 +223,7 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
             format!("Document has no parent folder: {}", content_path.display())
         ))?;
 
-    let meta_path = get_document_meta_path(folder_path, doc_name);
+    let meta_path = get_document_meta_path(folder_path, file_stem);
     let metadata = if meta_path.exists() {
         let meta_content = fs::read_to_string(&meta_path)?;
         serde_yaml::from_str::<DocumentMetadata>(&meta_content)?
@@ -227,6 +231,7 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
         // Create default metadata if .meta file doesn't exist
         DocumentMetadata {
             id: generate_id(),
+            name: None,
             created: current_timestamp(),
             modified: current_timestamp(),
             parent_id: None,
@@ -246,9 +251,12 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
         .to_string_lossy()
         .to_string();
 
+    // Use display name from metadata if available, otherwise use filename
+    let display_name = metadata.name.unwrap_or_else(|| file_stem.to_string());
+
     Ok(Document {
         id: metadata.id,
-        name: doc_name.to_string(),
+        name: display_name,
         path: relative_path,
         content,
         parent_id: metadata.parent_id,

@@ -141,7 +141,7 @@ fn write_project_metadata(project: &Project) -> Result<(), ChiknError> {
         name: project.name.clone(),
         hierarchy: project.hierarchy.clone(),
         created: project.created.clone(),
-        modified: Utc::now().to_rfc3339(), // Update modified time
+        modified: project.modified.clone(), // Use already-updated timestamp
     };
 
     let yaml_content = serde_yaml::to_string(&metadata)?;
@@ -206,6 +206,7 @@ fn write_document(project_path: &Path, document: &crate::models::Document) -> Re
     let meta_path = get_document_meta_path(folder_path, doc_name);
     let metadata = DocumentMetadata {
         id: document.id.clone(),
+        name: Some(document.name.clone()), // Save display name
         created: document.created.clone(),
         modified: Utc::now().to_rfc3339(),
         parent_id: document.parent_id.clone(),
