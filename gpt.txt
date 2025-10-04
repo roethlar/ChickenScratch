@@ -1,0 +1,487 @@
+
+• Sticking with the current spec (a .git/ inside every .chikn) feels brittle now that we’ve
+  built more of the system. It fights any workflow where multiple projects live under a
+  single repo, makes nested-repo warnings unavoidable, and still doesn’t give non‑git users
+  Scrivener‑style safety nets. A pure snapshot approach wouldn’t scale either—you’d be
+  re‑implementing version control and still need something better for real history.
+
+  The pragmatic path is a hybrid:
+
+  - Keep a built-in revs/ snapshot system so every project has Scrivener-like automatic
+    checkpoints regardless of git proficiency. This is cheap insurance, works offline, and is
+    easy to prune/ship.
+  - Detect git context dynamically (internal .git, parent .git, or none) and light up the
+    matching UI: project-local git if the folder is self-contained, repo-wide history if
+    you’re inside a larger workspace, or snapshots-only when git isn’t configured.
+
+  With that in place you get the portability promised in the spec, support for your existing
+  “one repo, many projects” layout, and an upgrade path for future git features. I’d treat
+  the inline .git/ requirement as optional rather than mandatory in the spec, document the
+  detection rules, and implement snapshots first so users have guardrails before Phase 4’s
+  richer Git workflow lands.
+
+
+› honest assessment from outside this context. which path is likely more accepted?
+
+
+• If you gut-check this outside the project bubble, the safest bet is the hybrid: keep a
+  built-in snapshot/revisions folder and layer Git support on top when it’s present.
+
+  Writers (and even most dev teams using tools like Scrivener or Ulysses) expect built-
+  in “Snapshots” that work everywhere, don’t require configuration, and travel with the
+  project. That’s basically Option C. At the same time, engineering-heavy teams want to drop
+  the project inside an existing repo—or wrap it in its own—so respecting an external or
+  internal .git/ is important, but it’s an add-on, not the baseline.
+
+  Shipping a self-contained revs/ system as the always-on safety net meets mainstream
+  expectations and avoids forcing Git on anyone. Then auto-detecting internal vs parent Git
+  gives power users what they want without blocking the simpler path. That combo is the one
+  most people will accept.
+
+
+› too complex, too brittle?
+
+
+• The hybrid idea sounds fancier than it is. Under the hood you’re just:
+
+  1. Dropping a revs/ folder beside project.yaml and writing/reading compressed snapshots (a
+     manifest plus a handful of tarballs or zips).
+  2. Checking Path::exists(".git") and walking parents until you hit another .git—that’s a
+     few lines and you already have filesystem helpers.
+
+  No weird cross-cutting logic, and each piece degrades gracefully: snapshots still work if
+  Git detection misfires, and Git features just stay hidden when you’re outside a repo. It’s
+  actually less brittle than betting everything on embedded .git/ folders, because writers
+  who zip up a project or move it to Dropbox still have their safety net.
+
+  If you want to keep scope tighter for Phase 1–2, ship snapshots now, document that Git
+  integration is planned, and leave the detection/UI layer for the Git phase. That keeps the
+  implementation simple today while still pointing toward the hybrid model later.
+
+
+› why support internal .git at all
+
+
+• You don’t have to, but keeping the option makes a lot of sense in a few real-world cases:
+
+  - Portability & archiving – If someone zips a project or syncs it through Dropbox, the
+    entire history goes with it when .git sits inside the .chikn. That mimics what Scrivener
+    users expect when they copy a .scriv bundle somewhere else.
+  - Single-project workflows – Plenty of writers stick to “one project, one repo.” They
+    don’t want to think about parent folders, nested repos, or workspace conventions. An
+    internal .git lets them stay self-contained.
+  - Teams without external git ops – Think of students, hobby writers, or folks who don’t use
+    git in the rest of their filesystem. Shipping an internal repo gives them version history
+    without learning anything about git layout.
+  - Offline collaboration/exchange – If a co-author hands over just the .chikn folder,
+    embedded git means you see their history instantly instead of reinitializing or cloning
+    from somewhere else.
+
+  That said, it should stay optional. Detect it if it exists, don’t create it by default in
+  every flow, and lean on revs/ snapshots so a user who never touches git still has safety.
+  Supporting internal .git just keeps the door open for the people who genuinely need a drop-
+  in, self-contained project with history.
+
+
+› again, why support internal .git at all if we have internal backups? what does git add that
+  a tarball doesn't
+
+
+• Snapshots/tarballs give you a parachute—“something went wrong, roll me back.” Git gives you
+  everything else:
+
+  - Granular history and diffs – Git stores the delta between commits, so you can see exactly
+    what changed line-by-line instead of unpacking two tarballs and diffing them manually.
+  - Branching and experimentation – Snapshots are linear; Git lets you branch to try an
+    alternate storyline or edit pass, merge it later, and keep the divergent history clean.
+  - Commit metadata – Messages, timestamps, authorship, tags, blame—all the context you get
+    when you treat revisions as first-class events. Tarballs are opaque blobs.
+  - Tooling ecosystem – Hooks, bisect, partial checkouts, LFS, remotes, pull requests… Git
+    plugs into a vast tooling chain. Tarballs stand alone.
+  - Incremental storage – Git’s packfiles deduplicate content across versions. A stack of
+    compressed archives grows fast; Git stores only what changed.
+  - Collaboration – Built-in git means you can push/pull between machines or teammates
+    without bolting another system on top.
+
+  The built-in revs/ folder covers “oops” scenarios and keeps non-git users safe. Optional
+  internal .git/ lets the power users bring all of the above without forcing external
+  tooling. It’s not redundant—it’s another layer for people who want full version control
+  semantics instead of a handful of snapshots.
+
+
+› and nested .git repos and .gz files aren't a problem?
+
+
+• Nested repos and compressed snapshots do add friction, but both are manageable if you set
+  expectations:
+
+  Nested .git repos
+
+  - Git itself allows it; you just see the usual “warning: embedding one repo inside another”
+    when you git status the outer repo. If you leave the internal .git ignored (default when
+    it’s a directory), Git won’t try to treat the .chikn as part of the outer history.
+  - Tools like VS Code or Sourcetree will show the nested repo as a separate repo. That’s a
+    good thing: you can open it independently if you want the project-level history.
+  - Document the pattern: “If you use a workspace repo, either keep per-project .git folders
+    ignored or delete them and rely on snapshots + outer git.” Teams already pick the
+    workflow that fits them; we just avoid hard-coding one.
+
+  Snapshot archives (.tar.gz or similar)
+
+  - You’re typically keeping 5–10 snapshots, each compressed. A manuscript of 2–3 MB produces
+    ~300–500 KB snapshots, so disk use stays modest.
+  - Clear out old archives automatically (manifest + retention policy) so they don’t pile up.
+    You can expose a simple “prune” button in the UI for users who want to keep things tidy.
+  - Because they live under revs/, the outer repo can choose to track or ignore them. If you
+    don’t want compressed files in git, add the folder to .gitignore.
+
+  So neither nested repos nor .gz archives is a show-stopper—they’re well-understood trade-
+  offs with clear mitigation strategies. The user gets to pick “self-contained git,”
+  “workspace git,” or “snapshots only,” and the product handles the rest without surprising
+  anyone.
+
+
+› target audience is low-tech authors, not engineering teams. revisions need to feel like
+  something natural to the writing process, not a check-in commit process. git should be
+  invisible completely to the writer. the underlying tech needs to be invisible. so what's
+  the real add in that context? I'm not challenging, I'm asking.
+
+
+• I'll explain how git quietly supports collaboration, versioning, and remote backup
+  behind the scenes, enabling rich features like timelines, branching for drafts, and easy
+  restoration without burdening low-tech users with git itself. This internal git backend
+  efficiently drives UI versioning and syncing, making complex capabilities simpler to offer
+  transparently.
+
+─ Worked for 7s ─────────────────────────────────────────────────────────────────────────────
+
+• If the writer never sees Git, the only reason to carry it inside the project is for the
+  capabilities it unlocks behind the “Revisions” UI:
+
+  - Unlimited, granular history without reinventing storage. Git can store hundreds of
+    checkpoints efficiently, track per-file changes, and give you a timeline or diff view
+    in the app. Re-creating that on top of tarballs means building your own delta format,
+    pruning logic, and diff engine.
+  - Cheap alternate drafts. Under the hood a branch is just another line of work. The UI can
+    call it “Sandbox,” “Alternate Ending,” whatever—but Git lets you fork, experiment, and
+    merge back without duplicating the whole project directory.
+  - “Merge” tools for collaboration. Even if writers never touch Git, the app can offer
+    “compare John’s changes with mine” or “pull co-author notes” features because Git knows
+    how to diff and merge text.
+  - Future syncing. If you ever add cloud backup, team sharing, or “publish to GitHub/
+    Nextcloud,” Git gives you the engine. Without it, you’d have to design your own sync
+    protocol.
+  - Integrity guarantees. Git’s content hashing protects against corruption or tampering. A
+    tarball can be edited silently; Git will flag the diff.
+
+  If you truly don’t need any of that—if “last few restore points” is the only goal—then yes,
+  a simple snapshot system is enough. But having an internal Git repo lets you deliver richer
+  revision workflows (timeline, compare, branching) without exposing authors to low-level
+  commands. The UI stays about scenes and drafts; Git is just the machinery that makes those
+  writer-friendly features feasible.
+
+
+› scenario: I'm a writer, never even heard of .git. I finished draft 1 of a short story
+  collection, each story is a separate .chkn. I want to collect it all in a book. how does
+  git help me behind the scenes?
+
+
+• Picture how the app could support you without you ever touching git commands:
+
+  1. “Snapshot every milestone” – When you hit “Mark Draft 1 complete” on each story, the
+     app quietly runs a commit. Later, when you’re polishing the collection, you can open the
+     “History” panel for any story and scrub through every milestone (Draft 1, Editor pass,
+     Beta feedback) with clean side‑by‑side diffs. That fidelity comes from git’s change
+     tracking; a plain zip archive can’t show you what actually changed.
+  2. “Experiment without fear” – For a risky rewrite, you press “Create Sandbox.” Under the
+     hood the app makes a branch. You play with a radically different ending. If you love
+     it, you click “Merge into main draft”; the system uses git’s merge engine to blend the
+     new paragraphs with your existing text. If you hate it, delete the sandbox—no mess, no
+     duplicate files. A zip-based system would force you to copy the entire story folder and
+     manually reconcile differences.
+  3. “Collect the stories” – When you create your “Short Story Collection” project and pull
+     each .chikn in, the app can link them at the commit level: “Include Story A at Draft
+     2”, “Include Story B at Beta Pass 1”. As you revise a story, the collection project can
+     show “Hey, there’s a newer version—compare Draft 2 vs Draft 3?” Because git knows every
+     revision, the app can serve those comparisons instantly.
+  4. “Collaboration later” – Maybe an editor joins. They work on the same .chikn you
+     shared. When they send edits back, the app can apply them intelligently (git merge) and
+     highlight the changes. No need for them to know git; you just use “Import collaborator
+     changes.”
+
+  All of that feels like writer-native features—milestones, sandbox drafts, comparison tools
+  —yet the heavy lifting is git’s version graph, diff, and merge algorithms. Without git, you
+  either lose those capabilities or you reimplement a worse version inside .chikn. Snapshots
+  (“revs/”) stay useful as fire-and-forget backups, but git is what lets the revision history
+  feel rich, responsive, and confident while remaining invisible to the author.
+
+
+› then internal snapshot backups add what?
+
+
+• Snapshots give you the “safety net” that writers trust, even if they never care about
+  deeper history:
+
+  - Instant rescue – If a file corrupts, you accidentally delete a chapter, or you just panic
+    after a rewrite, grabbing the most recent snapshot is one click—no history browser, no
+    diffing. It’s the equivalent of Scrivener’s “Snapshots before compiling” or a quick Time
+    Machine restore.
+  - Git‑free safety – Some authors will never enable git (maybe they work entirely offline
+    on a USB stick, or IT policies block executables). A simple archive of the whole project
+    ensures they still have recovery points.
+  - Known cadence – You can do “snapshot every 15 minutes” or “before/after compile” without
+    polluting the git history with microcommits. Git stays the long-term, intentional record;
+    snapshots are the auto-save buffer.
+  - Disaster recovery – If the embedded git repo gets corrupted (rare, but possible), the
+    snapshot archives are a separate layer you can unzip to get back to a known good state.
+
+  So git is the deep version graph behind the scenes; snapshots are the quick, no-thinking
+  restore points that build confidence. Keeping both is what lets the app feel safe to low-
+  tech authors while still giving you the power tools under the hood.
+
+
+› I don't want users to need to enable git for this to work. remember, I don't know what
+  git is. what do I know about options? besides setting a theme I like, I just expect it
+  all to work every time. one oops and complete trust is lost, I leave a bad review, tell
+  everyone to stay away, and go back to ulysses. what's the lift for that level of seemless
+  perfection?
+
+
+• To give writers that “it always just works” feeling, treat versioning like plumbing the
+  user never sees:
+
+  - Initialize Git automatically whenever a project opens. If the repo is missing or corrupt,
+    recreate it silently and rebuild history from the latest snapshot.
+  - Commit on every meaningful event (autosave interval, snapshot trigger, compile) with
+    friendly metadata, not manual buttons.
+  - Surface only writer language in the UI—Milestones, Sandbox Drafts, History—while a
+    service layer translates those gestures into commits/branches under the hood.
+  - Pair Git with automatic snapshots so there’s a second, independent safety net if anything
+    goes wrong.
+
+  The engineering lift is non-trivial: you need a background task that manages Git repos
+  (initialization/self-heal, staged commits, branch merge logic, repo compaction), a parallel
+  snapshot service (tar/zip + retention policies), and storage to detect and recover from
+  failure. But once it ships, the author never toggles a setting or sees the word “Git”—
+  they just get reliable history, undo, and restore every time. If that’s the level of
+  seamlessness you’re aiming for, plan the additional time (and QA) to harden those services
+  so one scary moment never costs their trust.
+
+
+› so now a .chkn project containing a 2500 word short story I've worked on for three months
+  is what, 5000 files, and how many MB?
+
+
+• I'm thinking through how git might store around 10 compressed snapshots of a 15KB story,
+  considering git's delta compression and pack files. Although there could be many commits,
+  the actual stored objects might be around 200, resulting in only a few hundred KB to a
+  couple MB in total. I'll explain this estimate more fully.
+
+─ Worked for 8s ─────────────────────────────────────────────────────────────────────────────
+
+• Even with “commit every milestone” plus automatic snapshots, the footprint stays tiny for
+  prose:
+
+  - Working tree files: the project itself only has the usual handful (project.yaml, a
+    Markdown or two, optional revs archives). A 2,500‑word story is ~15–20 KB on disk.
+  - Git repo: modern Git stores blobs and deltas inside packfiles. If you auto-commit once
+    every few minutes for three months you might end up with a single packfile and a couple
+    of index files—dozens of objects, not thousands. On disk that’s usually in the 200–500 KB
+    range for text that short.
+  - Snapshots: even if you keep ten .tar.gz snapshots, each archive of a 20 KB manuscript
+    compresses to a few kilobytes. Ten of them is still under 100 KB.
+
+  So you’re talking maybe 30–40 files total (including Git internals) and well under 1 MB in
+  space. The only time you’d see “thousands of files” is if you purposely checkpoint every
+  paragraph and never prune anything; the default UX should pack and prune automatically so
+  the history stays compact.
+
+
+› so the tarball is just of the project data, not the .git repo, and .gitignore excludes
+  the .gz files
+
+
+• Exactly. Treat each snapshot tarball as a sealed copy of the project state—project.yaml,
+  manuscript/, resources—not the Git plumbing. That keeps restores simple: unpack, overwrite
+  the working tree, and let the internal Git repo notice the change and rebase the new state
+  into history.
+
+  Because those archives are meant to be the “safety net” rather than part of the Git
+  timeline, list revs/ in the repository’s .gitignore (or add it automatically when you
+  bootstrap a project). Git then focuses on your semantic commits while snapshots stay
+  lightweight, disposable, and invisible to any parent repo.
+
+
+› so I take the gz and expand it outside the repo, I have a working .chkn or just a bunch of
+  files I don't know what to do with?
+
+
+• If each snapshot archive is a tarball of the project root—project.yaml, manuscript/
+  **, research/**, etc.—what you get after extracting is a ready-to-use .chikn folder. You
+  can unzip it anywhere, open it in the app, and work immediately. The internal .git isn’t
+  included, so the new copy won’t have history, but it’s a fully functional project state.
+
+  To make that foolproof:
+
+  - Tar the top-level folder rather than just the files, so snapshot-2025-04-01.tar.gz
+    expands into MyStory.chikn/….
+  - Store a small manifest in revs/ that lists snapshot names, timestamps, and notes so the
+    UI can help users pick the right restore point.
+  - In-app “Restore from snapshot” can handle the unpack-in-place step for them, ensuring the
+    Git repo is reset/rehydrated correctly afterward.
+
+  That way manual extraction is possible, but the default flow keeps the rider in their lane:
+  click restore, the app swaps directories, and you’re back to work.
+
+
+› how to integrate uplevel git for all projects?
+
+
+• You can let one “umbrella” repo manage every project without exposing any Git jargon to
+  the author:
+
+  - Detect the parent repo. When a .chikn opens, walk up the directory tree until you hit
+    a .git/. If you find one, treat that as the canonical repo and skip creating/using an
+    internal repo. If you don’t, fall back to the built-in repo + snapshots.
+  - Keep project history in its own branch. Inside the parent repo, put each project on an
+    internal branch (e.g. refs/chikn/ProjectName). A background service auto-commits to that
+    branch—milestones, autosaves, etc.—with writer-friendly metadata. The visible branch
+    (main) can stay clean for the user’s manual commits or remain untouched.
+  - Use worktrees behind the scenes. Git worktrees let you park a branch in a subdirectory.
+    The app can create a detached worktree pointing at refs/chikn/…, so each .chikn behaves
+    like it has its own repo even though everything lives in the parent .git. No nested
+    repos, no warnings.
+  - Map writer actions to Git ops. “Create sandbox draft” → git worktree add + branch;
+    “Promote draft” → merge; “History” → git log/git show. All of it stays behind the UI; the
+    writer still sees “New Draft,” “Restore Revision,” etc.
+  - Keep snapshots as a safety net. Continue storing .tar.gz snapshots in revs/ so they
+    can recover instantly even if the parent repo gets corrupted. Ignore that folder
+    in .gitignore so the parent repo stays tidy.
+  - Optional: expose consolidated history. Advanced users (or future features like “Create
+    anthology from Draft 3 of each story”) can stitch the per-project branches together
+    because they live in the same parent repo.
+
+  With this approach writers just click “Open project” and everything works: no nested repos,
+  no Git prompts, and the parent repo quietly tracks all their projects while the app keeps
+  full control of commits, branches, and merges.
+
+
+› so now we're shipping an app with its own projects database, not one that works like a
+  traditional app that works with files directly? outside an import/export process, anyway?
+
+
+• You’re still shipping a file‑first app. The canonical source of truth is the .chikn
+  directory on disk, just like a .scriv bundle today. The “projects database” is just
+  metadata the app maintains in the background so everything stays seamless:
+
+  - A lightweight registry (SQLite/TOML/JSON) to remember “which .chikn folders has the user
+    opened recently” and “where are my snapshots/branches.” Think of it as the macOS Recent
+    Items list, not a replacement for the project files.
+  - Git worktrees, per‑project branches, and snapshot manifests live on disk alongside
+    the .chikn data. They let you offer Milestones, Sandbox drafts, and history views without
+    reinventing version control.
+  - When a writer drops a .chikn on a new machine, the app just reads the folder and
+    recreates whatever backing structures it needs. If there’s no parent .git, it spins up
+    an internal one; if there is, it hooks into it. Either way the writer still sees “Open
+    Project,” not “Import database.”
+
+  So you aren’t forcing users through an import/export funnel or locking them into an opaque
+  store. You’re layering indexing and automation on top of ordinary files so the experience
+  feels like “open, write, close” while revision history, snapshots, and collaboration
+  quietly run in the background.
+
+
+› write this whole git / backup strategy up in a file under docs so I can run it by some
+  others
+
+
+• Ran cat <<'EOF' > docs/GIT_BACKUP_STRATEGY.md
+  │ # Git + Snapshot Strategy for .chikn Projects
+  │
+  │ … +119 lines
+  └ (no output)
+
+─ Worked for 27s ────────────────────────────────────────────────────────────────────────────
+
+• - Drafted the proposal under docs/GIT_BACKUP_STRATEGY.md; it outlines snapshots, invisible
+    Git plumbing, external repo detection, and implementation details so you can circulate it
+    for feedback.
+  - No code changed—just documentation.
+
+  Next step: share the doc with whoever needs to review and adjust the plan based on their
+  input.
+
+
+› any issues distributing git and pandoc with this installer? I don't want users to have to
+  do a complete git install in windows just to use this. that adds UI clutter to the OS
+
+
+• I'm weighing how to distribute Git and Pandoc with a Tauri app, considering licensing,
+  packaging size, platform differences, and update strategies. Using libgit2 via the Rust
+  git2 crate seems promising for Git functionality without bundling the full CLI, since it
+  has a permissive linking exception. Pandoc’s GPLv2 license complicates bundling, especially
+  within an MIT app, so I’m exploring options like optional user installs, containerization,
+  embedding minimal converters, or using alternative crates for document conversion. I'll
+  also consider packaging dependencies inside src-tauri/ for Tauri and providing licensing
+  compliance instructions where needed. This way, the user gets practical choices with clear
+  trade-offs.
+
+─ Worked for 13s ────────────────────────────────────────────────────────────────────────────
+
+• - Git: Don’t redistribute the stock Git for Windows bundle. It’s GPL‑licensed, drags in
+    shell/UI extras, and makes the installer huge. Instead, lean on libgit2 through the git2
+    crate, which gives you everything you need (init, commit, branches, remotes) without
+    installing Git system-wide. libgit2 ships under GPLv2 with a linking exception, so you
+    can statically link and stay compliant; no extra UI clutter and the dependency goes out
+    with the rest of your Rust code.
+  - Pandoc: Shipping the official Pandoc binary works technically—it’s just a single
+    executable you drop next to your Tauri bundle—but it’s also GPL, so you’d have to publish
+    the exact source/build scripts you used and accept a 40–60 MB hit to the installer. If
+    RTF↔Markdown conversion is Phase‑2 only, keep Pandoc optional for now: detect it in PATH
+    (fall back to importing/exporting with a friendly “Install Pandoc to unlock Scrivener
+    conversions” message). Later, if you want it seamless, you can bundle a stripped Pandoc
+    release and add a license blurb/source link to your About dialog and docs.
+
+  In short: rely on libgit2 so Git stays invisible and self-contained, and treat Pandoc as an
+  optional external tool until you’re ready to absorb the GPL bundle/obligations.
+
+
+› app won't ship until it's feature complete, so I need to replace pandoc with something
+  available with rust crates
+
+
+• I'm exploring Rust crates for replacing Pandoc in RTF-to-Markdown and Markdown-to-RTF
+  conversion. Parsing RTF to Markdown is tough, but I’m considering using rtf crates to
+  parse RTF to plain text or HTML, then using crates like pulldown-cmark or comrak to handle
+  Markdown AST for exporting back to RTF by generating appropriate control sequences. Since
+  no perfect turnkey solution exists, I’m thinking a custom converter supporting basic
+  formatting might be the best option. I'll note relevant crates, their roles, and the
+  challenge of implementing full fidelity.
+
+─ Worked for 14s ────────────────────────────────────────────────────────────────────────────
+
+• You can keep the installer lean and self-contained:
+
+  - Git integration — Stick with the git2 crate (libgit2 under the hood). It already gives
+    you init/commit/branch/push/pull without installing Git system-wide, so there’s nothing
+    extra to ship beyond your Rust binary. Just make sure you include libgit2 when you build
+    the Tauri bundle.
+  - RTF/Markdown conversion without Pandoc — You’ll need to own this stack, but it’s doable
+    with existing Rust crates:
+      - Markdown → RTF: Parse Markdown to an AST with something like comrak or pulldown-
+        cmark, then render to RTF yourself. RTF is just plain text with control words, so
+        you can write a small renderer that covers the basics writers care about (headings,
+        bold/italic, lists, block quotes). The [rtf] crate will help you generate well-formed
+        documents and stay within spec.
+      - RTF → Markdown: Feed the .rtf file through [rtf] or rtf-parser, walk the token
+        stream, and rebuild Markdown (or HTML + Markdown via ammonia/html2md). You can start
+        by mapping the structures you already support on export (e.g., paragraphs, bold/
+        italic, headings) and fall back to plain text for anything exotic.
+      - Tests/coverage: Pull a handful of Scrivener samples, convert rtf → markdown → rtf,
+        and diff to keep parity. Because you control the renderer, you decide which features
+        are guaranteed vs. best effort.
+
+  This keeps everything distributable through Cargo, avoids GPL baggage, and ensures your
+  Windows installer doesn’t have to drag along external tools. The trade-off is you’ll need
+  to budget time to build and harden the converter, but once it exists you’ve removed the
+  last external runtime dependency.
