@@ -92,6 +92,18 @@ pub struct DocumentMetadata {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub synopsis: Option<String>,
+
+    /// Scrivener section type UUID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub section_type: Option<String>,
+
+    /// Include in compile flag
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_in_compile: Option<String>,
+
+    /// Original Scrivener UUID (for round-trip)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scrivener_uuid: Option<String>,
 }
 
 /// Helper function to generate a new UUID
@@ -239,6 +251,9 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
             status: None,
             keywords: None,
             synopsis: None,
+            section_type: None,
+            include_in_compile: None,
+            scrivener_uuid: None,
         }
     };
 

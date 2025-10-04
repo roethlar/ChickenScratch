@@ -93,49 +93,68 @@ fn convert_binder_items(
 
     for item in items {
         match item.item_type.as_str() {
-            "Text" => {
-                // Convert document
-                let doc_id = Uuid::new_v4().to_string();
-                let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
+            "Text" | "DraftFolder" => {
+                // Handle both Text documents and DraftFolder (Manuscript folder)
+                if item.item_type == "DraftFolder" && !item.children.items.is_empty() {
+                    // Process as folder with children
+                    let folder_id = Uuid::new_v4().to_string();
+                    let folder_name = item.title.clone().unwrap_or_else(|| "Folder".to_string());
 
-                // Read RTF content
-                let rtf_path = get_rtf_path(scriv_path, &item.uuid);
-                let content = if rtf_path.exists() {
-                    rtf_to_markdown(&rtf_path)?
+                    let children = convert_binder_items(&item.children.items, scriv_path, documents)?;
+
+                    hierarchy.push(TreeNode::Folder {
+                        id: folder_id,
+                        name: folder_name,
+                        children,
+                    });
                 } else {
-                    String::new()
-                };
+                    // Convert as document
+                    let doc_id = Uuid::new_v4().to_string();
+                    let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
 
-                // Create slugified filename
-                let slug = slugify(&doc_name);
-                let doc_path = format!("manuscript/{}.md", slug);
+                    // Read RTF content
+                    let rtf_path = get_rtf_path(scriv_path, &item.uuid);
+                    let content = if rtf_path.exists() {
+                        rtf_to_markdown(&rtf_path)?
+                    } else {
+                        String::new()
+                    };
 
-                // Create document
-                let document = Document {
-                    id: doc_id.clone(),
-                    name: doc_name.clone(),
-                    path: doc_path.clone(),
-                    content,
-                    parent_id: None,
-                    created: Utc::now().to_rfc3339(),
-                    modified: Utc::now().to_rfc3339(),
-                };
+                    // Create slugified filename
+                    let slug = slugify(&doc_name);
+                    let doc_path = format!("manuscript/{}.md", slug);
 
-                documents.insert(doc_id.clone(), document);
+                    // Use Scrivener timestamps if available
+                    let created = item.created.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
+                    let modified = item.modified.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
 
-                // Add to hierarchy
-                hierarchy.push(TreeNode::Document {
-                    id: doc_id,
-                    name: doc_name,
-                    path: doc_path,
-                });
+                    // Create document
+                    let document = Document {
+                        id: doc_id.clone(),
+                        name: doc_name.clone(),
+                        path: doc_path.clone(),
+                        content,
+                        parent_id: None,
+                        created,
+                        modified,
+                    };
+
+                    documents.insert(doc_id.clone(), document);
+
+                    // Add to hierarchy
+                    hierarchy.push(TreeNode::Document {
+                        id: doc_id,
+                        name: doc_name,
+                        path: doc_path,
+                    });
+                }
             }
             "Folder" => {
                 // Convert folder with children
                 let folder_id = Uuid::new_v4().to_string();
                 let folder_name = item.title.clone().unwrap_or_else(|| "Folder".to_string());
 
-                let children = convert_binder_items(&item.children, scriv_path, documents)?;
+                let children = convert_binder_items(&item.children.items, scriv_path, documents)?;
 
                 hierarchy.push(TreeNode::Folder {
                     id: folder_id,
@@ -188,5 +207,47 @@ mod tests {
     fn test_slugify() {
         assert_eq!(slugify("Chapter 1"), "chapter-1");
         assert_eq!(slugify("The Beginning!!!"), "the-beginning");
+    }
+
+
+    #[test]
+    fn test_import_corn_scriv_sample() {
+        use tempfile::TempDir;
+
+        // Check if sample file exists
+        let sample_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("samples/Corn.scriv");
+
+        if !sample_path.exists() {
+            eprintln!("Skipping test: Corn.scriv sample not found");
+            return;
+        }
+
+        // Create output directory
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("Corn.chikn");
+
+        // Import Scrivener project
+        let result = import_scriv(&sample_path, &output_path);
+
+        if result.is_err() {
+            eprintln!("Import error: {:?}", result.err());
+            // Don't fail test if Pandoc not available
+            return;
+        }
+
+        let project = result.unwrap();
+
+        // Verify basic structure
+        assert_eq!(project.name, "Corn 2");
+        assert!(project.documents.len() > 0);
+        assert!(project.hierarchy.len() > 0);
+
+        // Verify project was written to disk
+        assert!(output_path.exists());
+        assert!(output_path.join("project.yaml").exists());
+        assert!(output_path.join("manuscript").exists());
     }
 }

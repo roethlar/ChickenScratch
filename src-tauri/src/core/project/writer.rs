@@ -214,6 +214,9 @@ fn write_document(project_path: &Path, document: &crate::models::Document) -> Re
         status: None,
         keywords: None,
         synopsis: None,
+        section_type: None,
+        include_in_compile: None,
+        scrivener_uuid: None,
     };
 
     let meta_content = serde_yaml::to_string(&metadata)?;

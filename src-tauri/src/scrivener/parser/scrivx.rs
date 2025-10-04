@@ -50,21 +50,36 @@ pub struct BinderItem {
     #[serde(rename = "@UUID")]
     pub uuid: String,
 
-    /// Item type (Text, Folder, etc.)
+    /// Item type (Text, Folder, DraftFolder, etc.)
     #[serde(rename = "@Type")]
     pub item_type: String,
 
+    /// Creation timestamp (optional)
+    #[serde(rename = "@Created", default)]
+    pub created: Option<String>,
+
+    /// Modified timestamp (optional)
+    #[serde(rename = "@Modified", default)]
+    pub modified: Option<String>,
+
     /// Document title
-    #[serde(rename = "Title")]
+    #[serde(rename = "Title", default)]
     pub title: Option<String>,
 
-    /// Child items (for folders)
+    /// Child items (for folders) - flatten the Children wrapper
     #[serde(rename = "Children", default)]
-    pub children: Vec<BinderItem>,
+    pub children: ChildrenContainer,
 
     /// Metadata (labels, status, etc.)
-    #[serde(rename = "MetaData")]
+    #[serde(rename = "MetaData", default)]
     pub metadata: Option<BinderMetadata>,
+}
+
+/// Container for child BinderItems
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ChildrenContainer {
+    #[serde(rename = "BinderItem", default)]
+    pub items: Vec<BinderItem>,
 }
 
 /// Scrivener metadata for a binder item
@@ -85,6 +100,18 @@ pub struct BinderMetadata {
     /// Synopsis/summary
     #[serde(rename = "Synopsis")]
     pub synopsis: Option<String>,
+
+    /// Section type UUID (Scrivener document type)
+    #[serde(rename = "SectionType")]
+    pub section_type: Option<String>,
+
+    /// Include in compile flag
+    #[serde(rename = "IncludeInCompile")]
+    pub include_in_compile: Option<String>,
+
+    /// Icon filename
+    #[serde(rename = "IconFileName")]
+    pub icon_file_name: Option<String>,
 }
 
 /// Parses a .scrivx XML file into ScrivenerProject
@@ -118,7 +145,7 @@ pub fn parse_scrivx(scrivx_path: &Path) -> Result<ScrivenerProject, ChiknError> 
     Ok(ScrivenerProject {
         name,
         version: project.version.unwrap_or_else(|| "3.0".to_string()),
-        binder: project.binder.children,
+        binder: project.binder.items,
     })
 }
 
@@ -126,8 +153,11 @@ pub fn parse_scrivx(scrivx_path: &Path) -> Result<ScrivenerProject, ChiknError> 
 #[derive(Debug, Deserialize)]
 #[serde(rename = "ScrivenerProject")]
 struct ScrivenerProjectXml {
-    #[serde(rename = "Version")]
+    #[serde(rename = "@Version")]
     version: Option<String>,
+
+    #[serde(rename = "@Identifier")]
+    identifier: Option<String>,
 
     #[serde(rename = "Binder")]
     binder: BinderContainer,
@@ -136,7 +166,7 @@ struct ScrivenerProjectXml {
 #[derive(Debug, Deserialize)]
 struct BinderContainer {
     #[serde(rename = "BinderItem", default)]
-    children: Vec<BinderItem>,
+    items: Vec<BinderItem>,
 }
 
 /// Gets the RTF file path for a given UUID
