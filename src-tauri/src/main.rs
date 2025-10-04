@@ -17,11 +17,17 @@ fn main() {
             project_commands::create_project,
             project_commands::load_project,
             project_commands::save_project,
+            project_commands::add_to_hierarchy,
+            project_commands::add_to_folder,
+            project_commands::remove_from_hierarchy,
+            project_commands::move_node,
+            project_commands::reorder_node,
 
             // Document commands
             document_commands::create_document,
             document_commands::update_document,
             document_commands::delete_document,
+            document_commands::get_document,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

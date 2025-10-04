@@ -19,7 +19,10 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+#[cfg(test)]
+use std::path::PathBuf;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
