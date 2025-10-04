@@ -151,11 +151,14 @@ fn write_rtf_documents(
 
             fs::write(&temp_md, &document.content)?;
 
-            // Convert to RTF
-            markdown_to_rtf(&temp_md, &rtf_path)?;
+            // Convert to RTF and ensure cleanup
+            let result = markdown_to_rtf(&temp_md, &rtf_path);
 
-            // Clean up temp file
+            // Always clean up temp file
             let _ = fs::remove_file(&temp_md);
+
+            // Propagate error after cleanup
+            result?;
         }
     }
 

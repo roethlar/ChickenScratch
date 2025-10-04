@@ -89,72 +89,90 @@ fn convert_binder_items(
     scriv_path: &Path,
     documents: &mut HashMap<String, Document>,
 ) -> Result<Vec<TreeNode>, ChiknError> {
+    convert_binder_items_with_parent(items, scriv_path, documents, None)
+}
+
+/// Converts Scrivener binder items with parent tracking
+fn convert_binder_items_with_parent(
+    items: &[BinderItem],
+    scriv_path: &Path,
+    documents: &mut HashMap<String, Document>,
+    parent_id: Option<String>,
+) -> Result<Vec<TreeNode>, ChiknError> {
     let mut hierarchy = Vec::new();
 
     for item in items {
         match item.item_type.as_str() {
-            "Text" | "DraftFolder" => {
-                // Handle both Text documents and DraftFolder (Manuscript folder)
-                if item.item_type == "DraftFolder" && !item.children.items.is_empty() {
-                    // Process as folder with children
-                    let folder_id = Uuid::new_v4().to_string();
-                    let folder_name = item.title.clone().unwrap_or_else(|| "Folder".to_string());
-
-                    let children = convert_binder_items(&item.children.items, scriv_path, documents)?;
-
-                    hierarchy.push(TreeNode::Folder {
-                        id: folder_id,
-                        name: folder_name,
-                        children,
-                    });
-                } else {
-                    // Convert as document
-                    let doc_id = Uuid::new_v4().to_string();
-                    let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
-
-                    // Read RTF content
-                    let rtf_path = get_rtf_path(scriv_path, &item.uuid);
-                    let content = if rtf_path.exists() {
-                        rtf_to_markdown(&rtf_path)?
-                    } else {
-                        String::new()
-                    };
-
-                    // Create slugified filename
-                    let slug = slugify(&doc_name);
-                    let doc_path = format!("manuscript/{}.md", slug);
-
-                    // Use Scrivener timestamps if available
-                    let created = item.created.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
-                    let modified = item.modified.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
-
-                    // Create document
-                    let document = Document {
-                        id: doc_id.clone(),
-                        name: doc_name.clone(),
-                        path: doc_path.clone(),
-                        content,
-                        parent_id: None,
-                        created,
-                        modified,
-                    };
-
-                    documents.insert(doc_id.clone(), document);
-
-                    // Add to hierarchy
-                    hierarchy.push(TreeNode::Document {
-                        id: doc_id,
-                        name: doc_name,
-                        path: doc_path,
-                    });
-                }
-            }
-            "Folder" => {
-                // Convert folder with children
+            "DraftFolder" => {
+                // Always treat DraftFolder as a folder
                 let folder_id = Uuid::new_v4().to_string();
                 let folder_name = item.title.clone().unwrap_or_else(|| "Folder".to_string());
 
-                let children = convert_binder_items(&item.children.items, scriv_path, documents)?;
+                let children = convert_binder_items_with_parent(
+                    &item.children.items,
+                    scriv_path,
+                    documents,
+                    Some(folder_id.clone()),
+                )?;
+
+                hierarchy.push(TreeNode::Folder {
+                    id: folder_id,
+                    name: folder_name,
+                    children,
+                });
+            }
+            "Text" => {
+                // Convert document
+                let doc_id = Uuid::new_v4().to_string();
+                let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
+
+                // Read RTF content
+                let rtf_path = get_rtf_path(scriv_path, &item.uuid);
+                let content = if rtf_path.exists() {
+                    rtf_to_markdown(&rtf_path)?
+                } else {
+                    String::new()
+                };
+
+                // Generate unique slug
+                let slug = crate::utils::slug::unique_slug(&doc_name, "manuscript/", documents);
+                let doc_path = format!("manuscript/{}.md", slug);
+
+                // Use Scrivener timestamps if available
+                let created = item.created.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
+                let modified = item.modified.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
+
+                // Create document with parent_id
+                let document = Document {
+                    id: doc_id.clone(),
+                    name: doc_name.clone(),
+                    path: doc_path.clone(),
+                    content,
+                    parent_id: parent_id.clone(),
+                    created,
+                    modified,
+                };
+
+                documents.insert(doc_id.clone(), document);
+
+                // Add to hierarchy
+                hierarchy.push(TreeNode::Document {
+                    id: doc_id,
+                    name: doc_name,
+                    path: doc_path,
+                });
+            }
+            "Folder" => {
+                // Convert regular folder with children
+                let folder_id = Uuid::new_v4().to_string();
+                let folder_name = item.title.clone().unwrap_or_else(|| "Folder".to_string());
+
+                let children = convert_binder_items_with_parent(
+                    &item.children.items,
+                    scriv_path,
+                    documents,
+                    Some(folder_id.clone()),
+                )?;
 
                 hierarchy.push(TreeNode::Folder {
                     id: folder_id,
@@ -169,18 +187,6 @@ fn convert_binder_items(
     }
 
     Ok(hierarchy)
-}
-
-/// Slugify helper (duplicated from api module for now)
-fn slugify(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<&str>>()
-        .join("-")
 }
 
 #[cfg(test)]
@@ -201,12 +207,6 @@ mod tests {
         let result = find_scrivx_file(&scriv_path);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), scrivx_file);
-    }
-
-    #[test]
-    fn test_slugify() {
-        assert_eq!(slugify("Chapter 1"), "chapter-1");
-        assert_eq!(slugify("The Beginning!!!"), "the-beginning");
     }
 
 

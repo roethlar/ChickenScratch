@@ -7,6 +7,7 @@ use std::path::Path;
 use crate::core::project::writer;
 use crate::models::{Document, Project};
 use crate::utils::error::ChiknError;
+use crate::utils::slug::unique_slug;
 use uuid::Uuid;
 use chrono::Utc;
 
@@ -37,16 +38,10 @@ pub async fn create_document(
 ) -> Result<(Project, Document), ChiknError> {
     // Generate new document
     let doc_id = Uuid::new_v4().to_string();
-    let mut slug = slugify(&name);
     let now = Utc::now().to_rfc3339();
 
-    // Ensure unique filename by checking existing paths
-    let mut counter = 1;
-    let original_slug = slug.clone();
-    while project.documents.values().any(|d| d.path == format!("manuscript/{}.md", slug)) {
-        slug = format!("{}-{}", original_slug, counter);
-        counter += 1;
-    }
+    // Generate unique slug using shared utility
+    let slug = unique_slug(&name, "manuscript/", &project.documents);
 
     let document = Document {
         id: doc_id.clone(),
@@ -180,31 +175,9 @@ pub async fn get_document(
         .ok_or_else(|| ChiknError::NotFound(format!("Document not found: {}", document_id)))
 }
 
-/// Helper function to slugify a string for use as a filename.
-///
-/// Converts "My Chapter Name" to "my-chapter-name"
-fn slugify(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<&str>>()
-        .join("-")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_slugify() {
-        assert_eq!(slugify("My Chapter Name"), "my-chapter-name");
-        assert_eq!(slugify("Chapter 1: The Beginning"), "chapter-1-the-beginning");
-        assert_eq!(slugify("Hello World!!!"), "hello-world");
-        assert_eq!(slugify("a--b--c"), "a-b-c");
-    }
 
 
     #[tokio::test]
