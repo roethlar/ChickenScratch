@@ -6,8 +6,7 @@ mod core;
 mod models;
 mod utils;
 
-use api::project_commands;
-use api::document_commands;
+use api::{project_commands, document_commands, scrivener_commands};
 
 fn main() {
     tauri::Builder::default()
@@ -28,6 +27,10 @@ fn main() {
             document_commands::update_document,
             document_commands::delete_document,
             document_commands::get_document,
+
+            // Scrivener commands
+            scrivener_commands::import_scrivener_project,
+            scrivener_commands::export_to_scrivener,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -90,6 +90,94 @@ pub fn rtf_string_to_markdown(rtf_content: &str) -> Result<String, ChiknError> {
     result
 }
 
+
+/// Converts Markdown file to RTF using Pandoc.
+///
+/// # Arguments
+/// * `markdown_path` - Path to .md file
+/// * `rtf_path` - Output path for .rtf file
+///
+/// # Returns
+/// * `Ok(())` on success
+/// * `Err(ChiknError)` on conversion failure
+///
+/// # Requirements
+/// Requires Pandoc to be installed.
+///
+/// # Example
+/// ```rust
+/// markdown_to_rtf(Path::new("chapter.md"), Path::new("chapter.rtf"))?;
+/// ```
+pub fn markdown_to_rtf(markdown_path: &Path, rtf_path: &Path) -> Result<(), ChiknError> {
+    // Verify Pandoc is available
+    check_pandoc_available()?;
+
+    // Use Pandoc to convert Markdown → RTF
+    let output = Command::new("pandoc")
+        .arg("-f")
+        .arg("markdown")
+        .arg("-t")
+        .arg("rtf")
+        .arg("-o")
+        .arg(rtf_path)
+        .arg(markdown_path)
+        .output()
+        .map_err(|e| ChiknError::Unknown(format!("Failed to run Pandoc: {}", e)))?;
+
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        return Err(ChiknError::InvalidFormat(format!(
+            "Pandoc RTF conversion failed: {}",
+            error
+        )));
+    }
+
+    Ok(())
+}
+
+/// Converts Markdown string to RTF string using Pandoc.
+///
+/// # Arguments
+/// * `markdown_content` - Markdown formatted string
+///
+/// # Returns
+/// * `Ok(String)` - RTF content
+/// * `Err(ChiknError)` on conversion failure
+///
+/// # Example
+/// ```rust
+/// let md = "# Chapter 1\n\n**Bold text**";
+/// let rtf = markdown_string_to_rtf(md)?;
+/// ```
+pub fn markdown_string_to_rtf(markdown_content: &str) -> Result<String, ChiknError> {
+    // Write Markdown to temporary file
+    let temp_dir = std::env::temp_dir();
+    let temp_md = temp_dir.join(format!("temp_{}.md", uuid::Uuid::new_v4()));
+    let temp_rtf = temp_dir.join(format!("temp_{}.rtf", uuid::Uuid::new_v4()));
+
+    fs::write(&temp_md, markdown_content)?;
+
+    // Convert using file-based function
+    let result = markdown_to_rtf(&temp_md, &temp_rtf);
+
+    if result.is_ok() {
+        // Read RTF output
+        let rtf_content = fs::read_to_string(&temp_rtf)?;
+
+        // Clean up temp files
+        let _ = fs::remove_file(&temp_md);
+        let _ = fs::remove_file(&temp_rtf);
+
+        Ok(rtf_content)
+    } else {
+        // Clean up temp files
+        let _ = fs::remove_file(&temp_md);
+        let _ = fs::remove_file(&temp_rtf);
+
+        result.map(|_| String::new())
+    }
+}
+
 /// Checks if Pandoc is installed and available
 fn check_pandoc_available() -> Result<(), ChiknError> {
     let output = Command::new("pandoc")

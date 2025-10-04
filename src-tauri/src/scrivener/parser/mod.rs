@@ -21,5 +21,5 @@
 pub mod scrivx;
 pub mod rtf;
 
-pub use scrivx::{ScrivenerProject, BinderItem, parse_scrivx, get_rtf_path};
-pub use rtf::rtf_to_markdown;
+pub use scrivx::{ScrivenerProject, BinderItem, BinderMetadata, parse_scrivx, get_rtf_path};
+pub use rtf::{rtf_to_markdown, markdown_to_rtf, markdown_string_to_rtf};
