@@ -156,39 +156,43 @@ fn read_project_metadata(path: &Path) -> Result<ProjectMetadata, ChiknError> {
 fn read_all_documents(project_path: &Path) -> Result<HashMap<String, Document>, ChiknError> {
     let mut documents = HashMap::new();
 
-    // Read from manuscript folder
+    // Read from manuscript folder (recursively)
     let manuscript_path = get_manuscript_path(project_path);
     if manuscript_path.exists() {
-        read_documents_from_folder(&manuscript_path, &mut documents)?;
+        read_documents_from_folder(&manuscript_path, project_path, &mut documents)?;
     }
 
-    // Read from research folder
+    // Read from research folder (recursively)
     let research_path = get_research_path(project_path);
     if research_path.exists() {
-        read_documents_from_folder(&research_path, &mut documents)?;
+        read_documents_from_folder(&research_path, project_path, &mut documents)?;
     }
 
     Ok(documents)
 }
 
-/// Reads all documents from a specific folder
+/// Reads all documents from a folder recursively
 fn read_documents_from_folder(
     folder_path: &Path,
+    project_path: &Path,
     documents: &mut HashMap<String, Document>,
 ) -> Result<(), ChiknError> {
-    // Iterate through all .md files in the folder
+    // Iterate through all entries in the folder
     for entry in fs::read_dir(folder_path)? {
         let entry = entry?;
         let path = entry.path();
 
-        // Only process .md files
         if path.is_file() {
+            // Process .md files
             if let Some(extension) = path.extension() {
                 if extension == DOCUMENT_EXTENSION {
-                    let doc = read_document(&path)?;
+                    let doc = read_document(&path, project_path)?;
                     documents.insert(doc.id.clone(), doc);
                 }
             }
+        } else if path.is_dir() {
+            // Recursively process subdirectories
+            read_documents_from_folder(&path, project_path, documents)?;
         }
     }
 
@@ -196,7 +200,7 @@ fn read_documents_from_folder(
 }
 
 /// Reads a single document (content + metadata)
-fn read_document(content_path: &Path) -> Result<Document, ChiknError> {
+fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, ChiknError> {
     // Read content (.md file)
     let content = fs::read_to_string(content_path)?;
 
@@ -233,8 +237,12 @@ fn read_document(content_path: &Path) -> Result<Document, ChiknError> {
         }
     };
 
-    // Get relative path from project root
+    // Compute relative path from project root
     let relative_path = content_path
+        .strip_prefix(project_path)
+        .map_err(|_| ChiknError::InvalidFormat(
+            format!("Document path not within project: {}", content_path.display())
+        ))?
         .to_string_lossy()
         .to_string();
 
@@ -336,12 +344,13 @@ modified: "2025-01-01T00:00:00Z"
         let (_temp, project_path) = create_test_project();
         let doc_path = project_path.join(MANUSCRIPT_FOLDER).join("chapter-01.md");
 
-        let result = read_document(&doc_path);
+        let result = read_document(&doc_path, &project_path);
         assert!(result.is_ok());
 
         let doc = result.unwrap();
         assert_eq!(doc.name, "chapter-01");
         assert!(doc.content.contains("Once upon a time"));
+        assert!(doc.path.starts_with("manuscript/"));
     }
 
     #[test]
@@ -353,5 +362,86 @@ modified: "2025-01-01T00:00:00Z"
         let documents = result.unwrap();
         assert_eq!(documents.len(), 1);
         assert!(documents.contains_key("doc1"));
+    }
+
+    #[test]
+    fn test_read_nested_documents() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("NestedTest.chikn");
+
+        // Create project structure
+        fs::create_dir(&project_path).unwrap();
+        fs::create_dir(project_path.join(MANUSCRIPT_FOLDER)).unwrap();
+        fs::create_dir(project_path.join(RESEARCH_FOLDER)).unwrap();
+        fs::create_dir(project_path.join(TEMPLATES_FOLDER)).unwrap();
+        fs::create_dir(project_path.join(SETTINGS_FOLDER)).unwrap();
+
+        // Create nested folder structure
+        let nested_folder = project_path.join(MANUSCRIPT_FOLDER).join("part-one");
+        fs::create_dir(&nested_folder).unwrap();
+
+        // Create document in nested folder
+        fs::write(
+            nested_folder.join("chapter-01.md"),
+            "# Nested Chapter\n\nContent in subfolder"
+        ).unwrap();
+
+        // Create metadata
+        let meta_yaml = r#"id: "nested-doc1"
+created: "2025-01-01T00:00:00Z"
+modified: "2025-01-01T00:00:00Z"
+"#;
+        fs::write(nested_folder.join("chapter-01.meta"), meta_yaml).unwrap();
+
+        // Create project.yaml
+        let project_yaml = format!(
+            r#"id: "{}"
+name: "Nested Test"
+created: "2025-01-01T00:00:00Z"
+modified: "2025-01-01T00:00:00Z"
+hierarchy: []
+"#,
+            generate_id()
+        );
+        fs::write(project_path.join(PROJECT_FILE), project_yaml).unwrap();
+
+        // Read all documents (should find nested)
+        let documents = read_all_documents(&project_path).unwrap();
+
+        assert_eq!(documents.len(), 1);
+        assert!(documents.contains_key("nested-doc1"));
+
+        let doc = documents.get("nested-doc1").unwrap();
+        assert_eq!(doc.name, "chapter-01");
+        // Verify relative path
+        assert_eq!(doc.path, "manuscript/part-one/chapter-01.md");
+    }
+
+    #[test]
+    fn test_read_document_relative_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("PathTest.chikn");
+
+        // Create structure
+        fs::create_dir(&project_path).unwrap();
+        let nested = project_path.join("manuscript").join("subfolder");
+        fs::create_dir_all(&nested).unwrap();
+
+        // Create document
+        let doc_path = nested.join("test.md");
+        fs::write(&doc_path, "Test content").unwrap();
+
+        // Create metadata
+        fs::write(
+            nested.join("test.meta"),
+            "id: \"test-id\"\ncreated: \"2025-01-01T00:00:00Z\"\nmodified: \"2025-01-01T00:00:00Z\"\n"
+        ).unwrap();
+
+        // Read document
+        let doc = read_document(&doc_path, &project_path).unwrap();
+
+        // Verify path is relative, not absolute
+        assert!(!doc.path.starts_with("/"));
+        assert_eq!(doc.path, "manuscript/subfolder/test.md");
     }
 }

@@ -37,14 +37,14 @@ pub async fn create_document(
 ) -> Result<(Project, Document), ChiknError> {
     // Generate new document
     let doc_id = Uuid::new_v4().to_string();
-    let doc_name = slugify(&name);
+    let slug = slugify(&name); // Slugify for filename only
     let now = Utc::now().to_rfc3339();
 
     let document = Document {
         id: doc_id.clone(),
-        name: doc_name.clone(),
-        path: format!("manuscript/{}.md", doc_name),
-        content: format!("# {}\n\n", name), // Initialize with title
+        name: name.clone(), // Preserve original display name
+        path: format!("manuscript/{}.md", slug), // Use slug for filename
+        content: format!("# {}\n\n", name), // Initialize with original title
         parent_id,
         created: now.clone(),
         modified: now,
@@ -53,8 +53,8 @@ pub async fn create_document(
     // Add to project documents
     project.documents.insert(doc_id.clone(), document.clone());
 
-    // Write document to disk
-    writer::write_project(&project)?;
+    // Write document to disk (updates modified timestamp)
+    writer::write_project(&mut project)?;
 
     Ok((project, document))
 }
@@ -93,8 +93,8 @@ pub async fn update_document(
     document.content = content;
     document.modified = Utc::now().to_rfc3339();
 
-    // Write to disk
-    writer::write_project(&project)?;
+    // Write to disk (updates project modified timestamp)
+    writer::write_project(&mut project)?;
 
     Ok(project)
 }
@@ -121,23 +121,23 @@ pub async fn delete_document(
     mut project: Project,
     document_id: String,
 ) -> Result<Project, ChiknError> {
-    // Get document to find its name
+    // Get document to find its path
     let document = project
         .documents
         .get(&document_id)
         .ok_or_else(|| ChiknError::NotFound(format!("Document not found: {}", document_id)))?;
 
-    let doc_name = document.name.clone();
+    let doc_path = document.path.clone();
 
     // Remove from documents HashMap
     project.documents.remove(&document_id);
 
-    // Delete from disk
+    // Delete from disk using document's path
     let project_path = Path::new(&project.path);
-    writer::delete_document(project_path, &doc_name)?;
+    writer::delete_document(project_path, &doc_path)?;
 
-    // Save updated project
-    writer::write_project(&project)?;
+    // Save updated project (updates modified timestamp)
+    writer::write_project(&mut project)?;
 
     Ok(project)
 }

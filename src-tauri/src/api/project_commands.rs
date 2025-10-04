@@ -80,9 +80,10 @@ pub async fn load_project(path: String) -> Result<Project, ChiknError> {
 /// await invoke('save_project', { project });
 /// ```
 #[tauri::command]
-pub async fn save_project(project: Project) -> Result<(), ChiknError> {
-    // Use writer module to save project
-    writer::write_project(&project)
+pub async fn save_project(mut project: Project) -> Result<Project, ChiknError> {
+    // Use writer module to save project (updates modified timestamp)
+    writer::write_project(&mut project)?;
+    Ok(project)
 }
 
 /// Adds a document to the project hierarchy at root level.
@@ -116,8 +117,8 @@ pub async fn add_to_hierarchy(
     // Use hierarchy module to add node
     hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node);
 
-    // Save updated project
-    writer::write_project(&project)?;
+    // Save updated project (updates modified timestamp)
+    writer::write_project(&mut project)?;
 
     Ok(project)
 }
@@ -150,8 +151,8 @@ pub async fn add_to_folder(
     // Use hierarchy module to add child
     hierarchy::add_child_to_folder(&mut project.hierarchy, &parent_id, node)?;
 
-    // Save updated project
-    writer::write_project(&project)?;
+    // Save updated project (updates modified timestamp)
+    writer::write_project(&mut project)?;
 
     Ok(project)
 }
@@ -181,8 +182,8 @@ pub async fn remove_from_hierarchy(
     // Use hierarchy module to remove node
     hierarchy::remove_node(&mut project.hierarchy, &node_id)?;
 
-    // Save updated project
-    writer::write_project(&project)?;
+    // Save updated project (updates modified timestamp)
+    writer::write_project(&mut project)?;
 
     Ok(project)
 }
@@ -219,8 +220,8 @@ pub async fn move_node(
         new_parent_id.as_deref(),
     )?;
 
-    // Save updated project
-    writer::write_project(&project)?;
+    // Save updated project (updates modified timestamp)
+    writer::write_project(&mut project)?;
 
     Ok(project)
 }
@@ -254,8 +255,8 @@ pub async fn reorder_node(
     // Use hierarchy module to reorder
     hierarchy::reorder_node(&mut project.hierarchy, &node_id, new_index)?;
 
-    // Save updated project
-    writer::write_project(&project)?;
+    // Save updated project (updates modified timestamp)
+    writer::write_project(&mut project)?;
 
     Ok(project)
 }
