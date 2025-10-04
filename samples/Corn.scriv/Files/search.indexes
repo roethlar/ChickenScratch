@@ -1,0 +1,457 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SearchIndexes Version="1.0">
+    <Documents>
+        <Document ID="57ECC98D-8199-4935-B5F1-D1F7A2D60646">
+            <Title>Front Matter</Title>
+        </Document>
+        <Document ID="95DB24AE-DCE4-4CFB-8BF7-7BCB56AFEB02">
+            <Title>S&amp;C Falling</Title>
+            <Text>When we got to his house, his momma was sleeping, so we kept quiet. Up in his room, he started reading to me about Humberto the creep and the little girl, but I just closed my eyes and got lost listening to his voice. After a while he stopped reading. He played some music on his phone, and we shared the ear things. It was some weird woman with a piano screeching about god.
+"What is this?"
+"Oldies. Tori Amos." He pointed at a poster on his wall of a pale red-head breastfeeding a pig. "My mom hates that picture, but I like the metaphor. Tori's playing mother to a pig, showing that she doesn't need a man to give her a purpose."
+"Oh my god, so she can do it with a pig and have a little piglet to feed?"
+"I don't think we need to assume she fucked a pig, that's why it's a metaphor. Anyway, listen to this one." He switched to a song about a boy from up north.
+"Uh, Corn, are you sure you're not gay? It's okay if you are, you know. It's 2016." 
+He laughed and said, "Well, I dunno. Maybe. Kiss me and let's see."
+I did. He wasn't. I ain't saying no more about that.</Text>
+        </Document>
+        <Document ID="F0954503-4F2F-4659-9074-C510915231AB">
+            <Title>Bits</Title>
+            <Text>You sent me a link to a youtube video of I'll Be Back from Hamilton with a note saying THINKING OF YOU!
+
+That's what happens when people break up! They miss each other! But missing you is not as bad as being with you!
+
+</Text>
+        </Document>
+        <Document ID="F8F9FDEF-FD9F-4A8C-B33D-3434A1220ADC">
+            <Title>Short Story Format</Title>
+            <Text>SHORT STORY MANUSCRIPT FORMAT
+
+About This Template
+When compiled (File &gt; Compile), this project will generate a document in the standard manuscript format for short story submissions.
+
+How To Use This Template
+	•	Inside the “Manuscript” folder, create a new text document for each scene. (Alternatively, you can just write the entire story in a single text document.)
+	⁃	Note: The “Manuscript” folder is what we refer to in the documentation as the “Draft folder”. It’s just been renamed “Manuscript” in this template.
+	•	Information about characters can be placed in the “Characters” folder, and information about locations can be placed in the “Places” folder. (These are just regular folders that have had custom icons assigned to them using the Documents &gt; Change Icon feature.)
+	•	Character and setting sketch sheets have been provided which can be used for filling out information about the people and places in your story. These are located in the “Template Sheets” folder.
+	⁃	You should not edit the documents in the “Template Sheets” folder directly unless you wish to change the templates (which you are free to do—you may wish to customise the sketch sheets or get rid of them entirely).
+	⁃	To create a new character sheet, click on the Characters folder (or wherever you want to create your new character sheet) and from the Project menu, select New From Template &gt; Character Sketch. This creates a new character sketch document for you to edit and fill in with your character details. You can create setting sketch sheets in the same way.
+	⁃	Alternatively, you can just click “Add”, or hit cmd-N, with the Characters or Places folders selected.
+	•	A “Notes” folder has been provided for project-level notes. This has been set as the default Bookmarks folder in Project &gt; Project Settings, so that when you create a new document from the Bookmarks sidebar in a Quick Reference panel, the document will be added to this folder.
+
+Compiling
+	•	Edit the “First Page Header” document inside the “Front Matter” folder to ensure it contains the correct information. The text in this document will appear at the top of the first page of the compiled story manuscript.
+	•	Go to File &gt; Compile.
+	•	In the formats sidebar, under “Project Formats”, choose from either “Short Story (Times)” or “Short Story (Courier)”.
+	•	Click “Compile”.
+
+Making Changes
+There are various minor changes you can make to tweak this template so that it better suits your needs, as follows:
+	•	Project and author name: The default story title and author name used in headers and elsewhere can be edited in the metadata pane of Compile (click the tag icon in the rightmost header bar of the Compile panel).
+	•	Font: You can override the font used throughout a compiled document. To do so, at the top of the “Section Layouts” pane in the centre of the Compile panel, change the “Font” setting.
+	•	Making your own special folders: The “Characters” and “Places” folders are just regular folders that have been set up in a particular way; you can create other folders that work in a similar manner.
+	1.	To create a folder with a custom icon, add a new folder, place it where you want it, ensure it is selected, and then go to Documents &gt; Change Icon to choose a different icon.
+	2.	To create your own template sheets, create a new document inside the “Template Sheets” folder and set it up however you want (e.g. add text, change the title or icon, set default metadata and so on). Now this document will be available as the basis for creating new documents from the New From Template menu.
+	3.	To make it so that adding a new document to the folder created in (1) always results in a document based on the template set up in (2), select the folder and go to Documents &gt; Default Template for Subdocuments, then choose the template document you created.
+
+Sample Documents
+See the “Sample Story MS” PDF file in the Research folder for an example of a document that has been created using this template.
+
+Final Note
+Scrivener project templates are flexible and are not intended to restrict you to a particular workflow. You can change, delete or move the files and folders contained in the template to suit how you work.
+
+Like all templates in Scrivener, this project was originally created from the “Blank” template. We’ve simply added a few folders and set everything up in ways that should be useful to short story writers. Everything you can do with this project, you could equally do by creating a “Blank” project and setting it up yourself.
+
+You can create your own templates by setting up a skeletal project with the files, folders and settings you would like to use for new projects and using File &gt; Save As Template.</Text>
+        </Document>
+        <Document ID="37BCDE29-58C2-4134-B59E-E939D4DD9736">
+            <Title>Closing</Title>
+            <Text>He took me home after that. When I got there Kelly was gone. There wasn't even a note. I went up to momma's room and got into bed with her, the picture of daddy in between us. She was whispering to herself, and I stroked her hair to quiet her.</Text>
+        </Document>
+        <Document ID="462E0CA2-E36F-4D0E-BAAA-A3BE70B97A7E">
+            <Title>S&amp;C Getting intimate</Title>
+            <Text>It wasn't until a few weeks later, after we'd done it a few times, that I asked him about his scar. He told me about his daddy and his momma, about his uncle Swinton.
+He asked me about a bruise on my side. I told him about Kelly and my momma. We talked for a minute about Marcus. I hadn't talked to him much at all since the chess meet, and Corn said I should have let him down easy. I started feeling bad, but then Corn looked at me with his blue-blues and his dimple and...Marcus who?
+Corn got into a lot of fights at H. C. H. S. His scar turned purple-red when he got mad, and Corn got mad when dumb boys stared at it. Corn could really take a punch. He said that was one thing he could thank his fuck of a daddy for. That, and for not being afraid of anyone under 6'2". He never beat up Marcus, though. I guess he felt a little bad too.</Text>
+        </Document>
+        <Document ID="BE948F87-BDA3-4551-8E08-AC248FE89301">
+            <Title>Character Sketch</Title>
+            <Text>Character Name
+Role in Story
+
+
+Goal
+
+
+Physical Description
+
+
+Personality
+
+
+Occupation
+
+
+Habits/Mannerisms
+
+
+Background
+
+
+Internal Conflicts
+
+
+External Conflicts
+
+
+Notes
+
+</Text>
+        </Document>
+        <Document ID="4AD97715-FDC3-4465-BC0C-DB17C3778FEE">
+            <Title>Opening</Title>
+            <Text>When he was a boy, Corn Henks' daddy beat him more than was right. On a day that was special bad, he took a hot iron to Corn's face. Mr. Henks was a fuck, alright. Damn near killed Corn's momma with a knotted rope. That was when Corn's uncle Swinton came and took Corn and his momma out of Georgia and back here to Kentucky. Corn was fourteen then.
+Corn's proper name was Cornelius Jackson Henks. I met him my freshman year at Harlan County High. I was going out with Marcus Tillman, chess club star. I didn't mind that Marcus was a nerd. He was sweet, had blue eyes, and walked upright. That was enough to get me out of the house most nights of the week. Out and away from my brother Kelly. 
+Shelly and Kelly, we were. My daddy thought it was cute, seeing as how it rhymed and all. Daddy was a simple man, and a good man. He dropped out of high school as soon as he could and went to work in coal, just like his daddy. Only he didn't die on his 60th birthday of the black lung like my granddaddy did. He died in a mining accident when I was just six and Kelly was fourteen. Momma took it real hard. She lost her mind not too long after that, and Kelly became the man of the house. 
+When momma got so she couldn't work, Kelly did. When momma got so she couldn't cook, Kelly did, until I was old enough. When she got so she couldn't go out of the house without wailing like a baby or messing herself, Kelly took to locking her in her bedroom all day. When I told him that wasn't right, he punched me. After that first time, he started beating me regular... it was like his dam broke, and I was the little village just down the creek.</Text>
+        </Document>
+        <Document ID="5247510D-8560-437F-AC53-56D9B2A1D527">
+            <Title>Shelly background</Title>
+        </Document>
+        <Document ID="4A61588C-66DD-4BD1-9BB4-6F2CEB4E58E4">
+            <Title>Corn's POV</Title>
+            <Text>Shelly was the first girl who I wasn't related to that actually loved me. No preexisting biological imperatives, no legal obligation, just love. Attraction. Passion. 
+
+Every time she said "I love you," I heard the unspoken "so please don't hurt me, because I think I will let you."  Shelly was vulnerable to me in a way that I didn't want her to be. It made her stronger than me, and that was scary. The last person I was scared of was my dad, and he's just a bigger, meaner version of me, so that I could live with. Shelly, tiny but fierce, standing four feet ten in one sock, terrified me. 
+I could pick her up in one arm and toss her onto my bed, cover her body with mine, eclipse her, allowing no daylight between us, our sweat mixing and conducting electrical impulses from her to me and back so freely that I didn't know which sensations were mine and which were hers, and 
+
+, tidally locked like Earth and the Moon, 
+
+
+, so that we ended up lost in each other hopelessly, magnificently. She got closer to me than anyone. Closer I ever got to myself. 
+
+Tidally locked. 
+
+</Text>
+        </Document>
+        <Document ID="5F9C35E6-F35D-4E67-8C88-4187C40E6E97">
+            <Text>#### To Quiet Her
+When he was a boy, Corn Henks’ daddy beat him more than was right.  On a day that was special bad, he took a hot iron to Corn’s face.  Mr. Henks was a fuck, alright.  Damn near killed Corn’s mother with a knotted rope.  That was when Corn’s uncle Swinton came and took Corn and his mother out of Georgia and back here to Kentucky.  Corn was fourteen then.
+Corn’s proper name was Cornelius Jackson Henks.  I met him my freshman year at Harlan County High.  I was going out with Marcus Tillman, chess club star.  I didn’t mind that Marcus was a nerd.  He was sweet, had blue eyes, and walked upright.  That was enough to get me out of the house most nights of the week.  Out and away from my brother Kelly.  Shelly and Kelly, we were.  My daddy thought it was cute, seeing as how it rhymed and all.  Daddy was a simple, good man.  He dropped out of high school as soon as he could and went to work in coal.  He died in a mining accident when I was six and Kelly was fourteen.  Momma lost her mind around then, and Kelly became the man of the house.  When momma got so she couldn’t work, he did.  When momma got so she couldn’t cook, he did, until I was old enough.  When she got so she couldn’t go out of the house without wailing like a baby or messing herself, Kelly took to locking her in her bedroom all day.  When I told him that wasn’t right, he punched me.  After that first time, he started beating me regular... it was like his dam broke, and I was the little village just down the creek.
+So, when Marcus asked me to the Sadie Hawkins dance in ninth grade, I went with him.  I told him what Sadie Hawkins meant, and he told me he knew but figured I’d say no anyway, and he wanted an excuse to tell himself.  I let him feel me up that night in his room, and every night he let me up there to study.  Marcus was bright and had a half-dozen hands.  I’d let him feel me up, maybe more, and he’d do my geometry homework and write my papers for me.  I never introduced him to Kelly.
+On Corn’s first day at H. C. H. S. there was a chess meet in our library after school.  I stayed to watch Marcus.  He showed me a little bit of chess, just enough so I could follow what was going on.  I was still bored, but it was better than getting whooped on by Kelly.  I noticed the scar on Corn’s cheek when he sat next to me.  He was reading a Spider-man comic book.  “Not excited by chess?” I asked him.
+“Checkers with trees and horses,” he said without looking up from the comic.
+I laughed so loud Marcus’s opponent dropped his piece and knocked over Marcus’s queen.  “So what are you doing here?”
+“Trying to read about Peter Parker and Mary Jane.”
+“But there’s a chess meet.”
+“Yeah, I figured it would be quiet.”  He looked at me for just a few seconds, his blue, blue eyes and his hay colored hair and his little chin dimple and all, and my face turned strawberry jam.  He smiled and said, “Corn.”
+I laughed again, and Marcus shot me a look.
+“Who’s that?” Corn asked.
+“My friend Marcus.”
+“Oh.  Your *boy*friend?”
+“No.  Yeah, I guess.  Not really.  What’s corn?”
+“You don’t know what corn is?”
+“Why did you *say* corn?”
+“I’m Corn.  Cornelius.  Henks.”
+My mouth must have hung embarrassed for a minute.  “I’m Shelly.”
+“I’m going to put my comic book away for you, Shelly.  Let’s go out for a smoke.”
+“Yes.  Wait, smoke?”
+He was up and moving, so I popped after him.
+##### 
+It wasn’t until a few weeks later, after we’d done it a few times, that I asked him about his scar.  He told me about his daddy and his momma, about his uncle Swinton.
+He asked me about a bruise on my side.  I told him about Kelly and my momma.  We talked for a minute about Marcus.  I was feeling bad, but then Corn looked at me with his blue-blues and his dimple and... Marcus who?
+Corn got into a lot of fights at H. C. H. S.  His scar turned purple-red when he got mad, and Corn got mad when dumb boys stared at it.  Corn could really take a punch.  He said that was one thing he could thank his fuck of a daddy for.  That, and for not being afraid of anyone under 6’2”.  He never beat up Marcus, though.  I guess he felt a little bad too.
+##### 
+It was just after New Year’s when we got word that Corn’s daddy had found Jesus and wanted to make amends.
+Corn didn’t say a word while his momma read the letter.  He sat with me on the couch and squeezed my hand until I couldn’t feel my fingers.  I figured Corn needed to squeeze something, so I let it be me.  After she read the letter out loud three times, Corn’s momma sat and cried.  Corn’s daddy broke her nose with that rope knot, and it healed a little crooked.  She touched it and sobbed.
+Corn pulled me up by my sore hand and took me up to his room.  He hurt me a little up there, but it was just clumsy and not mean.  Plus, I thought it was better this way than being home with Kelly.  At least here there was some love.  After he was done, I fell asleep holding him.
+The next morning, I woke up to the sound of thunder.  It was raining fierce, and I was listening to the storm when I realized I couldn’t go home.  “Shit.  Kelly’s going to kill me.”
+Corn was lying in bed holding an Avengers comic and staring at the ceiling fan.  “I’m going to go see my daddy.  No matter what momma wants, I’m going to go see him.”
+“Can I come with you?”
+Corn got out of bed and pulled on his blue jeans and said, “Okay.  Yeah.”
+He turned his head as I got out of the bed wearing just his top-sheet.  “Meet you downstairs.”  I put on my own jeans, but I wore the X-Men shirt Corn took off the night before.  I thought it smelled of us.
+Later, when we were outside, he said, “Your brother have a car?”
+“Yeah.  A 92 Ford.”
+“Let’s go talk to him.”
+“I can’t.  I have to wait until tonight when he’s asleep.  Let’s get a cab and go see your daddy.”
+“No,” Corn said, and started off toward my house.  I followed him.  What else could I do?
+Corn must’ve worked himself up into a quiet rage on the way because when we got home he pounded on the door.  When Kelly yelled hold your fucking horses from inside, Corn grabbed a wet, bagged newspaper from the front steps.  He balled the plastic bag in his fist and held the paper like a ball on a chain.  When the door opened, Kelly had time to see me and suck his breath in before the paper caught him in the left temple.  Corn pushed him inside and hit him four or five times more, like the paper was an axe and Kelly was a stubborn log that didn’t want to be firewood.  He took the car keys from the peg on the wall.  “Come on,” he said.
+“Let me straighten Kelly up and check on momma.”  My voice was steady, but my heart was thudding like a wildcat.
+Corn nodded.  “Okay.  He had that coming, but he’s kin.”
+Kelly wasn’t moving, not one little bit.  I checked under his nose and felt air moving, so I knew he wasn’t dead, just out.  Best I could do was drag him in front of the television and stick a pillow under his head.  I checked on momma and she was laying on her bed, holding a picture of daddy, and staring at the yellow wallpaper.  I got me a last minute inspiration and unplugged the phone.
+Corn and me left in my brother’s shitbox.  We got to the motel.  Corn stopped the car next to a red pickup and said, “my daddy’s truck.”
+He got out and walked slowly to the room’s door.  I stayed back a bit because I was scared.  I had a deep down thrill watching Kelly get hit, but I was afraid of what Corn was going to do when he saw his daddy.  He didn’t knock, he just stood in front of that closed door, still as a mountain.  “Will you knock for me, Shelly?”
+I walked up next to Corn and tapped on the door.
+A garbled “just a minute” came from inside.
+Corn looked at me.  The water in his blue eyes made my heart fall down to my shoes.  I wanted to hug him and tell him he didn’t have to do this, that we could go and forget about our daddies and Kelly and our mommas and just be the world for each other, but then the door opened.
+Corn’s daddy was a taller, older, redder version of Corn.  “Cornelius?  Son?”
+Corn swung his fist and hit his daddy square in the chest.  He kept swinging until his daddy pulled him into a hug, and held him tight.  Corn cried into his daddy's chest and wrapped his arms around him.  The sounds of Corn's sobbing got swallowed up in their hugging.  The sound turned my blood to fire.
+I just about wanted to kill his daddy, then.  I was so mad at him for getting the best of Corn.  “You get off him!  Get away from him, you drunk old fuck!”  I swung wild and hit them both over and over and screamed and screamed until the manager of the motel came running over to us.  He grabbed me off of Corn and his daddy, and then Corn broke away and pulled me over to the car.  I was so mad I couldn't see nothing straight.  I was mad at myself for coming along, mad at Kelly for making it so I didn’t have no choice but to be here to see the boy I loved most in the world being smothered by the fuck who gave him the scar that always showed how mad he was.  I was mad at Corn for flashing his blue, blue eyes at me that first time.  I was mad at his chin dimple, even.  Everything I ever loved was dead, dead wrong in that minute.
+Corn’s daddy was crying, Corn was crying, and I was still screaming at them both.  The manager said he was going to call the sheriff.  People started coming out of their motel rooms and looking at me and I had a wild thought that I was like Momma, all crazy and not caring.  I let Corn’s arms crush me against him, and I cried.
+He took me home after that.  When I got there Kelly was gone.  I went up to momma’s room and got into bed with her.  She was whispering to herself, and I stroked her hair to quiet her.</Text>
+        </Document>
+        <Document ID="5C03DE09-C285-48ED-827F-78E62B7D0F72">
+            <Title>Template Sheets</Title>
+        </Document>
+        <Document ID="0336D596-A3FC-4835-A37E-3E5DB85647EB">
+            <Title>Old Corn</Title>
+            <Text>We were both kept after for fighting, and Mrs. Jillien, the vice principle, who was a temporary from a school up in Rhode Island, thought it would do us the most good to serve the community by helping deliver hot macaroni and cheese to crusty old whores and miners who hadn’t had the sense to let the black lung take them.  Mrs. Jillien got herself raped that summer and never came back, and we all decided she took her interloping ass back to Rhode Island.  In any case, the food deliveries were a real short-term thing.
+Me and Corn got on good, probably because both our daddies were fucks.  Mine drunk himself to death pretty early, so my damage wasn’t nearly as bad as Corn’s.  But I had enough of it to see it in him.  The burn scar on his cheek got purple-red when Corn got mad, and he always got mad when some dumb shit looked at the scar.  Corn kicked a lot of asses.  He could take a punch, on account of his daddy whooping him, and wasn’t afraid of anyone.  Kids got the fuck out of Corn’s way, which meant they got the fuck out of my way, too.
+One Saturday, just before the end of our high school days, me and Corn went up to Manchester.  My cousin Billy knew an old army vet who supplemented his government checks by selling moonshine, and we wanted to celebrate the end of our classroom captivity.
+We were about a mile outside of Harlan when Corn said, “I got more to celebrate than graduation.”
+“You finally fuck that freshman marching band chick?” I asked.  “What’s her name? Judy? Julie?”
+“It’s Jody, and naw, I got word about my daddy.  He’s in jail.  For good.”
+“Oh.  Shit.”  
+“He killed some guy in a bar fight in Macon and they gave him life in prison.”  Corn’s voice was flat as the road.
+I pulled out our moonshine money and started flipping through the bills.  A couple were worn through.  “I hope that old fuck ain’t picky about his cash.  Looks like most of these wouldn’t work in a vending machine.”
+“He’ll take it.”  Corn turned to me and flashed a smile.  “Do you think we’ll have enough ‘shine for Jody?”</Text>
+        </Document>
+        <Document ID="350A2777-7936-45C0-B98C-0FDBA947791F">
+            <Title>Shelly &amp; Corn meet</Title>
+            <Text>Then Corn came to town. On his first day at H. C. H. S., there was a chess meet in our library after school. I stayed to watch Marcus. He showed me a little bit of chess, just enough so I could follow what was going on. I was still bored, but it was better than getting whooped on. Corn was reading a Spider-man comic book, and I noticed the scar on his cheek. "Not excited by chess?" I asked him.
+"Checkers with trees and horses," he said without looking up from the comic.
+I laughed so loud Marcus's opponent dropped his piece and knocked over Marcus's queen. "So what are you doing here?"
+"Trying to read about Peter Parker and Mary Jane," he said.
+"But there's a chess meet."
+"Yeah, I figured it would be quiet." He looked at me for just a few seconds, his blue, blue eyes and his hay colored hair and his little chin dimple and all, and my face turned strawberry jam. He smiled and said, "Corn."
+I laughed again, and Marcus shot me a look.
+"Who's that?" Corn asked.
+"My friend Marcus."
+"Oh. Your boyfriend?" He said the boy part kinda obvious-like.
+"No. Yeah, I guess. Not really. What's corn?"
+"You don't know what corn is?" he asked.
+"Um, yeah, but why did you say corn?"
+"I'm Corn. Cornelius. Henks."
+My mouth must have hung embarrassed for a minute. "I'm Shelly."
+He looked at me a few more seconds, and the strawberry jam turned to grape. He smiled and said, "I'm going to put my comic book away for you, Shelly. Let's go out for a smoke."
+"Yes." He was up and moving, so I popped after him.  "Wait, smoke?" I looked back at Marcus as we left the room, but he was staring at the little clock they use to time moves, and he didn't notice us go. I thought sure everybody in the room could hear my heart running up a storm, but no one said anything.
+Outside, parents were starting to show up for rides. Corn lit up a cigarette, and I almost yelled No! at him, but he was still smiling.
+"Four foot ten in one sock," he said, and flicked ash. 
+Corn's taller than me, sure, but I'm five-two, and I wasn't wearing socks. "What are you talking about, tall boy?" 
+"It's from a book."
+"Spider-man?"
+"Lolita," he said.
+"Is that porn?"
+"Kinda. You should read it. It's creepy but pretty."
+I almost said like you, but I don't think boys like being called pretty. Or creepy. Corn held his cigarette out to me, but I just stared at it.
+"No? See, girls are smarter than boys." He rubbed it out on the wall of the school. "Are you going back in, or is one of these cars here for you?"
+"No, I was going to walk home with Mar- my friend."
+"Okay, well it was nice meeting you, Shelly. Check out that book."
+He turned to leave, and my heart jumped out of my mouth and yelled "You can read it to me!"
+Corn looked back at me, his blue eyes and dimple and smile and everything. "Okay. Come on."
+Sure, I followed him.</Text>
+        </Document>
+        <Document ID="71011643-9415-4293-BFBB-79B86C3DC724">
+            <Title>Motel confrontation</Title>
+            <Text>Corn and me left in my brother's shitbox. We got to the motel. Corn stopped the car next to a red pickup and said, "my daddy's truck."
+He got out and walked slowly to the room's door. I stayed back a bit because I was scared. I had a deep down thrill watching Kelly get hit, but I was afraid of what Corn was going to do when he saw his daddy. He didn't knock, he just stood in front of that closed door, still as a mountain. "Will you knock for me, Shelly?"
+I walked up next to Corn and tapped on the door.
+A garbled "just a minute" came from inside.
+Corn looked at me. The water in his blue eyes made my heart fall down to my shoes. I wanted to hug him and tell him he didn't have to do this, that we could go and forget about our daddies and Kelly and our mommas and just be the world for each other, but then the door opened.
+Corn's daddy was a taller, older, redder version of Corn. "Cornelius? Son?"
+Corn swung his fist and hit his daddy square in the chest. He was crying and yelling and his knee was shaking. He kept swinging until his daddy pulled him into a hug, and held him tight. Corn cried into his daddy's chest and wrapped his arms around him, and his crying got swallowed up in their hugging. The sound turned my blood to fire.
+I just about wanted to kill his daddy, then. I was so mad at him for getting the best of Corn. "You get off him! Get away from him, you drunk old fuck!" I swung wild and hit them both over and over and screamed and screamed until the manager of the motel came running over to us. He grabbed me off of Corn and his daddy, and then Corn broke away and pulled me over to the car. I was so mad I couldn't see nothing straight. I was mad at myself for coming along, mad at Kelly for making it so I didn't have no choice but to be here to see the boy I loved most in the world being smothered by the fuck who gave him the scar that always showed how mad he was. I was mad at Corn for flashing his blue, blue eyes at me that first time. I was mad at his chin dimple, even. Everything I ever loved was dead, dead wrong in that minute. Boys are the devil, and they damn every one of us to hell. It don't matter if they're our daddies, our brothers, or the lovers we pick out. Something in them wants to hurt us, and something in us wants to be hurt.
+Corn's daddy was crying, Corn was crying, and I was still screaming at them both. The manager said he was going to call the sheriff. People started coming out of their motel rooms and looking at me and I had a wild thought that I was like Momma, all crazy and not caring. I let Corn's arms crush me against him, and I cried.</Text>
+        </Document>
+        <Document ID="4A1D6B18-0952-42EB-A487-D17915DD3BA1">
+            <Title>Manuscript</Title>
+        </Document>
+        <Document ID="6830B6AC-686B-4370-A979-2FD1D7288BDA">
+            <Title>Places</Title>
+        </Document>
+        <Document ID="829621EF-53B0-4B44-A4E5-EBC35E659A52">
+            <Title>Title</Title>
+            <Text>To Quiet Her</Text>
+        </Document>
+        <Document ID="87D59B4E-F1D6-4025-9FBA-33F60ED8F985">
+            <Title>Setting Sketch</Title>
+            <Text>Name of Setting
+Role in Story
+
+
+Related Characters
+
+
+Season
+
+
+Unique Features
+
+
+Description
+
+
+Sights
+
+
+Sounds
+
+
+Smell
+
+
+Notes
+
+</Text>
+        </Document>
+        <Document ID="B2F45879-3807-4149-9872-33B07B3E934B">
+            <Title>First Page Header</Title>
+            <Text>Michael Coelho
+mcoelho@gmail.com
+
+
+&lt;$wc100&gt; words
+To Quiet Her
+</Text>
+        </Document>
+        <Document ID="69822417-D015-4BDD-90BD-18AAA6198D15">
+            <Title>Notes</Title>
+        </Document>
+        <Document ID="7329A513-175E-48FC-95ED-1CE6CBB9A9AE">
+            <Title>Sample Story MS</Title>
+            <Text>Your Name
+Your address
+Your phone number
+Your e-mail address
+800 words
+SHORT STORY MANUSCRIPT FORMAT
+         by W. Ritter
+     Short story manuscript format is very similar to novel
+standard manuscript format. This template is intended to
+help you easily export or print using the standard format.
+In fact, this PDF file was generated using Scrivener's
+Compile feature. It was created in Scrivener using the
+Short Story project template.
+     You should generally use a Courier 12-point font (which
+will print ten characters per inch). Because Courier is a
+monospace font (that is, all characters are the same
+width), it makes it easier for editors to detect spelling
+errors and also to calculate the approximate space your
+story will take up when published. Times New Roman and
+Arial are also usually acceptable though.
+     Leave wide margins all around the page--at least an
+inch on all sides.
+     Use double-spacing between lines--this gives the editor
+plenty of room to make corrections and notes.
+     These guidelines will mean that you can't fit many
+words on a page--250 to 300 at the most. This will give
+your manuscript a higher page count, but it will pay off as
+it will be a lot easier for the editor to read--and you
+want to make the editor's job as easy as possible.
+                             #
+     Print only on one side of the page. Your name, address,
+telephone number and e-mail address should go in the upper
+left corner of the first page of your manuscript. In the
+upper right corner, place an approximate word count. You
+can round up to the nearest hundred words, although in
+these days of word processors, a word processor-generated
+word count will probably be fine. The word count is used by
+the editor to work out how much space your story will take
+Ritter / Story Format / 2
+up. In Scrivener, you can insert a placeholder tag that
+will be replaced by your word count upon compile by using
+the Edit &gt; Insert menu.
+     The title of your story should go roughly halfway down
+the first page (the editor can use the empty space above it
+to make notes). The title should be centred, and it is
+usually capitalised. Place your by-line two lines beneath
+the title. This is the name you want to appear in print,
+which might be a pseudonym or might use your initials
+instead of your full name.
+     The first line of your story should start two lines
+beneath your by-line, and should be indented five spaces
+(half an inch) from the left margin.
+                             #
+     You should place a header in the upper right corner of
+every page of your manuscript except for the first page.
+The header should comprise the surname that appears in the
+by-line, a key word from the title of the story, and the
+current page number. (The header should not go in the left
+corner, as the editorial staff may clip your manuscript in
+Ritter / Story Format / 3
+that corner.)
+     Text should be left-justified with a "ragged" right
+margin. Some folk will tell you that you should always
+place two spaces between sentences, but in these days of
+word processors this rule is not so hard and fast any more.
+If you are in the habit of typing two spaces between
+sentences, fine; if not, it is probably not worth worrying
+about. Recent studies have shown that the number of spaces
+you type between sentences--one or two--has no discernible
+impact on how easy a piece of text is to read.
+                             #
+     If you wish a word or phrase to appear in italics, this
+should be indicated in the manuscript by underlining. In
+Scrivener, you can use italics while writing and then just
+use "Convert italics to underlines" in the Transformations
+pane of the Compile sheet.
+     Em-dashes--extended hyphens that set off a phrase such
+as this--should be indicated using two hyphens. In
+Scrivener, you can use "Convert em-dashes to double
+hyphens" upon compile. (All of this is set up for you in
+Ritter / Story Format / 4
+   
+the Short Story project template.)
+                             #
+     Line breaks in your story should be indicated by
+placing the "#" character between lines rather than leaving
+a blank line. This makes it easy for the typesetter to see
+where line breaks should fall. If you write each scene as a
+separate text document, you can have these separator
+characters added automatically upon compilation by using
+the "Separators" pane of the Compile sheet.
+     Finally, you do not need to make any overt indication
+that your story is over--you do not need to type "The End"
+or anything of the sort. The ending should be obvious from
+your story. Follow these instructions, and your short story
+manuscript should at least appear professional--the content
+is down to you!
+                             #
+     Much of the information contained in this document is
+based on a description of short story manuscript format by
+Matt Carless for the BBC Writers' Room website: http://
+www.bbc.co.uk/writersroom
+Ritter / Story Format / 5
+</Text>
+        </Document>
+        <Document ID="06C0455C-36DD-4F38-BB7B-F7DD2453A8A5">
+            <Title>Characters</Title>
+        </Document>
+        <Document ID="44EFE5B5-9610-4B2E-BCDC-D5A0BADD162E">
+            <Title>Daddy's letter arrives</Title>
+            <Text>It was just after New Year's when we got a letter saying that Corn's daddy had found Jesus and wanted to make amends.
+Corn didn't say a word while his momma read the letter. He sat with me on the couch and squeezed my hand until I couldn't feel my fingers. I figured Corn needed to squeeze something, so I let it be me. After she read the letter out loud three times, Corn's momma sat and cried. Corn's daddy broke her nose with that rope knot, and it healed a little crooked. She touched it and sobbed.
+Corn pulled me up by my sore hand and took me up to his room. He hurt me a little up there, but it was just clumsy and not mean. Plus, I thought it was better this way than being home with Kelly. At least here there was some love. After he was done, I fell asleep holding him.
+The next morning, I woke up to the sound of thunder. It was raining fierce, and I was listening to the storm when I realized I couldn't go home. "Shit. Kelly's going to kill me."
+Corn was lying in bed holding an Avengers comic and staring at the ceiling fan. "I'm going to go see my daddy. No matter what momma wants, I'm going to go see him."
+"Can I come with you?"
+Corn got out of bed and pulled on his blue jeans and said, "Okay. Yeah."
+He looked away as I got out of the bed wearing just his top-sheet. "Meet you downstairs," I said as I put on my own jeans, but I wore the X-Men shirt Corn took off the night before. I thought it smelled of us.</Text>
+        </Document>
+        <Document ID="5AFDA5D7-E4DF-49BC-B2AC-C8C6280339A1">
+            <Title>Shelly &amp; Marcus setup</Title>
+            <Text>So, when Marcus asked me to the Sadie Hawkins dance in ninth grade, I went with him. 
+"Marcus, you know what Sadie Hawkins is, right? The girls ask the boys."
+"I, uh, yeah. I know that. Look, it's okay if you can't go," he said.
+"I'll come with you."
+"I knew it was a long shot. You're so pretty, Shelly, and I- what?"
+I laughed at him being so cute and little boyish, but I probably shouldn't have. Boys don't like girls to laugh at them. "I'll come, Marcus."
+"Oh, wow. I asked because I thought you'd say no and I'd be able to blame it on the Sadie Hawkins thing and not look so bad in front of the other guys. I... You're sure, you're not making fun of me?"
+I kept a straight face and told him I wasn't. And I wasn't.
+So, we went. It turned out that Marcus loved dancing. He wasn't too good at it, but he didn't care. After the dance, I let him feel me up in his room. He was a little better at that than dancing. And then, just like that, we were going out. Marcus was bright and had a half-dozen hands, and every time I'd go over to study, I'd let him feel me up, maybe more, and he'd do my geometry homework and write my papers for me. It was fair. He wasn't handsome in what people say is traditional. He wasn't no Chris Hemsworth, more of a Jerry Goldfish from that Jurassic park movie. Bloom. Jerry Goldbloom. Something like that. Going out with Marcus got me out of the house. Jerry Goldbloom was good enough for six or seven months.</Text>
+        </Document>
+        <Document ID="B81DF113-3EC1-4017-80C2-5476D401C7A1">
+            <Title>Shelly's house, Corn vs Kelly</Title>
+            <Text>Later, when we were outside, he said, "Your brother have a car?"
+"Yeah. A '92 Ford."
+"Let's go talk to him."
+"I can't. I have to wait until tonight when he's asleep. Let's get call an Uber and go see your daddy."
+"No," Corn said, and started off toward my house. I followed him. What else could I do?
+Corn must've worked himself up into a quiet rage on the way because when we got home he pounded on the door. When Kelly yelled hold your fucking horses from inside, Corn grabbed a wet, bagged newspaper from the front steps. He balled the plastic bag in his fist and held the paper like a ball on a chain. When the door opened, Kelly had time to see me and suck his breath in before the paper caught him in the left temple. Corn pushed him inside and hit him four or five times more, like the paper was an axe and Kelly was a stubborn log that didn't want to be firewood. He took the car keys from the peg on the wall. "Come on," he said.
+"Let me straighten Kelly up and check on momma." My voice was steady, but my heart was thudding like a wildcat.
+Corn nodded. "Okay. He had that coming, but he's kin."
+Kelly wasn't moving, not one little bit. I checked under his nose and felt air moving, so I knew he wasn't dead, just out. Best I could do was drag him in front of the television and stick a pillow under his head. I checked on momma and she was laying on her bed, holding a picture of daddy, and staring at the yellow wallpaper.</Text>
+        </Document>
+    </Documents>
+</SearchIndexes>

@@ -22,6 +22,11 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2.0"
 anyhow = "1.0"
 
+# Phase 2: Scrivener compatibility
+quick-xml = { version = "0.36", features = ["serialize"] }
+regex = "1.10"
+# RTF parsing: Use Pandoc as external tool for Phase 2
+
 # Git operations (Phase 4)
 # git2 = "0.19"
 
