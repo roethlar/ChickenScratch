@@ -1,0 +1,24 @@
+When he was a boy, Corn Henks\' daddy beat him more than was right. On a
+day that was special bad, he took a hot iron to Corn\'s face. Mr. Henks
+was a fuck, alright. Damn near killed Corn\'s momma with a knotted rope.
+That was when Corn\'s uncle Swinton came and took Corn and his momma out
+of Georgia and back here to Kentucky. Corn was fourteen then.\
+Corn\'s proper name was Cornelius Jackson Henks. I met him my freshman
+year at Harlan County High. I was going out with Marcus Tillman, chess
+club star. I didn\'t mind that Marcus was a nerd. He was sweet, had blue
+eyes, and walked upright. That was enough to get me out of the house
+most nights of the week. Out and away from my brother Kelly.\
+Shelly and Kelly, we were. My daddy thought it was cute, seeing as how
+it rhymed and all. Daddy was a simple man, and a good man. He dropped
+out of high school as soon as he could and went to work in coal, just
+like his daddy. Only he didn\'t die on his 60^th^ birthday of the black
+lung like my granddaddy did. He died in a mining accident when I was
+just six and Kelly was fourteen. Momma took it real hard. She lost her
+mind not too long after that, and Kelly became the man of the house.\
+When momma got so she couldn\'t work, Kelly did. When momma got so she
+couldn\'t cook, Kelly did, until I was old enough. When she got so she
+couldn\'t go out of the house without wailing like a baby or messing
+herself, Kelly took to locking her in her bedroom all day. When I told
+him that wasn\'t right, he punched me. After that first time, he started
+beating me regular\... it was like his dam broke, and I was the little
+village just down the creek.

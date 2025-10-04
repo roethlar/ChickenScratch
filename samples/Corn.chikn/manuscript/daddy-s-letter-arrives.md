@@ -1,0 +1,24 @@
+It was just after New Year\'s when we got a letter saying that Corn\'s
+daddy had found Jesus and wanted to make amends.\
+Corn didn\'t say a word while his momma read the letter. He sat with me
+on the couch and squeezed my hand until I couldn\'t feel my fingers. I
+figured Corn needed to squeeze something, so I let it be me. After she
+read the letter out loud three times, Corn\'s momma sat and cried.
+Corn\'s daddy broke her nose with that rope knot, and it healed a little
+crooked. She touched it and sobbed.\
+Corn pulled me up by my sore hand and took me up to his room. He hurt me
+a little up there, but it was just clumsy and not mean. Plus, I thought
+it was better this way than being home with Kelly. At least here there
+was some love. After he was done, I fell asleep holding him.\
+The next morning, I woke up to the sound of thunder. It was raining
+fierce, and I was listening to the storm when I realized I couldn\'t go
+home. \"Shit. Kelly\'s going to kill me.\"\
+Corn was lying in bed holding an Avengers comic and staring at the
+ceiling fan. \"I\'m going to go see my daddy. No matter what momma
+wants, I\'m going to go see him.\"\
+\"Can I come with you?\"\
+Corn got out of bed and pulled on his blue jeans and said, \"Okay.
+Yeah.\"\
+He looked away as I got out of the bed wearing just his top-sheet.
+\"Meet you downstairs,\" I said as I put on my own jeans, but I wore the
+X-Men shirt Corn took off the night before. I thought it smelled of us.

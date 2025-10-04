@@ -1,0 +1,14 @@
+It wasn\'t until a few weeks later, after we\'d done it a few times,
+that I asked him about his scar. He told me about his daddy and his
+momma, about his uncle Swinton.\
+He asked me about a bruise on my side. I told him about Kelly and my
+momma. We talked for a minute about Marcus. I hadn\'t talked to him much
+at all since the chess meet, and Corn said I should have let him down
+easy. I started feeling bad, but then Corn looked at me with his
+blue-blues and his dimple and\...Marcus who?\
+Corn got into a lot of fights at H. C. H. S. His scar turned purple-red
+when he got mad, and Corn got mad when dumb boys stared at it. Corn
+could really take a punch. He said that was one thing he could thank his
+fuck of a daddy for. That, and for not being afraid of anyone under
+6\'2\". He never beat up Marcus, though. I guess he felt a little bad
+too.

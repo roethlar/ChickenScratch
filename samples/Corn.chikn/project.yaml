@@ -1,0 +1,93 @@
+id: 8d9f6c30-317e-4aea-9c34-1dbc5c8d6b44
+name: Corn 2
+hierarchy:
+- type: Document
+  id: ab89bbfe-c688-4aaf-8ad0-e61eef081eb6
+  name: Short Story Format
+  path: manuscript/short-story-format.md
+- type: Folder
+  id: f86d2210-dc16-45e8-bf5f-8da667bf7e7e
+  name: Manuscript
+  children:
+  - type: Document
+    id: b8440d1b-921f-4666-af05-7f537d260e80
+    name: Opening
+    path: manuscript/opening.md
+  - type: Document
+    id: 7691f802-fabb-4285-a678-edef1d712a64
+    name: Shelly & Marcus setup
+    path: manuscript/shelly-marcus-setup.md
+  - type: Document
+    id: 32e63e75-e7df-448d-bae6-e14d0d711919
+    name: Shelly & Corn meet
+    path: manuscript/shelly-corn-meet.md
+  - type: Document
+    id: 1b70b7ad-8d68-4369-8100-14b5218955a5
+    name: S&C Falling
+    path: manuscript/s-c-falling.md
+  - type: Document
+    id: 65b936d8-b951-4d9f-bdbb-45cfcb936ec4
+    name: S&C Getting intimate
+    path: manuscript/s-c-getting-intimate.md
+  - type: Document
+    id: 454aed9f-74c2-4390-8a80-d60bdfa15a2e
+    name: Daddy's letter arrives
+    path: manuscript/daddy-s-letter-arrives.md
+  - type: Document
+    id: 1733badd-c3a3-4213-95c9-94e3b4a0470a
+    name: Shelly's house, Corn vs Kelly
+    path: manuscript/shelly-s-house-corn-vs-kelly.md
+  - type: Document
+    id: 85476ff5-bba9-456b-9101-4952b88df980
+    name: Motel confrontation
+    path: manuscript/motel-confrontation.md
+  - type: Document
+    id: 7e596ed5-4634-4a8a-b01a-27bc3704fa07
+    name: Closing
+    path: manuscript/closing.md
+- type: Folder
+  id: 68be8095-c608-4442-93df-57f47808e4ce
+  name: Characters
+  children: []
+- type: Folder
+  id: 0b9b2b8f-6751-4865-8856-c5a848c78fd3
+  name: Places
+  children: []
+- type: Folder
+  id: ebd7aeea-07b6-41bc-bbb3-b2c2a7b9a6cb
+  name: Front Matter
+  children:
+  - type: Document
+    id: 82ebf096-21d1-483c-a294-15e76329110a
+    name: First Page Header
+    path: manuscript/first-page-header.md
+- type: Folder
+  id: 04261681-9294-42be-bbcb-184b57df2fd7
+  name: Notes
+  children:
+  - type: Document
+    id: c38b54c6-1259-4f84-8e65-3b759a4839fa
+    name: Corn's POV
+    path: manuscript/corn-s-pov.md
+  - type: Document
+    id: e4a0f2f2-c0ac-4ea1-840c-006256852d81
+    name: Bits
+    path: manuscript/bits.md
+  - type: Document
+    id: b28b3dfd-d346-4d88-a1ef-b9e043f137c7
+    name: Old Corn
+    path: manuscript/old-corn.md
+- type: Folder
+  id: bb1e059c-0d1f-49fb-94ab-6b360933e069
+  name: Template Sheets
+  children:
+  - type: Document
+    id: 684cefcf-260b-4a7d-a616-9f0fcc562b3c
+    name: Character Sketch
+    path: manuscript/character-sketch.md
+  - type: Document
+    id: 5fe0d74e-cccf-4dd7-a156-d5cad513b4e4
+    name: Setting Sketch
+    path: manuscript/setting-sketch.md
+created: 2025-10-04T14:55:11.747939+00:00
+modified: 2025-10-04T14:55:12.546661+00:00
