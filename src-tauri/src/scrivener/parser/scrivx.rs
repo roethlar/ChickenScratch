@@ -157,7 +157,7 @@ struct ScrivenerProjectXml {
     version: Option<String>,
 
     #[serde(rename = "@Identifier")]
-    identifier: Option<String>,
+    _identifier: Option<String>,
 
     #[serde(rename = "Binder")]
     binder: BinderContainer,

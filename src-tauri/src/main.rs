@@ -4,6 +4,7 @@
 mod api;
 mod core;
 mod models;
+mod scrivener;
 mod utils;
 
 use api::{project_commands, document_commands, scrivener_commands};
