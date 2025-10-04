@@ -7,7 +7,7 @@ mod models;
 mod scrivener;
 mod utils;
 
-use api::{project_commands, document_commands, scrivener_commands};
+use api::{project_commands, document_commands, scrivener_commands, snapshot_commands};
 
 fn main() {
     tauri::Builder::default()
@@ -32,6 +32,12 @@ fn main() {
             // Scrivener commands
             scrivener_commands::import_scrivener_project,
             scrivener_commands::export_to_scrivener,
+
+            // Snapshot commands
+            snapshot_commands::create_project_snapshot,
+            snapshot_commands::restore_from_snapshot,
+            snapshot_commands::list_snapshots,
+            snapshot_commands::prune_snapshots,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
