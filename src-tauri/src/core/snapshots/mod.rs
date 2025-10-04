@@ -38,7 +38,7 @@ mod prune;
 pub use create::create_snapshot;
 pub use restore::restore_snapshot;
 pub use manifest::{SnapshotManifest, SnapshotEntry, SnapshotType};
-pub use prune::prune_old_snapshots;
+pub use prune::{prune_old_snapshots, get_snapshots_size};
 
 /// Snapshot folder name
 pub const REVS_FOLDER: &str = "revs";

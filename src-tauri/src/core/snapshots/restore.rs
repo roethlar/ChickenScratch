@@ -4,8 +4,10 @@
 
 use std::fs::{self, File};
 use std::path::Path;
+use flate2::Compression;
 use flate2::read::GzDecoder;
-use tar::Archive;
+use flate2::write::GzEncoder;
+use tar::{Archive, Builder};
 
 use crate::utils::error::ChiknError;
 use super::REVS_FOLDER;
@@ -22,6 +24,9 @@ use super::REVS_FOLDER;
 ///
 /// # Warning
 /// This overwrites the current project state!
+///
+/// # Safety
+/// Creates backup before restore. Automatically rolls back on failure.
 ///
 /// # Example
 /// ```rust
@@ -43,20 +48,95 @@ pub fn restore_snapshot(
         )));
     }
 
-    // Create backup of current state before restore
+    // Create backup of current state before restore (includes .git and revs)
     let backup_path = project_path.join(REVS_FOLDER).join("restore-backup.tar.gz");
-    if let Err(e) = create_restore_backup(project_path, &backup_path) {
-        eprintln!("Warning: Could not create restore backup: {:?}", e);
-    }
+    create_full_backup(project_path, &backup_path)?;
 
     // Clear working tree (except revs/ and .git/)
-    clear_working_tree(project_path)?;
+    if let Err(e) = clear_working_tree(project_path) {
+        // Restore from backup on clear failure
+        let _ = restore_from_backup(project_path, &backup_path);
+        let _ = fs::remove_file(&backup_path);
+        return Err(e);
+    }
 
     // Extract tarball
-    extract_tarball(&snapshot_path, project_path)?;
+    if let Err(e) = extract_tarball(&snapshot_path, project_path) {
+        // CRITICAL: Restore from backup on extraction failure
+        eprintln!("Extraction failed, rolling back to backup...");
+        if let Err(rollback_err) = restore_from_backup(project_path, &backup_path) {
+            eprintln!("CRITICAL: Rollback failed: {:?}", rollback_err);
+            // Backup file still exists for manual recovery
+            return Err(ChiknError::Unknown(format!(
+                "Restore failed and rollback failed. Backup saved at: {}. Error: {}",
+                backup_path.display(),
+                e
+            )));
+        }
+        let _ = fs::remove_file(&backup_path);
+        return Err(e);
+    }
 
-    // Clean up backup
+    // Success - clean up backup
     let _ = fs::remove_file(&backup_path);
+
+    Ok(())
+}
+
+/// Creates a full backup including .git and revs (for restore safety)
+fn create_full_backup(project_path: &Path, backup_path: &Path) -> Result<(), ChiknError> {
+    let tar_gz = File::create(backup_path)?;
+    let enc = GzEncoder::new(tar_gz, Compression::default());
+    let mut tar = Builder::new(enc);
+
+    // Archive everything (including .git and revs for full recovery)
+    for entry in fs::read_dir(project_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = entry.file_name();
+
+        // Skip the backup file itself if it exists
+        if name == "restore-backup.tar.gz" {
+            continue;
+        }
+
+        let relative = path.strip_prefix(project_path)
+            .map_err(|_| ChiknError::InvalidFormat("Path error".to_string()))?;
+
+        if path.is_file() {
+            let mut file = File::open(&path)?;
+            tar.append_file(relative, &mut file)?;
+        } else if path.is_dir() {
+            tar.append_dir_all(relative, &path)?;
+        }
+    }
+
+    tar.finish()?;
+    Ok(())
+}
+
+/// Restores from the backup tarball
+fn restore_from_backup(project_path: &Path, backup_path: &Path) -> Result<(), ChiknError> {
+    // Clear everything first
+    for entry in fs::read_dir(project_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = entry.file_name();
+
+        // Don't delete the backup we're about to restore from
+        if name == "restore-backup.tar.gz" || name == REVS_FOLDER {
+            continue;
+        }
+
+        if path.is_file() {
+            fs::remove_file(&path)?;
+        } else if path.is_dir() {
+            fs::remove_dir_all(&path)?;
+        }
+    }
+
+    // Extract backup
+    extract_tarball(backup_path, project_path)?;
 
     Ok(())
 }
@@ -82,12 +162,6 @@ fn clear_working_tree(project_path: &Path) -> Result<(), ChiknError> {
     }
 
     Ok(())
-}
-
-/// Creates a temporary backup before restore (safety)
-fn create_restore_backup(project_path: &Path, backup_path: &Path) -> Result<(), ChiknError> {
-    use super::create::create_tarball;
-    create_tarball(project_path, backup_path)
 }
 
 /// Extracts a tarball to the project directory
@@ -169,5 +243,47 @@ mod tests {
 
         let result = restore_snapshot(&project_path, "nonexistent.tar.gz");
         assert!(result.is_err());
+    }
+
+
+    #[test]
+    fn test_restore_rollback_on_failure() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("Test.chikn");
+
+        // Create project with content
+        let mut project = create_project(&project_path, "Test").unwrap();
+
+        let doc = Document {
+            id: "doc1".to_string(),
+            name: "Important".to_string(),
+            path: "manuscript/important.md".to_string(),
+            content: "Critical content".to_string(),
+            parent_id: None,
+            created: chrono::Utc::now().to_rfc3339(),
+            modified: chrono::Utc::now().to_rfc3339(),
+        };
+
+        project.documents.insert(doc.id.clone(), doc);
+        crate::core::project::writer::write_project(&mut project).unwrap();
+
+        // Create a valid snapshot
+        create_snapshot(&project_path, SnapshotType::Manual, None).unwrap();
+
+        // Try to restore from a corrupted/invalid snapshot
+        // (Create a fake snapshot file)
+        let revs_path = project_path.join(REVS_FOLDER);
+        let bad_snapshot = revs_path.join("bad-snapshot.tar.gz");
+        fs::write(&bad_snapshot, "not a valid tarball").unwrap();
+
+        // Attempt restore - should fail but preserve original data
+        let result = restore_snapshot(&project_path, "bad-snapshot.tar.gz");
+        assert!(result.is_err());
+
+        // Verify original data is still intact (rollback succeeded)
+        assert!(project_path.join("manuscript/important.md").exists());
+
+        let content = fs::read_to_string(project_path.join("manuscript/important.md")).unwrap();
+        assert_eq!(content, "Critical content");
     }
 }
