@@ -1,0 +1,108 @@
+{
+  "name": "chickenscratch",
+  "displayName": "ChickenScratch",
+  "description": "Native support for .chikn writing projects",
+  "version": "0.1.0",
+  "publisher": "chickenscratch",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/*.chikn",
+    "onCommand:chickenscratch.newProject",
+    "onCommand:chickenscratch.newDocument"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "chickenscratch-explorer",
+          "title": "Manuscript",
+          "icon": "resources/quill.svg"
+        }
+      ]
+    },
+    "views": {
+      "chickenscratch-explorer": [
+        {
+          "id": "chickenscratch.projectTree",
+          "name": "Documents"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "chickenscratch.newProject",
+        "title": "ChickenScratch: New Project"
+      },
+      {
+        "command": "chickenscratch.newDocument",
+        "title": "ChickenScratch: New Document",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "chickenscratch.newFolder",
+        "title": "ChickenScratch: New Folder",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "chickenscratch.deleteDocument",
+        "title": "ChickenScratch: Delete",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "chickenscratch.refreshTree",
+        "title": "ChickenScratch: Refresh",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "chickenscratch.newDocument",
+          "when": "view == chickenscratch.projectTree",
+          "group": "navigation"
+        },
+        {
+          "command": "chickenscratch.refreshTree",
+          "when": "view == chickenscratch.projectTree",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "chickenscratch.newDocument",
+          "when": "view == chickenscratch.projectTree && viewItem == folder",
+          "group": "inline"
+        },
+        {
+          "command": "chickenscratch.deleteDocument",
+          "when": "view == chickenscratch.projectTree",
+          "group": "inline"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.x",
+    "@typescript-eslint/parser": "^6.x",
+    "eslint": "^8.x",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}
