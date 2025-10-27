@@ -19,8 +19,8 @@
 //! └── settings/                 # Compile settings, themes
 //! ```
 
-use std::path::{Path, PathBuf};
 use crate::utils::error::ChiknError;
+use std::path::{Path, PathBuf};
 
 /// File extension for Chicken Scratch projects
 pub const PROJECT_EXTENSION: &str = "chikn";
@@ -229,10 +229,7 @@ mod tests {
         fs::create_dir(&project_path).unwrap();
 
         // Create project.yaml
-        fs::write(
-            project_path.join(PROJECT_FILE),
-            "name: Test Project\n"
-        ).unwrap();
+        fs::write(project_path.join(PROJECT_FILE), "name: Test Project\n").unwrap();
 
         // Create required folders
         for folder in REQUIRED_FOLDERS {

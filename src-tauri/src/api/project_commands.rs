@@ -3,10 +3,10 @@
 //! Tauri commands for project CRUD operations.
 //! Integrates with core::project reader/writer modules.
 
-use std::path::Path;
-use crate::core::project::{reader, writer, hierarchy};
+use crate::core::project::{hierarchy, reader, writer};
 use crate::models::{Project, TreeNode};
 use crate::utils::error::ChiknError;
+use std::path::Path;
 
 /// Creates a new .chikn project.
 ///
@@ -110,10 +110,7 @@ pub async fn save_project(mut project: Project) -> Result<Project, ChiknError> {
 /// });
 /// ```
 #[tauri::command]
-pub async fn add_to_hierarchy(
-    mut project: Project,
-    node: TreeNode,
-) -> Result<Project, ChiknError> {
+pub async fn add_to_hierarchy(mut project: Project, node: TreeNode) -> Result<Project, ChiknError> {
     // Use hierarchy module to add node
     hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node);
 
@@ -214,11 +211,7 @@ pub async fn move_node(
     new_parent_id: Option<String>,
 ) -> Result<Project, ChiknError> {
     // Use hierarchy module to move node
-    hierarchy::move_node(
-        &mut project.hierarchy,
-        &node_id,
-        new_parent_id.as_deref(),
-    )?;
+    hierarchy::move_node(&mut project.hierarchy, &node_id, new_parent_id.as_deref())?;
 
     // Save updated project (updates modified timestamp)
     writer::write_project(&mut project)?;

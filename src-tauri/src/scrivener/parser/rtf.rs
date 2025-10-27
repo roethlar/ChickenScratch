@@ -11,10 +11,10 @@
 //! Phase 2 uses Pandoc as external tool for RTF conversion.
 //! This provides robust RTF parsing without reimplementing the spec.
 
+use crate::utils::error::ChiknError;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use crate::utils::error::ChiknError;
 
 /// Converts RTF file to Markdown using Pandoc.
 ///
@@ -89,7 +89,6 @@ pub fn rtf_string_to_markdown(rtf_content: &str) -> Result<String, ChiknError> {
 
     result
 }
-
 
 /// Converts Markdown file to RTF using Pandoc.
 ///
@@ -183,9 +182,12 @@ fn check_pandoc_available() -> Result<(), ChiknError> {
     let output = Command::new("pandoc")
         .arg("--version")
         .output()
-        .map_err(|_| ChiknError::Unknown(
-            "Pandoc not found. Please install Pandoc: https://pandoc.org/installing.html".to_string()
-        ))?;
+        .map_err(|_| {
+            ChiknError::Unknown(
+                "Pandoc not found. Please install Pandoc: https://pandoc.org/installing.html"
+                    .to_string(),
+            )
+        })?;
 
     if !output.status.success() {
         return Err(ChiknError::Unknown("Pandoc not available".to_string()));

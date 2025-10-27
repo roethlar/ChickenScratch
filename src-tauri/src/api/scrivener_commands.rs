@@ -2,10 +2,10 @@
 //!
 //! Tauri commands for .scriv ↔ .chikn conversion.
 
-use std::path::Path;
 use crate::models::Project;
 use crate::scrivener::{converter, exporter};
 use crate::utils::error::ChiknError;
+use std::path::Path;
 
 /// Imports a Scrivener .scriv project to .chikn format.
 ///
@@ -59,10 +59,7 @@ pub async fn import_scrivener_project(
 /// });
 /// ```
 #[tauri::command]
-pub async fn export_to_scrivener(
-    project: Project,
-    output_path: String,
-) -> Result<(), ChiknError> {
+pub async fn export_to_scrivener(project: Project, output_path: String) -> Result<(), ChiknError> {
     let output = Path::new(&output_path);
 
     exporter::export_to_scriv(&project, output)

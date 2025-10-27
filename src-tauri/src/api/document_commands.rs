@@ -3,13 +3,13 @@
 //! Tauri commands for document CRUD operations.
 //! Integrates with core::project writer module.
 
-use std::path::Path;
 use crate::core::project::writer;
 use crate::models::{Document, Project};
 use crate::utils::error::ChiknError;
 use crate::utils::slug::unique_slug;
-use uuid::Uuid;
 use chrono::Utc;
+use std::path::Path;
+use uuid::Uuid;
 
 /// Creates a new document in the project.
 ///
@@ -45,9 +45,9 @@ pub async fn create_document(
 
     let document = Document {
         id: doc_id.clone(),
-        name: name.clone(), // Preserve original display name
+        name: name.clone(),                      // Preserve original display name
         path: format!("manuscript/{}.md", slug), // Use unique slug for filename
-        content: format!("# {}\n\n", name), // Initialize with original title
+        content: format!("# {}\n\n", name),      // Initialize with original title
         parent_id,
         created: now.clone(),
         modified: now,
@@ -164,10 +164,7 @@ pub async fn delete_document(
 /// console.log(doc.content);
 /// ```
 #[tauri::command]
-pub async fn get_document(
-    project: Project,
-    document_id: String,
-) -> Result<Document, ChiknError> {
+pub async fn get_document(project: Project, document_id: String) -> Result<Document, ChiknError> {
     project
         .documents
         .get(&document_id)
@@ -179,7 +176,6 @@ pub async fn get_document(
 mod tests {
     use super::*;
 
-
     #[tokio::test]
     async fn test_create_document_preserves_display_name() {
         use crate::core::project::writer::create_project;
@@ -190,11 +186,10 @@ mod tests {
         let project = create_project(&project_path, "Test").unwrap();
 
         // Create document with special characters in name
-        let (_updated_project, doc) = create_document(
-            project,
-            "Chapter 1: The Beginning!".to_string(),
-            None
-        ).await.unwrap();
+        let (_updated_project, doc) =
+            create_document(project, "Chapter 1: The Beginning!".to_string(), None)
+                .await
+                .unwrap();
 
         // Verify display name is preserved
         assert_eq!(doc.name, "Chapter 1: The Beginning!");
@@ -212,32 +207,26 @@ mod tests {
         let project = create_project(&project_path, "Test").unwrap();
 
         // Create first document
-        let (project, doc1) = create_document(
-            project,
-            "Chapter 1".to_string(),
-            None
-        ).await.unwrap();
+        let (project, doc1) = create_document(project, "Chapter 1".to_string(), None)
+            .await
+            .unwrap();
 
         assert_eq!(doc1.name, "Chapter 1");
         assert_eq!(doc1.path, "manuscript/chapter-1.md");
 
         // Create second document with name that slugifies the same
-        let (project, doc2) = create_document(
-            project,
-            "Chapter 1!".to_string(),
-            None
-        ).await.unwrap();
+        let (project, doc2) = create_document(project, "Chapter 1!".to_string(), None)
+            .await
+            .unwrap();
 
         // Verify second doc gets unique filename
         assert_eq!(doc2.name, "Chapter 1!");
         assert_eq!(doc2.path, "manuscript/chapter-1-1.md"); // Appended -1
 
         // Create third duplicate
-        let (_project, doc3) = create_document(
-            project,
-            "Chapter 1?".to_string(),
-            None
-        ).await.unwrap();
+        let (_project, doc3) = create_document(project, "Chapter 1?".to_string(), None)
+            .await
+            .unwrap();
 
         assert_eq!(doc3.name, "Chapter 1?");
         assert_eq!(doc3.path, "manuscript/chapter-1-2.md"); // Appended -2
@@ -245,8 +234,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_display_name_survives_round_trip() {
-        use crate::core::project::writer::create_project;
         use crate::core::project::reader::read_project;
+        use crate::core::project::writer::create_project;
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
@@ -254,11 +243,10 @@ mod tests {
         let project = create_project(&project_path, "Test").unwrap();
 
         // Create document with special name
-        let (mut project, doc) = create_document(
-            project,
-            "Chapter 1: The Beginning!".to_string(),
-            None
-        ).await.unwrap();
+        let (mut project, doc) =
+            create_document(project, "Chapter 1: The Beginning!".to_string(), None)
+                .await
+                .unwrap();
 
         let doc_id = doc.id.clone();
 

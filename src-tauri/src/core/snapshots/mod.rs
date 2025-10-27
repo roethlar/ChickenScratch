@@ -31,14 +31,14 @@
 //! - Temporary files
 
 mod create;
-mod restore;
 mod manifest;
 mod prune;
+mod restore;
 
 pub use create::create_snapshot;
-pub use restore::restore_snapshot;
 pub use manifest::{SnapshotManifest, SnapshotType};
 pub use prune::prune_old_snapshots;
+pub use restore::restore_snapshot;
 
 // Re-exported for potential future use
 #[allow(unused_imports)]

@@ -85,7 +85,8 @@ fn find_and_add_child(
             TreeNode::Document { id, .. } => {
                 if id == parent_id {
                     return Err(ChiknError::InvalidFormat(
-                        "Cannot add child to a document (only folders can have children)".to_string()
+                        "Cannot add child to a document (only folders can have children)"
+                            .to_string(),
                     ));
                 }
             }
@@ -116,10 +117,7 @@ pub fn remove_node(hierarchy: &mut Vec<TreeNode>, node_id: &str) -> Result<TreeN
 }
 
 /// Recursive helper to find and remove node
-fn remove_node_recursive(
-    nodes: &mut Vec<TreeNode>,
-    node_id: &str,
-) -> Result<TreeNode, ChiknError> {
+fn remove_node_recursive(nodes: &mut Vec<TreeNode>, node_id: &str) -> Result<TreeNode, ChiknError> {
     // Check if node is at this level
     if let Some(pos) = nodes.iter().position(|n| n.id() == node_id) {
         return Ok(nodes.remove(pos));
@@ -134,10 +132,7 @@ fn remove_node_recursive(
         }
     }
 
-    Err(ChiknError::NotFound(format!(
-        "Node not found: {}",
-        node_id
-    )))
+    Err(ChiknError::NotFound(format!("Node not found: {}", node_id)))
 }
 
 /// Finds a node in the hierarchy by ID.
@@ -272,10 +267,7 @@ fn reorder_node_recursive(
         }
     }
 
-    Err(ChiknError::NotFound(format!(
-        "Node not found: {}",
-        node_id
-    )))
+    Err(ChiknError::NotFound(format!("Node not found: {}", node_id)))
 }
 
 #[cfg(test)]
@@ -292,13 +284,11 @@ mod tests {
             TreeNode::Folder {
                 id: "folder1".to_string(),
                 name: "Part 1".to_string(),
-                children: vec![
-                    TreeNode::Document {
-                        id: "doc2".to_string(),
-                        name: "Chapter 2".to_string(),
-                        path: "manuscript/ch2.md".to_string(),
-                    },
-                ],
+                children: vec![TreeNode::Document {
+                    id: "doc2".to_string(),
+                    name: "Chapter 2".to_string(),
+                    path: "manuscript/ch2.md".to_string(),
+                }],
             },
         ]
     }

@@ -2,8 +2,8 @@
 //!
 //! Shared slug generation and uniqueness checking.
 
-use std::collections::HashMap;
 use crate::models::Document;
+use std::collections::HashMap;
 
 /// Slugifies a string for use as a filename.
 ///
@@ -40,7 +40,10 @@ pub fn unique_slug(name: &str, base_path: &str, documents: &HashMap<String, Docu
     let original_slug = slug.clone();
 
     // Check if path exists
-    while documents.values().any(|d| d.path == format!("{}{}.md", base_path, slug)) {
+    while documents
+        .values()
+        .any(|d| d.path == format!("{}{}.md", base_path, slug))
+    {
         slug = format!("{}-{}", original_slug, counter);
         counter += 1;
     }
@@ -55,7 +58,10 @@ mod tests {
     #[test]
     fn test_slugify() {
         assert_eq!(slugify("My Chapter Name"), "my-chapter-name");
-        assert_eq!(slugify("Chapter 1: The Beginning"), "chapter-1-the-beginning");
+        assert_eq!(
+            slugify("Chapter 1: The Beginning"),
+            "chapter-1-the-beginning"
+        );
         assert_eq!(slugify("Hello World!!!"), "hello-world");
         assert_eq!(slugify("a--b--c"), "a-b-c");
     }

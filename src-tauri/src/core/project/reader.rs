@@ -21,22 +21,18 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-#[cfg(test)]
-use std::path::PathBuf;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use std::path::PathBuf;
 use uuid::Uuid;
 
+use super::format::{
+    get_document_meta_path, get_manuscript_path, get_project_file_path, get_research_path,
+    validate_project_structure, DOCUMENT_EXTENSION,
+};
 use crate::models::{Document, Project, TreeNode};
 use crate::utils::error::ChiknError;
-use super::format::{
-    validate_project_structure,
-    get_project_file_path,
-    get_manuscript_path,
-    get_research_path,
-    get_document_meta_path,
-    DOCUMENT_EXTENSION,
-};
 
 /// Project metadata structure as stored in project.yaml
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,11 +155,10 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
 fn read_project_metadata(path: &Path) -> Result<ProjectMetadata, ChiknError> {
     let project_file = get_project_file_path(path);
 
-    let content = fs::read_to_string(&project_file)
-        .map_err(|e| ChiknError::Io(e))?;
+    let content = fs::read_to_string(&project_file).map_err(|e| ChiknError::Io(e))?;
 
-    let metadata: ProjectMetadata = serde_yaml::from_str(&content)
-        .map_err(|e| ChiknError::Serialization(e))?;
+    let metadata: ProjectMetadata =
+        serde_yaml::from_str(&content).map_err(|e| ChiknError::Serialization(e))?;
 
     Ok(metadata)
 }
@@ -224,16 +219,20 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
     let file_stem = content_path
         .file_stem()
         .and_then(|s| s.to_str())
-        .ok_or_else(|| ChiknError::InvalidFormat(
-            format!("Invalid document filename: {}", content_path.display())
-        ))?;
+        .ok_or_else(|| {
+            ChiknError::InvalidFormat(format!(
+                "Invalid document filename: {}",
+                content_path.display()
+            ))
+        })?;
 
     // Read metadata (.meta file) if it exists
-    let folder_path = content_path
-        .parent()
-        .ok_or_else(|| ChiknError::InvalidFormat(
-            format!("Document has no parent folder: {}", content_path.display())
-        ))?;
+    let folder_path = content_path.parent().ok_or_else(|| {
+        ChiknError::InvalidFormat(format!(
+            "Document has no parent folder: {}",
+            content_path.display()
+        ))
+    })?;
 
     let meta_path = get_document_meta_path(folder_path, file_stem);
     let metadata = if meta_path.exists() {
@@ -260,9 +259,12 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
     // Compute relative path from project root
     let relative_path = content_path
         .strip_prefix(project_path)
-        .map_err(|_| ChiknError::InvalidFormat(
-            format!("Document path not within project: {}", content_path.display())
-        ))?
+        .map_err(|_| {
+            ChiknError::InvalidFormat(format!(
+                "Document path not within project: {}",
+                content_path.display()
+            ))
+        })?
         .to_string_lossy()
         .to_string();
 
@@ -283,15 +285,11 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::project::format::{
+        MANUSCRIPT_FOLDER, PROJECT_FILE, RESEARCH_FOLDER, SETTINGS_FOLDER, TEMPLATES_FOLDER,
+    };
     use std::fs;
     use tempfile::TempDir;
-    use crate::core::project::format::{
-        PROJECT_FILE,
-        MANUSCRIPT_FOLDER,
-        RESEARCH_FOLDER,
-        TEMPLATES_FOLDER,
-        SETTINGS_FOLDER,
-    };
 
     /// Helper to create a test .chikn project
     fn create_test_project() -> (TempDir, PathBuf) {
@@ -334,8 +332,9 @@ modified: "2025-01-01T00:00:00Z"
         );
         fs::write(
             project_path.join(MANUSCRIPT_FOLDER).join("chapter-01.meta"),
-            meta_yaml
-        ).unwrap();
+            meta_yaml,
+        )
+        .unwrap();
 
         (temp_dir, project_path)
     }
@@ -406,8 +405,9 @@ modified: "2025-01-01T00:00:00Z"
         // Create document in nested folder
         fs::write(
             nested_folder.join("chapter-01.md"),
-            "# Nested Chapter\n\nContent in subfolder"
-        ).unwrap();
+            "# Nested Chapter\n\nContent in subfolder",
+        )
+        .unwrap();
 
         // Create metadata
         let meta_yaml = r#"id: "nested-doc1"

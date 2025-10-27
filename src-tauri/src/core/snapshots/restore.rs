@@ -2,15 +2,15 @@
 //!
 //! Restores projects from snapshot archives.
 
-use std::fs::{self, File};
-use std::path::Path;
-use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
+use flate2::Compression;
+use std::fs::{self, File};
+use std::path::Path;
 use tar::{Archive, Builder};
 
-use crate::utils::error::ChiknError;
 use super::REVS_FOLDER;
+use crate::utils::error::ChiknError;
 
 /// Restores a project from a snapshot.
 ///
@@ -35,10 +35,7 @@ use super::REVS_FOLDER;
 ///     "snapshot-20251004-120000.tar.gz"
 /// )?;
 /// ```
-pub fn restore_snapshot(
-    project_path: &Path,
-    snapshot_filename: &str,
-) -> Result<(), ChiknError> {
+pub fn restore_snapshot(project_path: &Path, snapshot_filename: &str) -> Result<(), ChiknError> {
     let snapshot_path = project_path.join(REVS_FOLDER).join(snapshot_filename);
 
     if !snapshot_path.exists() {
@@ -100,7 +97,8 @@ fn create_full_backup(project_path: &Path, backup_path: &Path) -> Result<(), Chi
             continue;
         }
 
-        let relative = path.strip_prefix(project_path)
+        let relative = path
+            .strip_prefix(project_path)
             .map_err(|_| ChiknError::InvalidFormat("Path error".to_string()))?;
 
         if path.is_file() {
@@ -171,7 +169,8 @@ fn extract_tarball(tar_path: &Path, extract_to: &Path) -> Result<(), ChiknError>
     let mut archive = Archive::new(tar);
 
     // Extract all files
-    archive.unpack(extract_to)
+    archive
+        .unpack(extract_to)
         .map_err(|e| ChiknError::Unknown(format!("Failed to extract snapshot: {}", e)))?;
 
     Ok(())
@@ -180,10 +179,10 @@ fn extract_tarball(tar_path: &Path, extract_to: &Path) -> Result<(), ChiknError>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use crate::core::project::writer::create_project;
     use crate::core::snapshots::{create_snapshot, SnapshotType};
     use crate::models::Document;
+    use tempfile::TempDir;
 
     #[test]
     fn test_restore_snapshot() {
@@ -244,7 +243,6 @@ mod tests {
         let result = restore_snapshot(&project_path, "nonexistent.tar.gz");
         assert!(result.is_err());
     }
-
 
     #[test]
     fn test_restore_rollback_on_failure() {

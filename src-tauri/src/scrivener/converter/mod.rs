@@ -15,16 +15,16 @@
 //! 4. Map Scrivener metadata to .chikn format
 //! 5. Write .chikn project structure
 
+use chrono::Utc;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use uuid::Uuid;
-use chrono::Utc;
 
+use super::parser::{get_rtf_path, parse_scrivx, rtf_to_markdown, BinderItem};
+use crate::core::project::writer;
 use crate::models::{Document, Project, TreeNode};
 use crate::utils::error::ChiknError;
-use crate::core::project::writer;
-use super::parser::{parse_scrivx, get_rtf_path, rtf_to_markdown, BinderItem};
 
 /// Converts a Scrivener .scriv project to .chikn format.
 ///
@@ -139,8 +139,14 @@ fn convert_binder_items_with_parent(
                 let doc_path = format!("manuscript/{}.md", slug);
 
                 // Use Scrivener timestamps if available
-                let created = item.created.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
-                let modified = item.modified.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
+                let created = item
+                    .created
+                    .clone()
+                    .unwrap_or_else(|| Utc::now().to_rfc3339());
+                let modified = item
+                    .modified
+                    .clone()
+                    .unwrap_or_else(|| Utc::now().to_rfc3339());
 
                 // Create document with parent_id
                 let document = Document {
@@ -208,7 +214,6 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), scrivx_file);
     }
-
 
     #[test]
     fn test_import_corn_scriv_sample() {

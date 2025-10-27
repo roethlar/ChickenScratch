@@ -18,21 +18,17 @@
 //! println!("Project saved successfully");
 //! ```
 
+use chrono::Utc;
 use std::fs;
 use std::path::Path;
-use chrono::Utc;
 
+use super::format::{
+    get_document_meta_path, get_manuscript_path, get_project_file_path, get_research_path,
+    get_settings_path, get_templates_path,
+};
+use super::reader::{DocumentMetadata, ProjectMetadata};
 use crate::models::Project;
 use crate::utils::error::ChiknError;
-use super::format::{
-    get_project_file_path,
-    get_manuscript_path,
-    get_research_path,
-    get_templates_path,
-    get_settings_path,
-    get_document_meta_path,
-};
-use super::reader::{ProjectMetadata, DocumentMetadata};
 
 /// Writes a Project to disk as a .chikn project.
 ///
@@ -166,7 +162,10 @@ fn write_all_documents(project: &Project) -> Result<(), ChiknError> {
 }
 
 /// Writes a single document (content + metadata)
-fn write_document(project_path: &Path, document: &crate::models::Document) -> Result<(), ChiknError> {
+fn write_document(
+    project_path: &Path,
+    document: &crate::models::Document,
+) -> Result<(), ChiknError> {
     // Use document.path to determine actual location
     let doc_path = Path::new(&document.path);
 
@@ -193,15 +192,13 @@ fn write_document(project_path: &Path, document: &crate::models::Document) -> Re
     let doc_name = full_content_path
         .file_stem()
         .and_then(|s| s.to_str())
-        .ok_or_else(|| ChiknError::InvalidFormat(
-            format!("Invalid document path: {}", document.path)
-        ))?;
+        .ok_or_else(|| {
+            ChiknError::InvalidFormat(format!("Invalid document path: {}", document.path))
+        })?;
 
-    let folder_path = full_content_path
-        .parent()
-        .ok_or_else(|| ChiknError::InvalidFormat(
-            format!("Document has no parent: {}", document.path)
-        ))?;
+    let folder_path = full_content_path.parent().ok_or_else(|| {
+        ChiknError::InvalidFormat(format!("Document has no parent: {}", document.path))
+    })?;
 
     let meta_path = get_document_meta_path(folder_path, doc_name);
     let metadata = DocumentMetadata {
@@ -255,15 +252,13 @@ pub fn delete_document(project_path: &Path, document_path: &str) -> Result<(), C
     let doc_name = full_content_path
         .file_stem()
         .and_then(|s| s.to_str())
-        .ok_or_else(|| ChiknError::InvalidFormat(
-            format!("Invalid document path: {}", document_path)
-        ))?;
+        .ok_or_else(|| {
+            ChiknError::InvalidFormat(format!("Invalid document path: {}", document_path))
+        })?;
 
-    let folder_path = full_content_path
-        .parent()
-        .ok_or_else(|| ChiknError::InvalidFormat(
-            format!("Document has no parent: {}", document_path)
-        ))?;
+    let folder_path = full_content_path.parent().ok_or_else(|| {
+        ChiknError::InvalidFormat(format!("Document has no parent: {}", document_path))
+    })?;
 
     let meta_path = get_document_meta_path(folder_path, doc_name);
     if meta_path.exists() {
@@ -276,9 +271,9 @@ pub fn delete_document(project_path: &Path, document_path: &str) -> Result<(), C
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
-    use crate::models::{Document, TreeNode};
     use crate::core::project::reader::read_project;
+    use crate::models::{Document, TreeNode};
+    use tempfile::TempDir;
 
     #[test]
     fn test_create_project() {
@@ -363,7 +358,9 @@ mod tests {
             modified: Utc::now().to_rfc3339(),
         };
 
-        original_project.documents.insert(doc.id.clone(), doc.clone());
+        original_project
+            .documents
+            .insert(doc.id.clone(), doc.clone());
         original_project.hierarchy.push(TreeNode::Document {
             id: doc.id.clone(),
             name: doc.name.clone(),

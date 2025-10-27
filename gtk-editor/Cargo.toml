@@ -1,0 +1,15 @@
+[package]
+name = "gtk-editor"
+version = "0.1.0"
+edition = "2021"
+description = "GTK4 WYSIWYG editor for Chicken Scratch .chikn projects"
+license = "MIT"
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["clock"] }
+gtk = { package = "gtk4", version = "0.8" }
+glib = "0.18"
+gio = "0.18"
+chicken-scratch = { path = "../src-tauri" }

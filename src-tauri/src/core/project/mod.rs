@@ -4,6 +4,6 @@
 //! and hierarchy management.
 
 pub mod format;
+pub mod hierarchy;
 pub mod reader;
 pub mod writer;
-pub mod hierarchy;

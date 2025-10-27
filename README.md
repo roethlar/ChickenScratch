@@ -55,6 +55,7 @@ A cross-platform, distraction-free word processor for writers with full Scrivene
 - **[AI Development Guide](docs/AI_DEVELOPMENT_GUIDE.md)** - Coding patterns for AI
 - **[Project Estimates](docs/PROJECT_ESTIMATES.md)** - Timeline and effort breakdown
 - **[Phase 1 Design](docs/design/PHASE_1_DESIGN.md)** - Current phase implementation plan
+- **[GTK4 Editor Design](docs/GTK4_EDITOR_DESIGN.md)** - Native GTK WYSIWYG architecture
 - **[Development Setup](docs/DEVELOPMENT_SETUP.md)** - Environment setup guide
 - **[Session Notes](docs/SESSION_NOTES.md)** - Development progress tracking
 
@@ -80,6 +81,14 @@ npm run tauri:dev
 cargo test --manifest-path=src-tauri/Cargo.toml
 npm test
 ```
+
+### GTK4 WYSIWYG Editor (Rust)
+
+```bash
+cargo run --manifest-path gtk-editor/Cargo.toml
+```
+
+> **Note:** Building the GTK editor requires system packages that provide GTK 4 development headers (e.g. `libgtk-4-dev`, `gtk4-devel`, or `gtk4` depending on your distro). See the `gtk4` crate documentation for the exact package names per platform.
 
 ---
 
@@ -154,4 +163,3 @@ This project is 100% AI-developed. See [AI_DEVELOPMENT_GUIDE.md](docs/AI_DEVELOP
 ---
 
 **Built with ❤️ (and AI) for writers everywhere**
-

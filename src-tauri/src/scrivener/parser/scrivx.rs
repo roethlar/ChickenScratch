@@ -23,11 +23,11 @@
 //! </ScrivenerProject>
 //! ```
 
+use crate::utils::error::ChiknError;
+use quick_xml::de::from_str;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use quick_xml::de::from_str;
-use crate::utils::error::ChiknError;
 
 /// Parsed Scrivener project structure
 #[derive(Debug, Clone, Serialize, Deserialize)]

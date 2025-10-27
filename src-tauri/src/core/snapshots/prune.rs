@@ -5,9 +5,9 @@
 use std::fs;
 use std::path::Path;
 
-use crate::utils::error::ChiknError;
-use super::{REVS_FOLDER, DEFAULT_SNAPSHOT_COUNT};
 use super::manifest::SnapshotManifest;
+use super::{DEFAULT_SNAPSHOT_COUNT, REVS_FOLDER};
+use crate::utils::error::ChiknError;
 
 /// Prunes old snapshots, keeping only the most recent N.
 ///
@@ -83,9 +83,9 @@ pub fn get_snapshots_size(project_path: &Path) -> Result<u64, ChiknError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use crate::core::project::writer::create_project;
     use crate::core::snapshots::{create_snapshot, SnapshotType};
+    use tempfile::TempDir;
 
     #[test]
     fn test_prune_old_snapshots() {
@@ -100,7 +100,8 @@ mod tests {
                 &project_path,
                 SnapshotType::Automatic,
                 Some(format!("Snapshot {}", i)),
-            ).unwrap();
+            )
+            .unwrap();
         }
 
         // Verify 5 snapshots exist

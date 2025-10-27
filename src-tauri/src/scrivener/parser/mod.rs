@@ -18,8 +18,8 @@
 //! └── Settings/*.plist
 //! ```
 
-pub mod scrivx;
 pub mod rtf;
+pub mod scrivx;
 
-pub use scrivx::{ScrivenerProject, BinderItem, BinderMetadata, parse_scrivx, get_rtf_path};
-pub use rtf::{rtf_to_markdown, markdown_to_rtf, markdown_string_to_rtf};
+pub use rtf::{markdown_string_to_rtf, markdown_to_rtf, rtf_to_markdown};
+pub use scrivx::{get_rtf_path, parse_scrivx, BinderItem, BinderMetadata, ScrivenerProject};

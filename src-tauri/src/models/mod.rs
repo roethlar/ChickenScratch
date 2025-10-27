@@ -1,7 +1,7 @@
-mod project;
 mod document;
 mod hierarchy;
+mod project;
 
-pub use project::Project;
 pub use document::Document;
 pub use hierarchy::TreeNode;
+pub use project::Project;

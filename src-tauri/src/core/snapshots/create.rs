@@ -2,16 +2,16 @@
 //!
 //! Creates compressed tarball snapshots of .chikn projects.
 
+use chrono::Utc;
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use std::fs::{self, File};
 use std::path::Path;
-use chrono::Utc;
-use flate2::Compression;
-use flate2::write::GzEncoder;
 use tar::Builder;
 
+use super::manifest::{SnapshotEntry, SnapshotManifest, SnapshotType};
+use super::{REVS_FOLDER, SNAPSHOT_EXTENSION, SNAPSHOT_PREFIX};
 use crate::utils::error::ChiknError;
-use super::{REVS_FOLDER, SNAPSHOT_PREFIX, SNAPSHOT_EXTENSION};
-use super::manifest::{SnapshotManifest, SnapshotEntry, SnapshotType};
 
 /// Creates a snapshot of the project.
 ///
@@ -97,7 +97,8 @@ fn add_directory_to_tar(
         }
 
         // Get relative path from project root
-        let relative_path = path.strip_prefix(project_root)
+        let relative_path = path
+            .strip_prefix(project_root)
             .map_err(|_| ChiknError::InvalidFormat("Path error".to_string()))?;
 
         if path.is_file() {
@@ -117,8 +118,8 @@ fn add_directory_to_tar(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use crate::core::project::writer::create_project;
+    use tempfile::TempDir;
 
     #[test]
     fn test_create_snapshot() {

@@ -7,7 +7,7 @@ mod models;
 mod scrivener;
 mod utils;
 
-use api::{project_commands, document_commands, scrivener_commands, snapshot_commands};
+use api::{document_commands, project_commands, scrivener_commands, snapshot_commands};
 
 fn main() {
     tauri::Builder::default()
@@ -22,17 +22,14 @@ fn main() {
             project_commands::remove_from_hierarchy,
             project_commands::move_node,
             project_commands::reorder_node,
-
             // Document commands
             document_commands::create_document,
             document_commands::update_document,
             document_commands::delete_document,
             document_commands::get_document,
-
             // Scrivener commands
             scrivener_commands::import_scrivener_project,
             scrivener_commands::export_to_scrivener,
-
             // Snapshot commands
             snapshot_commands::create_project_snapshot,
             snapshot_commands::restore_from_snapshot,

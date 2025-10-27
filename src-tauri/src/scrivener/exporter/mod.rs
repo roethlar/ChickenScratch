@@ -14,16 +14,16 @@
 //! 3. Generate .scrivx XML with hierarchy
 //! 4. Write metadata and settings files
 
+use chrono::Utc;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use uuid::Uuid;
-use chrono::Utc;
 // XML serialization done manually for better control
 
+use super::parser::{markdown_to_rtf, BinderItem, BinderMetadata, ScrivenerProject};
 use crate::models::{Project, TreeNode};
 use crate::utils::error::ChiknError;
-use super::parser::{markdown_to_rtf, BinderItem, BinderMetadata, ScrivenerProject};
 
 /// Exports a .chikn project to Scrivener .scriv format.
 ///
@@ -85,7 +85,9 @@ fn convert_to_binder_items(
                 uuid_map.insert(id.clone(), scriv_uuid.clone());
 
                 // Get document from project
-                let doc = project.documents.get(id)
+                let doc = project
+                    .documents
+                    .get(id)
                     .ok_or_else(|| ChiknError::NotFound(format!("Document not found: {}", id)))?;
 
                 let item = BinderItem {
@@ -201,7 +203,11 @@ fn generate_binder_xml(items: &[BinderItem], indent_level: usize) -> String {
     let mut xml = String::new();
 
     for item in items {
-        let title = item.title.as_ref().map(|s| s.as_str()).unwrap_or("Untitled");
+        let title = item
+            .title
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("Untitled");
         let created = item.created.as_ref().map(|s| s.as_str()).unwrap_or("");
         let modified = item.modified.as_ref().map(|s| s.as_str()).unwrap_or("");
 
@@ -211,32 +217,54 @@ fn generate_binder_xml(items: &[BinderItem], indent_level: usize) -> String {
             indent, item.uuid, item.item_type, created, modified
         ));
 
-        xml.push_str(&format!(r#"{}    <Title>{}</Title>
-"#, indent, escape_xml(title)));
+        xml.push_str(&format!(
+            r#"{}    <Title>{}</Title>
+"#,
+            indent,
+            escape_xml(title)
+        ));
 
         // Add metadata if present
         if let Some(ref metadata) = item.metadata {
-            xml.push_str(&format!(r#"{}    <MetaData>
-"#, indent));
+            xml.push_str(&format!(
+                r#"{}    <MetaData>
+"#,
+                indent
+            ));
             if let Some(ref include) = metadata.include_in_compile {
-                xml.push_str(&format!(r#"{}        <IncludeInCompile>{}</IncludeInCompile>
-"#, indent, include));
+                xml.push_str(&format!(
+                    r#"{}        <IncludeInCompile>{}</IncludeInCompile>
+"#,
+                    indent, include
+                ));
             }
-            xml.push_str(&format!(r#"{}    </MetaData>
-"#, indent));
+            xml.push_str(&format!(
+                r#"{}    </MetaData>
+"#,
+                indent
+            ));
         }
 
         // Add children if present
         if !item.children.items.is_empty() {
-            xml.push_str(&format!(r#"{}    <Children>
-"#, indent));
+            xml.push_str(&format!(
+                r#"{}    <Children>
+"#,
+                indent
+            ));
             xml.push_str(&generate_binder_xml(&item.children.items, indent_level + 2));
-            xml.push_str(&format!(r#"{}    </Children>
-"#, indent));
+            xml.push_str(&format!(
+                r#"{}    </Children>
+"#,
+                indent
+            ));
         }
 
-        xml.push_str(&format!(r#"{}</BinderItem>
-"#, indent));
+        xml.push_str(&format!(
+            r#"{}</BinderItem>
+"#,
+            indent
+        ));
     }
 
     xml
@@ -258,7 +286,10 @@ mod tests {
     #[test]
     fn test_escape_xml() {
         assert_eq!(escape_xml("Shelly & Marcus"), "Shelly &amp; Marcus");
-        assert_eq!(escape_xml("Chapter 1: The <Beginning>"), "Chapter 1: The &lt;Beginning&gt;");
+        assert_eq!(
+            escape_xml("Chapter 1: The <Beginning>"),
+            "Chapter 1: The &lt;Beginning&gt;"
+        );
     }
 
     #[test]

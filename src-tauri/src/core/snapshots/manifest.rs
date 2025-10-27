@@ -2,10 +2,10 @@
 //!
 //! Manages snapshot metadata and history.
 
+use crate::utils::error::ChiknError;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use crate::utils::error::ChiknError;
 
 /// Snapshot manifest tracking all snapshots
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,7 +91,8 @@ impl SnapshotManifest {
             return Vec::new();
         }
 
-        let to_remove: Vec<String> = self.snapshots
+        let to_remove: Vec<String> = self
+            .snapshots
             .drain(keep_count..)
             .map(|e| e.filename)
             .collect();
@@ -109,8 +110,8 @@ impl Default for SnapshotManifest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use chrono::Utc;
+    use tempfile::TempDir;
 
     #[test]
     fn test_new_manifest() {

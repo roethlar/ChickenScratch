@@ -14,9 +14,9 @@
 //! - `converter`: .scriv → .chikn conversion logic
 //! - `exporter`: .chikn → .scriv generation
 
-pub mod parser;
 pub mod converter;
 pub mod exporter;
+pub mod parser;
 
 /// Scrivener project version constants
 pub const SCRIVENER_VERSION_3: &str = "3.0";
