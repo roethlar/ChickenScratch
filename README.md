@@ -88,6 +88,23 @@ npm test
 cargo run --manifest-path gtk-editor/Cargo.toml
 ```
 
+### SwiftUI WYSIWYG Editor (macOS)
+
+```bash
+# Open the project in Xcode
+open swiftui-editor/Package.swift
+
+# or build from the command line (requires Swift toolchain)
+cd swiftui-editor
+swift build
+```
+
+> **Highlights**
+> - Native Markdown WYSIWYG editor built with SwiftUI + AppKit rich text components
+> - Opens, edits, and saves `.chikn` projects (Markdown + YAML) with automatic metadata updates
+> - Writer-friendly git workflows ("Revisions") backed by the system git client (init, status, commit, branch, sync)
+> - Inspector for document metadata (title, synopsis, keywords) and auto-save with debounce
+
 > **Note:** Building the GTK editor requires system packages that provide GTK 4 development headers (e.g. `libgtk-4-dev`, `gtk4-devel`, or `gtk4` depending on your distro). See the `gtk4` crate documentation for the exact package names per platform.
 
 ---
