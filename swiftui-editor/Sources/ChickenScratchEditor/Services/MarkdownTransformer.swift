@@ -7,8 +7,8 @@ struct MarkdownTransformer {
             let attributed = try AttributedString(
                 markdown: markdown,
                 options: AttributedString.MarkdownParsingOptions(
-                    interpretedSyntax: .full,
-                    allowsExtendedAttributes: true
+                    allowsExtendedAttributes: true,
+                    interpretedSyntax: .full
                 )
             )
             return NSAttributedString(attributed)
@@ -18,14 +18,65 @@ struct MarkdownTransformer {
     }
 
     func markdown(from attributedString: NSAttributedString) -> String {
-        do {
-            let attributed = try AttributedString(attributedString, including: \.appKit)
-            if let markdown = attributed.markdownRepresentation {
-                return markdown
+        let fullRange = NSRange(location: 0, length: attributedString.length)
+        guard fullRange.length > 0 else { return "" }
+
+        let fontManager = NSFontManager.shared
+        var result = ""
+        let baseString = attributedString.string as NSString
+
+        attributedString.enumerateAttributes(in: fullRange, options: []) { attributes, range, _ in
+            guard range.length > 0 else { return }
+            let substring = baseString.substring(with: range)
+            let escaped = escapeMarkdown(substring)
+
+            let font = attributes[.font] as? NSFont
+            let traits: NSFontTraitMask
+            if let font {
+                traits = fontManager.traits(of: font)
+            } else {
+                traits = []
             }
-        } catch {
-            // Fall through to plain text representation
+            let isBold = traits.contains(.boldFontMask)
+            let isItalic = traits.contains(.italicFontMask)
+            let isUnderlined = (attributes[.underlineStyle] as? Int ?? 0) != 0
+
+            var prefix = ""
+            var suffix = ""
+
+            if isBold && isItalic {
+                prefix += "***"
+                suffix = "***" + suffix
+            } else if isBold {
+                prefix += "**"
+                suffix = "**" + suffix
+            } else if isItalic {
+                prefix += "*"
+                suffix = "*" + suffix
+            }
+
+            if isUnderlined {
+                prefix += "<u>"
+                suffix = "</u>" + suffix
+            }
+
+            result += prefix + escaped + suffix
         }
-        return attributedString.string
+
+        return result
+    }
+
+    private func escapeMarkdown(_ text: String) -> String {
+        var escaped = text
+        let replacements: [(String, String)] = [
+            ("\\", "\\\\"),
+            ("`", "\\`"),
+            ("*", "\\*"),
+            ("_", "\\_")
+        ]
+        for (target, replacement) in replacements {
+            escaped = escaped.replacingOccurrences(of: target, with: replacement)
+        }
+        return escaped
     }
 }

@@ -123,9 +123,9 @@ final class GitViewModel: ObservableObject {
 }
 
 struct GitPanelState {
-    var repositoryStatus: GitRepositoryStatus
+    var repositoryStatus: GitRepositoryStatus = .missing
     var status: GitStatus?
-    var branches: [String]
+    var branches: [String] = []
     var message: String?
-    var isBusy: Bool
+    var isBusy: Bool = false
 }
