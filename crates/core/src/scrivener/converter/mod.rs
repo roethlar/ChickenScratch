@@ -490,6 +490,25 @@ fn clean_scrivener_markup(content: &str, uuid_to_path: &HashMap<String, String>)
         })
         .to_string();
 
+    // Convert Pandoc underline spans to bold (Markdown has no underline;
+    // bold is the closest semantic equivalent for emphasis)
+    // [*text*]{.underline} -> ***text*** (bold italic keeps the emphasis)
+    // [text]{.underline} -> **text**
+    let underline_italic_re = Regex::new(r"\[\*([^*\]]+)\*\]\{\.underline\}").unwrap();
+    result = underline_italic_re.replace_all(&result, "***$1***").to_string();
+
+    let underline_re = Regex::new(r"\[([^\]]+)\]\{\.underline\}").unwrap();
+    result = underline_re.replace_all(&result, "**$1**").to_string();
+
+    // Fix garbled bold+italic from Pandoc: **\*\*text\***\* -> ***text***
+    let garbled_bi_re = Regex::new(r"\*\*\\\*\\\*([^*]+)\\\*\*\*\\?\*").unwrap();
+    result = garbled_bi_re.replace_all(&result, "***$1***").to_string();
+
+    // Clean remaining Pandoc span attributes we don't need
+    // {.some-class} at end of inline spans
+    let span_attr_re = Regex::new(r"\{\.[\w-]+\}").unwrap();
+    result = span_attr_re.replace_all(&result, "").to_string();
+
     // Clean up any resulting empty lines from stripped tags
     let multi_blank_re = Regex::new(r"\n{3,}").unwrap();
     result = multi_blank_re.replace_all(&result, "\n\n").to_string();

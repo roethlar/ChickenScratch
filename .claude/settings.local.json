@@ -46,7 +46,10 @@
       "Bash(TAURI_CLI_CONFIG_DEEP_MERGE=true cargo tauri dev --help)",
       "Bash(ln:*)",
       "Bash(pkill -f \"chickenscratch\")",
-      "Bash(pkill -f vite)"
+      "Bash(pkill -f vite)",
+      "Read(//Users/michael/Documents/**)",
+      "Read(//Users/michael/**)",
+      "Bash(/Users/michael/Dev/ChickenScratch/target/release/chikn-converter \"/Users/michael/Downloads/Scrivener 3 - User Manual.scriv\" \"/tmp/manual-test.chikn\")"
     ],
     "deny": [],
     "ask": []
