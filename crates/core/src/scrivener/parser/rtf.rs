@@ -37,11 +37,14 @@ pub fn rtf_to_markdown(rtf_path: &Path) -> Result<String, ChiknError> {
     check_pandoc_available()?;
 
     // Use Pandoc to convert RTF → Markdown
+    // -t markdown-smart-escaped_line_breaks: avoid backslash escaping of quotes/line breaks
+    // --wrap=none: don't hard-wrap lines at 72 chars
     let output = Command::new("pandoc")
         .arg("-f")
         .arg("rtf")
         .arg("-t")
-        .arg("markdown")
+        .arg("markdown-smart-escaped_line_breaks")
+        .arg("--wrap=none")
         .arg(rtf_path)
         .output()
         .map_err(|e| ChiknError::Unknown(format!("Failed to run Pandoc: {}", e)))?;
@@ -56,6 +59,13 @@ pub fn rtf_to_markdown(rtf_path: &Path) -> Result<String, ChiknError> {
 
     let markdown = String::from_utf8(output.stdout)
         .map_err(|e| ChiknError::InvalidFormat(format!("Invalid UTF-8 from Pandoc: {}", e)))?;
+
+    // Scrivener uses hard line breaks between paragraphs in RTF.
+    // Pandoc converts these to trailing double-spaces (soft breaks).
+    // Convert to proper Markdown paragraph breaks (blank lines).
+    let markdown = markdown
+        .replace("  \n", "\n\n")
+        .replace("\\\n", "\n\n");
 
     Ok(markdown)
 }
