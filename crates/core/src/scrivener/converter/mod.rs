@@ -348,7 +348,8 @@ fn convert_binder_items_inner(
 
             // Skip unknown types (TemplateFolder, etc.)
             other => {
-                eprintln!("Skipping unknown binder item type: {}", other);
+                let title = item.title.as_deref().unwrap_or("untitled");
+                eprintln!("Skipping binder item \"{}\" (type: {})", title, other);
             }
         }
     }
