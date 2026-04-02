@@ -7,7 +7,7 @@ use chickenscratch_core::scrivener::exporter::export_to_scriv;
 use chickenscratch_core::core::project::reader::read_project;
 
 #[derive(Parser)]
-#[command(name = "chickenscratch")]
+#[command(name = "chikn-converter")]
 #[command(about = "Convert between Scrivener and Chicken Scratch formats")]
 struct Cli {
     #[command(subcommand)]

@@ -1,12 +1,12 @@
 [package]
-name = "chickenscratch"
+name = "chikn-converter"
 version = "0.1.0"
 edition = "2021"
 description = "Convert between Scrivener (.scriv) and Chicken Scratch (.chikn) formats"
 license = "MIT"
 
 [[bin]]
-name = "chickenscratch"
+name = "chikn-converter"
 path = "src/main.rs"
 
 [dependencies]
