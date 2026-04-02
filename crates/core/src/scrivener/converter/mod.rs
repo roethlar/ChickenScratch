@@ -89,30 +89,35 @@ fn convert_binder_items(
     scriv_path: &Path,
     documents: &mut HashMap<String, Document>,
 ) -> Result<Vec<TreeNode>, ChiknError> {
-    convert_binder_items_with_parent(items, scriv_path, documents, None)
+    convert_binder_items_inner(items, scriv_path, documents, None, "manuscript")
 }
 
-/// Converts Scrivener binder items with parent tracking
-fn convert_binder_items_with_parent(
+/// Converts Scrivener binder items with parent and target folder tracking
+fn convert_binder_items_inner(
     items: &[BinderItem],
     scriv_path: &Path,
     documents: &mut HashMap<String, Document>,
     parent_id: Option<String>,
+    target_folder: &str,
 ) -> Result<Vec<TreeNode>, ChiknError> {
     let mut hierarchy = Vec::new();
 
     for item in items {
         match item.item_type.as_str() {
-            "DraftFolder" => {
-                // Always treat DraftFolder as a folder
-                let folder_id = Uuid::new_v4().to_string();
-                let folder_name = item.title.clone().unwrap_or_else(|| "Folder".to_string());
+            // Skip trash entirely
+            "TrashFolder" => continue,
 
-                let children = convert_binder_items_with_parent(
+            // Research folder — convert children into research/ instead of manuscript/
+            "ResearchFolder" => {
+                let folder_id = Uuid::new_v4().to_string();
+                let folder_name = item.title.clone().unwrap_or_else(|| "Research".to_string());
+
+                let children = convert_binder_items_inner(
                     &item.children.items,
                     scriv_path,
                     documents,
                     Some(folder_id.clone()),
+                    "research",
                 )?;
 
                 hierarchy.push(TreeNode::Folder {
@@ -121,12 +126,76 @@ fn convert_binder_items_with_parent(
                     children,
                 });
             }
+
+            // Draft folder and regular folders
+            "DraftFolder" | "Folder" => {
+                let folder_id = Uuid::new_v4().to_string();
+                let folder_name = item.title.clone().unwrap_or_else(|| "Folder".to_string());
+
+                let children = convert_binder_items_inner(
+                    &item.children.items,
+                    scriv_path,
+                    documents,
+                    Some(folder_id.clone()),
+                    target_folder,
+                )?;
+
+                // Folders in Scrivener can also have their own text content
+                let rtf_path = get_rtf_path(scriv_path, &item.uuid);
+                if rtf_path.exists() {
+                    let content = rtf_to_markdown(&rtf_path)?;
+                    if !content.trim().is_empty() {
+                        let doc_id = Uuid::new_v4().to_string();
+                        let slug = crate::utils::slug::unique_slug(
+                            &folder_name,
+                            &format!("{}/", target_folder),
+                            documents,
+                        );
+                        let doc_path = format!("{}/{}.md", target_folder, slug);
+                        let created = item.created.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
+                        let modified = item.modified.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
+
+                        let document = Document {
+                            id: doc_id.clone(),
+                            name: folder_name.clone(),
+                            path: doc_path.clone(),
+                            content,
+                            parent_id: Some(folder_id.clone()),
+                            created,
+                            modified,
+                        };
+                        documents.insert(doc_id.clone(), document);
+
+                        // Prepend the folder's own text as a document inside itself
+                        let mut all_children = vec![TreeNode::Document {
+                            id: doc_id,
+                            name: folder_name.clone(),
+                            path: doc_path,
+                        }];
+                        all_children.extend(children);
+
+                        hierarchy.push(TreeNode::Folder {
+                            id: folder_id,
+                            name: folder_name,
+                            children: all_children,
+                        });
+                        continue;
+                    }
+                }
+
+                hierarchy.push(TreeNode::Folder {
+                    id: folder_id,
+                    name: folder_name,
+                    children,
+                });
+            }
+
+            // Text documents
             "Text" => {
-                // Convert document
                 let doc_id = Uuid::new_v4().to_string();
                 let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
 
-                // Read RTF content
+                // Read RTF content — skip documents with no content file
                 let rtf_path = get_rtf_path(scriv_path, &item.uuid);
                 let content = if rtf_path.exists() {
                     rtf_to_markdown(&rtf_path)?
@@ -134,11 +203,13 @@ fn convert_binder_items_with_parent(
                     String::new()
                 };
 
-                // Generate unique slug
-                let slug = crate::utils::slug::unique_slug(&doc_name, "manuscript/", documents);
-                let doc_path = format!("manuscript/{}.md", slug);
+                let slug = crate::utils::slug::unique_slug(
+                    &doc_name,
+                    &format!("{}/", target_folder),
+                    documents,
+                );
+                let doc_path = format!("{}/{}.md", target_folder, slug);
 
-                // Use Scrivener timestamps if available
                 let created = item
                     .created
                     .clone()
@@ -148,7 +219,6 @@ fn convert_binder_items_with_parent(
                     .clone()
                     .unwrap_or_else(|| Utc::now().to_rfc3339());
 
-                // Create document with parent_id
                 let document = Document {
                     id: doc_id.clone(),
                     name: doc_name.clone(),
@@ -161,33 +231,16 @@ fn convert_binder_items_with_parent(
 
                 documents.insert(doc_id.clone(), document);
 
-                // Add to hierarchy
                 hierarchy.push(TreeNode::Document {
                     id: doc_id,
                     name: doc_name,
                     path: doc_path,
                 });
             }
-            "Folder" => {
-                // Convert regular folder with children
-                let folder_id = Uuid::new_v4().to_string();
-                let folder_name = item.title.clone().unwrap_or_else(|| "Folder".to_string());
 
-                let children = convert_binder_items_with_parent(
-                    &item.children.items,
-                    scriv_path,
-                    documents,
-                    Some(folder_id.clone()),
-                )?;
-
-                hierarchy.push(TreeNode::Folder {
-                    id: folder_id,
-                    name: folder_name,
-                    children,
-                });
-            }
-            _ => {
-                // Skip unknown types
+            // Skip unknown types (TemplateFolder, etc.)
+            other => {
+                eprintln!("Skipping unknown binder item type: {}", other);
             }
         }
     }
