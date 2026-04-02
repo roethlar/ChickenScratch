@@ -112,6 +112,10 @@ pub struct BinderMetadata {
     /// Icon filename
     #[serde(rename = "IconFileName")]
     pub icon_file_name: Option<String>,
+
+    /// File extension for non-text items (e.g., "pdf", "png", "jpg")
+    #[serde(rename = "FileExtension")]
+    pub file_extension: Option<String>,
 }
 
 /// Parses a .scrivx XML file into ScrivenerProject
@@ -170,19 +174,21 @@ struct BinderContainer {
 }
 
 /// Gets the RTF file path for a given UUID
-///
-/// # Arguments
-/// * `scriv_path` - Root .scriv directory
-/// * `uuid` - Document UUID
-///
-/// # Returns
-/// PathBuf to content.rtf file
 pub fn get_rtf_path(scriv_path: &Path, uuid: &str) -> std::path::PathBuf {
     scriv_path
         .join("Files")
         .join("Data")
         .join(uuid)
         .join("content.rtf")
+}
+
+/// Gets the content file path for a given UUID and file extension (e.g., "pdf", "png")
+pub fn get_media_path(scriv_path: &Path, uuid: &str, extension: &str) -> std::path::PathBuf {
+    scriv_path
+        .join("Files")
+        .join("Data")
+        .join(uuid)
+        .join(format!("content.{}", extension))
 }
 
 #[cfg(test)]

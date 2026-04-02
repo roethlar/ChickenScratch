@@ -105,6 +105,7 @@ fn convert_to_binder_items(
                         section_type: None,
                         include_in_compile: Some("Yes".to_string()),
                         icon_file_name: None,
+                        file_extension: None,
                     }),
                 };
 

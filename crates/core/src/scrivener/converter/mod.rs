@@ -22,7 +22,7 @@ use std::fs;
 use std::path::Path;
 use uuid::Uuid;
 
-use super::parser::{get_rtf_path, parse_scrivx, rtf_to_markdown, BinderItem};
+use super::parser::{get_media_path, get_rtf_path, parse_scrivx, rtf_to_markdown, BinderItem};
 use crate::core::project::writer;
 use crate::models::{Document, Project, TreeNode};
 use crate::utils::error::ChiknError;
@@ -79,6 +79,23 @@ pub fn import_scriv(scriv_path: &Path, output_path: &Path) -> Result<Project, Ch
     // Save the converted project
     writer::write_project(&mut chikn_project)?;
 
+    // Copy media files into the project
+    for (key, value) in &uuid_to_path {
+        if let Some(uuid) = key.strip_prefix("__media__") {
+            let parts: Vec<&str> = value.splitn(2, '|').collect();
+            if parts.len() == 2 {
+                let src = Path::new(parts[0]);
+                let dest = output_path.join(parts[1]);
+                if let Some(parent) = dest.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                if let Err(e) = fs::copy(src, &dest) {
+                    eprintln!("Failed to copy media file {}: {}", uuid, e);
+                }
+            }
+        }
+    }
+
     // Initial commit with all converted content
     git_commit(output_path, &format!("Imported from Scrivener: {}", scriv_project.name));
 
@@ -86,7 +103,7 @@ pub fn import_scriv(scriv_path: &Path, output_path: &Path) -> Result<Project, Ch
 }
 
 /// Stages all changes and commits. Non-fatal on failure.
-fn git_commit(path: &Path, message: &str) {
+pub fn git_commit(path: &Path, message: &str) {
     use std::process::Command;
 
     let run = |args: &[&str]| -> bool {
@@ -165,7 +182,14 @@ fn build_uuid_map(
                 }
             }
 
-            _ => {}
+            // Media types (PDF, Image, etc.) — map by file extension
+            _ => {
+                if let Some(ext) = item.metadata.as_ref().and_then(|m| m.file_extension.as_deref()) {
+                    let name = item.title.clone().unwrap_or_else(|| "untitled".to_string());
+                    let slug = crate::utils::slug::slugify(&name);
+                    uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.{}", target_folder, slug, ext));
+                }
+            }
         }
     }
 }
@@ -346,10 +370,76 @@ fn convert_binder_items_inner(
                 });
             }
 
-            // Skip unknown types (TemplateFolder, etc.)
+            // Any other type — check if it's a media file we can copy
             other => {
                 let title = item.title.as_deref().unwrap_or("untitled");
-                eprintln!("Skipping binder item \"{}\" (type: {})", title, other);
+                let ext = item
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.file_extension.as_deref());
+
+                if let Some(ext) = ext {
+                    // Media file — copy into the project
+                    let media_src = get_media_path(scriv_path, &item.uuid, ext);
+                    if media_src.exists() {
+                        let doc_id = Uuid::new_v4().to_string();
+                        let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
+                        let slug = crate::utils::slug::unique_slug(
+                            &doc_name,
+                            &format!("{}/", target_folder),
+                            documents,
+                        );
+                        let file_name = format!("{}.{}", slug, ext);
+                        let dest_rel = format!("{}/{}", target_folder, file_name);
+
+                        // Copy the file
+                        let project_path = documents
+                            .values()
+                            .next()
+                            .map(|d| {
+                                // Derive project root from an existing document path
+                                Path::new(&d.path)
+                                    .parent()
+                                    .unwrap_or(Path::new("."))
+                            });
+
+                        // We need the output project path — get it from the hierarchy context
+                        // For now, record as a document entry so it appears in the tree
+                        let doc_path = dest_rel.clone();
+
+                        let created = item.created.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
+                        let modified = item.modified.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
+
+                        let document = Document {
+                            id: doc_id.clone(),
+                            name: doc_name.clone(),
+                            path: doc_path.clone(),
+                            content: String::new(), // Media files have no markdown content
+                            parent_id: parent_id.clone(),
+                            created,
+                            modified,
+                        };
+
+                        documents.insert(doc_id.clone(), document);
+
+                        hierarchy.push(TreeNode::Document {
+                            id: doc_id,
+                            name: doc_name,
+                            path: doc_path,
+                        });
+
+                        // Track the source file to copy after project is created
+                        // Store in uuid_to_path so we can find it later
+                        uuid_to_path.insert(
+                            format!("__media__{}", item.uuid),
+                            format!("{}|{}", media_src.display(), dest_rel),
+                        );
+                    } else {
+                        eprintln!("Skipping binder item \"{}\" (type: {}, file not found)", title, other);
+                    }
+                } else {
+                    eprintln!("Skipping binder item \"{}\" (type: {})", title, other);
+                }
             }
         }
     }
