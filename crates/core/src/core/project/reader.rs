@@ -140,7 +140,7 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
     // Read all documents from manuscript and research folders
     let documents = read_all_documents(path)?;
 
-    Ok(Project {
+    let mut project = Project {
         id: metadata.id,
         name: metadata.name,
         path: path.to_string_lossy().to_string(),
@@ -148,7 +148,145 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
         documents,
         created: metadata.created,
         modified: metadata.modified,
-    })
+    };
+
+    // Reconcile hierarchy with actual files on disk
+    let repaired = repair_project(&mut project, path);
+    if repaired {
+        // Write repaired state back to disk
+        let _ = super::writer::write_project(&mut project);
+    }
+
+    Ok(project)
+}
+
+/// Reconciles project.yaml hierarchy with actual files on disk.
+/// Returns true if any repairs were made.
+///
+/// Handles:
+/// 1. Hierarchy references a file that doesn't exist — remove from hierarchy
+/// 2. A .md file exists on disk but isn't in hierarchy — add to hierarchy
+/// 3. Document in hierarchy has no matching loaded document — remove
+fn repair_project(project: &mut Project, project_path: &Path) -> bool {
+    let mut repaired = false;
+
+    // Pass 1: Remove hierarchy entries that point to missing files
+    let before_count = count_hierarchy_docs(&project.hierarchy);
+    project.hierarchy = prune_missing_files(&project.hierarchy, project_path);
+    let after_count = count_hierarchy_docs(&project.hierarchy);
+    if after_count < before_count {
+        let removed = before_count - after_count;
+        eprintln!(
+            "Repaired: removed {} hierarchy entries pointing to missing files",
+            removed
+        );
+        repaired = true;
+    }
+
+    // Pass 2: Find documents on disk that aren't in the hierarchy
+    let referenced_paths = collect_hierarchy_paths(&project.hierarchy);
+    let mut orphans: Vec<(String, String, String)> = Vec::new(); // (id, name, path)
+    for doc in project.documents.values() {
+        if !referenced_paths.contains(&doc.path) {
+            orphans.push((doc.id.clone(), doc.name.clone(), doc.path.clone()));
+        }
+    }
+
+    if !orphans.is_empty() {
+        eprintln!(
+            "Repaired: adding {} orphaned documents to hierarchy",
+            orphans.len()
+        );
+        for (id, name, path) in orphans {
+            project.hierarchy.push(TreeNode::Document { id, name, path });
+        }
+        repaired = true;
+    }
+
+    // Pass 3: Remove documents from the map that have no file on disk
+    let missing_ids: Vec<String> = project
+        .documents
+        .iter()
+        .filter(|(_, doc)| {
+            let full = project_path.join(&doc.path);
+            !full.exists()
+        })
+        .map(|(id, _)| id.clone())
+        .collect();
+
+    if !missing_ids.is_empty() {
+        eprintln!(
+            "Repaired: removed {} documents with missing files from index",
+            missing_ids.len()
+        );
+        for id in &missing_ids {
+            project.documents.remove(id);
+        }
+        repaired = true;
+    }
+
+    repaired
+}
+
+/// Recursively removes Document nodes whose files don't exist on disk.
+/// Folders are kept even if empty (the user may have intentionally emptied them).
+fn prune_missing_files(hierarchy: &[TreeNode], project_path: &Path) -> Vec<TreeNode> {
+    let mut result = Vec::new();
+    for node in hierarchy {
+        match node {
+            TreeNode::Document { id, name, path } => {
+                let full = project_path.join(path);
+                if full.exists() {
+                    result.push(node.clone());
+                }
+            }
+            TreeNode::Folder {
+                id,
+                name,
+                children,
+            } => {
+                let pruned_children = prune_missing_files(children, project_path);
+                result.push(TreeNode::Folder {
+                    id: id.clone(),
+                    name: name.clone(),
+                    children: pruned_children,
+                });
+            }
+        }
+    }
+    result
+}
+
+/// Counts total Document nodes in a hierarchy.
+fn count_hierarchy_docs(hierarchy: &[TreeNode]) -> usize {
+    let mut count = 0;
+    for node in hierarchy {
+        match node {
+            TreeNode::Document { .. } => count += 1,
+            TreeNode::Folder { children, .. } => count += count_hierarchy_docs(children),
+        }
+    }
+    count
+}
+
+/// Collects all document paths referenced in the hierarchy.
+fn collect_hierarchy_paths(hierarchy: &[TreeNode]) -> std::collections::HashSet<String> {
+    let mut paths = std::collections::HashSet::new();
+    collect_paths_inner(hierarchy, &mut paths);
+    paths
+}
+
+fn collect_paths_inner(hierarchy: &[TreeNode], paths: &mut std::collections::HashSet<String>) {
+    for node in hierarchy {
+        match node {
+            TreeNode::Document { path, .. } => {
+                paths.insert(path.clone());
+            }
+            TreeNode::Folder { children, .. } => {
+                collect_paths_inner(children, paths);
+            }
+        }
+    }
 }
 
 /// Reads project.yaml and parses into ProjectMetadata
@@ -466,5 +604,47 @@ hierarchy: []
         // Verify path is relative, not absolute
         assert!(!doc.path.starts_with("/"));
         assert_eq!(doc.path, "manuscript/subfolder/test.md");
+    }
+
+    #[test]
+    fn test_repair_removes_missing_file_from_hierarchy() {
+        let (_temp, project_path) = create_test_project();
+
+        // Delete the document file but leave project.yaml referencing it
+        fs::remove_file(project_path.join("manuscript/chapter-01.md")).unwrap();
+        fs::remove_file(project_path.join("manuscript/chapter-01.meta")).unwrap();
+
+        // Load should succeed and repair
+        let project = read_project(&project_path).unwrap();
+
+        // Hierarchy should be empty — the dangling reference was pruned
+        assert_eq!(count_hierarchy_docs(&project.hierarchy), 0);
+        assert_eq!(project.documents.len(), 0);
+    }
+
+    #[test]
+    fn test_repair_adds_orphan_to_hierarchy() {
+        let (_temp, project_path) = create_test_project();
+
+        // Add a new .md file that's NOT in project.yaml
+        fs::write(
+            project_path.join("manuscript/orphan.md"),
+            "# Orphan\n\nThis file was restored but not in hierarchy.",
+        )
+        .unwrap();
+        fs::write(
+            project_path.join("manuscript/orphan.meta"),
+            "id: orphan-1\ncreated: \"2025-01-01T00:00:00Z\"\nmodified: \"2025-01-01T00:00:00Z\"\n",
+        )
+        .unwrap();
+
+        let project = read_project(&project_path).unwrap();
+
+        // Should have 2 docs: original + orphan added to hierarchy
+        assert_eq!(project.documents.len(), 2);
+        assert_eq!(count_hierarchy_docs(&project.hierarchy), 2);
+
+        // The orphan should be findable
+        assert!(project.documents.contains_key("orphan-1"));
     }
 }
