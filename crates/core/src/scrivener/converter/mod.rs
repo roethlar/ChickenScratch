@@ -16,6 +16,7 @@
 //! 5. Write .chikn project structure
 
 use chrono::Utc;
+use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -53,9 +54,24 @@ pub fn import_scriv(scriv_path: &Path, output_path: &Path) -> Result<Project, Ch
     // Create .chikn project
     let mut chikn_project = writer::create_project(output_path, &scriv_project.name)?;
 
+    // Pre-pass: build Scrivener UUID -> chikn path map from the entire binder tree
+    // This must happen before conversion so all links can be resolved
+    let mut uuid_to_path: HashMap<String, String> = HashMap::new();
+    build_uuid_map(&scriv_project.binder, scriv_path, &mut uuid_to_path, "manuscript");
+
     // Convert binder items to documents and hierarchy
     let mut documents = HashMap::new();
-    let hierarchy = convert_binder_items(&scriv_project.binder, scriv_path, &mut documents)?;
+    let hierarchy = convert_binder_items(
+        &scriv_project.binder,
+        scriv_path,
+        &mut documents,
+        &mut uuid_to_path,
+    )?;
+
+    // Second pass: clean up Scrivener markup in all document content
+    for doc in documents.values_mut() {
+        doc.content = clean_scrivener_markup(&doc.content, &uuid_to_path);
+    }
 
     chikn_project.hierarchy = hierarchy;
     chikn_project.documents = documents;
@@ -83,13 +99,77 @@ fn find_scrivx_file(scriv_path: &Path) -> Result<std::path::PathBuf, ChiknError>
     )))
 }
 
+/// Pre-pass: builds a map of Scrivener UUID -> expected chikn .md path.
+/// This traverses the entire binder tree before conversion so that
+/// scrivlnk:// references in any document can be resolved.
+fn build_uuid_map(
+    items: &[BinderItem],
+    scriv_path: &Path,
+    uuid_to_path: &mut HashMap<String, String>,
+    target_folder: &str,
+) {
+    // Track slugs we've seen to handle collisions (mirrors unique_slug logic)
+    for item in items {
+        match item.item_type.as_str() {
+            "TrashFolder" => continue,
+
+            "ResearchFolder" => {
+                build_uuid_map(&item.children.items, scriv_path, uuid_to_path, "research");
+            }
+
+            "DraftFolder" | "Folder" => {
+                // For folders, map UUID to the first child doc if one exists
+                if let Some(path) = find_first_text_path(&item.children.items, scriv_path, target_folder) {
+                    uuid_to_path.insert(item.uuid.clone(), path);
+                }
+                // Also map if the folder itself has content
+                let rtf_path = get_rtf_path(scriv_path, &item.uuid);
+                if rtf_path.exists() {
+                    let name = item.title.clone().unwrap_or_else(|| "folder".to_string());
+                    let slug = crate::utils::slug::slugify(&name);
+                    uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.md", target_folder, slug));
+                }
+                build_uuid_map(&item.children.items, scriv_path, uuid_to_path, target_folder);
+            }
+
+            "Text" => {
+                let name = item.title.clone().unwrap_or_else(|| "untitled".to_string());
+                let slug = crate::utils::slug::slugify(&name);
+                uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.md", target_folder, slug));
+                // Scrivener Text items can have children too
+                if !item.children.items.is_empty() {
+                    build_uuid_map(&item.children.items, scriv_path, uuid_to_path, target_folder);
+                }
+            }
+
+            _ => {}
+        }
+    }
+}
+
+/// Finds the .md path of the first Text item in a binder subtree.
+fn find_first_text_path(items: &[BinderItem], scriv_path: &Path, target_folder: &str) -> Option<String> {
+    for item in items {
+        if item.item_type == "Text" {
+            let name = item.title.clone().unwrap_or_else(|| "untitled".to_string());
+            let slug = crate::utils::slug::slugify(&name);
+            return Some(format!("{}/{}.md", target_folder, slug));
+        }
+        if let Some(path) = find_first_text_path(&item.children.items, scriv_path, target_folder) {
+            return Some(path);
+        }
+    }
+    None
+}
+
 /// Converts Scrivener binder items to .chikn hierarchy and documents
 fn convert_binder_items(
     items: &[BinderItem],
     scriv_path: &Path,
     documents: &mut HashMap<String, Document>,
+    uuid_to_path: &mut HashMap<String, String>,
 ) -> Result<Vec<TreeNode>, ChiknError> {
-    convert_binder_items_inner(items, scriv_path, documents, None, "manuscript")
+    convert_binder_items_inner(items, scriv_path, documents, uuid_to_path, None, "manuscript")
 }
 
 /// Converts Scrivener binder items with parent and target folder tracking
@@ -97,6 +177,7 @@ fn convert_binder_items_inner(
     items: &[BinderItem],
     scriv_path: &Path,
     documents: &mut HashMap<String, Document>,
+    uuid_to_path: &mut HashMap<String, String>,
     parent_id: Option<String>,
     target_folder: &str,
 ) -> Result<Vec<TreeNode>, ChiknError> {
@@ -116,6 +197,7 @@ fn convert_binder_items_inner(
                     &item.children.items,
                     scriv_path,
                     documents,
+                    uuid_to_path,
                     Some(folder_id.clone()),
                     "research",
                 )?;
@@ -136,6 +218,7 @@ fn convert_binder_items_inner(
                     &item.children.items,
                     scriv_path,
                     documents,
+                    uuid_to_path,
                     Some(folder_id.clone()),
                     target_folder,
                 )?;
@@ -155,6 +238,8 @@ fn convert_binder_items_inner(
                         let created = item.created.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
                         let modified = item.modified.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
 
+                        uuid_to_path.insert(item.uuid.clone(), doc_path.clone());
+
                         let document = Document {
                             id: doc_id.clone(),
                             name: folder_name.clone(),
@@ -166,7 +251,6 @@ fn convert_binder_items_inner(
                         };
                         documents.insert(doc_id.clone(), document);
 
-                        // Prepend the folder's own text as a document inside itself
                         let mut all_children = vec![TreeNode::Document {
                             id: doc_id,
                             name: folder_name.clone(),
@@ -195,7 +279,6 @@ fn convert_binder_items_inner(
                 let doc_id = Uuid::new_v4().to_string();
                 let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
 
-                // Read RTF content — skip documents with no content file
                 let rtf_path = get_rtf_path(scriv_path, &item.uuid);
                 let content = if rtf_path.exists() {
                     rtf_to_markdown(&rtf_path)?
@@ -218,6 +301,8 @@ fn convert_binder_items_inner(
                     .modified
                     .clone()
                     .unwrap_or_else(|| Utc::now().to_rfc3339());
+
+                uuid_to_path.insert(item.uuid.clone(), doc_path.clone());
 
                 let document = Document {
                     id: doc_id.clone(),
@@ -246,6 +331,56 @@ fn convert_binder_items_inner(
     }
 
     Ok(hierarchy)
+}
+
+/// Cleans Scrivener-specific markup from converted Markdown content.
+///
+/// Handles:
+/// - `scrivlnk://UUID` links → rewritten to relative .md paths
+/// - `\<\$Scr_Ps::N\>` / `\<!\$Scr_Ps::N\>` → paragraph style tags, stripped
+/// - `\<\$Scr_Cs::N\>` / `\<!\$Scr_Cs::N\>` → character style tags, stripped
+/// - `{\\Scrv_annot ...}` → inline annotations, converted to HTML comments
+fn clean_scrivener_markup(content: &str, uuid_to_path: &HashMap<String, String>) -> String {
+    let mut result = content.to_string();
+
+    // Rewrite scrivlnk:// links to relative paths
+    // Pattern: [link text](scrivlnk://UUID) or \[text\](scrivlnk://UUID)
+    let scriv_link_re = Regex::new(r"scrivlnk://([A-Fa-f0-9-]+)").unwrap();
+    result = scriv_link_re
+        .replace_all(&result, |caps: &regex::Captures| {
+            let uuid = &caps[1];
+            match uuid_to_path.get(uuid) {
+                Some(path) => path.clone(),
+                None => format!("scrivlnk://{}", uuid), // preserve if unknown
+            }
+        })
+        .to_string();
+
+    // Strip Scrivener paragraph/character style tags
+    // \<\$Scr_Ps::N\> and \<!\$Scr_Ps::N\>
+    // \<\$Scr_Cs::N\> and \<!\$Scr_Cs::N\>
+    let scr_tag_re = Regex::new(r"\\<[!]?\\?\$Scr_[CP]s::\d+\\>").unwrap();
+    result = scr_tag_re.replace_all(&result, "").to_string();
+
+    // Also catch the non-escaped variants that Pandoc might produce
+    let scr_tag_re2 = Regex::new(r"<[!]?\$Scr_[CP]s::\d+>").unwrap();
+    result = scr_tag_re2.replace_all(&result, "").to_string();
+
+    // Convert Scrivener inline annotations to HTML comments
+    // {\\Scrv_annot \color={...} \text= ANNOTATION_TEXT \end_Scrv_annot}
+    let annot_re = Regex::new(r"\{\\\\Scrv_annot[^}]*\\text=\s*([^\\}]+)\\end_Scrv_annot\}")
+        .unwrap();
+    result = annot_re
+        .replace_all(&result, |caps: &regex::Captures| {
+            format!("<!-- {} -->", caps[1].trim())
+        })
+        .to_string();
+
+    // Clean up any resulting empty lines from stripped tags
+    let multi_blank_re = Regex::new(r"\n{3,}").unwrap();
+    result = multi_blank_re.replace_all(&result, "\n\n").to_string();
+
+    result
 }
 
 #[cfg(test)]
