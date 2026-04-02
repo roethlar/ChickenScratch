@@ -1,0 +1,14 @@
+[package]
+name = "chickenscratch"
+version = "0.1.0"
+edition = "2021"
+description = "Convert between Scrivener (.scriv) and Chicken Scratch (.chikn) formats"
+license = "MIT"
+
+[[bin]]
+name = "chickenscratch"
+path = "src/main.rs"
+
+[dependencies]
+chickenscratch-core = { path = "../core" }
+clap = { version = "4", features = ["derive"] }

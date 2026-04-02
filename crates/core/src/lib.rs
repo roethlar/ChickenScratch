@@ -1,5 +1,3 @@
-// Re-export core types for use in commands
-pub mod api;
 pub mod core;
 pub mod models;
 pub mod scrivener;
