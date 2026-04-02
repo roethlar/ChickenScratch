@@ -1,16 +1,11 @@
 # Rust
 target/
-Cargo.lock
 **/*.rs.bk
 *.pdb
 
 # Node
 node_modules/
-dist/
-.pnpm-store/
-
-# Tauri
-src-tauri/target/
+ui/dist/
 
 # IDE
 .vscode/
@@ -23,13 +18,12 @@ src-tauri/target/
 .DS_Store
 Thumbs.db
 
-# Build artifacts
-*.log
-.turbo/
-
 # Env
 .env
 .env.local
 
-# agents
+# Agents
 .claude/
+
+# Tauri generated
+src-tauri/gen/
