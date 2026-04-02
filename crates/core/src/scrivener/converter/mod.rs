@@ -79,8 +79,8 @@ pub fn import_scriv(scriv_path: &Path, output_path: &Path) -> Result<Project, Ch
     // Save the converted project
     writer::write_project(&mut chikn_project)?;
 
-    // Commit all converted content
-    git_commit(output_path, &format!("Import from Scrivener: {}", scriv_project.name));
+    // Initial commit with all converted content
+    git_commit(output_path, &format!("Imported from Scrivener: {}", scriv_project.name));
 
     Ok(chikn_project)
 }

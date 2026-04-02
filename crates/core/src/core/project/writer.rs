@@ -117,31 +117,23 @@ pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
     // Write initial project.yaml
     write_project_metadata(&project)?;
 
-    // Initialize git repository
+    // Initialize git repository (no commit — caller decides when content is ready)
     init_git_repo(path);
 
     Ok(project)
 }
 
-/// Initializes a git repository in the project directory with an initial commit.
-/// Failures are non-fatal — the project is still usable without git.
+/// Initializes a git repository. No commit — the caller commits when content is ready.
+/// Failures are non-fatal.
 fn init_git_repo(path: &Path) {
     use std::process::Command;
 
-    let run = |args: &[&str]| -> bool {
-        Command::new("git")
-            .args(args)
-            .current_dir(path)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    };
-
-    if run(&["init"]) && run(&["add", "."]) {
-        run(&["commit", "-m", "Initial commit: Project created"]);
-    }
+    let _ = Command::new("git")
+        .arg("init")
+        .current_dir(path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
 }
 
 /// Creates the required folder structure for a .chikn project
