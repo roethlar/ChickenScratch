@@ -79,7 +79,30 @@ pub fn import_scriv(scriv_path: &Path, output_path: &Path) -> Result<Project, Ch
     // Save the converted project
     writer::write_project(&mut chikn_project)?;
 
+    // Commit all converted content
+    git_commit(output_path, &format!("Import from Scrivener: {}", scriv_project.name));
+
     Ok(chikn_project)
+}
+
+/// Stages all changes and commits. Non-fatal on failure.
+fn git_commit(path: &Path, message: &str) {
+    use std::process::Command;
+
+    let run = |args: &[&str]| -> bool {
+        Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    };
+
+    if run(&["add", "."]) {
+        run(&["commit", "-m", message]);
+    }
 }
 
 /// Finds the .scrivx file in a .scriv directory
