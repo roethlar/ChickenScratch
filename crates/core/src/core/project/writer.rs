@@ -107,10 +107,41 @@ pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
         modified: now,
     };
 
+    // Write .gitignore
+    let gitignore = path.join(".gitignore");
+    fs::write(
+        &gitignore,
+        "# Automatic snapshots (use git history instead)\nrevs/\n\n# OS files\n.DS_Store\nThumbs.db\n\n# Editor temp files\n*.tmp\n*.swp\n*~\n",
+    )?;
+
     // Write initial project.yaml
     write_project_metadata(&project)?;
 
+    // Initialize git repository
+    init_git_repo(path);
+
     Ok(project)
+}
+
+/// Initializes a git repository in the project directory with an initial commit.
+/// Failures are non-fatal — the project is still usable without git.
+fn init_git_repo(path: &Path) {
+    use std::process::Command;
+
+    let run = |args: &[&str]| -> bool {
+        Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    };
+
+    if run(&["init"]) && run(&["add", "."]) {
+        run(&["commit", "-m", "Initial commit: Project created"]);
+    }
 }
 
 /// Creates the required folder structure for a .chikn project

@@ -155,9 +155,10 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("Test.chikn");
 
-        // Create project with .git and revs folders
+        // Create project (.git is auto-initialized by create_project)
         create_project(&project_path, "Test").unwrap();
-        fs::create_dir(project_path.join(".git")).unwrap();
+        // Ensure .git exists (create_project may have initialized it)
+        let _ = fs::create_dir(project_path.join(".git"));
         fs::write(project_path.join(".git/config"), "test").unwrap();
 
         // Create snapshot
