@@ -200,7 +200,7 @@
 }
 
 .editor-content > * + * {
-  margin-top: 0.75em;
+  margin-top: 0;
 }
 
 .editor-content h1 {
@@ -234,11 +234,18 @@
 }
 
 .editor-content p {
-  margin: 0.75em 0;
+  margin: 0;
+  text-indent: 2em;
 }
 
+.editor-content h1 + p,
+.editor-content h2 + p,
+.editor-content h3 + p,
+.editor-content h4 + p,
+.editor-content hr + p,
+.editor-content blockquote + p,
 .editor-content p:first-child {
-  margin-top: 0;
+  text-indent: 0;
 }
 
 .editor-content blockquote {
