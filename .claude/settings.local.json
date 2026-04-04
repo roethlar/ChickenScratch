@@ -57,7 +57,12 @@
       "Read(//private/tmp/Corn-html.chikn/manuscript/**)",
       "Bash(curl -sL \"https://fonts.google.com/download?family=Literata\" -o /tmp/literata.zip)",
       "Bash(unzip -o /tmp/literata.zip -d /tmp/literata)",
-      "Bash(npx -p typescript tsc --noEmit)"
+      "Bash(npx -p typescript tsc --noEmit)",
+      "Bash(timeout 5 osascript -l JavaScript -e ':*)",
+      "Bash(timeout 10 osascript -e 'set f to choose file with prompt \"Select Scrivener Project\" of type {\"com.scrivener.scrivener\"} without invisibles')",
+      "Bash(timeout 10 osascript -e 'POSIX path of \\(choose file with prompt \"Select Scrivener Project\"\\)')",
+      "Bash(timeout 10 osascript -e 'POSIX path of \\(choose folder with prompt \"Select Scrivener Project\"\\)')",
+      "Bash(timeout 10 osascript -e 'POSIX path of \\(choose file of type {\"com.literatureandlatte.scrivener3.scriv\"} with prompt \"Select Scrivener Project\"\\)')"
     ],
     "deny": [],
     "ask": []
