@@ -2,7 +2,9 @@
 @import "@fontsource-variable/literata";
 @import "@fontsource-variable/literata/wght-italic.css";
 
-:root {
+/* ── Light Theme (default) ─────────────────────────── */
+:root,
+[data-theme="light"] {
   --color-bg: #ffffff;
   --color-bg-sidebar: #f8f8f7;
   --color-text: #1a1a1a;
@@ -12,8 +14,31 @@
   --color-surface: #ffffff;
 }
 
+/* ── Dark Theme ────────────────────────────────────── */
+[data-theme="dark"] {
+  --color-bg: #1a1a1a;
+  --color-bg-sidebar: #141414;
+  --color-text: #d4d4d4;
+  --color-text-muted: #737373;
+  --color-border: #2e2e2e;
+  --color-accent: #60a5fa;
+  --color-surface: #1e1e1e;
+}
+
+/* ── Sepia Theme ───────────────────────────────────── */
+[data-theme="sepia"] {
+  --color-bg: #f4ecd8;
+  --color-bg-sidebar: #ede5cf;
+  --color-text: #3b3022;
+  --color-text-muted: #7a6f5f;
+  --color-border: #d4c9af;
+  --color-accent: #8b5e34;
+  --color-surface: #f9f3e3;
+}
+
+/* ── System preference fallback ────────────────────── */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --color-bg: #1a1a1a;
     --color-bg-sidebar: #141414;
     --color-text: #d4d4d4;
@@ -41,4 +66,49 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* ── Focus Mode ────────────────────────────────────── */
+
+.focus-mode .binder,
+.focus-mode .inspector,
+.focus-mode .view-toolbar,
+.focus-mode .editor-status {
+  display: none;
+}
+
+.focus-mode .main-area {
+  max-width: 100%;
+}
+
+.focus-mode .editor-content {
+  max-width: 600px;
+  font-size: 1.25rem;
+  padding: 20vh 2rem 40vh;
+}
+
+/* Typewriter scrolling — active line at center */
+.focus-mode .editor-scroll {
+  scroll-padding-top: 45vh;
+}
+
+/* Show binder on left-edge hover */
+.focus-mode .binder-reveal {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 8px;
+  height: 100vh;
+  z-index: 50;
+}
+
+.focus-mode .binder-reveal:hover + .binder,
+.focus-mode .binder:hover {
+  display: flex !important;
+  position: fixed;
+  left: 0;
+  top: 0;
+  height: 100vh;
+  z-index: 49;
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.2);
 }
