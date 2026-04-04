@@ -40,11 +40,16 @@ export function Welcome() {
   };
 
   const handleImport = async () => {
-    const scrivPath = await open({
-      directory: true,
-      title: "Select .scriv Project",
+    // macOS treats .scriv as a package/bundle, so directory pickers grey them out.
+    // Instead, let the user select the .scrivx file inside the bundle.
+    const scrivxPath = await open({
+      title: "Select Scrivener Project (.scrivx file inside .scriv folder)",
+      filters: [{ name: "Scrivener", extensions: ["scrivx"] }],
     });
-    if (!scrivPath) return;
+    if (!scrivxPath) return;
+
+    // Derive the .scriv folder path from the .scrivx file path
+    const scrivPath = scrivxPath.substring(0, scrivxPath.lastIndexOf("/"));
 
     const outputPath = await save({
       title: "Save Converted Project As",
