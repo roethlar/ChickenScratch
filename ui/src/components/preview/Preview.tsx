@@ -3,17 +3,33 @@ import { useProjectStore } from "../../stores/projectStore";
 import { invoke } from "@tauri-apps/api/core";
 import type { TreeNode, Document, Project } from "../../types";
 
-/** Flatten manuscript documents in hierarchy order */
+/** Find the main manuscript folder(s) and flatten their documents in order */
 function flattenManuscript(nodes: TreeNode[]): string[] {
+  // Only include documents inside Manuscript/Draft folders, not loose root docs
   const ids: string[] = [];
   for (const node of nodes) {
-    if (node.type === "Document" && node.path.startsWith("manuscript/") && node.path.endsWith(".html")) {
-      ids.push(node.id);
-    } else if (node.type === "Folder") {
-      ids.push(...flattenManuscript(node.children));
+    if (node.type === "Folder") {
+      const name = node.name.toLowerCase();
+      if (name === "manuscript" || name === "draft") {
+        // This is the main writing folder — include all its documents
+        flattenAll(node.children, ids);
+      } else {
+        // Check child folders recursively for nested manuscript folders
+        ids.push(...flattenManuscript(node.children));
+      }
     }
   }
   return ids;
+}
+
+function flattenAll(nodes: TreeNode[], ids: string[]) {
+  for (const node of nodes) {
+    if (node.type === "Document" && node.path.endsWith(".html")) {
+      ids.push(node.id);
+    } else if (node.type === "Folder") {
+      flattenAll(node.children, ids);
+    }
+  }
 }
 
 export function Preview() {

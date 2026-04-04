@@ -67,7 +67,9 @@
       "Bash(/Users/michael/Dev/ChickenScratch/target/release/chikn-converter /Users/michael/Dev/ChickenScratch/samples/Corn.scriv /tmp/git-test.chikn)",
       "Bash(git -C /tmp/git-test.chikn log --oneline)",
       "Bash(git -C /tmp/git-test.chikn status --short)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(rm -rf \"/Applications/Chicken Scratch.app\")",
+      "Bash(cp -r \"/Users/michael/Dev/ChickenScratch/target/release/bundle/macos/Chicken Scratch.app\" \"/Applications/Chicken Scratch.app\")"
     ],
     "deny": [],
     "ask": []
