@@ -12,6 +12,7 @@ import {
   PanelRight,
   History,
   Maximize,
+  FileOutput,
   Sun,
   Moon,
   BookOpen,
@@ -19,6 +20,8 @@ import {
 } from "lucide-react";
 import { CommandPalette } from "./components/command-palette/CommandPalette";
 import { Revisions } from "./components/revisions/Revisions";
+import { save } from "@tauri-apps/plugin-dialog";
+import { compileProject } from "./commands/io";
 
 type View = "editor" | "corkboard";
 
@@ -55,6 +58,29 @@ export default function App() {
     return <Welcome />;
   }
 
+  const handleCompile = async () => {
+    if (!project) return;
+    const outputPath = await save({
+      title: "Export Manuscript",
+      defaultPath: `${project.name}.docx`,
+      filters: [
+        { name: "Word", extensions: ["docx"] },
+        { name: "PDF", extensions: ["pdf"] },
+        { name: "EPUB", extensions: ["epub"] },
+        { name: "HTML", extensions: ["html"] },
+        { name: "OpenDocument", extensions: ["odt"] },
+      ],
+    });
+    if (!outputPath) return;
+    const ext = outputPath.split(".").pop() || "docx";
+    try {
+      await compileProject(project.path, outputPath, ext, project.name);
+      alert("Export complete: " + outputPath);
+    } catch (e) {
+      alert("Export failed: " + e);
+    }
+  };
+
   const themeIcons: Record<string, typeof Sun> = {
     light: Sun,
     dark: Moon,
@@ -84,6 +110,13 @@ export default function App() {
             <LayoutGrid size={16} />
           </button>
           <div style={{ flex: 1 }} />
+          <button
+            className="view-btn"
+            onClick={handleCompile}
+            title="Export manuscript"
+          >
+            <FileOutput size={16} />
+          </button>
           <button
             className="view-btn"
             onClick={() => setTheme(nextTheme)}
