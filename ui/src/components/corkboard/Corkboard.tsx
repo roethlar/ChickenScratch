@@ -1,7 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
 import type { Document, TreeNode } from "../../types";
-import { Link2 } from "lucide-react";
+import { Link2, Sparkles } from "lucide-react";
+import { aiSummarize } from "../../commands/ai";
+import * as docCmd from "../../commands/document";
 
 type GroupBy = "none" | "label" | "status" | "keyword";
 
@@ -18,8 +20,12 @@ function flattenDocs(nodes: TreeNode[]): string[] {
 export function Corkboard() {
   const project = useProjectStore((s) => s.project);
   const selectDocument = useProjectStore((s) => s.selectDocument);
+  const setProject = (p: typeof project) =>
+    useProjectStore.setState({ project: p });
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [linking, setLinking] = useState<string | null>(null);
+  const [summarizing, setSummarizing] = useState(false);
+  const [summarizeProgress, setSummarizeProgress] = useState("");
 
   const docs = useMemo(() => {
     if (!project) return [];
@@ -48,6 +54,39 @@ export function Corkboard() {
     }
     return map;
   }, [docs, groupBy]);
+
+  const handleSummarizeAll = useCallback(async () => {
+    if (!project) return;
+    const unsummarized = docs.filter(
+      (d) => !d.synopsis && d.content && d.content.replace(/<[^>]*>/g, "").trim().length > 50
+    );
+    if (unsummarized.length === 0) return;
+
+    setSummarizing(true);
+    let latest = project;
+    for (let i = 0; i < unsummarized.length; i++) {
+      const doc = unsummarized[i];
+      setSummarizeProgress(`${i + 1}/${unsummarized.length}: ${doc.name}`);
+      try {
+        const summary = await aiSummarize(doc.content);
+        if (summary) {
+          latest = await docCmd.updateDocumentMetadata(latest.path, doc.id, {
+            synopsis: summary,
+            label: doc.label,
+            status: doc.status,
+            keywords: doc.keywords,
+          });
+          setProject(latest);
+        }
+      } catch (e) {
+        console.error(`Failed to summarize ${doc.name}:`, e);
+        setSummarizeProgress(`Failed: ${e}`);
+        break;
+      }
+    }
+    setSummarizing(false);
+    setSummarizeProgress("");
+  }, [project, docs]);
 
   if (!project) return null;
 
@@ -79,11 +118,23 @@ export function Corkboard() {
             <option value="keyword">Keyword</option>
           </select>
         </label>
-        {linking && (
+        <div style={{ flex: 1 }} />
+        {summarizing ? (
+          <span className="corkboard-linking">{summarizeProgress}</span>
+        ) : linking ? (
           <span className="corkboard-linking">
             Linking... click a card to connect (Esc to cancel)
           </span>
-        )}
+        ) : null}
+        <button
+          className="corkboard-summarize-btn"
+          onClick={handleSummarizeAll}
+          disabled={summarizing}
+          title="Generate AI summaries for cards without synopses"
+        >
+          <Sparkles size={14} />
+          {summarizing ? "Summarizing..." : "Summarize"}
+        </button>
       </div>
 
       <div className="corkboard-scroll">
@@ -147,9 +198,11 @@ function Card({
         </button>
       </div>
 
-      {doc.synopsis && (
-        <p className="card-synopsis">{doc.synopsis}</p>
-      )}
+      <p className="card-synopsis">
+        {doc.synopsis ||
+          doc.content?.replace(/<[^>]*>/g, "").slice(0, 200).trim() ||
+          "Empty"}
+      </p>
 
       <div className="card-meta">
         {doc.label && <span className="card-tag card-label">{doc.label}</span>}

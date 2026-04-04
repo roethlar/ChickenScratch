@@ -356,6 +356,8 @@ version = "0.1.0"
 dependencies = [
  "chickenscratch-core",
  "chrono",
+ "dirs",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

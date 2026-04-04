@@ -2,7 +2,7 @@
 
 mod commands;
 
-use commands::{document, project};
+use commands::{ai, document, project};
 
 fn main() {
     tauri::Builder::default()
@@ -21,6 +21,9 @@ fn main() {
             document::create_folder,
             document::delete_node,
             document::move_node,
+            ai::get_ai_settings,
+            ai::save_ai_settings,
+            ai::ai_summarize,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Chicken Scratch");
