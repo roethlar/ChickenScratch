@@ -92,6 +92,7 @@ export function Preview() {
   const title = project.metadata.title || project.name;
   const author = project.metadata.author;
   const projectType = project.metadata.project_type || "Document";
+  const showSectionTitles = ["Novel", "Novella", "Screenplay"].includes(projectType);
 
   return (
     <div className="preview">
@@ -152,9 +153,13 @@ export function Preview() {
           </div>
 
           {/* Manuscript content */}
-          {docs.map((doc) => (
+          {docs.map((doc, i) => (
             <section key={doc.id} className="preview-section">
-              <h2 className="preview-section-title">{doc.name}</h2>
+              {showSectionTitles ? (
+                <h2 className="preview-section-title">{doc.name}</h2>
+              ) : (
+                i > 0 && <div className="preview-scene-break">#</div>
+              )}
               <div
                 className="preview-section-body"
                 dangerouslySetInnerHTML={{ __html: doc.content || "" }}

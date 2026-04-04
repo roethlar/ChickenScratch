@@ -69,7 +69,8 @@
       "Bash(git -C /tmp/git-test.chikn status --short)",
       "Bash(cp:*)",
       "Bash(rm -rf \"/Applications/Chicken Scratch.app\")",
-      "Bash(cp -r \"/Users/michael/Dev/ChickenScratch/target/release/bundle/macos/Chicken Scratch.app\" \"/Applications/Chicken Scratch.app\")"
+      "Bash(cp -r \"/Users/michael/Dev/ChickenScratch/target/release/bundle/macos/Chicken Scratch.app\" \"/Applications/Chicken Scratch.app\")",
+      "Bash(cp -r \"target/release/bundle/macos/Chicken Scratch.app\" \"/Applications/Chicken Scratch.app\")"
     ],
     "deny": [],
     "ask": []
