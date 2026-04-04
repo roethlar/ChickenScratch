@@ -100,8 +100,11 @@
 }
 
 .binder-header {
-  padding: 1rem 1rem 0.75rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .binder-title {
@@ -110,6 +113,29 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-muted);
+}
+
+.binder-header-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.binder-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.binder-action-btn:hover {
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+  color: var(--color-text);
 }
 
 .binder-tree {
@@ -349,4 +375,50 @@
 .binder-tree::-webkit-scrollbar-thumb:hover,
 .editor-scroll::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--color-text) 25%, transparent);
+}
+
+/* ── Context Menu ──────────────────────────────────── */
+
+.context-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 180px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.context-menu button:hover {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.context-menu button.danger {
+  color: #e55;
+}
+
+.context-menu button.danger:hover {
+  background: color-mix(in srgb, #e55 12%, transparent);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
 }

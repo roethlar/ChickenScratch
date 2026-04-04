@@ -15,6 +15,10 @@ fn main() {
             project::import_scrivener,
             document::get_document,
             document::update_document_content,
+            document::create_document,
+            document::create_folder,
+            document::delete_node,
+            document::move_node,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Chicken Scratch");
