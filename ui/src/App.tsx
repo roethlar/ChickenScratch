@@ -14,7 +14,9 @@ import {
   Sun,
   Moon,
   BookOpen,
+  Search,
 } from "lucide-react";
+import { CommandPalette } from "./components/command-palette/CommandPalette";
 
 type View = "editor" | "corkboard";
 
@@ -23,22 +25,28 @@ export default function App() {
   const { theme, setTheme, focusMode, toggleFocusMode } = useSettingsStore();
   const [view, setView] = useState<View>("editor");
   const [showInspector, setShowInspector] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === "k") {
+        e.preventDefault();
+        setShowPalette((s) => !s);
+      }
       if (mod && e.shiftKey && e.key === "f") {
         e.preventDefault();
         toggleFocusMode();
       }
-      if (e.key === "Escape" && focusMode) {
-        toggleFocusMode();
+      if (e.key === "Escape") {
+        if (showPalette) setShowPalette(false);
+        else if (focusMode) toggleFocusMode();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [focusMode, toggleFocusMode]);
+  }, [focusMode, showPalette, toggleFocusMode]);
 
   if (!project) {
     return <Welcome />;
@@ -98,6 +106,7 @@ export default function App() {
         {view === "editor" ? <Editor /> : <Corkboard />}
       </div>
       {showInspector && <Inspector />}
+      <CommandPalette open={showPalette} onClose={() => setShowPalette(false)} />
     </div>
   );
 }
