@@ -6,11 +6,25 @@ import {
   Plus,
   FolderPlus,
   Trash2,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { TreeNode } from "../../types";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
+
+/** Find the index of a node within its parent's children list */
+function findNodeIndex(hierarchy: TreeNode[], nodeId: string): { siblings: TreeNode[]; index: number } | null {
+  for (let i = 0; i < hierarchy.length; i++) {
+    if (hierarchy[i].id === nodeId) return { siblings: hierarchy, index: i };
+    if (hierarchy[i].type === "Folder") {
+      const found = findNodeIndex(hierarchy[i].children, nodeId);
+      if (found) return found;
+    }
+  }
+  return null;
+}
 
 export function Binder() {
   const project = useProjectStore((s) => s.project);
@@ -74,6 +88,54 @@ export function Binder() {
     [project, activeDocId]
   );
 
+  const handleMoveUp = useCallback(
+    async (nodeId: string) => {
+      if (!project) return;
+      const found = findNodeIndex(project.hierarchy, nodeId);
+      if (!found || found.index === 0) return;
+      const updated = await docCmd.moveNode(project.path, nodeId, undefined, found.index - 1);
+      setProject(updated);
+      closeMenu();
+    },
+    [project]
+  );
+
+  const handleMoveDown = useCallback(
+    async (nodeId: string) => {
+      if (!project) return;
+      const found = findNodeIndex(project.hierarchy, nodeId);
+      if (!found || found.index >= found.siblings.length - 1) return;
+      const updated = await docCmd.moveNode(project.path, nodeId, undefined, found.index + 1);
+      setProject(updated);
+      closeMenu();
+    },
+    [project]
+  );
+
+  const handleDrop = useCallback(
+    async (dragId: string, targetId: string, position: "before" | "after" | "into") => {
+      if (!project) return;
+      try {
+        if (position === "into") {
+          // Reparent into folder
+          const updated = await docCmd.moveNode(project.path, dragId, targetId);
+          setProject(updated);
+        } else {
+          // Reorder: find target's parent and index
+          const found = findNodeIndex(project.hierarchy, targetId);
+          if (!found) return;
+          const newIndex = position === "before" ? found.index : found.index + 1;
+          // Move to same parent level, then reorder
+          const updated = await docCmd.moveNode(project.path, dragId, undefined, newIndex);
+          setProject(updated);
+        }
+      } catch (e) {
+        console.error("Move failed:", e);
+      }
+    },
+    [project]
+  );
+
   if (!project) return null;
 
   return (
@@ -106,6 +168,7 @@ export function Binder() {
             activeId={activeDocId}
             onSelect={selectDocument}
             onContextMenu={handleContextMenu}
+            onDrop={handleDrop}
           />
         ))}
       </div>
@@ -116,9 +179,12 @@ export function Binder() {
           y={contextMenu.y}
           nodeId={contextMenu.nodeId}
           nodeType={contextMenu.nodeType}
+          hierarchy={project.hierarchy}
           onNewDoc={handleNewDoc}
           onNewFolder={handleNewFolder}
           onDelete={handleDelete}
+          onMoveUp={handleMoveUp}
+          onMoveDown={handleMoveDown}
           onClose={closeMenu}
         />
       )}
@@ -132,14 +198,52 @@ function TreeItem({
   activeId,
   onSelect,
   onContextMenu,
+  onDrop,
 }: {
   node: TreeNode;
   depth: number;
   activeId: string | null;
   onSelect: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, nodeId: string, nodeType: "Document" | "Folder") => void;
+  onDrop: (dragId: string, targetId: string, position: "before" | "after" | "into") => void;
 }) {
   const [open, setOpen] = useState(true);
+  const [dropPos, setDropPos] = useState<"before" | "after" | "into" | null>(null);
+  const itemRef = useRef<HTMLButtonElement>(null);
+
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData("text/plain", node.id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const h = rect.height;
+
+    if (node.type === "Folder") {
+      if (y < h * 0.25) setDropPos("before");
+      else if (y > h * 0.75) setDropPos("after");
+      else setDropPos("into");
+    } else {
+      setDropPos(y < h / 2 ? "before" : "after");
+    }
+  };
+
+  const handleDragLeave = () => setDropPos(null);
+
+  const handleDropEvent = (e: React.DragEvent) => {
+    e.preventDefault();
+    const dragId = e.dataTransfer.getData("text/plain");
+    if (dragId && dragId !== node.id && dropPos) {
+      onDrop(dragId, node.id, dropPos);
+    }
+    setDropPos(null);
+  };
+
+  const dropClass = dropPos ? `drop-${dropPos}` : "";
 
   if (node.type === "Document") {
     const isActive = node.id === activeId;
@@ -147,10 +251,16 @@ function TreeItem({
 
     return (
       <button
-        className={`binder-item ${isActive ? "active" : ""}`}
+        ref={itemRef}
+        className={`binder-item ${isActive ? "active" : ""} ${dropClass}`}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
         onClick={() => onSelect(node.id)}
         onContextMenu={(e) => onContextMenu(e, node.id, "Document")}
+        draggable
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDropEvent}
         title={node.name}
       >
         <FileText size={14} className={`binder-icon ${isMedia ? "media" : ""}`} />
@@ -162,10 +272,16 @@ function TreeItem({
   return (
     <div>
       <button
-        className="binder-item folder"
+        ref={itemRef}
+        className={`binder-item folder ${dropClass}`}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
         onClick={() => setOpen(!open)}
         onContextMenu={(e) => onContextMenu(e, node.id, "Folder")}
+        draggable
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDropEvent}
       >
         {open ? (
           <ChevronDown size={14} className="binder-chevron" />
@@ -184,6 +300,7 @@ function TreeItem({
             activeId={activeId}
             onSelect={onSelect}
             onContextMenu={onContextMenu}
+            onDrop={onDrop}
           />
         ))}
     </div>
@@ -195,18 +312,24 @@ function ContextMenu({
   y,
   nodeId,
   nodeType,
+  hierarchy,
   onNewDoc,
   onNewFolder,
   onDelete,
+  onMoveUp,
+  onMoveDown,
   onClose,
 }: {
   x: number;
   y: number;
   nodeId: string | null;
   nodeType: "Document" | "Folder" | null;
+  hierarchy: TreeNode[];
   onNewDoc: (parentId?: string) => void;
   onNewFolder: (parentId?: string) => void;
   onDelete: (nodeId: string) => void;
+  onMoveUp: (nodeId: string) => void;
+  onMoveDown: (nodeId: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -222,6 +345,9 @@ function ContextMenu({
   }, [onClose]);
 
   const parentId = nodeType === "Folder" ? nodeId ?? undefined : undefined;
+  const found = nodeId ? findNodeIndex(hierarchy, nodeId) : null;
+  const canMoveUp = found !== null && found.index > 0;
+  const canMoveDown = found !== null && found.index < found.siblings.length - 1;
 
   return (
     <div
@@ -237,6 +363,13 @@ function ContextMenu({
       </button>
       {nodeId && (
         <>
+          <div className="context-menu-divider" />
+          <button disabled={!canMoveUp} onClick={() => onMoveUp(nodeId)}>
+            <ArrowUp size={14} /> Move Up
+          </button>
+          <button disabled={!canMoveDown} onClick={() => onMoveDown(nodeId)}>
+            <ArrowDown size={14} /> Move Down
+          </button>
           <div className="context-menu-divider" />
           <button className="danger" onClick={() => onDelete(nodeId)}>
             <Trash2 size={14} /> Delete

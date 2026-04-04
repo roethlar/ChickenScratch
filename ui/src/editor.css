@@ -197,6 +197,29 @@
   text-overflow: ellipsis;
 }
 
+/* Drag-and-drop indicators */
+.binder-item.drop-before {
+  border-top: 2px solid var(--color-accent);
+}
+
+.binder-item.drop-after {
+  border-bottom: 2px solid var(--color-accent);
+}
+
+.binder-item.drop-into {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  outline: 1px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.binder-item[draggable] {
+  cursor: grab;
+}
+
+.binder-item[draggable]:active {
+  cursor: grabbing;
+}
+
 /* ── Editor ────────────────────────────────────────── */
 
 .editor-pane {
@@ -407,6 +430,15 @@
 
 .context-menu button:hover {
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.context-menu button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.context-menu button:disabled:hover {
+  background: none;
 }
 
 .context-menu button.danger {
