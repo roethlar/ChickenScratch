@@ -10,6 +10,7 @@ import {
   PenLine,
   LayoutGrid,
   PanelRight,
+  History,
   Maximize,
   Sun,
   Moon,
@@ -17,6 +18,7 @@ import {
   Search,
 } from "lucide-react";
 import { CommandPalette } from "./components/command-palette/CommandPalette";
+import { Revisions } from "./components/revisions/Revisions";
 
 type View = "editor" | "corkboard";
 
@@ -25,6 +27,7 @@ export default function App() {
   const { theme, setTheme, focusMode, toggleFocusMode } = useSettingsStore();
   const [view, setView] = useState<View>("editor");
   const [showInspector, setShowInspector] = useState(false);
+  const [showRevisions, setShowRevisions] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
 
   // Keyboard shortcuts
@@ -96,6 +99,13 @@ export default function App() {
             <Maximize size={16} />
           </button>
           <button
+            className={`view-btn ${showRevisions ? "active" : ""}`}
+            onClick={() => setShowRevisions(!showRevisions)}
+            title="Revisions"
+          >
+            <History size={16} />
+          </button>
+          <button
             className={`view-btn ${showInspector ? "active" : ""}`}
             onClick={() => setShowInspector(!showInspector)}
             title="Inspector"
@@ -105,6 +115,7 @@ export default function App() {
         </div>
         {view === "editor" ? <Editor /> : <Corkboard />}
       </div>
+      {showRevisions && <Revisions />}
       {showInspector && <Inspector />}
       <CommandPalette open={showPalette} onClose={() => setShowPalette(false)} />
     </div>
