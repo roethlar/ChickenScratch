@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Chicken Scratch
+Comment=Cross-platform writing app
+Exec=chickenscratch
+Icon=chickenscratch
+Type=Application
+Categories=Office;WordProcessor;
+MimeType=inode/directory;

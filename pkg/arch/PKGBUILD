@@ -1,0 +1,41 @@
+# Maintainer: Michael Coelho
+pkgname=chickenscratch
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Cross-platform writing app — Scrivener alternative with git-native revision control"
+arch=('x86_64' 'aarch64')
+url="https://github.com/your-org/chickenscratch"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'pandoc')
+makedepends=('rust' 'cargo' 'nodejs' 'npm' 'pkg-config')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver"
+
+    # Build frontend
+    cd ui
+    npm ci
+    npm run build
+    cd ..
+
+    # Build Tauri app (release binary only, no bundling)
+    cargo build --release -p chickenscratch
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+
+    # Binary
+    install -Dm755 "target/release/chickenscratch" "$pkgdir/usr/bin/chickenscratch"
+
+    # Desktop entry
+    install -Dm644 "pkg/arch/chickenscratch.desktop" "$pkgdir/usr/share/applications/chickenscratch.desktop"
+
+    # Icon
+    install -Dm644 "src-tauri/icons/128x128.png" "$pkgdir/usr/share/icons/hicolor/128x128/apps/chickenscratch.png"
+
+    # License
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
