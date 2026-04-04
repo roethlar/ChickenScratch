@@ -50,6 +50,7 @@ pub fn create_document(
         parent_id: parent_id.clone(),
         created: now.clone(),
         modified: now,
+        ..Default::default()
     };
 
     project.documents.insert(doc_id.clone(), document);

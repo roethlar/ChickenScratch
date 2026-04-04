@@ -56,7 +56,8 @@
       "Read(//tmp/Corn-html.chikn/**)",
       "Read(//private/tmp/Corn-html.chikn/manuscript/**)",
       "Bash(curl -sL \"https://fonts.google.com/download?family=Literata\" -o /tmp/literata.zip)",
-      "Bash(unzip -o /tmp/literata.zip -d /tmp/literata)"
+      "Bash(unzip -o /tmp/literata.zip -d /tmp/literata)",
+      "Bash(npx -p typescript tsc --noEmit)"
     ],
     "deny": [],
     "ask": []

@@ -100,6 +100,10 @@ pub struct DocumentMetadata {
     /// Original Scrivener UUID (for round-trip)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scrivener_uuid: Option<String>,
+
+    /// IDs of related documents (connections)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub links: Option<Vec<String>>,
 }
 
 /// Helper function to generate a new UUID
@@ -391,6 +395,7 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
             section_type: None,
             include_in_compile: None,
             scrivener_uuid: None,
+            links: None,
         }
     };
 
@@ -417,6 +422,11 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
         parent_id: metadata.parent_id,
         created: metadata.created,
         modified: metadata.modified,
+        synopsis: metadata.synopsis,
+        label: metadata.label,
+        status: metadata.status,
+        keywords: metadata.keywords,
+        links: metadata.links,
     })
 }
 

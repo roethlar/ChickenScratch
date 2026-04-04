@@ -200,6 +200,7 @@ mod tests {
             parent_id: None,
             created: chrono::Utc::now().to_rfc3339(),
             modified: chrono::Utc::now().to_rfc3339(),
+            ..Default::default()
         };
 
         project.documents.insert(doc.id.clone(), doc);
@@ -217,6 +218,7 @@ mod tests {
             parent_id: None,
             created: chrono::Utc::now().to_rfc3339(),
             modified: chrono::Utc::now().to_rfc3339(),
+            ..Default::default()
         };
 
         project.documents.insert(doc2.id.clone(), doc2);
@@ -260,6 +262,7 @@ mod tests {
             parent_id: None,
             created: chrono::Utc::now().to_rfc3339(),
             modified: chrono::Utc::now().to_rfc3339(),
+            ..Default::default()
         };
 
         project.documents.insert(doc.id.clone(), doc);

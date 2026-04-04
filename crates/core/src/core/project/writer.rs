@@ -224,19 +224,29 @@ fn write_document(
     })?;
 
     let meta_path = get_document_meta_path(folder_path, doc_name);
+    // Read existing metadata to preserve fields we don't model in Document
+    let existing_meta = if meta_path.exists() {
+        fs::read_to_string(&meta_path)
+            .ok()
+            .and_then(|s| serde_yaml::from_str::<DocumentMetadata>(&s).ok())
+    } else {
+        None
+    };
+
     let metadata = DocumentMetadata {
         id: document.id.clone(),
-        name: Some(document.name.clone()), // Save display name
+        name: Some(document.name.clone()),
         created: document.created.clone(),
         modified: Utc::now().to_rfc3339(),
         parent_id: document.parent_id.clone(),
-        label: None,
-        status: None,
-        keywords: None,
-        synopsis: None,
-        section_type: None,
-        include_in_compile: None,
-        scrivener_uuid: None,
+        label: document.label.clone(),
+        status: document.status.clone(),
+        keywords: document.keywords.clone(),
+        synopsis: document.synopsis.clone(),
+        section_type: existing_meta.as_ref().and_then(|m| m.section_type.clone()),
+        include_in_compile: existing_meta.as_ref().and_then(|m| m.include_in_compile.clone()),
+        scrivener_uuid: existing_meta.as_ref().and_then(|m| m.scrivener_uuid.clone()),
+        links: document.links.clone(),
     };
 
     let meta_content = serde_yaml::to_string(&metadata)?;
@@ -342,6 +352,7 @@ mod tests {
             parent_id: None,
             created: Utc::now().to_rfc3339(),
             modified: Utc::now().to_rfc3339(),
+            ..Default::default()
         };
 
         project.documents.insert(doc.id.clone(), doc.clone());
@@ -379,6 +390,7 @@ mod tests {
             parent_id: None,
             created: Utc::now().to_rfc3339(),
             modified: Utc::now().to_rfc3339(),
+            ..Default::default()
         };
 
         original_project
@@ -422,6 +434,7 @@ mod tests {
             parent_id: None,
             created: Utc::now().to_rfc3339(),
             modified: Utc::now().to_rfc3339(),
+            ..Default::default()
         };
 
         project.documents.insert(doc.id.clone(), doc.clone());
@@ -474,6 +487,7 @@ mod tests {
             parent_id: None,
             created: Utc::now().to_rfc3339(),
             modified: Utc::now().to_rfc3339(),
+            ..Default::default()
         };
 
         project.documents.insert(doc.id.clone(), doc.clone());
@@ -514,6 +528,7 @@ mod tests {
             parent_id: None,
             created: Utc::now().to_rfc3339(),
             modified: Utc::now().to_rfc3339(),
+            ..Default::default()
         };
 
         project.documents.insert(doc.id.clone(), doc);
@@ -540,6 +555,7 @@ mod tests {
             parent_id: None,
             created: Utc::now().to_rfc3339(),
             modified: Utc::now().to_rfc3339(),
+            ..Default::default()
         };
 
         project.documents.insert(doc.id.clone(), doc);
@@ -565,6 +581,7 @@ mod tests {
             parent_id: None,
             created: Utc::now().to_rfc3339(),
             modified: Utc::now().to_rfc3339(),
+            ..Default::default()
         };
 
         project.documents.insert(doc.id.clone(), doc);
@@ -590,6 +607,7 @@ mod tests {
             parent_id: None,
             created: Utc::now().to_rfc3339(),
             modified: Utc::now().to_rfc3339(),
+            ..Default::default()
         };
 
         project.documents.insert(doc.id.clone(), doc.clone());

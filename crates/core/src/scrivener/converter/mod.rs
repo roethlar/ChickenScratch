@@ -295,6 +295,11 @@ fn convert_binder_items_inner(
                             parent_id: Some(folder_id.clone()),
                             created,
                             modified,
+                            synopsis: None,
+                            label: None,
+                            status: None,
+                            keywords: None,
+                            links: None,
                         };
                         documents.insert(doc_id.clone(), document);
 
@@ -351,6 +356,7 @@ fn convert_binder_items_inner(
 
                 uuid_to_path.insert(item.uuid.clone(), doc_path.clone());
 
+                let meta = item.metadata.as_ref();
                 let document = Document {
                     id: doc_id.clone(),
                     name: doc_name.clone(),
@@ -359,6 +365,11 @@ fn convert_binder_items_inner(
                     parent_id: parent_id.clone(),
                     created,
                     modified,
+                    synopsis: meta.and_then(|m| m.synopsis.clone()),
+                    label: meta.and_then(|m| m.label.clone()),
+                    status: meta.and_then(|m| m.status.clone()),
+                    keywords: meta.and_then(|m| m.keywords.clone()),
+                    links: None,
                 };
 
                 documents.insert(doc_id.clone(), document);
@@ -414,10 +425,15 @@ fn convert_binder_items_inner(
                             id: doc_id.clone(),
                             name: doc_name.clone(),
                             path: doc_path.clone(),
-                            content: String::new(), // Media files have no markdown content
+                            content: String::new(),
                             parent_id: parent_id.clone(),
                             created,
                             modified,
+                            synopsis: None,
+                            label: None,
+                            status: None,
+                            keywords: None,
+                            links: None,
                         };
 
                         documents.insert(doc_id.clone(), document);

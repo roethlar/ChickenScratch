@@ -10,6 +10,11 @@ export interface Document {
   parent_id: string | null;
   created: string;
   modified: string;
+  synopsis?: string | null;
+  label?: string | null;
+  status?: string | null;
+  keywords?: string[] | null;
+  links?: string[] | null;
 }
 
 export interface Project {

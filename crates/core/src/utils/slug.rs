@@ -86,6 +86,7 @@ mod tests {
             parent_id: None,
             created: "2025-01-01T00:00:00Z".to_string(),
             modified: "2025-01-01T00:00:00Z".to_string(),
+            ..Default::default()
         };
         documents.insert("1".to_string(), doc);
 
