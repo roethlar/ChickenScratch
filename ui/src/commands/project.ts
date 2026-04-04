@@ -25,3 +25,7 @@ export async function importScrivener(
     outputPath,
   });
 }
+
+export async function pickScrivFolder(): Promise<string | null> {
+  return invoke("pick_scriv_folder");
+}

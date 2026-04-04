@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FolderOpen, FilePlus, FileDown } from "lucide-react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useProjectStore } from "../../stores/projectStore";
+import { pickScrivFolder } from "../../commands/project";
 
 export function Welcome() {
   const openProject = useProjectStore((s) => s.openProject);
@@ -40,20 +41,14 @@ export function Welcome() {
   };
 
   const handleImport = async () => {
-    // macOS treats .scriv as a package/bundle, so directory pickers grey them out.
-    // Instead, let the user select the .scrivx file inside the bundle.
-    const scrivxPath = await open({
-      title: "Select Scrivener Project (.scrivx file inside .scriv folder)",
-      filters: [{ name: "Scrivener", extensions: ["scrivx"] }],
-    });
-    if (!scrivxPath) return;
+    const scrivPath = await pickScrivFolder();
+    if (!scrivPath) return;
 
-    // Derive the .scriv folder path from the .scrivx file path
-    const scrivPath = scrivxPath.substring(0, scrivxPath.lastIndexOf("/"));
-
+    const defaultName =
+      scrivPath.split("/").pop()?.replace(".scriv", ".chikn") || "Imported.chikn";
     const outputPath = await save({
       title: "Save Converted Project As",
-      defaultPath: scrivPath.split("/").pop()?.replace(".scriv", ".chikn") || "Imported.chikn",
+      defaultPath: defaultName,
     });
     if (!outputPath) return;
 
