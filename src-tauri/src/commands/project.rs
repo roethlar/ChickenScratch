@@ -1,3 +1,4 @@
+use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::scrivener::converter;
 use chickenscratch_core::{ChiknError, Project};
@@ -9,7 +10,7 @@ pub fn create_project(name: String, path: String) -> Result<Project, ChiknError>
     let project_path = Path::new(&path).join(format!("{}.chikn", name));
     let mut project = writer::create_project(&project_path, &name)?;
     writer::write_project(&mut project)?;
-    converter::git_commit(&project_path, &format!("Created project: {}", name));
+    let _ = git::save_revision(&project_path, &format!("Created project: {}", name));
     Ok(project)
 }
 
@@ -29,9 +30,6 @@ pub fn import_scrivener(scriv_path: String, output_path: String) -> Result<Proje
     converter::import_scriv(Path::new(&scriv_path), Path::new(&output_path))
 }
 
-/// Opens a native file dialog that allows selecting .scriv packages.
-/// macOS: uses AppleScript with Scrivener's UTI so packages are selectable.
-/// Other platforms: .scriv is a regular directory, so uses a directory picker.
 #[tauri::command]
 pub fn pick_scriv_folder() -> Result<Option<String>, ChiknError> {
     #[cfg(target_os = "macos")]
@@ -43,7 +41,6 @@ pub fn pick_scriv_folder() -> Result<Option<String>, ChiknError> {
             .map_err(|e| ChiknError::Unknown(format!("Failed to open file dialog: {}", e)))?;
 
         if !output.status.success() {
-            // User cancelled
             return Ok(None);
         }
 
@@ -51,7 +48,6 @@ pub fn pick_scriv_folder() -> Result<Option<String>, ChiknError> {
         if path.is_empty() {
             Ok(None)
         } else {
-            // AppleScript returns path with trailing slash — keep it, Path handles it
             Ok(Some(path.trim_end_matches('/').to_string()))
         }
     }

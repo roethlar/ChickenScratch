@@ -118,22 +118,9 @@ pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
     write_project_metadata(&project)?;
 
     // Initialize git repository (no commit — caller decides when content is ready)
-    init_git_repo(path);
+    let _ = crate::core::git::init_repo(path);
 
     Ok(project)
-}
-
-/// Initializes a git repository. No commit — the caller commits when content is ready.
-/// Failures are non-fatal.
-fn init_git_repo(path: &Path) {
-    use std::process::Command;
-
-    let _ = Command::new("git")
-        .arg("init")
-        .current_dir(path)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
 }
 
 /// Creates the required folder structure for a .chikn project

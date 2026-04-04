@@ -2,7 +2,7 @@
 
 mod commands;
 
-use commands::{ai, document, project};
+use commands::{ai, document, git, project};
 
 fn main() {
     tauri::Builder::default()
@@ -24,6 +24,15 @@ fn main() {
             ai::get_ai_settings,
             ai::save_ai_settings,
             ai::ai_summarize,
+            git::save_revision,
+            git::list_revisions,
+            git::restore_revision,
+            git::create_draft,
+            git::list_drafts,
+            git::switch_draft,
+            git::merge_draft,
+            git::push_backup,
+            git::has_changes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Chicken Scratch");

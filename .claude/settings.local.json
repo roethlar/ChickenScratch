@@ -62,7 +62,11 @@
       "Bash(timeout 10 osascript -e 'set f to choose file with prompt \"Select Scrivener Project\" of type {\"com.scrivener.scrivener\"} without invisibles')",
       "Bash(timeout 10 osascript -e 'POSIX path of \\(choose file with prompt \"Select Scrivener Project\"\\)')",
       "Bash(timeout 10 osascript -e 'POSIX path of \\(choose folder with prompt \"Select Scrivener Project\"\\)')",
-      "Bash(timeout 10 osascript -e 'POSIX path of \\(choose file of type {\"com.literatureandlatte.scrivener3.scriv\"} with prompt \"Select Scrivener Project\"\\)')"
+      "Bash(timeout 10 osascript -e 'POSIX path of \\(choose file of type {\"com.literatureandlatte.scrivener3.scriv\"} with prompt \"Select Scrivener Project\"\\)')",
+      "Bash(rm -rf /tmp/git-test.chikn)",
+      "Bash(/Users/michael/Dev/ChickenScratch/target/release/chikn-converter /Users/michael/Dev/ChickenScratch/samples/Corn.scriv /tmp/git-test.chikn)",
+      "Bash(git -C /tmp/git-test.chikn log --oneline)",
+      "Bash(git -C /tmp/git-test.chikn status --short)"
     ],
     "deny": [],
     "ask": []

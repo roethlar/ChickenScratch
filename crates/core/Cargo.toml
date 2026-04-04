@@ -2,7 +2,7 @@
 name = "chickenscratch-core"
 version = "0.1.0"
 edition = "2021"
-description = "Core library for Chicken Scratch — .chikn format, Scrivener conversion, snapshots"
+description = "Core library for Chicken Scratch — .chikn format, Scrivener conversion, git integration"
 license = "MIT"
 
 [dependencies]
@@ -15,8 +15,7 @@ thiserror = "2.0"
 anyhow = "1.0"
 quick-xml = { version = "0.36", features = ["serialize"] }
 regex = "1.10"
-flate2 = "1.0"
-tar = "0.4"
+git2 = "0.19"
 
 [dev-dependencies]
 tempfile = "3.8"
