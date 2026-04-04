@@ -54,7 +54,9 @@
       "Bash(rm -rf /tmp/Corn-html.chikn)",
       "Bash(/Users/michael/Dev/ChickenScratch/target/release/chikn-converter /Users/michael/Dev/ChickenScratch/samples/Corn.scriv /tmp/Corn-html.chikn)",
       "Read(//tmp/Corn-html.chikn/**)",
-      "Read(//private/tmp/Corn-html.chikn/manuscript/**)"
+      "Read(//private/tmp/Corn-html.chikn/manuscript/**)",
+      "Bash(curl -sL \"https://fonts.google.com/download?family=Literata\" -o /tmp/literata.zip)",
+      "Bash(unzip -o /tmp/literata.zip -d /tmp/literata)"
     ],
     "deny": [],
     "ask": []

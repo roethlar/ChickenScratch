@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "@fontsource-variable/literata";
+@import "@fontsource-variable/literata/wght-italic.css";
 
 :root {
   --color-bg: #ffffff;

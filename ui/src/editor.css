@@ -208,15 +208,17 @@
 /* ── TipTap / ProseMirror ──────────────────────────── */
 
 .editor-content {
-  font-family: "Georgia", "Palatino Linotype", "Book Antiqua", serif;
+  font-family: "Literata Variable", "Literata", "Georgia", serif;
   font-size: 1.125rem;
-  line-height: 1.75;
+  line-height: 1.8;
   max-width: 680px;
   margin: 0 auto;
-  padding: 3rem 2rem;
+  padding: 3rem 2rem 6rem;
   color: var(--color-text);
   outline: none;
   min-height: 100%;
+  font-feature-settings: "liga" 1, "kern" 1;
+  -webkit-font-smoothing: antialiased;
 }
 
 .editor-content > * + * {
