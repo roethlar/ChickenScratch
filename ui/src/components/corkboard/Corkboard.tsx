@@ -32,7 +32,12 @@ export function Corkboard() {
     const order = flattenDocs(project.hierarchy);
     return order
       .map((id) => project.documents[id])
-      .filter((d): d is Document => !!d && d.path.endsWith(".html"));
+      .filter(
+        (d): d is Document =>
+          !!d &&
+          d.path.endsWith(".html") &&
+          d.path.startsWith("manuscript/")
+      );
   }, [project]);
 
   const groups = useMemo(() => {
@@ -58,7 +63,7 @@ export function Corkboard() {
   const handleSummarizeAll = useCallback(async () => {
     if (!project) return;
     const unsummarized = docs.filter(
-      (d) => !d.synopsis && d.content && d.content.replace(/<[^>]*>/g, "").trim().length > 50
+      (d) => !d.synopsis && d.content && d.content.replace(/<[^>]*>/g, "").trim().length > 100
     );
     if (unsummarized.length === 0) return;
 
