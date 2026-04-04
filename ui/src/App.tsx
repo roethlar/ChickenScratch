@@ -4,13 +4,15 @@ import { Welcome } from "./components/welcome/Welcome";
 import { Binder } from "./components/binder/Binder";
 import { Editor } from "./components/editor/Editor";
 import { Corkboard } from "./components/corkboard/Corkboard";
-import { PenLine, LayoutGrid } from "lucide-react";
+import { Inspector } from "./components/inspector/Inspector";
+import { PenLine, LayoutGrid, PanelRight } from "lucide-react";
 
 type View = "editor" | "corkboard";
 
 export default function App() {
   const project = useProjectStore((s) => s.project);
   const [view, setView] = useState<View>("editor");
+  const [showInspector, setShowInspector] = useState(false);
 
   if (!project) {
     return <Welcome />;
@@ -35,9 +37,18 @@ export default function App() {
           >
             <LayoutGrid size={16} />
           </button>
+          <div style={{ flex: 1 }} />
+          <button
+            className={`view-btn ${showInspector ? "active" : ""}`}
+            onClick={() => setShowInspector(!showInspector)}
+            title="Inspector"
+          >
+            <PanelRight size={16} />
+          </button>
         </div>
         {view === "editor" ? <Editor /> : <Corkboard />}
       </div>
+      {showInspector && <Inspector />}
     </div>
   );
 }

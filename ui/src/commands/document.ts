@@ -16,6 +16,23 @@ export async function updateDocumentContent(
   return invoke("update_document_content", { projectPath, docId, content });
 }
 
+export async function updateDocumentMetadata(
+  projectPath: string,
+  docId: string,
+  meta: {
+    synopsis?: string | null;
+    label?: string | null;
+    status?: string | null;
+    keywords?: string[] | null;
+  }
+): Promise<Project> {
+  return invoke("update_document_metadata", {
+    projectPath,
+    docId,
+    ...meta,
+  });
+}
+
 export async function createDocument(
   projectPath: string,
   name: string,

@@ -15,6 +15,7 @@ fn main() {
             project::import_scrivener,
             document::get_document,
             document::update_document_content,
+            document::update_document_metadata,
             document::create_document,
             document::create_folder,
             document::delete_node,

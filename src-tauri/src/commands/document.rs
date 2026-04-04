@@ -30,6 +30,29 @@ pub fn update_document_content(
 }
 
 #[tauri::command]
+pub fn update_document_metadata(
+    project_path: String,
+    doc_id: String,
+    synopsis: Option<String>,
+    label: Option<String>,
+    status: Option<String>,
+    keywords: Option<Vec<String>>,
+) -> Result<Project, ChiknError> {
+    let mut project = reader::read_project(Path::new(&project_path))?;
+    if let Some(doc) = project.documents.get_mut(&doc_id) {
+        doc.synopsis = synopsis;
+        doc.label = label;
+        doc.status = status;
+        doc.keywords = keywords;
+        doc.modified = chrono::Utc::now().to_rfc3339();
+        writer::write_project(&mut project)?;
+        Ok(project)
+    } else {
+        Err(ChiknError::NotFound(format!("Document not found: {}", doc_id)))
+    }
+}
+
+#[tauri::command]
 pub fn create_document(
     project_path: String,
     name: String,
