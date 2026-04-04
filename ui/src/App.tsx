@@ -17,7 +17,6 @@ import {
   Sun,
   Moon,
   BookOpen,
-  Search,
 } from "lucide-react";
 import { CommandPalette } from "./components/command-palette/CommandPalette";
 import { Revisions } from "./components/revisions/Revisions";

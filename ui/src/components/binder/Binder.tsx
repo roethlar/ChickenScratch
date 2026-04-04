@@ -17,9 +17,10 @@ import * as docCmd from "../../commands/document";
 /** Find the index of a node within its parent's children list */
 function findNodeIndex(hierarchy: TreeNode[], nodeId: string): { siblings: TreeNode[]; index: number } | null {
   for (let i = 0; i < hierarchy.length; i++) {
-    if (hierarchy[i].id === nodeId) return { siblings: hierarchy, index: i };
-    if (hierarchy[i].type === "Folder") {
-      const found = findNodeIndex(hierarchy[i].children, nodeId);
+    const node = hierarchy[i];
+    if (node.id === nodeId) return { siblings: hierarchy, index: i };
+    if (node.type === "Folder") {
+      const found = findNodeIndex(node.children, nodeId);
       if (found) return found;
     }
   }

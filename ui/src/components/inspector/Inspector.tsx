@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { X } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
 

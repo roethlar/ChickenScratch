@@ -1,12 +1,12 @@
 {
   "productName": "Chicken Scratch",
   "version": "0.1.0",
-  "identifier": "com.chickenscratch.app",
+  "identifier": "com.chickenscratch.editor",
   "build": {
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "",
-    "beforeBuildCommand": "npm run --prefix ui build"
+    "beforeBuildCommand": "cd ../ui && npm run build"
   },
   "app": {
     "windows": [
