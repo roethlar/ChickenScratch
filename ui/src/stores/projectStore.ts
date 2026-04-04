@@ -8,12 +8,16 @@ interface ProjectState {
   activeDocId: string | null;
   activeDoc: Document | null;
   saving: boolean;
+  error: string | null;
 
   openProject: (path: string) => Promise<void>;
+  createProject: (name: string, path: string) => Promise<void>;
+  importScrivener: (scrivPath: string, outputPath: string) => Promise<void>;
   closeProject: () => void;
   selectDocument: (docId: string) => void;
   updateContent: (content: string) => void;
   saveActiveDoc: () => Promise<void>;
+  clearError: () => void;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -21,10 +25,33 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   activeDocId: null,
   activeDoc: null,
   saving: false,
+  error: null,
 
   openProject: async (path: string) => {
-    const project = await projectCmd.loadProject(path);
-    set({ project, activeDocId: null, activeDoc: null });
+    try {
+      const project = await projectCmd.loadProject(path);
+      set({ project, activeDocId: null, activeDoc: null, error: null });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  createProject: async (name: string, path: string) => {
+    try {
+      const project = await projectCmd.createProject(name, path);
+      set({ project, activeDocId: null, activeDoc: null, error: null });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  importScrivener: async (scrivPath: string, outputPath: string) => {
+    try {
+      const project = await projectCmd.importScrivener(scrivPath, outputPath);
+      set({ project, activeDocId: null, activeDoc: null, error: null });
+    } catch (e) {
+      set({ error: String(e) });
+    }
   },
 
   closeProject: () => {
@@ -58,4 +85,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({ saving: false });
     }
   },
+
+  clearError: () => set({ error: null }),
 }));

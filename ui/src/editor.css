@@ -66,6 +66,26 @@
   cursor: default;
 }
 
+.welcome-error {
+  margin-bottom: 1.5rem;
+  padding: 0.6rem 1rem;
+  background: #fee;
+  border: 1px solid #e88;
+  border-radius: 6px;
+  color: #a33;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+@media (prefers-color-scheme: dark) {
+  .welcome-error {
+    background: #3a1a1a;
+    border-color: #662222;
+    color: #e88;
+  }
+}
+
 /* ── Binder ────────────────────────────────────────── */
 
 .binder {
