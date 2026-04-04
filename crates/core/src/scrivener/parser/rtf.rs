@@ -1,49 +1,23 @@
-//! # RTF to Markdown Converter
+//! # RTF Converter
 //!
-//! Converts Scrivener RTF content to Pandoc Markdown.
+//! Converts between Scrivener RTF content and HTML.
 //!
-//! ## Responsibilities
-//! - Read RTF files
-//! - Convert RTF → Markdown using Pandoc
-//! - Extract plain text content
-//!
-//! ## Implementation
-//! Phase 2 uses Pandoc as external tool for RTF conversion.
-//! This provides robust RTF parsing without reimplementing the spec.
+//! Uses Pandoc as external tool for robust RTF parsing.
 
 use crate::utils::error::ChiknError;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-/// Converts RTF file to Markdown using Pandoc.
-///
-/// # Arguments
-/// * `rtf_path` - Path to .rtf file
-///
-/// # Returns
-/// * `Ok(String)` - Markdown content
-/// * `Err(ChiknError)` on read/conversion failure
-///
-/// # Requirements
-/// Requires Pandoc to be installed and available in PATH.
-///
-/// # Example
-/// ```rust
-/// let markdown = rtf_to_markdown(Path::new("content.rtf"))?;
-/// ```
-pub fn rtf_to_markdown(rtf_path: &Path) -> Result<String, ChiknError> {
-    // Verify Pandoc is available
+/// Converts RTF file to HTML using Pandoc.
+pub fn rtf_to_html(rtf_path: &Path) -> Result<String, ChiknError> {
     check_pandoc_available()?;
 
-    // Use Pandoc to convert RTF → Markdown
-    // -t markdown-smart-escaped_line_breaks: avoid backslash escaping of quotes/line breaks
-    // --wrap=none: don't hard-wrap lines at 72 chars
     let output = Command::new("pandoc")
         .arg("-f")
         .arg("rtf")
         .arg("-t")
-        .arg("markdown-smart-escaped_line_breaks")
+        .arg("html")
         .arg("--wrap=none")
         .arg(rtf_path)
         .output()
@@ -57,79 +31,36 @@ pub fn rtf_to_markdown(rtf_path: &Path) -> Result<String, ChiknError> {
         )));
     }
 
-    let markdown = String::from_utf8(output.stdout)
+    let html = String::from_utf8(output.stdout)
         .map_err(|e| ChiknError::InvalidFormat(format!("Invalid UTF-8 from Pandoc: {}", e)))?;
 
-    // Scrivener uses hard line breaks between paragraphs in RTF.
-    // Pandoc converts these to trailing double-spaces (soft breaks).
-    // Convert to proper Markdown paragraph breaks (blank lines).
-    let markdown = markdown
-        .replace("  \n", "\n\n")
-        .replace("\\\n", "\n\n");
-
-    Ok(markdown)
+    Ok(html)
 }
 
-/// Converts RTF string to Markdown using Pandoc.
-///
-/// # Arguments
-/// * `rtf_content` - RTF formatted string
-///
-/// # Returns
-/// * `Ok(String)` - Markdown content
-/// * `Err(ChiknError)` on conversion failure
-///
-/// # Example
-/// ```rust
-/// let rtf = r"{\rtf1 Hello world}";
-/// let md = rtf_string_to_markdown(rtf)?;
-/// ```
-pub fn rtf_string_to_markdown(rtf_content: &str) -> Result<String, ChiknError> {
-    // Write RTF to temporary file
+/// Converts RTF string to HTML using Pandoc.
+pub fn rtf_string_to_html(rtf_content: &str) -> Result<String, ChiknError> {
     let temp_dir = std::env::temp_dir();
     let temp_file = temp_dir.join(format!("temp_{}.rtf", uuid::Uuid::new_v4()));
 
     fs::write(&temp_file, rtf_content)?;
-
-    // Convert using file-based function
-    let result = rtf_to_markdown(&temp_file);
-
-    // Clean up temp file
+    let result = rtf_to_html(&temp_file);
     let _ = fs::remove_file(&temp_file);
 
     result
 }
 
-/// Converts Markdown file to RTF using Pandoc.
-///
-/// # Arguments
-/// * `markdown_path` - Path to .md file
-/// * `rtf_path` - Output path for .rtf file
-///
-/// # Returns
-/// * `Ok(())` on success
-/// * `Err(ChiknError)` on conversion failure
-///
-/// # Requirements
-/// Requires Pandoc to be installed.
-///
-/// # Example
-/// ```rust
-/// markdown_to_rtf(Path::new("chapter.md"), Path::new("chapter.rtf"))?;
-/// ```
-pub fn markdown_to_rtf(markdown_path: &Path, rtf_path: &Path) -> Result<(), ChiknError> {
-    // Verify Pandoc is available
+/// Converts HTML file to RTF using Pandoc.
+pub fn html_to_rtf(html_path: &Path, rtf_path: &Path) -> Result<(), ChiknError> {
     check_pandoc_available()?;
 
-    // Use Pandoc to convert Markdown → RTF
     let output = Command::new("pandoc")
         .arg("-f")
-        .arg("markdown")
+        .arg("html")
         .arg("-t")
         .arg("rtf")
         .arg("-o")
         .arg(rtf_path)
-        .arg(markdown_path)
+        .arg(html_path)
         .output()
         .map_err(|e| ChiknError::Unknown(format!("Failed to run Pandoc: {}", e)))?;
 
@@ -144,47 +75,26 @@ pub fn markdown_to_rtf(markdown_path: &Path, rtf_path: &Path) -> Result<(), Chik
     Ok(())
 }
 
-/// Converts Markdown string to RTF string using Pandoc.
-///
-/// # Arguments
-/// * `markdown_content` - Markdown formatted string
-///
-/// # Returns
-/// * `Ok(String)` - RTF content
-/// * `Err(ChiknError)` on conversion failure
-///
-/// # Example
-/// ```rust
-/// let md = "# Chapter 1\n\n**Bold text**";
-/// let rtf = markdown_string_to_rtf(md)?;
-/// ```
-pub fn markdown_string_to_rtf(markdown_content: &str) -> Result<String, ChiknError> {
-    // Write Markdown to temporary file
+/// Converts HTML string to RTF string using Pandoc.
+pub fn html_string_to_rtf(html_content: &str) -> Result<String, ChiknError> {
     let temp_dir = std::env::temp_dir();
-    let temp_md = temp_dir.join(format!("temp_{}.md", uuid::Uuid::new_v4()));
+    let temp_html = temp_dir.join(format!("temp_{}.html", uuid::Uuid::new_v4()));
     let temp_rtf = temp_dir.join(format!("temp_{}.rtf", uuid::Uuid::new_v4()));
 
-    fs::write(&temp_md, markdown_content)?;
+    fs::write(&temp_html, html_content)?;
+    let result = html_to_rtf(&temp_html, &temp_rtf);
 
-    // Convert using file-based function
-    let result = markdown_to_rtf(&temp_md, &temp_rtf);
-
-    if result.is_ok() {
-        // Read RTF output
+    let output = if result.is_ok() {
         let rtf_content = fs::read_to_string(&temp_rtf)?;
-
-        // Clean up temp files
-        let _ = fs::remove_file(&temp_md);
-        let _ = fs::remove_file(&temp_rtf);
-
         Ok(rtf_content)
     } else {
-        // Clean up temp files
-        let _ = fs::remove_file(&temp_md);
-        let _ = fs::remove_file(&temp_rtf);
-
         result.map(|_| String::new())
-    }
+    };
+
+    let _ = fs::remove_file(&temp_html);
+    let _ = fs::remove_file(&temp_rtf);
+
+    output
 }
 
 /// Checks if Pandoc is installed and available
@@ -214,8 +124,6 @@ mod tests {
 
     #[test]
     fn test_check_pandoc_available() {
-        // This test requires Pandoc to be installed
-        // Skip if Pandoc not available
         if check_pandoc_available().is_err() {
             eprintln!("Skipping test: Pandoc not installed");
             return;
@@ -224,8 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn test_rtf_to_markdown() {
-        // Skip if Pandoc not available
+    fn test_rtf_to_html() {
         if check_pandoc_available().is_err() {
             eprintln!("Skipping test: Pandoc not installed");
             return;
@@ -234,34 +141,32 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let rtf_file = temp_dir.path().join("test.rtf");
 
-        // Create simple RTF file
         let rtf_content = r"{\rtf1\ansi\deff0
 {\fonttbl{\f0 Times New Roman;}}
 \f0\fs24 Hello world
 }";
         fs::write(&rtf_file, rtf_content).unwrap();
 
-        let result = rtf_to_markdown(&rtf_file);
+        let result = rtf_to_html(&rtf_file);
         if result.is_ok() {
-            let markdown = result.unwrap();
-            assert!(markdown.contains("Hello world") || markdown.contains("Hello"));
+            let html = result.unwrap();
+            assert!(html.contains("Hello world") || html.contains("Hello"));
         }
     }
 
     #[test]
-    fn test_rtf_string_to_markdown() {
-        // Skip if Pandoc not available
+    fn test_rtf_string_to_html() {
         if check_pandoc_available().is_err() {
             eprintln!("Skipping test: Pandoc not installed");
             return;
         }
 
         let rtf = r"{\rtf1\ansi Simple text}";
-        let result = rtf_string_to_markdown(rtf);
+        let result = rtf_string_to_html(rtf);
 
         if result.is_ok() {
-            let markdown = result.unwrap();
-            assert!(markdown.contains("Simple") || markdown.len() > 0);
+            let html = result.unwrap();
+            assert!(html.contains("Simple") || !html.is_empty());
         }
     }
 }

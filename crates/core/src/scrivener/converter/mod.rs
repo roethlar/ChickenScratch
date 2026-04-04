@@ -22,7 +22,7 @@ use std::fs;
 use std::path::Path;
 use uuid::Uuid;
 
-use super::parser::{get_media_path, get_rtf_path, parse_scrivx, rtf_to_markdown, BinderItem};
+use super::parser::{get_media_path, get_rtf_path, parse_scrivx, rtf_to_html, BinderItem};
 use crate::core::project::writer;
 use crate::models::{Document, Project, TreeNode};
 use crate::utils::error::ChiknError;
@@ -167,7 +167,7 @@ fn build_uuid_map(
                 if rtf_path.exists() {
                     let name = item.title.clone().unwrap_or_else(|| "folder".to_string());
                     let slug = crate::utils::slug::slugify(&name);
-                    uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.md", target_folder, slug));
+                    uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.html", target_folder, slug));
                 }
                 build_uuid_map(&item.children.items, scriv_path, uuid_to_path, target_folder);
             }
@@ -175,7 +175,7 @@ fn build_uuid_map(
             "Text" => {
                 let name = item.title.clone().unwrap_or_else(|| "untitled".to_string());
                 let slug = crate::utils::slug::slugify(&name);
-                uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.md", target_folder, slug));
+                uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.html", target_folder, slug));
                 // Scrivener Text items can have children too
                 if !item.children.items.is_empty() {
                     build_uuid_map(&item.children.items, scriv_path, uuid_to_path, target_folder);
@@ -200,7 +200,7 @@ fn find_first_text_path(items: &[BinderItem], scriv_path: &Path, target_folder: 
         if item.item_type == "Text" {
             let name = item.title.clone().unwrap_or_else(|| "untitled".to_string());
             let slug = crate::utils::slug::slugify(&name);
-            return Some(format!("{}/{}.md", target_folder, slug));
+            return Some(format!("{}/{}.html", target_folder, slug));
         }
         if let Some(path) = find_first_text_path(&item.children.items, scriv_path, target_folder) {
             return Some(path);
@@ -273,7 +273,7 @@ fn convert_binder_items_inner(
                 // Folders in Scrivener can also have their own text content
                 let rtf_path = get_rtf_path(scriv_path, &item.uuid);
                 if rtf_path.exists() {
-                    let content = rtf_to_markdown(&rtf_path)?;
+                    let content = rtf_to_html(&rtf_path)?;
                     if !content.trim().is_empty() {
                         let doc_id = Uuid::new_v4().to_string();
                         let slug = crate::utils::slug::unique_slug(
@@ -281,7 +281,7 @@ fn convert_binder_items_inner(
                             &format!("{}/", target_folder),
                             documents,
                         );
-                        let doc_path = format!("{}/{}.md", target_folder, slug);
+                        let doc_path = format!("{}/{}.html", target_folder, slug);
                         let created = item.created.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
                         let modified = item.modified.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
 
@@ -328,7 +328,7 @@ fn convert_binder_items_inner(
 
                 let rtf_path = get_rtf_path(scriv_path, &item.uuid);
                 let content = if rtf_path.exists() {
-                    rtf_to_markdown(&rtf_path)?
+                    rtf_to_html(&rtf_path)?
                 } else {
                     String::new()
                 };
@@ -338,7 +338,7 @@ fn convert_binder_items_inner(
                     &format!("{}/", target_folder),
                     documents,
                 );
-                let doc_path = format!("{}/{}.md", target_folder, slug);
+                let doc_path = format!("{}/{}.html", target_folder, slug);
 
                 let created = item
                     .created
@@ -458,60 +458,52 @@ fn clean_scrivener_markup(content: &str, uuid_to_path: &HashMap<String, String>)
     let mut result = content.to_string();
 
     // Rewrite scrivlnk:// links to relative paths
-    // Pattern: [link text](scrivlnk://UUID) or \[text\](scrivlnk://UUID)
+    // In HTML: <a href="scrivlnk://UUID">text</a>
     let scriv_link_re = Regex::new(r"scrivlnk://([A-Fa-f0-9-]+)").unwrap();
     result = scriv_link_re
         .replace_all(&result, |caps: &regex::Captures| {
             let uuid = &caps[1];
             match uuid_to_path.get(uuid) {
                 Some(path) => path.clone(),
-                None => format!("scrivlnk://{}", uuid), // preserve if unknown
+                None => format!("scrivlnk://{}", uuid),
             }
         })
         .to_string();
 
-    // Strip Scrivener paragraph/character style tags
-    // \<\$Scr_Ps::N\> and \<!\$Scr_Ps::N\>
-    // \<\$Scr_Cs::N\> and \<!\$Scr_Cs::N\>
-    let scr_tag_re = Regex::new(r"\\<[!]?\\?\$Scr_[CP]s::\d+\\>").unwrap();
-    result = scr_tag_re.replace_all(&result, "").to_string();
+    // Strip Scrivener compile style tags (HTML-escaped by Pandoc)
+    // &lt;$Scr_Ps::N&gt; and &lt;!$Scr_Ps::N&gt;
+    // &lt;$Scr_Cs::N&gt; and &lt;!$Scr_Cs::N&gt;
+    let scr_tag_html = Regex::new(r"&lt;[!]?\$Scr_[CP]s::\d+&gt;").unwrap();
+    result = scr_tag_html.replace_all(&result, "").to_string();
 
-    // Also catch the non-escaped variants that Pandoc might produce
-    let scr_tag_re2 = Regex::new(r"<[!]?\$Scr_[CP]s::\d+>").unwrap();
-    result = scr_tag_re2.replace_all(&result, "").to_string();
+    // Also catch unescaped variants
+    let scr_tag_raw = Regex::new(r"<[!]?\$Scr_[CP]s::\d+>").unwrap();
+    result = scr_tag_raw.replace_all(&result, "").to_string();
 
-    // Convert Scrivener inline annotations to HTML comments
-    // {\\Scrv_annot \color={...} \text= ANNOTATION_TEXT \end_Scrv_annot}
-    let annot_re = Regex::new(r"\{\\\\Scrv_annot[^}]*\\text=\s*([^\\}]+)\\end_Scrv_annot\}")
-        .unwrap();
-    result = annot_re
-        .replace_all(&result, |caps: &regex::Captures| {
-            format!("<!-- {} -->", caps[1].trim())
-        })
-        .to_string();
+    // Also catch backslash-escaped variants from older conversions
+    let scr_tag_esc = Regex::new(r"\\<[!]?\\?\$Scr_[CP]s::\d+\\>").unwrap();
+    result = scr_tag_esc.replace_all(&result, "").to_string();
 
-    // Convert Pandoc underline spans to bold (Markdown has no underline;
-    // bold is the closest semantic equivalent for emphasis)
-    // [*text*]{.underline} -> ***text*** (bold italic keeps the emphasis)
-    // [text]{.underline} -> **text**
-    let underline_italic_re = Regex::new(r"\[\*([^*\]]+)\*\]\{\.underline\}").unwrap();
-    result = underline_italic_re.replace_all(&result, "***$1***").to_string();
+    // Strip Scrivener custom variable placeholders
+    // &lt;$custom:shortcut&gt; etc.
+    let scr_var = Regex::new(r"&lt;\$\w+:\w+&gt;").unwrap();
+    result = scr_var.replace_all(&result, "").to_string();
 
-    let underline_re = Regex::new(r"\[([^\]]+)\]\{\.underline\}").unwrap();
-    result = underline_re.replace_all(&result, "**$1**").to_string();
+    // Scrivener uses hard line breaks between paragraphs in RTF.
+    // Pandoc converts these to <br /> within a single <p> tag.
+    // Split into proper separate paragraphs.
+    result = result.replace("<br />\n", "</p>\n<p>");
+    result = result.replace("<br/>", "</p><p>");
 
-    // Fix garbled bold+italic from Pandoc: **\*\*text\***\* -> ***text***
-    let garbled_bi_re = Regex::new(r"\*\*\\\*\\\*([^*]+)\\\*\*\*\\?\*").unwrap();
-    result = garbled_bi_re.replace_all(&result, "***$1***").to_string();
+    // Clean up empty elements left by stripped tags
+    let empty_strong = Regex::new(r"<strong>\s*</strong>").unwrap();
+    result = empty_strong.replace_all(&result, "").to_string();
 
-    // Clean remaining Pandoc span attributes we don't need
-    // {.some-class} at end of inline spans
-    let span_attr_re = Regex::new(r"\{\.[\w-]+\}").unwrap();
-    result = span_attr_re.replace_all(&result, "").to_string();
+    let empty_em = Regex::new(r"<em>\s*</em>").unwrap();
+    result = empty_em.replace_all(&result, "").to_string();
 
-    // Clean up any resulting empty lines from stripped tags
-    let multi_blank_re = Regex::new(r"\n{3,}").unwrap();
-    result = multi_blank_re.replace_all(&result, "\n\n").to_string();
+    let empty_p = Regex::new(r"<p>\s*</p>").unwrap();
+    result = empty_p.replace_all(&result, "").to_string();
 
     result
 }

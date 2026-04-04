@@ -21,7 +21,7 @@ use std::path::Path;
 use uuid::Uuid;
 // XML serialization done manually for better control
 
-use super::parser::{markdown_to_rtf, BinderItem, BinderMetadata, ScrivenerProject};
+use super::parser::{html_to_rtf, BinderItem, BinderMetadata, ScrivenerProject};
 use crate::models::{Project, TreeNode};
 use crate::utils::error::ChiknError;
 
@@ -147,18 +147,18 @@ fn write_rtf_documents(
             let uuid_dir = scriv_path.join("Files/Data").join(scriv_uuid);
             fs::create_dir_all(&uuid_dir)?;
 
-            // Write markdown to temp file
+            // Write HTML to temp file
             let temp_dir = std::env::temp_dir();
-            let temp_md = temp_dir.join(format!("temp_{}.md", Uuid::new_v4()));
+            let temp_html = temp_dir.join(format!("temp_{}.html", Uuid::new_v4()));
             let rtf_path = uuid_dir.join("content.rtf");
 
-            fs::write(&temp_md, &document.content)?;
+            fs::write(&temp_html, &document.content)?;
 
             // Convert to RTF and ensure cleanup
-            let result = markdown_to_rtf(&temp_md, &rtf_path);
+            let result = html_to_rtf(&temp_html, &rtf_path);
 
             // Always clean up temp file
-            let _ = fs::remove_file(&temp_md);
+            let _ = fs::remove_file(&temp_html);
 
             // Propagate error after cleanup
             result?;

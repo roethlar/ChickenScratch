@@ -42,7 +42,7 @@ pub fn unique_slug(name: &str, base_path: &str, documents: &HashMap<String, Docu
     // Check if path exists
     while documents
         .values()
-        .any(|d| d.path == format!("{}{}.md", base_path, slug))
+        .any(|d| d.path == format!("{}{}.html", base_path, slug))
     {
         slug = format!("{}-{}", original_slug, counter);
         counter += 1;
@@ -81,7 +81,7 @@ mod tests {
         let doc = Document {
             id: "1".to_string(),
             name: "Chapter 1".to_string(),
-            path: "manuscript/chapter-1.md".to_string(),
+            path: "manuscript/chapter-1.html".to_string(),
             content: String::new(),
             parent_id: None,
             created: "2025-01-01T00:00:00Z".to_string(),

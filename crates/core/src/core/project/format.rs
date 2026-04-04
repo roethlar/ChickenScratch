@@ -40,8 +40,8 @@ pub const TEMPLATES_FOLDER: &str = "templates";
 /// Settings folder
 pub const SETTINGS_FOLDER: &str = "settings";
 
-/// Markdown file extension
-pub const DOCUMENT_EXTENSION: &str = "md";
+/// Document content file extension
+pub const DOCUMENT_EXTENSION: &str = "html";
 
 /// Metadata file extension
 pub const METADATA_EXTENSION: &str = "meta";
@@ -286,7 +286,7 @@ mod tests {
         let doc_name = "chapter-01";
 
         let content_path = get_document_content_path(folder, doc_name);
-        assert_eq!(content_path, folder.join("chapter-01.md"));
+        assert_eq!(content_path, folder.join("chapter-01.html"));
 
         let meta_path = get_document_meta_path(folder, doc_name);
         assert_eq!(meta_path, folder.join("chapter-01.meta"));

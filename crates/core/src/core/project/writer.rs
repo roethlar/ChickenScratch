@@ -4,7 +4,7 @@
 //!
 //! ## Responsibilities
 //! - Serialize Project to project.yaml
-//! - Write all document content to .md files
+//! - Write all document content to .html files
 //! - Write document metadata to .meta files
 //! - Atomic writes (temp file + rename)
 //! - Create required directory structure
@@ -208,7 +208,7 @@ fn write_document(
         fs::create_dir_all(parent)?;
     }
 
-    // Write content (.md file)
+    // Write content (.html file)
     fs::write(&full_content_path, &document.content)?;
 
     // Write metadata (.meta file) in same directory
@@ -266,7 +266,7 @@ pub fn delete_document(project_path: &Path, document_path: &str) -> Result<(), C
     // Resolve full paths
     let full_content_path = project_path.join(document_path);
 
-    // Delete .md file
+    // Delete .html file
     if full_content_path.exists() {
         fs::remove_file(&full_content_path)?;
     }
@@ -337,7 +337,7 @@ mod tests {
         let doc = Document {
             id: "doc1".to_string(),
             name: "chapter-01".to_string(),
-            path: "manuscript/chapter-01.md".to_string(),
+            path: "manuscript/chapter-01.html".to_string(),
             content: "# Chapter 1\n\nTest content".to_string(),
             parent_id: None,
             created: Utc::now().to_rfc3339(),
@@ -356,7 +356,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify files exist
-        let content_path = get_manuscript_path(&project_path).join("chapter-01.md");
+        let content_path = get_manuscript_path(&project_path).join("chapter-01.html");
         assert!(content_path.exists());
 
         let meta_path = get_manuscript_path(&project_path).join("chapter-01.meta");
@@ -374,7 +374,7 @@ mod tests {
         let doc = Document {
             id: "doc1".to_string(),
             name: "test-document".to_string(),
-            path: "manuscript/test-document.md".to_string(),
+            path: "manuscript/test-document.html".to_string(),
             content: "Test content for round trip".to_string(),
             parent_id: None,
             created: Utc::now().to_rfc3339(),
@@ -417,7 +417,7 @@ mod tests {
         let doc = Document {
             id: "doc1".to_string(),
             name: "to-delete".to_string(),
-            path: "manuscript/to-delete.md".to_string(),
+            path: "manuscript/to-delete.html".to_string(),
             content: "This will be deleted".to_string(),
             parent_id: None,
             created: Utc::now().to_rfc3339(),
@@ -428,11 +428,11 @@ mod tests {
         write_project(&mut project).unwrap();
 
         // Verify file exists
-        let content_path = get_manuscript_path(&project_path).join("to-delete.md");
+        let content_path = get_manuscript_path(&project_path).join("to-delete.html");
         assert!(content_path.exists());
 
         // Delete document using its path
-        delete_document(&project_path, "manuscript/to-delete.md").unwrap();
+        delete_document(&project_path, "manuscript/to-delete.html").unwrap();
 
         // Verify files are gone
         assert!(!content_path.exists());
@@ -469,7 +469,7 @@ mod tests {
         let doc = Document {
             id: "nested1".to_string(),
             name: "Chapter 1".to_string(),
-            path: "manuscript/part-one/chapter-01.md".to_string(),
+            path: "manuscript/part-one/chapter-01.html".to_string(),
             content: "# Nested Chapter\n\nContent".to_string(),
             parent_id: None,
             created: Utc::now().to_rfc3339(),
@@ -483,7 +483,7 @@ mod tests {
         let nested_path = project_path
             .join("manuscript")
             .join("part-one")
-            .join("chapter-01.md");
+            .join("chapter-01.html");
         assert!(nested_path.exists());
 
         // Verify content
@@ -509,7 +509,7 @@ mod tests {
         let doc = Document {
             id: "research1".to_string(),
             name: "Character Notes".to_string(),
-            path: "research/characters.md".to_string(),
+            path: "research/characters.html".to_string(),
             content: "# Characters\n\nJohn Doe".to_string(),
             parent_id: None,
             created: Utc::now().to_rfc3339(),
@@ -520,7 +520,7 @@ mod tests {
         write_project(&mut project).unwrap();
 
         // Verify file in research folder
-        let research_path = project_path.join("research").join("characters.md");
+        let research_path = project_path.join("research").join("characters.html");
         assert!(research_path.exists());
     }
 
@@ -585,7 +585,7 @@ mod tests {
         let doc = Document {
             id: "nested1".to_string(),
             name: "Nested Chapter".to_string(),
-            path: "manuscript/part-one/chapter.md".to_string(),
+            path: "manuscript/part-one/chapter.html".to_string(),
             content: "Content".to_string(),
             parent_id: None,
             created: Utc::now().to_rfc3339(),
@@ -599,11 +599,11 @@ mod tests {
         let nested_path = project_path
             .join("manuscript")
             .join("part-one")
-            .join("chapter.md");
+            .join("chapter.html");
         assert!(nested_path.exists());
 
         // Delete it
-        delete_document(&project_path, "manuscript/part-one/chapter.md").unwrap();
+        delete_document(&project_path, "manuscript/part-one/chapter.html").unwrap();
 
         // Verify it's gone
         assert!(!nested_path.exists());

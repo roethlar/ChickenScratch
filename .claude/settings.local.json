@@ -49,7 +49,12 @@
       "Bash(pkill -f vite)",
       "Read(//Users/michael/Documents/**)",
       "Read(//Users/michael/**)",
-      "Bash(/Users/michael/Dev/ChickenScratch/target/release/chikn-converter \"/Users/michael/Downloads/Scrivener 3 - User Manual.scriv\" \"/tmp/manual-test.chikn\")"
+      "Bash(/Users/michael/Dev/ChickenScratch/target/release/chikn-converter \"/Users/michael/Downloads/Scrivener 3 - User Manual.scriv\" \"/tmp/manual-test.chikn\")",
+      "Bash(pandoc -f rtf -t html --wrap=none '/Users/michael/Downloads/Scrivener 3 - User Manual.scriv/Files/Data/476C926E-2F06-498D-B344-38D8E038C498/content.rtf')",
+      "Bash(rm -rf /tmp/Corn-html.chikn)",
+      "Bash(/Users/michael/Dev/ChickenScratch/target/release/chikn-converter /Users/michael/Dev/ChickenScratch/samples/Corn.scriv /tmp/Corn-html.chikn)",
+      "Read(//tmp/Corn-html.chikn/**)",
+      "Read(//private/tmp/Corn-html.chikn/manuscript/**)"
     ],
     "deny": [],
     "ask": []

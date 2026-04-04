@@ -2,7 +2,9 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import CharacterCount from "@tiptap/extension-character-count";
-import { Markdown } from "tiptap-markdown";
+import { Underline } from "@tiptap/extension-underline";
+import { TextStyle } from "@tiptap/extension-text-style";
+import { Color } from "@tiptap/extension-color";
 import { useEffect, useRef, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
 
@@ -12,6 +14,7 @@ export function Editor() {
   const saveActiveDoc = useProjectStore((s) => s.saveActiveDoc);
   const saving = useProjectStore((s) => s.saving);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const docIdRef = useRef<string | null>(null);
 
   const debouncedSave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -29,7 +32,9 @@ export function Editor() {
         placeholder: "Start writing...",
       }),
       CharacterCount,
-      Markdown,
+      Underline,
+      TextStyle,
+      Color,
     ],
     content: "",
     editorProps: {
@@ -38,8 +43,8 @@ export function Editor() {
       },
     },
     onUpdate: ({ editor }) => {
-      const md = editor.storage.markdown.getMarkdown();
-      updateContent(md);
+      const html = editor.getHTML();
+      updateContent(html);
       debouncedSave();
     },
   });
@@ -49,16 +54,16 @@ export function Editor() {
     if (!editor) return;
     if (!activeDoc) {
       editor.commands.clearContent();
+      docIdRef.current = null;
       return;
     }
-    // Only set content if it's a different document
-    const currentMd = editor.storage.markdown.getMarkdown();
-    if (currentMd !== activeDoc.content) {
+    // Only set content when switching documents
+    if (docIdRef.current !== activeDoc.id) {
+      docIdRef.current = activeDoc.id;
       editor.commands.setContent(activeDoc.content || "");
     }
   }, [activeDoc?.id, editor]);
 
-  // Cleanup save timer
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
