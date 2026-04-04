@@ -7,6 +7,23 @@ use std::collections::HashMap;
 
 use super::{Document, TreeNode};
 
+/// Project-level metadata
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProjectMeta {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_type: Option<String>, // "Novel", "Short Story", "Screenplay", etc.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genre: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+}
+
 /// Project model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
@@ -30,4 +47,8 @@ pub struct Project {
 
     /// Last modified timestamp
     pub modified: String,
+
+    /// Project-level metadata (title, author, type, etc.)
+    #[serde(default)]
+    pub metadata: ProjectMeta,
 }

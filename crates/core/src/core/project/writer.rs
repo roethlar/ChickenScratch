@@ -105,6 +105,7 @@ pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
         documents: std::collections::HashMap::new(),
         created: now.clone(),
         modified: now,
+        metadata: Default::default(),
     };
 
     // Write .gitignore
@@ -147,7 +148,8 @@ fn write_project_metadata(project: &Project) -> Result<(), ChiknError> {
         name: project.name.clone(),
         hierarchy: project.hierarchy.clone(),
         created: project.created.clone(),
-        modified: project.modified.clone(), // Use already-updated timestamp
+        modified: project.modified.clone(),
+        metadata: project.metadata.clone(),
     };
 
     let yaml_content = serde_yaml::to_string(&metadata)?;

@@ -17,6 +17,15 @@ export interface Document {
   links?: string[] | null;
 }
 
+export interface ProjectMeta {
+  title?: string | null;
+  author?: string | null;
+  project_type?: string | null;
+  genre?: string | null;
+  theme?: string | null;
+  summary?: string | null;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -25,4 +34,5 @@ export interface Project {
   documents: Record<string, Document>;
   created: string;
   modified: string;
+  metadata: ProjectMeta;
 }

@@ -13,6 +13,7 @@ import {
   History,
   Maximize,
   FileOutput,
+  BookOpen as BookOpenIcon,
   Sun,
   Moon,
   BookOpen,
@@ -20,10 +21,11 @@ import {
 } from "lucide-react";
 import { CommandPalette } from "./components/command-palette/CommandPalette";
 import { Revisions } from "./components/revisions/Revisions";
+import { Preview } from "./components/preview/Preview";
 import { save } from "@tauri-apps/plugin-dialog";
 import { compileProject } from "./commands/io";
 
-type View = "editor" | "corkboard";
+type View = "editor" | "corkboard" | "preview";
 
 export default function App() {
   const project = useProjectStore((s) => s.project);
@@ -109,6 +111,13 @@ export default function App() {
           >
             <LayoutGrid size={16} />
           </button>
+          <button
+            className={`view-btn ${view === "preview" ? "active" : ""}`}
+            onClick={() => setView("preview")}
+            title="Manuscript Preview"
+          >
+            <BookOpenIcon size={16} />
+          </button>
           <div style={{ flex: 1 }} />
           <button
             className="view-btn"
@@ -146,7 +155,7 @@ export default function App() {
             <PanelRight size={16} />
           </button>
         </div>
-        {view === "editor" ? <Editor /> : <Corkboard />}
+        {view === "editor" ? <Editor /> : view === "corkboard" ? <Corkboard /> : <Preview />}
       </div>
       {showRevisions && <Revisions />}
       {showInspector && <Inspector />}

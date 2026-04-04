@@ -1065,3 +1065,150 @@
   border-color: var(--color-accent);
   color: var(--color-accent);
 }
+
+/* ── Manuscript Preview ────────────────────────────── */
+
+.preview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.preview-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.preview-content {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 3rem 2rem 6rem;
+  font-family: "Literata Variable", "Literata", "Georgia", serif;
+  font-size: 1.125rem;
+  line-height: 1.8;
+  color: var(--color-text);
+}
+
+.preview-title-page {
+  text-align: center;
+  padding: 4rem 0 3rem;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 3rem;
+}
+
+.preview-type {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.preview-title {
+  font-size: 2.4rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5rem;
+  line-height: 1.2;
+}
+
+.preview-author {
+  font-size: 1.1rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin-bottom: 1rem;
+}
+
+.preview-stats {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.preview-edit-meta {
+  font-size: 0.8rem;
+  color: var(--color-accent);
+  background: none;
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.preview-edit-meta:hover {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.preview-meta-form {
+  text-align: left;
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.preview-meta-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.preview-meta-form input,
+.preview-meta-form textarea,
+.preview-meta-form select {
+  width: 100%;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.preview-meta-form input:focus,
+.preview-meta-form textarea:focus,
+.preview-meta-form select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.preview-save-meta {
+  align-self: flex-end;
+  font-size: 0.85rem;
+  color: white;
+  background: var(--color-accent);
+  border: none;
+  border-radius: 4px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+.preview-section {
+  margin-bottom: 2rem;
+}
+
+.preview-section-title {
+  font-size: 1.4em;
+  font-weight: 600;
+  margin: 2em 0 0.5em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.preview-section-body p {
+  margin: 0;
+  text-indent: 2em;
+}
+
+.preview-section-body p:first-child {
+  text-indent: 0;
+}

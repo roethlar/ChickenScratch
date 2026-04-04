@@ -51,6 +51,10 @@ pub struct ProjectMetadata {
 
     /// Last modified timestamp
     pub modified: String,
+
+    /// Project-level metadata
+    #[serde(default)]
+    pub metadata: crate::models::ProjectMeta,
 }
 
 /// Document metadata structure as stored in .meta files
@@ -152,6 +156,7 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
         documents,
         created: metadata.created,
         modified: metadata.modified,
+        metadata: metadata.metadata,
     };
 
     // Reconcile hierarchy with actual files on disk

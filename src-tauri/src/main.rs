@@ -13,6 +13,7 @@ fn main() {
             project::load_project,
             project::save_project,
             project::import_scrivener,
+            project::update_project_metadata,
             project::pick_scriv_folder,
             document::get_document,
             document::update_document_content,

@@ -4,4 +4,4 @@ mod project;
 
 pub use document::Document;
 pub use hierarchy::TreeNode;
-pub use project::Project;
+pub use project::{Project, ProjectMeta};

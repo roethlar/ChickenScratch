@@ -31,6 +31,27 @@ pub fn import_scrivener(scriv_path: String, output_path: String) -> Result<Proje
 }
 
 #[tauri::command]
+pub fn update_project_metadata(
+    project_path: String,
+    title: Option<String>,
+    author: Option<String>,
+    project_type: Option<String>,
+    genre: Option<String>,
+    theme: Option<String>,
+    summary: Option<String>,
+) -> Result<Project, ChiknError> {
+    let mut project = reader::read_project(Path::new(&project_path))?;
+    project.metadata.title = title;
+    project.metadata.author = author;
+    project.metadata.project_type = project_type;
+    project.metadata.genre = genre;
+    project.metadata.theme = theme;
+    project.metadata.summary = summary;
+    writer::write_project(&mut project)?;
+    Ok(project)
+}
+
+#[tauri::command]
 pub fn pick_scriv_folder() -> Result<Option<String>, ChiknError> {
     #[cfg(target_os = "macos")]
     {
