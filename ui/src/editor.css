@@ -167,6 +167,10 @@
   background: color-mix(in srgb, var(--color-text) 6%, transparent);
 }
 
+.binder-item.selected {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
 .binder-item.active {
   background: var(--color-accent);
   color: white;

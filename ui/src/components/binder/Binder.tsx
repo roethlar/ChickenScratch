@@ -36,6 +36,9 @@ export function Binder() {
   const setProject = (p: typeof project) =>
     useProjectStore.setState({ project: p });
 
+  // Selected node — determines where + adds items. Separate from activeDocId (editing).
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -53,16 +56,43 @@ export function Binder() {
 
   const closeMenu = useCallback(() => setContextMenu(null), []);
 
+  /** Find what type a node is in the hierarchy */
+  const findNodeType = useCallback(
+    (nodeId: string): "Document" | "Folder" | null => {
+      const search = (nodes: TreeNode[]): "Document" | "Folder" | null => {
+        for (const n of nodes) {
+          if (n.id === nodeId) return n.type;
+          if (n.type === "Folder") {
+            const found = search(n.children);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      return project ? search(project.hierarchy) : null;
+    },
+    [project]
+  );
+
+  /** Determine parentId for creating new items based on current selection */
+  const getParentForNew = useCallback((): string | undefined => {
+    if (!selectedId) return undefined; // root
+    const type = findNodeType(selectedId);
+    if (type === "Folder") return selectedId; // inside the folder
+    return undefined; // document selected — add at root
+  }, [selectedId, findNodeType]);
+
   const handleNewDoc = useCallback(
     async (parentId?: string) => {
       if (!project) return;
       const name = await dialogPrompt("Document name:");
       if (!name) return;
-      const updated = await docCmd.createDocument(project.path, name, parentId);
+      const pid = parentId !== undefined ? parentId : getParentForNew();
+      const updated = await docCmd.createDocument(project.path, name, pid);
       setProject(updated);
       closeMenu();
     },
-    [project]
+    [project, getParentForNew]
   );
 
   const handleNewFolder = useCallback(
@@ -70,11 +100,12 @@ export function Binder() {
       if (!project) return;
       const name = await dialogPrompt("Folder name:");
       if (!name) return;
-      const updated = await docCmd.createFolder(project.path, name, parentId);
+      const pid = parentId !== undefined ? parentId : getParentForNew();
+      const updated = await docCmd.createFolder(project.path, name, pid);
       setProject(updated);
       closeMenu();
     },
-    [project]
+    [project, getParentForNew]
   );
 
   const handleDelete = useCallback(
@@ -166,7 +197,24 @@ export function Binder() {
   if (!project) return null;
 
   return (
-    <nav className="binder" onContextMenu={(e) => handleContextMenu(e, null, null)}>
+    <nav
+      className="binder"
+      onContextMenu={(e) => handleContextMenu(e, null, null)}
+      onClick={(e) => {
+        // Click empty space to deselect
+        if ((e.target as HTMLElement).classList.contains("binder-tree")) {
+          setSelectedId(null);
+          useProjectStore.setState({ activeDocId: null, activeDoc: null });
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          setSelectedId(null);
+          useProjectStore.setState({ activeDocId: null, activeDoc: null });
+        }
+      }}
+      tabIndex={0}
+    >
       <div className="binder-header">
         <span className="binder-title">{project.name}</span>
         <div className="binder-header-actions">
@@ -193,7 +241,9 @@ export function Binder() {
             node={node}
             depth={0}
             activeId={activeDocId}
+            selectedId={selectedId}
             onSelect={selectDocument}
+            onSelectNode={setSelectedId}
             onContextMenu={handleContextMenu}
             onDrop={handleDrop}
           />
@@ -224,14 +274,18 @@ function TreeItem({
   node,
   depth,
   activeId,
+  selectedId,
   onSelect,
+  onSelectNode,
   onContextMenu,
   onDrop,
 }: {
   node: TreeNode;
   depth: number;
   activeId: string | null;
+  selectedId: string | null;
   onSelect: (id: string) => void;
+  onSelectNode: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, nodeId: string, nodeType: "Document" | "Folder") => void;
   onDrop: (dragId: string, targetId: string, position: "before" | "after" | "into") => void;
 }) {
@@ -275,14 +329,15 @@ function TreeItem({
 
   if (node.type === "Document") {
     const isActive = node.id === activeId;
+    const isSelected = node.id === selectedId;
     const isMedia = !node.path.endsWith(".html");
 
     return (
       <button
         ref={itemRef}
-        className={`binder-item ${isActive ? "active" : ""} ${dropClass}`}
+        className={`binder-item ${isActive ? "active" : ""} ${isSelected && !isActive ? "selected" : ""} ${dropClass}`}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
-        onClick={() => onSelect(node.id)}
+        onClick={() => { onSelectNode(node.id); onSelect(node.id); }}
         onContextMenu={(e) => onContextMenu(e, node.id, "Document")}
         draggable
         onDragStart={handleDragStart}
@@ -301,9 +356,9 @@ function TreeItem({
     <div>
       <button
         ref={itemRef}
-        className={`binder-item folder ${dropClass}`}
+        className={`binder-item folder ${node.id === selectedId ? "selected" : ""} ${dropClass}`}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
-        onClick={() => setOpen(!open)}
+        onClick={() => { setOpen(!open); onSelectNode(node.id); }}
         onContextMenu={(e) => onContextMenu(e, node.id, "Folder")}
         draggable
         onDragStart={handleDragStart}
@@ -326,7 +381,9 @@ function TreeItem({
             node={child}
             depth={depth + 1}
             activeId={activeId}
+            selectedId={selectedId}
             onSelect={onSelect}
+            onSelectNode={onSelectNode}
             onContextMenu={onContextMenu}
             onDrop={onDrop}
           />
