@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { dialogPrompt, dialogConfirm } from "../shared/Dialog";
 import {
   Save,
   History,
@@ -48,7 +49,7 @@ export function Revisions() {
 
   const handleRestore = async (commitId: string) => {
     if (!project) return;
-    if (!confirm("Restore to this revision? Your current work will be preserved as a new revision."))
+    if (!(await dialogConfirm("Restore to this revision? Your current work will be preserved as a new revision.")))
       return;
     await gitCmd.restoreRevision(project.path, commitId);
     // Reload the project to reflect restored state
@@ -58,7 +59,7 @@ export function Revisions() {
 
   const handleNewDraft = async () => {
     if (!project) return;
-    const name = prompt("Draft version name:");
+    const name = await dialogPrompt("Draft version name:");
     if (!name) return;
     await gitCmd.createDraft(project.path, name);
     await useProjectStore.getState().openProject(project.path);
@@ -74,7 +75,7 @@ export function Revisions() {
 
   const handleMergeDraft = async (name: string) => {
     if (!project) return;
-    if (!confirm(`Merge "${name}" into the current draft?`)) return;
+    if (!(await dialogConfirm(`Merge "${name}" into the current draft?`))) return;
     await gitCmd.mergeDraft(project.path, name);
     await useProjectStore.getState().openProject(project.path);
     await refresh();
@@ -82,7 +83,7 @@ export function Revisions() {
 
   const handleBackup = async () => {
     if (!project) return;
-    const dir = prompt(
+    const dir = await dialogPrompt(
       "Backup directory:",
       localStorage.getItem("chickenscratch-backup-dir") || ""
     );

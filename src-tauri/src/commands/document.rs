@@ -53,6 +53,46 @@ pub fn update_document_metadata(
 }
 
 #[tauri::command]
+pub fn rename_node(
+    project_path: String,
+    node_id: String,
+    new_name: String,
+) -> Result<Project, ChiknError> {
+    let mut project = reader::read_project(Path::new(&project_path))?;
+
+    // Rename in hierarchy
+    rename_in_hierarchy(&mut project.hierarchy, &node_id, &new_name);
+
+    // Rename document if it exists
+    if let Some(doc) = project.documents.get_mut(&node_id) {
+        doc.name = new_name;
+        doc.modified = chrono::Utc::now().to_rfc3339();
+    }
+
+    writer::write_project(&mut project)?;
+    Ok(project)
+}
+
+fn rename_in_hierarchy(nodes: &mut Vec<TreeNode>, node_id: &str, new_name: &str) {
+    for node in nodes {
+        match node {
+            TreeNode::Document { id, name, .. } if id == node_id => {
+                *name = new_name.to_string();
+                return;
+            }
+            TreeNode::Folder { id, name, children } => {
+                if id == node_id {
+                    *name = new_name.to_string();
+                    return;
+                }
+                rename_in_hierarchy(children, node_id, new_name);
+            }
+            _ => {}
+        }
+    }
+}
+
+#[tauri::command]
 pub fn create_document(
     project_path: String,
     name: String,

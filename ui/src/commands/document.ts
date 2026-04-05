@@ -33,6 +33,14 @@ export async function updateDocumentMetadata(
   });
 }
 
+export async function renameNode(
+  projectPath: string,
+  nodeId: string,
+  newName: string
+): Promise<Project> {
+  return invoke("rename_node", { projectPath, nodeId, newName });
+}
+
 export async function createDocument(
   projectPath: string,
   name: string,

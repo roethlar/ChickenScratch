@@ -8,11 +8,13 @@ import {
   Trash2,
   ArrowUp,
   ArrowDown,
+  Pencil,
 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { TreeNode } from "../../types";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
+import { dialogPrompt, dialogConfirm } from "../shared/Dialog";
 
 /** Find the index of a node within its parent's children list */
 function findNodeIndex(hierarchy: TreeNode[], nodeId: string): { siblings: TreeNode[]; index: number } | null {
@@ -54,7 +56,7 @@ export function Binder() {
   const handleNewDoc = useCallback(
     async (parentId?: string) => {
       if (!project) return;
-      const name = prompt("Document name:");
+      const name = await dialogPrompt("Document name:");
       if (!name) return;
       const updated = await docCmd.createDocument(project.path, name, parentId);
       setProject(updated);
@@ -66,7 +68,7 @@ export function Binder() {
   const handleNewFolder = useCallback(
     async (parentId?: string) => {
       if (!project) return;
-      const name = prompt("Folder name:");
+      const name = await dialogPrompt("Folder name:");
       if (!name) return;
       const updated = await docCmd.createFolder(project.path, name, parentId);
       setProject(updated);
@@ -78,7 +80,7 @@ export function Binder() {
   const handleDelete = useCallback(
     async (nodeId: string) => {
       if (!project) return;
-      if (!confirm("Delete this item?")) return;
+      if (!(await dialogConfirm("Delete this item?"))) return;
       const updated = await docCmd.deleteNode(project.path, nodeId);
       setProject(updated);
       if (activeDocId === nodeId) {
@@ -87,6 +89,30 @@ export function Binder() {
       closeMenu();
     },
     [project, activeDocId]
+  );
+
+  const handleRename = useCallback(
+    async (nodeId: string) => {
+      if (!project) return;
+      // Find current name
+      const findName = (nodes: TreeNode[]): string | null => {
+        for (const n of nodes) {
+          if (n.id === nodeId) return n.name;
+          if (n.type === "Folder") {
+            const found = findName(n.children);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      const currentName = findName(project.hierarchy) || "";
+      const newName = await dialogPrompt("Rename:", currentName);
+      if (!newName || newName === currentName) return;
+      const updated = await docCmd.renameNode(project.path, nodeId, newName);
+      setProject(updated);
+      closeMenu();
+    },
+    [project]
   );
 
   const handleMoveUp = useCallback(
@@ -184,6 +210,7 @@ export function Binder() {
           onNewDoc={handleNewDoc}
           onNewFolder={handleNewFolder}
           onDelete={handleDelete}
+          onRename={handleRename}
           onMoveUp={handleMoveUp}
           onMoveDown={handleMoveDown}
           onClose={closeMenu}
@@ -317,6 +344,7 @@ function ContextMenu({
   onNewDoc,
   onNewFolder,
   onDelete,
+  onRename,
   onMoveUp,
   onMoveDown,
   onClose,
@@ -329,6 +357,7 @@ function ContextMenu({
   onNewDoc: (parentId?: string) => void;
   onNewFolder: (parentId?: string) => void;
   onDelete: (nodeId: string) => void;
+  onRename: (nodeId: string) => void;
   onMoveUp: (nodeId: string) => void;
   onMoveDown: (nodeId: string) => void;
   onClose: () => void;
@@ -365,6 +394,9 @@ function ContextMenu({
       {nodeId && (
         <>
           <div className="context-menu-divider" />
+          <button onClick={() => onRename(nodeId)}>
+            <Pencil size={14} /> Rename
+          </button>
           <button disabled={!canMoveUp} onClick={() => onMoveUp(nodeId)}>
             <ArrowUp size={14} /> Move Up
           </button>
