@@ -109,13 +109,19 @@ export function Binder() {
     [project]
   );
 
+  /** Find the Manuscript folder ID */
+  const manuscriptId = project?.hierarchy.find(
+    (n): n is Extract<TreeNode, { type: "Folder" }> =>
+      n.type === "Folder" && n.name === "Manuscript"
+  )?.id;
+
   /** Determine parentId for creating new items based on current selection */
   const getParentForNew = useCallback((): string | undefined => {
-    if (!selectedId) return undefined; // root
+    if (!selectedId) return manuscriptId; // default to Manuscript
     const type = findNodeType(selectedId);
-    if (type === "Folder") return selectedId; // inside the folder
-    return undefined; // document selected — add at root
-  }, [selectedId, findNodeType]);
+    if (type === "Folder") return selectedId; // inside the selected folder
+    return manuscriptId; // document selected — add to Manuscript
+  }, [selectedId, findNodeType, manuscriptId]);
 
   const handleNewDoc = useCallback(
     async (parentId?: string) => {
@@ -243,23 +249,37 @@ export function Binder() {
     [project]
   );
 
-  const handleDrop = useCallback(
-    async (dragId: string, targetId: string, position: "before" | "after" | "into") => {
+  // State for "Move to..." folder picker
+  const [movingNodeId, setMovingNodeId] = useState<string | null>(null);
+
+  /** Collect all folders in the hierarchy for the Move To picker */
+  const allFolders = useCallback((): { id: string; name: string; depth: number }[] => {
+    if (!project) return [];
+    const result: { id: string; name: string; depth: number }[] = [];
+    const walk = (nodes: TreeNode[], depth: number) => {
+      for (const n of nodes) {
+        if (n.type === "Folder") {
+          result.push({ id: n.id, name: n.name, depth });
+          walk(n.children, depth + 1);
+        }
+      }
+    };
+    walk(project.hierarchy, 0);
+    return result;
+  }, [project]);
+
+  const handleMoveTo = useCallback(
+    async (nodeId: string, targetFolderId: string) => {
       if (!project) return;
       try {
-        if (position === "into") {
-          const updated = await docCmd.moveNode(project.path, dragId, targetId);
-          setProject(updated);
-        } else {
-          const found = findNodeIndex(project.hierarchy, targetId);
-          if (!found) return;
-          const newIndex = position === "before" ? found.index : found.index + 1;
-          const updated = await docCmd.moveNode(project.path, dragId, undefined, newIndex);
-          setProject(updated);
-        }
+        const updated = await docCmd.moveNode(project.path, nodeId, targetFolderId);
+        setProject(updated);
+        toastSuccess("Moved");
       } catch (e) {
         toastError(`Move failed: ${e}`);
       }
+      setMovingNodeId(null);
+      closeMenu();
     },
     [project]
   );
@@ -316,7 +336,6 @@ export function Binder() {
             onSelect={selectDocument}
             onSelectNode={setSelectedId}
             onContextMenu={handleContextMenu}
-            onDrop={handleDrop}
           />
         ))}
       </div>
@@ -335,18 +354,40 @@ export function Binder() {
           onMoveUp={handleMoveUp}
           onMoveDown={handleMoveDown}
           onImportFile={handleImportFile}
-          onMoveTo={async (nodeId: string, targetFolderId: string) => {
-            if (!project) return;
-            try {
-              const updated = await docCmd.moveNode(project.path, nodeId, targetFolderId);
-              setProject(updated);
-            } catch (e) {
-              toastError(`Move failed: ${e}`);
-            }
+          onMoveTo={(nodeId: string) => {
+            setMovingNodeId(nodeId);
             closeMenu();
           }}
           onClose={closeMenu}
         />
+      )}
+
+      {movingNodeId && (
+        <div className="dialog-overlay" onClick={() => setMovingNodeId(null)}>
+          <div className="dialog" onClick={(e) => e.stopPropagation()}>
+            <p className="dialog-title">Move to folder:</p>
+            <div className="move-folder-list">
+              {allFolders()
+                .filter((f) => f.id !== movingNodeId)
+                .map((f) => (
+                  <button
+                    key={f.id}
+                    className="move-folder-item"
+                    style={{ paddingLeft: `${8 + f.depth * 16}px` }}
+                    onClick={() => handleMoveTo(movingNodeId, f.id)}
+                  >
+                    <Folder size={14} />
+                    {f.name}
+                  </button>
+                ))}
+            </div>
+            <div className="dialog-buttons">
+              <button className="dialog-btn cancel" onClick={() => setMovingNodeId(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </nav>
   );
@@ -361,7 +402,6 @@ function TreeItem({
   onSelect,
   onSelectNode,
   onContextMenu,
-  onDrop,
 }: {
   node: TreeNode;
   depth: number;
@@ -371,53 +411,15 @@ function TreeItem({
   onSelect: (id: string) => void;
   onSelectNode: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, nodeId: string, nodeType: "Document" | "Folder") => void;
-  onDrop: (dragId: string, targetId: string, position: "before" | "after" | "into") => void;
 }) {
-  // Persist folder open state
   const savedState = node.type === "Folder" ? getFolderState(projectId)[node.id] : undefined;
   const [open, setOpen] = useState(savedState !== undefined ? savedState : true);
-  const [dropPos, setDropPos] = useState<"before" | "after" | "into" | null>(null);
-  const itemRef = useRef<HTMLDivElement>(null);
 
   const toggleFolder = useCallback(() => {
     const next = !open;
     setOpen(next);
     setFolderState(projectId, node.id, next);
   }, [open, projectId, node.id]);
-
-  const handleDragStart = (e: React.DragEvent) => {
-    e.dataTransfer.setData("text/plain", node.id);
-    e.dataTransfer.effectAllowed = "move";
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const y = e.clientY - rect.top;
-    const h = rect.height;
-
-    if (node.type === "Folder") {
-      if (y < h * 0.25) setDropPos("before");
-      else if (y > h * 0.75) setDropPos("after");
-      else setDropPos("into");
-    } else {
-      setDropPos(y < h / 2 ? "before" : "after");
-    }
-  };
-
-  const handleDragLeave = () => setDropPos(null);
-
-  const handleDropEvent = (e: React.DragEvent) => {
-    e.preventDefault();
-    const dragId = e.dataTransfer.getData("text/plain");
-    if (dragId && dragId !== node.id && dropPos) {
-      onDrop(dragId, node.id, dropPos);
-    }
-    setDropPos(null);
-  };
-
-  const dropClass = dropPos ? `drop-${dropPos}` : "";
 
   if (node.type === "Document") {
     const isActive = node.id === activeId;
@@ -426,16 +428,10 @@ function TreeItem({
 
     return (
       <div
-        ref={itemRef}
-        className={`binder-item ${isActive ? "active" : ""} ${isSelected && !isActive ? "selected" : ""} ${dropClass}`}
+        className={`binder-item ${isActive ? "active" : ""} ${isSelected && !isActive ? "selected" : ""}`}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
         onClick={() => { onSelectNode(node.id); onSelect(node.id); }}
         onContextMenu={(e) => onContextMenu(e, node.id, "Document")}
-        draggable
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDropEvent}
         title={node.name}
       >
         <FileText size={14} className={`binder-icon ${isMedia ? "media" : ""}`} />
@@ -451,16 +447,10 @@ function TreeItem({
   return (
     <div>
       <div
-        ref={itemRef}
-        className={`binder-item folder ${node.id === selectedId ? "selected" : ""} ${dropClass}`}
+        className={`binder-item folder ${node.id === selectedId ? "selected" : ""}`}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
         onClick={() => { toggleFolder(); onSelectNode(node.id); }}
         onContextMenu={(e) => onContextMenu(e, node.id, "Folder")}
-        draggable
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDropEvent}
       >
         {open ? (
           <ChevronDown size={14} className="binder-chevron" />
@@ -494,7 +484,6 @@ function TreeItem({
             onSelect={onSelect}
             onSelectNode={onSelectNode}
             onContextMenu={onContextMenu}
-            onDrop={onDrop}
           />
         ))}
     </div>
@@ -529,7 +518,7 @@ function ContextMenu({
   onMoveUp: (nodeId: string) => void;
   onMoveDown: (nodeId: string) => void;
   onImportFile: (parentId?: string) => void;
-  onMoveTo: (nodeId: string, targetFolderId: string) => void;
+  onMoveTo: (nodeId: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -597,19 +586,10 @@ function ContextMenu({
           <button disabled={!canMoveDown} onClick={() => onMoveDown(nodeId)}>
             <ArrowDown size={14} /> Move Down
           </button>
-          {specialFolders.length > 0 && (
-            <>
-              <div className="context-menu-divider" />
-              {specialFolders.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => onMoveTo(nodeId, f.id)}
-                >
-                  <ArrowDown size={14} /> Move to {f.name}
-                </button>
-              ))}
-            </>
-          )}
+          <div className="context-menu-divider" />
+          <button onClick={() => onMoveTo(nodeId)}>
+            <Folder size={14} /> Move to...
+          </button>
           <div className="context-menu-divider" />
           <button className="danger" onClick={() => onDelete(nodeId)}>
             <Trash2 size={14} /> Delete
