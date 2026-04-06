@@ -7,6 +7,7 @@ import { Editor } from "./components/editor/Editor";
 import { Corkboard } from "./components/corkboard/Corkboard";
 import { Inspector } from "./components/inspector/Inspector";
 import { ProjectSearch } from "./components/search/ProjectSearch";
+import { Settings } from "./components/settings/Settings";
 import {
   PenLine,
   LayoutGrid,
@@ -18,6 +19,7 @@ import {
   Sun,
   Moon,
   BookOpen,
+  Settings2,
 } from "lucide-react";
 import { CommandPalette } from "./components/command-palette/CommandPalette";
 import { Revisions } from "./components/revisions/Revisions";
@@ -38,6 +40,7 @@ export default function App() {
   const [showRevisions, setShowRevisions] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const [showBinder, setShowBinder] = useState(true);
 
@@ -200,6 +203,13 @@ export default function App() {
           >
             <PanelRight size={16} />
           </button>
+          <button
+            className="view-btn"
+            onClick={() => setShowSettings(true)}
+            title="Settings"
+          >
+            <Settings2 size={16} />
+          </button>
         </div>
         {view === "editor" ? <Editor /> : view === "corkboard" ? <Corkboard /> : <Preview />}
       </div>
@@ -207,6 +217,7 @@ export default function App() {
       {showInspector && <Inspector />}
       <CommandPalette open={showPalette} onClose={() => setShowPalette(false)} />
       <ProjectSearch open={showSearch} onClose={() => setShowSearch(false)} />
+      <Settings open={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );
 }

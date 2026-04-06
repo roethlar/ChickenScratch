@@ -88,7 +88,9 @@
       "WebFetch(domain:zed.dev)",
       "Bash(rm -rf /tmp/corn-struct.chikn)",
       "Bash(/Users/michael/Dev/ChickenScratch/target/release/chikn-converter /Users/michael/Dev/ChickenScratch/samples/Corn.scriv /tmp/corn-struct.chikn)",
-      "Read(//tmp/corn-struct.chikn/**)"
+      "Read(//tmp/corn-struct.chikn/**)",
+      "Bash(rm -rf \"/Applications/ChickenScratch.app\")",
+      "Bash(cp -r \"target/release/bundle/macos/ChickenScratch.app\" \"/Applications/ChickenScratch.app\")"
     ],
     "deny": [],
     "ask": []
