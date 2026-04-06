@@ -1989,3 +1989,10 @@
   outline: 1px solid var(--color-accent);
   outline-offset: -1px;
 }
+
+/* ── Tree indent guides ────────────────────────────── */
+
+.binder-children {
+  border-left: 1px solid var(--color-border);
+  margin-left: 24px;
+}

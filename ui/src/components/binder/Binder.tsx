@@ -405,7 +405,7 @@ function BinderInner() {
                   <button
                     key={f.id}
                     className="move-folder-item"
-                    style={{ paddingLeft: `${8 + f.depth * 16}px` }}
+                    style={{ paddingLeft: `${8 + f.depth * 24}px` }}
                     onClick={() => handleMoveTo(movingNodeId, f.id)}
                   >
                     <Folder size={14} />
@@ -529,7 +529,7 @@ function TreeItem({
       <div
         ref={itemRef}
         className={`binder-item ${isActive ? "active" : ""} ${isSelected && !isActive ? "selected" : ""} ${dropClass} ${isDragging ? "dragging" : ""}`}
-        style={{ paddingLeft: `${12 + depth * 16}px` }}
+        style={{ paddingLeft: `${12 + depth * 24}px` }}
         onClick={() => { if (!drag.draggingId) { onSelectNode(node.id); onSelect(node.id); } }}
         onContextMenu={(e) => onContextMenu(e, node.id, "Document")}
         onMouseDown={handleMouseDown}
@@ -553,7 +553,7 @@ function TreeItem({
       <div
         ref={itemRef}
         className={`binder-item folder ${node.id === selectedId ? "selected" : ""} ${dropClass} ${isDragging ? "dragging" : ""}`}
-        style={{ paddingLeft: `${12 + depth * 16}px` }}
+        style={{ paddingLeft: `${12 + depth * 24}px` }}
         onClick={() => { if (!drag.draggingId) { toggleFolder(); onSelectNode(node.id); } }}
         onContextMenu={(e) => onContextMenu(e, node.id, "Folder")}
         onMouseDown={handleMouseDown}
@@ -581,20 +581,23 @@ function TreeItem({
           onClick={(e) => { e.stopPropagation(); onContextMenu(e as any, node.id, "Folder"); }}
         >...</span>
       </div>
-      {open &&
-        node.children.map((child) => (
-          <TreeItem
-            key={child.id}
-            node={child}
-            depth={depth + 1}
-            activeId={activeId}
-            selectedId={selectedId}
-            projectId={projectId}
-            onSelect={onSelect}
-            onSelectNode={onSelectNode}
-            onContextMenu={onContextMenu}
-          />
-        ))}
+      {open && node.children.length > 0 && (
+        <div className="binder-children">
+          {node.children.map((child) => (
+            <TreeItem
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              activeId={activeId}
+              selectedId={selectedId}
+              projectId={projectId}
+              onSelect={onSelect}
+              onSelectNode={onSelectNode}
+              onContextMenu={onContextMenu}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
