@@ -217,7 +217,17 @@ export function Binder() {
       const filePath = await openDialog({
         title: "Import File",
         filters: [
-          { name: "Documents", extensions: ["md", "txt", "html"] },
+          { name: "All Supported", extensions: [
+            "docx", "odt", "rtf", "epub", "md", "markdown", "txt", "html", "htm",
+            "latex", "tex", "rst", "org", "textile", "fb2",
+          ]},
+          { name: "Word", extensions: ["docx"] },
+          { name: "Markdown", extensions: ["md", "markdown", "txt"] },
+          { name: "HTML", extensions: ["html", "htm"] },
+          { name: "EPUB", extensions: ["epub"] },
+          { name: "RTF", extensions: ["rtf"] },
+          { name: "OpenDocument", extensions: ["odt"] },
+          { name: "LaTeX", extensions: ["latex", "tex"] },
         ],
       });
       if (!filePath) return;
