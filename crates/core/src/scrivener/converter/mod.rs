@@ -73,7 +73,9 @@ pub fn import_scriv(scriv_path: &Path, output_path: &Path) -> Result<Project, Ch
         doc.content = clean_scrivener_markup(&doc.content, &uuid_to_path);
     }
 
-    chikn_project.hierarchy = hierarchy;
+    // Ensure proper project structure: Manuscript, Research, Trash
+    // Move any loose root items into the Manuscript folder
+    chikn_project.hierarchy = ensure_project_structure(hierarchy);
     chikn_project.documents = documents;
 
     // Save the converted project
@@ -456,6 +458,67 @@ fn convert_binder_items_inner(
 /// - `\<\$Scr_Ps::N\>` / `\<!\$Scr_Ps::N\>` → paragraph style tags, stripped
 /// - `\<\$Scr_Cs::N\>` / `\<!\$Scr_Cs::N\>` → character style tags, stripped
 /// - `{\\Scrv_annot ...}` → inline annotations, converted to HTML comments
+/// Ensure the hierarchy has Manuscript, Research, and Trash at the top level.
+/// Loose items (not inside one of these) are moved into Manuscript.
+fn ensure_project_structure(mut hierarchy: Vec<TreeNode>) -> Vec<TreeNode> {
+    let mut manuscript_children: Vec<TreeNode> = Vec::new();
+    let mut research_children: Vec<TreeNode> = Vec::new();
+    let mut manuscript_id = None;
+    let mut research_id = None;
+    let mut kept: Vec<TreeNode> = Vec::new();
+
+    for node in hierarchy.drain(..) {
+        match &node {
+            TreeNode::Folder { name, id, .. }
+                if name.to_lowercase() == "manuscript"
+                    || name.to_lowercase() == "draft" =>
+            {
+                // This is the manuscript folder — keep its ID
+                if let TreeNode::Folder { id, children, .. } = node {
+                    manuscript_id = Some(id.clone());
+                    manuscript_children.extend(children);
+                }
+            }
+            TreeNode::Folder { name, .. }
+                if name.to_lowercase() == "research" =>
+            {
+                if let TreeNode::Folder { id, children, .. } = node {
+                    research_id = Some(id.clone());
+                    research_children.extend(children);
+                }
+            }
+            TreeNode::Folder { name, .. }
+                if name.to_lowercase() == "trash" =>
+            {
+                // Skip — we'll create our own
+            }
+            _ => {
+                // Loose item — goes into Manuscript
+                manuscript_children.push(node);
+            }
+        }
+    }
+
+    // Build the three required folders
+    kept.push(TreeNode::Folder {
+        id: manuscript_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+        name: "Manuscript".to_string(),
+        children: manuscript_children,
+    });
+    kept.push(TreeNode::Folder {
+        id: research_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+        name: "Research".to_string(),
+        children: research_children,
+    });
+    kept.push(TreeNode::Folder {
+        id: Uuid::new_v4().to_string(),
+        name: "Trash".to_string(),
+        children: Vec::new(),
+    });
+
+    kept
+}
+
 fn clean_scrivener_markup(content: &str, uuid_to_path: &HashMap<String, String>) -> String {
     let mut result = content.to_string();
 

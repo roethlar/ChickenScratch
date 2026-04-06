@@ -85,7 +85,10 @@
       "Bash(wc -l /home/michael/dev/ChickenScratch/ui/src/**/*.tsx /home/michael/dev/ChickenScratch/ui/src/**/*.ts)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:openalternative.co)",
-      "WebFetch(domain:zed.dev)"
+      "WebFetch(domain:zed.dev)",
+      "Bash(rm -rf /tmp/corn-struct.chikn)",
+      "Bash(/Users/michael/Dev/ChickenScratch/target/release/chikn-converter /Users/michael/Dev/ChickenScratch/samples/Corn.scriv /tmp/corn-struct.chikn)",
+      "Read(//tmp/corn-struct.chikn/**)"
     ],
     "deny": [],
     "ask": []
