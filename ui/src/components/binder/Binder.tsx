@@ -36,15 +36,27 @@ function findNodeIndex(hierarchy: TreeNode[], nodeId: string): { siblings: TreeN
   return null;
 }
 
-/** Collect all document IDs in tree order */
-function collectDocIds(nodes: TreeNode[]): string[] {
-  const ids: string[] = [];
-  for (const node of nodes) {
-    if (node.type === "Document") ids.push(node.id);
-    else if (node.type === "Folder") ids.push(...collectDocIds(node.children));
+/** Check if nodeId is a descendant of parentId */
+function isChildOf(hierarchy: TreeNode[], nodeId: string, parentId: string): boolean {
+  for (const node of hierarchy) {
+    if (node.type === "Folder" && node.id === parentId) {
+      return containsNode(node.children, nodeId);
+    }
+    if (node.type === "Folder" && isChildOf(node.children, nodeId, parentId)) {
+      return true;
+    }
   }
-  return ids;
+  return false;
 }
+
+function containsNode(nodes: TreeNode[], nodeId: string): boolean {
+  for (const node of nodes) {
+    if (node.id === nodeId) return true;
+    if (node.type === "Folder" && containsNode(node.children, nodeId)) return true;
+  }
+  return false;
+}
+
 
 /** Persisted folder open state */
 function getFolderState(projectId: string): Record<string, boolean> {
@@ -158,25 +170,40 @@ function BinderInner() {
     [project, getParentForNew]
   );
 
+  // Find Trash folder ID
+  const trashId = project?.hierarchy.find(
+    (n): n is Extract<TreeNode, { type: "Folder" }> =>
+      n.type === "Folder" && n.name === "Trash"
+  )?.id ?? null;
+
   const handleDelete = useCallback(
     async (nodeId: string) => {
       if (!project) return;
-      if (!(await dialogConfirm("Delete this item?"))) return;
-      const updated = await docCmd.deleteNode(project.path, nodeId);
-      setProject(updated);
+
+      // If item is already in Trash, permanently delete
+      const isInTrash = trashId && isChildOf(project.hierarchy, nodeId, trashId);
+      if (isInTrash) {
+        if (!(await dialogConfirm("Permanently delete this item?"))) return;
+        const updated = await docCmd.deleteNode(project.path, nodeId);
+        setProject(updated);
+      } else if (trashId) {
+        // Move to Trash
+        const updated = await docCmd.moveNode(project.path, nodeId, trashId);
+        setProject(updated);
+        toastSuccess("Moved to Trash");
+      } else {
+        // No Trash folder — permanent delete
+        if (!(await dialogConfirm("Permanently delete this item?"))) return;
+        const updated = await docCmd.deleteNode(project.path, nodeId);
+        setProject(updated);
+      }
+
       if (activeDocId === nodeId) {
-        // Auto-select the next available document
-        const allDocs = collectDocIds(updated.hierarchy);
-        const nextId = allDocs.length > 0 ? allDocs[0] : null;
-        if (nextId) {
-          useProjectStore.getState().selectDocument(nextId);
-        } else {
-          useProjectStore.setState({ activeDocId: null, activeDoc: null });
-        }
+        useProjectStore.setState({ activeDocId: null, activeDoc: null });
       }
       closeMenu();
     },
-    [project, activeDocId]
+    [project, activeDocId, trashId]
   );
 
   const handleRename = useCallback(
