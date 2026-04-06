@@ -1,97 +1,95 @@
 # ChickenScratch — TODO
 
-## Backend: Features That Need Building
+## Done
 
-### Templates System
-- [ ] Define template format (what goes in a template — name, content, metadata presets?)
-- [ ] Tauri command: `list_templates(project_path)` — scan templates/ folder
-- [ ] Tauri command: `create_from_template(project_path, template_id, parent_id?)` — create new doc from template
-- [ ] Tauri command: `save_as_template(project_path, doc_id)` — save existing doc as reusable template
-- [ ] Ship default templates: Scene, Chapter, Character Sheet, Setting, Outline
+- [x] Core .chikn format (read/write/validate/self-heal)
+- [x] Scrivener import (RTF->HTML, metadata, hierarchy, media, links)
+- [x] Scrivener export (HTML->RTF)
+- [x] Standalone converter CLI (chikn-converter)
+- [x] git2-rs integration (save revision, history, restore, branches, backup)
+- [x] Tauri app with React frontend
+- [x] WYSIWYG HTML editor (TipTap with formatting toolbar)
+- [x] Find & Replace (Cmd+F / Cmd+H)
+- [x] Binder with drag-and-drop, context menus, rename, move, delete
+- [x] Manuscript/Research/Trash project structure
+- [x] Corkboard card view with AI summaries
+- [x] Inspector panel (synopsis, label, status, keywords, include in compile)
+- [x] Manuscript preview (continuous prose, type-aware section headers)
+- [x] Revisions UI (save revision, history, restore, draft versions)
+- [x] Filesystem backup (git remote push to configurable directory)
+- [x] Auto-backup on close
+- [x] Compile/export to DOCX, PDF, EPUB, HTML, ODT
+- [x] Import .md/.txt files
+- [x] Light/dark/sepia themes
+- [x] Focus mode (Cmd+Shift+F)
+- [x] Command palette (Cmd+K)
+- [x] Project-wide search (Cmd+Shift+P)
+- [x] Comprehensive settings panel (General, Writing, Backup, AI, Compile)
+- [x] Recent projects list
+- [x] Error boundary
+- [x] Custom dialog system (prompt/confirm that works in Tauri)
+- [x] Toast notifications
+- [x] Pandoc detection with path fallbacks
+- [x] App icon
+- [x] PKGBUILD for Arch Linux AUR
 
-### Compile Settings
-- [ ] Define compile settings schema (stored in settings/compile.yaml)
-  - Include/exclude documents (per-doc toggle)
-  - Document ordering overrides
-  - Output formatting: font, spacing, margins, page size
-  - Front matter: title page, copyright, dedication
-  - Section separators (scene breaks)
-  - Manuscript format preset (Courier 12pt, double-spaced, 1" margins)
-- [ ] Tauri command: `get_compile_settings(project_path)` — read settings/compile.yaml
-- [ ] Tauri command: `save_compile_settings(project_path, settings)` — write settings
-- [ ] Update `compile_project()` to respect compile settings instead of just dumping all HTML
-- [ ] Per-document "include in compile" flag (already in spec, not wired up)
+## MVP Remaining
 
-### Full-Text Search
-- [ ] Tauri command: `search_project(project_path, query)` — search content across all documents
-- [ ] Return results with doc ID, name, matching line, context snippet
-- [ ] Consider tantivy or simple grep-style search for v1
+### Pandoc
+- [ ] "Install Pandoc" helper — platform-specific install command or link
+- [ ] Show detected Pandoc version in Settings
 
-### Writing Statistics
-- [ ] Tauri command: `get_project_stats(project_path)` — per-document and total word counts
-- [ ] Per-document word count targets (store in .meta)
-- [ ] Project-level word count goal
-- [ ] Session word count tracking (words written since app opened)
-- [ ] Daily/weekly writing history (store in settings/)
+### Documentation
+- [ ] User guide (docs/USER_GUIDE.md) — getting started, features, keyboard shortcuts
+- [ ] In-app Help menu linking to user guide
+- [ ] Update README with accurate feature state and screenshots
 
-## Backend: Polish
-
-### Git Integration
-- [x] git2-rs integration (already working)
-- [ ] Auto-commit on configurable interval (e.g. every 10 minutes of active writing)
-- [ ] Diff viewer data: `get_revision_diff(project_path, commit_id)` — return per-file diffs
-- [ ] Compare two drafts: `diff_drafts(project_path, draft_a, draft_b)`
-- [ ] Remote sync: `push_remote(project_path, remote_url)` / `pull_remote()`
-
-### Compile/Export
-- [ ] Respect per-document "include in compile" toggle
-- [ ] Section separator customization
-- [ ] Manuscript format preset (standard submission format)
-- [ ] Progress callback for long compilations
-
-### AI Features
-- [ ] Replace curl shell-out with reqwest HTTP client
-- [ ] Streaming responses for long summaries
-- [ ] AI settings UI (provider selection, API key input, model selection)
-
-## Frontend: Wire Up Existing Backend
-
-### Templates UI
-- [ ] "New from Template" option in binder context menu / new doc dialog
-- [ ] "Save as Template" in document context menu
-- [ ] Templates panel or section in binder showing available templates
-
-### Compile Settings UI
-- [ ] Compile settings dialog (accessible from export button)
-- [ ] Per-document "include in compile" checkbox in inspector
-- [ ] Document ordering preview before compile
-- [ ] Format-specific options (page size for PDF, etc.)
-
-### Search UI
-- [ ] Search panel (Ctrl+Shift+F) — search across all documents
-- [ ] Results list with click-to-navigate
-- [ ] Highlight matches in editor when navigating results
-
-### Statistics UI
-- [ ] Statistics panel showing project/chapter word counts
-- [ ] Word count target progress bars
-- [ ] Session word count in status bar
-- [ ] Writing streak / history chart
-
-### Revisions UI
-- [ ] Diff viewer — show what changed in a revision
-- [ ] Side-by-side draft comparison
-- [ ] Auto-save revision indicator
-
-### Inspector Enhancements
-- [ ] "Include in compile" toggle
-- [ ] Word count target per document
-- [ ] Custom metadata fields
-
-## Infrastructure
-
-- [ ] Error boundary (React) — catch component crashes gracefully
-- [ ] Beforeunload check — warn if unsaved changes on close
-- [ ] Recent projects list (persist in app settings, show on welcome screen)
+### Polish
+- [ ] Apply writing settings (font, size, paragraph style) to editor dynamically
+- [ ] Apply compile settings to export output
+- [ ] Session word count tracking in status bar
 - [ ] Window state persistence (size, position, panel widths)
-- [ ] Pandoc availability check on startup with helpful error
+
+### Known Issues
+- [ ] Scrivener template docs (Short Story Format, etc.) import into Manuscript — should skip or go to Templates
+- [ ] Corkboard "Summarize" button doesn't show error if Ollama isn't running
+- [ ] Some imported Scrivener projects have empty-content documents that show blank cards
+- [ ] One unit test failing (test_read_project_success) due to metadata field addition
+
+## Post-MVP
+
+### Templates
+- [ ] Default templates (Scene, Chapter, Character Sheet, Setting)
+- [ ] "New from Template" in binder
+- [ ] "Save as Template" for documents
+
+### Search
+- [ ] Highlight matches in editor when navigating search results
+- [ ] Search within current document (separate from project search)
+
+### Statistics
+- [ ] Writing statistics panel (per-doc and project word counts)
+- [ ] Word count targets per document
+- [ ] Daily/weekly writing history
+
+### Git
+- [ ] Diff viewer (show what changed in a revision)
+- [ ] Side-by-side draft comparison
+- [ ] Auto-commit on configurable interval
+- [ ] Remote sync (push/pull to GitHub/Gitea)
+
+### AI
+- [ ] Replace curl shell-out with reqwest HTTP client
+- [ ] Streaming responses
+- [ ] More AI actions (polish, expand, brainstorm)
+
+### Compile
+- [ ] Per-document compile order override
+- [ ] Section separator customization
+- [ ] Front matter (title page, copyright, dedication)
+- [ ] Manuscript format preset (Shunn standard)
+
+### Platform
+- [ ] Windows testing and packaging (.msi)
+- [ ] Flatpak for Linux
+- [ ] Auto-update mechanism
