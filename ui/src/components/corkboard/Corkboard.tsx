@@ -1,9 +1,10 @@
 import { useState, useMemo, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
 import type { Document, TreeNode } from "../../types";
-import { Link2, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { aiSummarize } from "../../commands/ai";
 import * as docCmd from "../../commands/document";
+import { toastError } from "../shared/Toast";
 
 type GroupBy = "none" | "label" | "status" | "keyword";
 
@@ -23,7 +24,6 @@ export function Corkboard() {
   const setProject = (p: typeof project) =>
     useProjectStore.setState({ project: p });
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
-  const [linking, setLinking] = useState<string | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [summarizeProgress, setSummarizeProgress] = useState("");
 
@@ -84,9 +84,9 @@ export function Corkboard() {
           setProject(latest);
         }
       } catch (e) {
-        console.error(`Failed to summarize ${doc.name}:`, e);
-        setSummarizeProgress(`Failed: ${e}`);
-        break;
+        toastError(`Failed to summarize ${doc.name}: ${e}`);
+        // Continue with remaining docs instead of breaking
+        continue;
       }
     }
     setSummarizing(false);
@@ -94,18 +94,6 @@ export function Corkboard() {
   }, [project, docs]);
 
   if (!project) return null;
-
-  const handleCardClick = (docId: string) => {
-    if (linking) {
-      if (linking !== docId) {
-        // TODO: save link via backend
-        console.log(`Link: ${linking} -> ${docId}`);
-      }
-      setLinking(null);
-    } else {
-      selectDocument(docId);
-    }
-  };
 
   return (
     <div className="corkboard">
@@ -124,13 +112,9 @@ export function Corkboard() {
           </select>
         </label>
         <div style={{ flex: 1 }} />
-        {summarizing ? (
+        {summarizing && (
           <span className="corkboard-linking">{summarizeProgress}</span>
-        ) : linking ? (
-          <span className="corkboard-linking">
-            Linking... click a card to connect (Esc to cancel)
-          </span>
-        ) : null}
+        )}
         <button
           className="corkboard-summarize-btn"
           onClick={handleSummarizeAll}
@@ -153,15 +137,17 @@ export function Corkboard() {
                 <Card
                   key={doc.id}
                   doc={doc}
-                  allDocs={project.documents}
-                  isLinking={linking === doc.id}
-                  onClick={() => handleCardClick(doc.id)}
-                  onStartLink={() => setLinking(doc.id)}
+                  onClick={() => selectDocument(doc.id)}
                 />
               ))}
             </div>
           </div>
         ))}
+        {docs.length === 0 && (
+          <div className="corkboard-empty">
+            No manuscript documents yet. Create documents in the binder to see them here.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -169,57 +155,30 @@ export function Corkboard() {
 
 function Card({
   doc,
-  allDocs,
-  isLinking,
   onClick,
-  onStartLink,
 }: {
   doc: Document;
-  allDocs: Record<string, Document>;
-  isLinking: boolean;
   onClick: () => void;
-  onStartLink: () => void;
 }) {
-  const linkedNames = (doc.links || [])
-    .map((id) => allDocs[id]?.name)
-    .filter(Boolean);
+  const preview = doc.synopsis ||
+    doc.content?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200) ||
+    "";
 
   return (
-    <div
-      className={`card ${isLinking ? "card-linking" : ""}`}
-      onClick={onClick}
-    >
+    <div className="card" onClick={onClick}>
       <div className="card-header">
         <span className="card-title">{doc.name}</span>
-        <button
-          className="card-link-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            onStartLink();
-          }}
-          title="Link to another card"
-        >
-          <Link2 size={12} />
-        </button>
       </div>
 
       <p className="card-synopsis">
-        {doc.synopsis ||
-          doc.content?.replace(/<[^>]*>/g, "").slice(0, 200).trim() ||
-          "Empty"}
+        {preview || "Empty"}
+        {!doc.synopsis && preview.length >= 200 && "..."}
       </p>
 
       <div className="card-meta">
         {doc.label && <span className="card-tag card-label">{doc.label}</span>}
         {doc.status && <span className="card-tag card-status">{doc.status}</span>}
       </div>
-
-      {linkedNames.length > 0 && (
-        <div className="card-links">
-          <Link2 size={10} />
-          {linkedNames.join(", ")}
-        </div>
-      )}
     </div>
   );
 }

@@ -70,7 +70,22 @@
       "Bash(cp:*)",
       "Bash(rm -rf \"/Applications/Chicken Scratch.app\")",
       "Bash(cp -r \"/Users/michael/Dev/ChickenScratch/target/release/bundle/macos/Chicken Scratch.app\" \"/Applications/Chicken Scratch.app\")",
-      "Bash(cp -r \"target/release/bundle/macos/Chicken Scratch.app\" \"/Applications/Chicken Scratch.app\")"
+      "Bash(cp -r \"target/release/bundle/macos/Chicken Scratch.app\" \"/Applications/Chicken Scratch.app\")",
+      "Bash(npm ls:*)",
+      "Bash(rustup toolchain:*)",
+      "Bash(rustc --version)",
+      "Bash(cargo --version)",
+      "Bash(find /home/michael/dev/ChickenScratch -name '._*' -type f -delete)",
+      "Bash(npm run:*)",
+      "Bash(pacman -F 'javascriptcoregtk-4.1.pc')",
+      "Bash(pkgfile javascriptcoregtk-4.1.pc)",
+      "Bash(pacman -Qs webkit2gtk)",
+      "Bash(pacman -Qs javascriptcore)",
+      "Bash(pkg-config --list-all)",
+      "Bash(wc -l /home/michael/dev/ChickenScratch/ui/src/**/*.tsx /home/michael/dev/ChickenScratch/ui/src/**/*.ts)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:openalternative.co)",
+      "WebFetch(domain:zed.dev)"
     ],
     "deny": [],
     "ask": []

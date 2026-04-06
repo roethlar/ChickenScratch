@@ -97,7 +97,7 @@ body {
   position: fixed;
   left: 0;
   top: 0;
-  width: 8px;
+  width: 24px;
   height: 100vh;
   z-index: 50;
 }

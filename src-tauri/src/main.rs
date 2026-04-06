@@ -5,6 +5,14 @@ mod commands;
 use commands::{ai, document, git, io, project};
 
 fn main() {
+    // Work around WebKitGTK DMA-BUF renderer crash on Wayland
+    // https://github.com/tauri-apps/tauri/issues/10702
+    #[cfg(target_os = "linux")]
+    unsafe {
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())

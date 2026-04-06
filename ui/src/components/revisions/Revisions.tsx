@@ -9,6 +9,7 @@ import {
   HardDrive,
 } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
+import { toastSuccess, toastError } from "../shared/Toast";
 import * as gitCmd from "../../commands/git";
 import type { Revision, DraftVersion } from "../../commands/git";
 
@@ -40,9 +41,10 @@ export function Revisions() {
     try {
       await gitCmd.saveRevision(project.path, message.trim());
       setMessage("");
+      toastSuccess("Revision saved.");
       await refresh();
     } catch (e) {
-      alert(`Save failed: ${e}`);
+      toastError(`Save failed: ${e}`);
     }
     setSaving(false);
   };
@@ -91,9 +93,9 @@ export function Revisions() {
     localStorage.setItem("chickenscratch-backup-dir", dir);
     try {
       await gitCmd.pushBackup(project.path, dir);
-      alert("Backup complete.");
+      toastSuccess("Backup complete.");
     } catch (e) {
-      alert(`Backup failed: ${e}`);
+      toastError(`Backup failed: ${e}`);
     }
   };
 

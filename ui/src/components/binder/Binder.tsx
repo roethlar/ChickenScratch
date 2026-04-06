@@ -29,6 +29,30 @@ function findNodeIndex(hierarchy: TreeNode[], nodeId: string): { siblings: TreeN
   return null;
 }
 
+/** Collect all document IDs in tree order */
+function collectDocIds(nodes: TreeNode[]): string[] {
+  const ids: string[] = [];
+  for (const node of nodes) {
+    if (node.type === "Document") ids.push(node.id);
+    else if (node.type === "Folder") ids.push(...collectDocIds(node.children));
+  }
+  return ids;
+}
+
+/** Persisted folder open state */
+function getFolderState(projectId: string): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(`cs-folders-${projectId}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function setFolderState(projectId: string, folderId: string, open: boolean) {
+  const state = getFolderState(projectId);
+  state[folderId] = open;
+  localStorage.setItem(`cs-folders-${projectId}`, JSON.stringify(state));
+}
+
 export function Binder() {
   const project = useProjectStore((s) => s.project);
   const activeDocId = useProjectStore((s) => s.activeDocId);
@@ -49,7 +73,12 @@ export function Binder() {
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, nodeId: string | null, nodeType: "Document" | "Folder" | null) => {
       e.preventDefault();
-      setContextMenu({ x: e.clientX, y: e.clientY, nodeId, nodeType });
+      // Viewport-aware positioning
+      const menuW = 180, menuH = 280;
+      let mx = e.clientX, my = e.clientY;
+      if (mx + menuW > window.innerWidth) mx = window.innerWidth - menuW - 8;
+      if (my + menuH > window.innerHeight) my = window.innerHeight - menuH - 8;
+      setContextMenu({ x: mx, y: my, nodeId, nodeType });
     },
     []
   );
@@ -86,9 +115,9 @@ export function Binder() {
     async (parentId?: string) => {
       if (!project) return;
       const name = await dialogPrompt("Document name:");
-      if (!name) return;
+      if (!name || !name.trim()) return;
       const pid = parentId !== undefined ? parentId : getParentForNew();
-      const updated = await docCmd.createDocument(project.path, name, pid);
+      const updated = await docCmd.createDocument(project.path, name.trim(), pid);
       setProject(updated);
       closeMenu();
     },
@@ -99,9 +128,9 @@ export function Binder() {
     async (parentId?: string) => {
       if (!project) return;
       const name = await dialogPrompt("Folder name:");
-      if (!name) return;
+      if (!name || !name.trim()) return;
       const pid = parentId !== undefined ? parentId : getParentForNew();
-      const updated = await docCmd.createFolder(project.path, name, pid);
+      const updated = await docCmd.createFolder(project.path, name.trim(), pid);
       setProject(updated);
       closeMenu();
     },
@@ -115,7 +144,14 @@ export function Binder() {
       const updated = await docCmd.deleteNode(project.path, nodeId);
       setProject(updated);
       if (activeDocId === nodeId) {
-        useProjectStore.setState({ activeDocId: null, activeDoc: null });
+        // Auto-select the next available document
+        const allDocs = collectDocIds(updated.hierarchy);
+        const nextId = allDocs.length > 0 ? allDocs[0] : null;
+        if (nextId) {
+          useProjectStore.getState().selectDocument(nextId);
+        } else {
+          useProjectStore.setState({ activeDocId: null, activeDoc: null });
+        }
       }
       closeMenu();
     },
@@ -125,7 +161,6 @@ export function Binder() {
   const handleRename = useCallback(
     async (nodeId: string) => {
       if (!project) return;
-      // Find current name
       const findName = (nodes: TreeNode[]): string | null => {
         for (const n of nodes) {
           if (n.id === nodeId) return n.name;
@@ -138,8 +173,8 @@ export function Binder() {
       };
       const currentName = findName(project.hierarchy) || "";
       const newName = await dialogPrompt("Rename:", currentName);
-      if (!newName || newName === currentName) return;
-      const updated = await docCmd.renameNode(project.path, nodeId, newName);
+      if (!newName || !newName.trim() || newName.trim() === currentName) return;
+      const updated = await docCmd.renameNode(project.path, nodeId, newName.trim());
       setProject(updated);
       closeMenu();
     },
@@ -175,15 +210,12 @@ export function Binder() {
       if (!project) return;
       try {
         if (position === "into") {
-          // Reparent into folder
           const updated = await docCmd.moveNode(project.path, dragId, targetId);
           setProject(updated);
         } else {
-          // Reorder: find target's parent and index
           const found = findNodeIndex(project.hierarchy, targetId);
           if (!found) return;
           const newIndex = position === "before" ? found.index : found.index + 1;
-          // Move to same parent level, then reorder
           const updated = await docCmd.moveNode(project.path, dragId, undefined, newIndex);
           setProject(updated);
         }
@@ -221,7 +253,7 @@ export function Binder() {
           <button
             className="binder-action-btn"
             onClick={() => handleNewDoc()}
-            title="New Document"
+            title="New Document (Ctrl+N)"
           >
             <Plus size={14} />
           </button>
@@ -242,6 +274,7 @@ export function Binder() {
             depth={0}
             activeId={activeDocId}
             selectedId={selectedId}
+            projectId={project.id}
             onSelect={selectDocument}
             onSelectNode={setSelectedId}
             onContextMenu={handleContextMenu}
@@ -275,6 +308,7 @@ function TreeItem({
   depth,
   activeId,
   selectedId,
+  projectId,
   onSelect,
   onSelectNode,
   onContextMenu,
@@ -284,14 +318,23 @@ function TreeItem({
   depth: number;
   activeId: string | null;
   selectedId: string | null;
+  projectId: string;
   onSelect: (id: string) => void;
   onSelectNode: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, nodeId: string, nodeType: "Document" | "Folder") => void;
   onDrop: (dragId: string, targetId: string, position: "before" | "after" | "into") => void;
 }) {
-  const [open, setOpen] = useState(true);
+  // Persist folder open state
+  const savedState = node.type === "Folder" ? getFolderState(projectId)[node.id] : undefined;
+  const [open, setOpen] = useState(savedState !== undefined ? savedState : true);
   const [dropPos, setDropPos] = useState<"before" | "after" | "into" | null>(null);
   const itemRef = useRef<HTMLButtonElement>(null);
+
+  const toggleFolder = useCallback(() => {
+    const next = !open;
+    setOpen(next);
+    setFolderState(projectId, node.id, next);
+  }, [open, projectId, node.id]);
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData("text/plain", node.id);
@@ -358,7 +401,7 @@ function TreeItem({
         ref={itemRef}
         className={`binder-item folder ${node.id === selectedId ? "selected" : ""} ${dropClass}`}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
-        onClick={() => { setOpen(!open); onSelectNode(node.id); }}
+        onClick={() => { toggleFolder(); onSelectNode(node.id); }}
         onContextMenu={(e) => onContextMenu(e, node.id, "Folder")}
         draggable
         onDragStart={handleDragStart}
@@ -382,6 +425,7 @@ function TreeItem({
             depth={depth + 1}
             activeId={activeId}
             selectedId={selectedId}
+            projectId={projectId}
             onSelect={onSelect}
             onSelectNode={onSelectNode}
             onContextMenu={onContextMenu}
@@ -430,6 +474,19 @@ function ContextMenu({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
+
+  // Reposition after mount to stay in viewport
+  useEffect(() => {
+    if (!ref.current) return;
+    const el = ref.current;
+    const rect = el.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      el.style.left = `${window.innerWidth - rect.width - 8}px`;
+    }
+    if (rect.bottom > window.innerHeight) {
+      el.style.top = `${window.innerHeight - rect.height - 8}px`;
+    }
+  }, []);
 
   const parentId = nodeType === "Folder" ? nodeId ?? undefined : undefined;
   const found = nodeId ? findNodeIndex(hierarchy, nodeId) : null;

@@ -23,6 +23,9 @@ import { Revisions } from "./components/revisions/Revisions";
 import { Preview } from "./components/preview/Preview";
 import { save } from "@tauri-apps/plugin-dialog";
 import { compileProject } from "./commands/io";
+import { toastSuccess, toastError } from "./components/shared/Toast";
+import { dialogPrompt } from "./components/shared/Dialog";
+import * as docCmd from "./commands/document";
 
 type View = "editor" | "corkboard" | "preview";
 
@@ -34,6 +37,8 @@ export default function App() {
   const [showRevisions, setShowRevisions] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
 
+  const [showBinder, setShowBinder] = useState(true);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -42,9 +47,32 @@ export default function App() {
         e.preventDefault();
         setShowPalette((s) => !s);
       }
-      if (mod && e.shiftKey && e.key === "f") {
+      if (mod && e.shiftKey && (e.key === "f" || e.key === "F")) {
         e.preventDefault();
         toggleFocusMode();
+      }
+      if (mod && e.key === "s") {
+        e.preventDefault();
+        useProjectStore.getState().saveActiveDoc();
+      }
+      if (mod && e.key === "n") {
+        e.preventDefault();
+        (async () => {
+          const p = useProjectStore.getState().project;
+          if (!p) return;
+          const name = await dialogPrompt("Document name:");
+          if (!name || !name.trim()) return;
+          const updated = await docCmd.createDocument(p.path, name.trim());
+          useProjectStore.setState({ project: updated });
+        })();
+      }
+      if (mod && e.key === "\\") {
+        e.preventDefault();
+        setShowBinder((s) => !s);
+      }
+      if (mod && e.shiftKey && (e.key === "i" || e.key === "I")) {
+        e.preventDefault();
+        setShowInspector((s) => !s);
       }
       if (e.key === "Escape") {
         if (showPalette) setShowPalette(false);
@@ -76,9 +104,9 @@ export default function App() {
     const ext = outputPath.split(".").pop() || "docx";
     try {
       await compileProject(project.path, outputPath, ext, project.name);
-      alert("Export complete: " + outputPath);
+      toastSuccess("Export complete: " + outputPath);
     } catch (e) {
-      alert("Export failed: " + e);
+      toastError("Export failed: " + e);
     }
   };
 
@@ -93,7 +121,7 @@ export default function App() {
   return (
     <div className={`app ${focusMode ? "focus-mode" : ""}`}>
       {focusMode && <div className="binder-reveal" />}
-      <Binder />
+      {showBinder && <Binder />}
       <div className="main-area">
         <div className="view-toolbar">
           <button

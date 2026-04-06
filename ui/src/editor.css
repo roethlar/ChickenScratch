@@ -263,6 +263,132 @@
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
+/* ── Editor Toolbar ────────────────────────────────── */
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-sidebar);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.toolbar-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+  color: var(--color-text);
+}
+
+.toolbar-btn.active {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--color-border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* Hide toolbar in focus mode */
+.focus-mode .editor-toolbar {
+  display: none;
+}
+
+/* ── Find & Replace ───────────────────────────────── */
+
+.find-replace {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-sidebar);
+  flex-shrink: 0;
+}
+
+.find-replace-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.find-input {
+  flex: 1;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  outline: none;
+}
+
+.find-input:focus {
+  border-color: var(--color-accent);
+}
+
+.find-count {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  min-width: 40px;
+  text-align: center;
+}
+
+.find-replace button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.find-replace button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+  color: var(--color-text);
+}
+
+.find-replace button.active {
+  color: var(--color-accent);
+}
+
+.find-replace button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 /* ── Editor ────────────────────────────────────────── */
 
 .editor-pane {
@@ -588,6 +714,13 @@
   gap: 0.75rem;
 }
 
+.corkboard-empty {
+  padding: 3rem 2rem;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
 /* ── Card ──────────────────────────────────────────── */
 
 .card {
@@ -765,6 +898,57 @@
 .inspector-value {
   font-size: 0.85rem;
   color: var(--color-text);
+}
+
+.inspector-title-editable {
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.inspector-title-editable:hover {
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+
+/* Preset dropdown */
+.preset-select {
+  position: relative;
+}
+
+.preset-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 50;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.preset-dropdown button {
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.preset-dropdown button:hover {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.preset-dropdown button.active {
+  color: var(--color-accent);
+  font-weight: 600;
 }
 
 /* ── Command Palette ───────────────────────────────── */
@@ -1293,4 +1477,37 @@
   background: var(--color-accent);
   color: white;
   border-color: var(--color-accent);
+}
+
+/* ── Toast Notifications ──────────────────────────── */
+
+.toast-container {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: white;
+  background: var(--color-text);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  animation: toast-in 0.2s ease-out;
+  max-width: 360px;
+}
+
+.toast-success { background: #16a34a; }
+.toast-error { background: #dc2626; }
+.toast-info { background: color-mix(in srgb, var(--color-text) 85%, var(--color-accent)); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }

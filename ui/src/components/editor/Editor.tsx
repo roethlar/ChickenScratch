@@ -5,8 +5,11 @@ import CharacterCount from "@tiptap/extension-character-count";
 import { Underline } from "@tiptap/extension-underline";
 import { TextStyle } from "@tiptap/extension-text-style";
 import { Color } from "@tiptap/extension-color";
-import { useEffect, useRef, useCallback } from "react";
+import { Link } from "@tiptap/extension-link";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
+import { Toolbar } from "./Toolbar";
+import { FindReplace } from "./FindReplace";
 
 export function Editor() {
   const activeDoc = useProjectStore((s) => s.activeDoc);
@@ -15,11 +18,16 @@ export function Editor() {
   const saving = useProjectStore((s) => s.saving);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const docIdRef = useRef<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findReplace, setFindReplace] = useState(false);
 
   const debouncedSave = useCallback(() => {
+    setDirty(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       saveActiveDoc();
+      setDirty(false);
     }, 2000);
   }, [saveActiveDoc]);
 
@@ -35,6 +43,12 @@ export function Editor() {
       Underline,
       TextStyle,
       Color,
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          rel: "noopener noreferrer nofollow",
+        },
+      }),
     ],
     content: "",
     editorProps: {
@@ -49,6 +63,25 @@ export function Editor() {
     },
   });
 
+  // Ctrl+F / Ctrl+H shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === "f" && !e.shiftKey) {
+        e.preventDefault();
+        setFindOpen(true);
+        setFindReplace(false);
+      }
+      if (mod && e.key === "h") {
+        e.preventDefault();
+        setFindOpen(true);
+        setFindReplace(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // Load document content when active doc changes
   useEffect(() => {
     if (!editor) return;
@@ -57,10 +90,10 @@ export function Editor() {
       docIdRef.current = null;
       return;
     }
-    // Only set content when switching documents
     if (docIdRef.current !== activeDoc.id) {
       docIdRef.current = activeDoc.id;
       editor.commands.setContent(activeDoc.content || "");
+      setDirty(false);
     }
   }, [activeDoc?.id, editor]);
 
@@ -79,15 +112,24 @@ export function Editor() {
   }
 
   const words = editor?.storage.characterCount.words() ?? 0;
+  const chars = editor?.storage.characterCount.characters() ?? 0;
+  const saveLabel = saving ? "Saving..." : dirty ? "Modified" : "Saved";
 
   return (
     <div className="editor-pane">
+      <Toolbar editor={editor} />
+      <FindReplace
+        editor={editor}
+        open={findOpen}
+        showReplace={findReplace}
+        onClose={() => setFindOpen(false)}
+      />
       <div className="editor-scroll">
         <EditorContent editor={editor} />
       </div>
       <div className="editor-status">
-        <span>{words.toLocaleString()} words</span>
-        <span>{saving ? "Saving..." : "Saved"}</span>
+        <span>{words.toLocaleString()} words &middot; {chars.toLocaleString()} chars</span>
+        <span>{saveLabel}</span>
       </div>
     </div>
   );
