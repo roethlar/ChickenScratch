@@ -36,19 +36,20 @@
 ## MVP Remaining
 
 ### Pandoc
-- [ ] "Install Pandoc" helper — platform-specific install command or link
+- [x] "Install Pandoc" helper — platform-specific install command or link
 - [ ] Show detected Pandoc version in Settings
 
 ### Documentation
-- [ ] User guide (docs/USER_GUIDE.md) — getting started, features, keyboard shortcuts
-- [ ] In-app Help menu linking to user guide
-- [ ] Update README with accurate feature state and screenshots
+- [x] User guide (docs/USER_GUIDE.md)
+- [x] In-app Help menu linking to user guide
+- [x] README with accurate feature state
 
 ### Polish
-- [ ] Apply writing settings (font, size, paragraph style) to editor dynamically
-- [ ] Apply compile settings to export output
+- [x] Apply writing settings (font, size, paragraph style) to editor dynamically
+- [x] Apply compile settings to export output
 - [ ] Session word count tracking in status bar
 - [ ] Window state persistence (size, position, panel widths)
+- [ ] Screenshots for README
 
 ### Known Issues
 - [ ] Scrivener template docs (Short Story Format, etc.) import into Manuscript — should skip or go to Templates
