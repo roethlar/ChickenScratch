@@ -377,7 +377,7 @@ function TreeItem({
   const savedState = node.type === "Folder" ? getFolderState(projectId)[node.id] : undefined;
   const [open, setOpen] = useState(savedState !== undefined ? savedState : true);
   const [dropPos, setDropPos] = useState<"before" | "after" | "into" | null>(null);
-  const itemRef = useRef<HTMLButtonElement>(null);
+  const itemRef = useRef<HTMLDivElement>(null);
 
   const toggleFolder = useCallback(() => {
     const next = !open;
@@ -425,7 +425,7 @@ function TreeItem({
     const isMedia = !node.path.endsWith(".html");
 
     return (
-      <button
+      <div
         ref={itemRef}
         className={`binder-item ${isActive ? "active" : ""} ${isSelected && !isActive ? "selected" : ""} ${dropClass}`}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
@@ -444,13 +444,13 @@ function TreeItem({
           className="binder-more"
           onClick={(e) => { e.stopPropagation(); onContextMenu(e as any, node.id, "Document"); }}
         >...</span>
-      </button>
+      </div>
     );
   }
 
   return (
     <div>
-      <button
+      <div
         ref={itemRef}
         className={`binder-item folder ${node.id === selectedId ? "selected" : ""} ${dropClass}`}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
@@ -481,7 +481,7 @@ function TreeItem({
           className="binder-more"
           onClick={(e) => { e.stopPropagation(); onContextMenu(e as any, node.id, "Folder"); }}
         >...</span>
-      </button>
+      </div>
       {open &&
         node.children.map((child) => (
           <TreeItem
