@@ -390,16 +390,7 @@ fn convert_binder_items_inner(
                         let file_name = format!("{}.{}", slug, ext);
                         let dest_rel = format!("{}/{}", target_folder, file_name);
 
-                        // Copy the file
-                        let project_path = documents
-                            .values()
-                            .next()
-                            .map(|d| {
-                                // Derive project root from an existing document path
-                                Path::new(&d.path)
-                                    .parent()
-                                    .unwrap_or(Path::new("."))
-                            });
+                        // The actual file copy happens after write_project, below
 
                         // We need the output project path — get it from the hierarchy context
                         // For now, record as a document entry so it appears in the tree

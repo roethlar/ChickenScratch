@@ -24,6 +24,7 @@ export async function updateDocumentMetadata(
     label?: string | null;
     status?: string | null;
     keywords?: string[] | null;
+    include_in_compile?: boolean | null;
   }
 ): Promise<Project> {
   return invoke("update_document_metadata", {

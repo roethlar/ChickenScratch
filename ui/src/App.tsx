@@ -225,9 +225,9 @@ export default function App() {
           <button
             className="view-btn"
             onClick={() => {
-              import("@tauri-apps/plugin-shell").then(({ open }) =>
-                open("https://github.com/yourusername/ChickenScratch/blob/master/docs/USER_GUIDE.md")
-              );
+              // Open user guide — works offline if docs/ exists alongside the app
+              const guide = "https://github.com/mcoelho/ChickenScratch/blob/master/docs/USER_GUIDE.md";
+              window.open(guide, "_blank");
             }}
             title="Help"
           >

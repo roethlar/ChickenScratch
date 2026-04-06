@@ -37,6 +37,7 @@ pub fn update_document_metadata(
     label: Option<String>,
     status: Option<String>,
     keywords: Option<Vec<String>>,
+    include_in_compile: Option<bool>,
 ) -> Result<Project, ChiknError> {
     let mut project = reader::read_project(Path::new(&project_path))?;
     if let Some(doc) = project.documents.get_mut(&doc_id) {
@@ -44,6 +45,9 @@ pub fn update_document_metadata(
         doc.label = label;
         doc.status = status;
         doc.keywords = keywords;
+        if let Some(inc) = include_in_compile {
+            doc.include_in_compile = inc;
+        }
         doc.modified = chrono::Utc::now().to_rfc3339();
         writer::write_project(&mut project)?;
         Ok(project)

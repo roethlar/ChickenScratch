@@ -244,7 +244,7 @@ fn write_document(
         keywords: document.keywords.clone(),
         synopsis: document.synopsis.clone(),
         section_type: existing_meta.as_ref().and_then(|m| m.section_type.clone()),
-        include_in_compile: existing_meta.as_ref().and_then(|m| m.include_in_compile.clone()),
+        include_in_compile: Some(if document.include_in_compile { "Yes" } else { "No" }.to_string()),
         scrivener_uuid: existing_meta.as_ref().and_then(|m| m.scrivener_uuid.clone()),
         links: document.links.clone(),
     };

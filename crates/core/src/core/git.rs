@@ -5,7 +5,7 @@
 
 use crate::utils::error::ChiknError;
 use git2::{
-    BranchType, Cred, DiffOptions, IndexAddOption, Oid, Repository, Signature, StatusOptions,
+    BranchType, IndexAddOption, Oid, Repository, Signature, StatusOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;

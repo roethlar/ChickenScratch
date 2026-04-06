@@ -213,7 +213,6 @@ export function Inspector() {
             checked={activeDoc.include_in_compile}
             onChange={async () => {
               if (!project || !activeDoc) return;
-              // Direct update — no debounce for toggles
               const updated = await docCmd.updateDocumentMetadata(
                 project.path,
                 activeDoc.id,
@@ -224,6 +223,7 @@ export function Inspector() {
                   keywords: keywords.split(",").map(s => s.trim()).filter(Boolean).length
                     ? keywords.split(",").map(s => s.trim()).filter(Boolean)
                     : null,
+                  include_in_compile: !activeDoc.include_in_compile,
                 }
               );
               setProject(updated);

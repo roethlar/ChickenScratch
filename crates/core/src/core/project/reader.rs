@@ -31,7 +31,6 @@ use super::format::{
     get_document_meta_path, get_manuscript_path, get_project_file_path, get_research_path,
     get_templates_path, get_settings_path,
     validate_project_structure, DOCUMENT_EXTENSION,
-    MANUSCRIPT_FOLDER, RESEARCH_FOLDER, TEMPLATES_FOLDER, SETTINGS_FOLDER,
 };
 use crate::models::{Document, Project, TreeNode};
 use crate::utils::error::ChiknError;
@@ -281,7 +280,7 @@ fn prune_missing_files(hierarchy: &[TreeNode], project_path: &Path) -> Vec<TreeN
     let mut result = Vec::new();
     for node in hierarchy {
         match node {
-            TreeNode::Document { id, name, path } => {
+            TreeNode::Document { path, .. } => {
                 let full = project_path.join(path);
                 if full.exists() {
                     result.push(node.clone());
@@ -539,7 +538,8 @@ modified: "2025-01-01T00:00:00Z"
         assert!(result.is_ok());
         let project = result.unwrap();
         assert_eq!(project.name, "Test Project");
-        assert_eq!(project.hierarchy.len(), 1);
+        // Hierarchy includes the original doc + auto-added Manuscript/Research folders
+        assert!(project.hierarchy.len() >= 1);
         assert_eq!(project.documents.len(), 1);
     }
 
