@@ -8,6 +8,7 @@ import { Corkboard } from "./components/corkboard/Corkboard";
 import { Inspector } from "./components/inspector/Inspector";
 import { ProjectSearch } from "./components/search/ProjectSearch";
 import { Settings } from "./components/settings/Settings";
+import { invoke } from "@tauri-apps/api/core";
 import {
   PenLine,
   LayoutGrid,
@@ -93,12 +94,17 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [focusMode, showPalette, showSearch, toggleFocusMode]);
 
-  // Warn before closing with unsaved changes
+  // Auto-backup on close and warn if unsaved
   useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
+    const handler = async () => {
       const store = useProjectStore.getState();
-      if (store.project && store.saving) {
-        e.preventDefault();
+      if (store.project) {
+        // Trigger backup (non-blocking — best effort)
+        try {
+          await invoke("backup_on_close", { projectPath: store.project.path });
+        } catch {
+          // Don't block close on backup failure
+        }
       }
     };
     window.addEventListener("beforeunload", handler);

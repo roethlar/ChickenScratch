@@ -43,6 +43,7 @@ fn main() {
             git::merge_draft,
             git::push_backup,
             git::has_changes,
+            git::backup_on_close,
             io::compile_project,
             io::get_compile_formats,
             io::import_file,

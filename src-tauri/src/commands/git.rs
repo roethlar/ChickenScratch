@@ -52,3 +52,25 @@ pub fn push_backup(project_path: String, backup_dir: String) -> Result<(), Chikn
 pub fn has_changes(project_path: String) -> Result<bool, ChiknError> {
     git::has_changes(Path::new(&project_path))
 }
+
+/// Auto-backup: save any unsaved changes and push to backup remote if configured.
+/// Called on app close. Non-fatal — failures are logged but don't block exit.
+#[tauri::command]
+pub fn backup_on_close(project_path: String) -> Result<(), ChiknError> {
+    let path = Path::new(&project_path);
+    let settings = super::settings::get_app_settings();
+
+    // Auto-commit any uncommitted changes
+    if git::has_changes(path).unwrap_or(false) {
+        let _ = git::save_revision(path, "Auto-save on close");
+    }
+
+    // Push to backup remote if configured
+    if settings.backup.auto_backup_on_close {
+        if let Some(ref backup_dir) = settings.backup.backup_directory {
+            let _ = git::push_backup(path, Path::new(backup_dir));
+        }
+    }
+
+    Ok(())
+}
