@@ -5,11 +5,14 @@ import './editor.css'
 import App from './App.tsx'
 import { DialogProvider } from './components/shared/Dialog.tsx'
 import { ToastProvider } from './components/shared/Toast.tsx'
+import { ErrorBoundary } from './components/shared/ErrorBoundary.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
-    <DialogProvider />
-    <ToastProvider />
+    <ErrorBoundary>
+      <App />
+      <DialogProvider />
+      <ToastProvider />
+    </ErrorBoundary>
   </StrictMode>,
 )

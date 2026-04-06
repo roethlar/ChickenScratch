@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Document model
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     /// Unique document ID
     pub id: String,
@@ -47,4 +47,32 @@ pub struct Document {
     /// IDs of related documents (connections)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub links: Option<Vec<String>>,
+
+    /// Include in compile/export output (default: true)
+    #[serde(default = "default_true")]
+    pub include_in_compile: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for Document {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            path: String::new(),
+            content: String::new(),
+            parent_id: None,
+            created: String::new(),
+            modified: String::new(),
+            synopsis: None,
+            label: None,
+            status: None,
+            keywords: None,
+            links: None,
+            include_in_compile: true,
+        }
+    }
 }

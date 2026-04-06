@@ -94,7 +94,7 @@ fn collect_manuscript_html(nodes: &[TreeNode], project: &Project, html: &mut Str
             TreeNode::Document { id, path, .. } => {
                 if path.starts_with("manuscript/") && path.ends_with(".html") {
                     if let Some(doc) = project.documents.get(id) {
-                        if !doc.content.trim().is_empty() {
+                        if doc.include_in_compile && !doc.content.trim().is_empty() {
                             html.push_str(&doc.content);
                             html.push('\n');
                         }

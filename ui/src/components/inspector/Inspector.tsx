@@ -206,6 +206,31 @@ export function Inspector() {
           />
         </div>
 
+        <div className="inspector-field inspector-toggle-field">
+          <label>Include in Compile</label>
+          <input
+            type="checkbox"
+            checked={activeDoc.include_in_compile}
+            onChange={async () => {
+              if (!project || !activeDoc) return;
+              // Direct update — no debounce for toggles
+              const updated = await docCmd.updateDocumentMetadata(
+                project.path,
+                activeDoc.id,
+                {
+                  synopsis: synopsis || null,
+                  label: label || null,
+                  status: status || null,
+                  keywords: keywords.split(",").map(s => s.trim()).filter(Boolean).length
+                    ? keywords.split(",").map(s => s.trim()).filter(Boolean)
+                    : null,
+                }
+              );
+              setProject(updated);
+            }}
+          />
+        </div>
+
         <div className="inspector-field">
           <label>Words</label>
           <div className="inspector-value">{wordCount.toLocaleString()}</div>

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { Project, Document } from "../types";
 import * as projectCmd from "../commands/project";
 import * as docCmd from "../commands/document";
+import { addRecentProject } from "../commands/settings";
 
 interface ProjectState {
   project: Project | null;
@@ -31,6 +32,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const project = await projectCmd.loadProject(path);
       set({ project, activeDocId: null, activeDoc: null, error: null });
+      addRecentProject(project.name, path).catch(() => {});
     } catch (e) {
       set({ error: String(e) });
     }

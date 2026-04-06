@@ -1,8 +1,13 @@
-import { useState } from "react";
-import { FolderOpen, FilePlus, FileDown } from "lucide-react";
+import { useState, useEffect } from "react";
+import { FolderOpen, FilePlus, FileDown, Clock, AlertTriangle } from "lucide-react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useProjectStore } from "../../stores/projectStore";
 import { pickScrivFolder } from "../../commands/project";
+import {
+  getRecentProjects,
+  checkPandoc,
+  type RecentProject,
+} from "../../commands/settings";
 
 export function Welcome() {
   const openProject = useProjectStore((s) => s.openProject);
@@ -11,6 +16,17 @@ export function Welcome() {
   const error = useProjectStore((s) => s.error);
   const clearError = useProjectStore((s) => s.clearError);
   const [busy, setBusy] = useState(false);
+  const [recent, setRecent] = useState<RecentProject[]>([]);
+  const [pandocWarning, setPandocWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    getRecentProjects().then(setRecent).catch(() => {});
+    checkPandoc().catch(() => {
+      setPandocWarning(
+        "Pandoc is not installed. Scrivener import and manuscript export will not work. Install from pandoc.org."
+      );
+    });
+  }, []);
 
   const handleOpen = async () => {
     const selected = await open({
@@ -31,9 +47,7 @@ export function Welcome() {
     });
     if (dir) {
       setBusy(true);
-      // Extract name from the chosen path
       const name = dir.split("/").pop()?.replace(".chikn", "") || "Untitled";
-      // Pass the parent directory — create_project appends {name}.chikn
       const parent = dir.substring(0, dir.lastIndexOf("/"));
       await createProject(name, parent);
       setBusy(false);
@@ -57,11 +71,24 @@ export function Welcome() {
     setBusy(false);
   };
 
+  const handleOpenRecent = async (path: string) => {
+    setBusy(true);
+    await openProject(path);
+    setBusy(false);
+  };
+
   return (
     <div className="welcome">
       <div className="welcome-inner">
         <h1 className="welcome-title">Chicken Scratch</h1>
         <p className="welcome-sub">Where messy drafts become masterpieces</p>
+
+        {pandocWarning && (
+          <div className="welcome-warning">
+            <AlertTriangle size={16} />
+            {pandocWarning}
+          </div>
+        )}
 
         {error && (
           <div className="welcome-error" onClick={clearError}>
@@ -83,6 +110,28 @@ export function Welcome() {
             <span>Import Scrivener</span>
           </button>
         </div>
+
+        {recent.length > 0 && (
+          <div className="welcome-recent">
+            <h3 className="welcome-recent-title">
+              <Clock size={14} /> Recent Projects
+            </h3>
+            {recent.map((r) => (
+              <button
+                key={r.path}
+                className="welcome-recent-item"
+                onClick={() => handleOpenRecent(r.path)}
+                disabled={busy}
+                title={r.path}
+              >
+                <span className="welcome-recent-name">{r.name}</span>
+                <span className="welcome-recent-path">
+                  {r.path.replace(/^\/Users\/\w+\//, "~/")}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

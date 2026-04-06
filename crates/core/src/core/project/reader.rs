@@ -470,6 +470,7 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
         status: metadata.status,
         keywords: metadata.keywords,
         links: metadata.links,
+        include_in_compile: metadata.include_in_compile.as_deref() != Some("No"),
     })
 }
 

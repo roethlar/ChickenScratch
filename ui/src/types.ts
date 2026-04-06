@@ -15,6 +15,7 @@ export interface Document {
   status?: string | null;
   keywords?: string[] | null;
   links?: string[] | null;
+  include_in_compile: boolean;
 }
 
 export interface ProjectMeta {

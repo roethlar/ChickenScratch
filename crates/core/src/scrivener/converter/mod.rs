@@ -283,6 +283,7 @@ fn convert_binder_items_inner(
                             status: None,
                             keywords: None,
                             links: None,
+                    include_in_compile: true,
                         };
                         documents.insert(doc_id.clone(), document);
 
@@ -353,6 +354,7 @@ fn convert_binder_items_inner(
                     status: meta.and_then(|m| m.status.clone()),
                     keywords: meta.and_then(|m| m.keywords.clone()),
                     links: None,
+                    include_in_compile: true,
                 };
 
                 documents.insert(doc_id.clone(), document);
@@ -417,6 +419,7 @@ fn convert_binder_items_inner(
                             status: None,
                             keywords: None,
                             links: None,
+                    include_in_compile: true,
                         };
 
                         documents.insert(doc_id.clone(), document);

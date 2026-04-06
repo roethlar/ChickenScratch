@@ -1511,3 +1511,138 @@
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ── Welcome: Recent Projects ──────────────────────── */
+
+.welcome-recent {
+  margin-top: 2rem;
+  text-align: left;
+}
+
+.welcome-recent-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin: 0 0 0.5rem;
+}
+
+.welcome-recent-item {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  gap: 2px;
+}
+
+.welcome-recent-item:hover {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.welcome-recent-name {
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.welcome-recent-path {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.welcome-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  color: #92400e;
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+@media (prefers-color-scheme: dark) {
+  .welcome-warning {
+    background: #3a2e1a;
+    border-color: #92400e;
+    color: #fbbf24;
+  }
+}
+
+[data-theme="dark"] .welcome-warning {
+  background: #3a2e1a;
+  border-color: #92400e;
+  color: #fbbf24;
+}
+
+/* ── Error Boundary ────────────────────────────────── */
+
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text);
+}
+
+.error-boundary h2 {
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+.error-boundary p {
+  color: var(--color-text-muted);
+  max-width: 500px;
+}
+
+.error-boundary button {
+  padding: 0.5rem 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.error-boundary button:hover {
+  border-color: var(--color-accent);
+}
+
+/* ── Inspector toggle ──────────────────────────────── */
+
+.inspector-toggle-field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.inspector-toggle-field label {
+  margin-bottom: 0;
+}
+
+.inspector-toggle-field input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
