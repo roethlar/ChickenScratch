@@ -21,6 +21,7 @@ import { importFile } from "../../commands/io";
 import { dialogPrompt, dialogConfirm } from "../shared/Dialog";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toastSuccess, toastError } from "../shared/Toast";
+import { DragProvider, useDrag } from "./DragContext";
 
 /** Find the index of a node within its parent's children list */
 function findNodeIndex(hierarchy: TreeNode[], nodeId: string): { siblings: TreeNode[]; index: number } | null {
@@ -60,6 +61,14 @@ function setFolderState(projectId: string, folderId: string, open: boolean) {
 }
 
 export function Binder() {
+  return (
+    <DragProvider>
+      <BinderInner />
+    </DragProvider>
+  );
+}
+
+function BinderInner() {
   const project = useProjectStore((s) => s.project);
   const activeDocId = useProjectStore((s) => s.activeDocId);
   const selectDocument = useProjectStore((s) => s.selectDocument);
@@ -284,6 +293,29 @@ export function Binder() {
     [project]
   );
 
+  // Wire drag-and-drop handler
+  const drag = useDrag();
+  useEffect(() => {
+    drag.setOnDrop(async (dragId: string, targetId: string, position: "before" | "after" | "into") => {
+      if (!project) return;
+      try {
+        let updated;
+        if (position === "into") {
+          updated = await docCmd.moveNode(project.path, dragId, targetId);
+        } else {
+          // Reorder within same parent
+          const found = findNodeIndex(project.hierarchy, targetId);
+          if (!found) return;
+          const newIndex = position === "before" ? found.index : found.index + 1;
+          updated = await docCmd.moveNode(project.path, dragId, undefined, newIndex);
+        }
+        setProject(updated);
+      } catch (e) {
+        toastError(`Move failed: ${e}`);
+      }
+    });
+  }, [project, drag]);
+
   if (!project) return null;
 
   return (
@@ -414,12 +446,79 @@ function TreeItem({
 }) {
   const savedState = node.type === "Folder" ? getFolderState(projectId)[node.id] : undefined;
   const [open, setOpen] = useState(savedState !== undefined ? savedState : true);
+  const drag = useDrag();
+  const itemRef = useRef<HTMLDivElement>(null);
+  const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
 
   const toggleFolder = useCallback(() => {
     const next = !open;
     setOpen(next);
     setFolderState(projectId, node.id, next);
   }, [open, projectId, node.id]);
+
+  // Mouse-based drag: start tracking on mousedown, start drag if moved > 5px
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return; // left click only
+    mouseDownPos.current = { x: e.clientX, y: e.clientY };
+
+    const handleMouseMove = (me: MouseEvent) => {
+      if (!mouseDownPos.current) return;
+      const dx = me.clientX - mouseDownPos.current.x;
+      const dy = me.clientY - mouseDownPos.current.y;
+      if (Math.abs(dx) + Math.abs(dy) > 5) {
+        drag.startDrag(node.id);
+        mouseDownPos.current = null;
+      }
+    };
+
+    const handleMouseUp = () => {
+      mouseDownPos.current = null;
+      drag.endDrag();
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, [drag, node.id]);
+
+  const handleMouseEnter = useCallback((e: React.MouseEvent) => {
+    if (!drag.draggingId || drag.draggingId === node.id) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const h = rect.height;
+    if (node.type === "Folder") {
+      if (y < h * 0.25) drag.setDropTarget(node.id, "before");
+      else if (y > h * 0.75) drag.setDropTarget(node.id, "after");
+      else drag.setDropTarget(node.id, "into");
+    } else {
+      drag.setDropTarget(node.id, y < h / 2 ? "before" : "after");
+    }
+  }, [drag, node.id, node.type]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!drag.draggingId || drag.draggingId === node.id) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const h = rect.height;
+    if (node.type === "Folder") {
+      if (y < h * 0.25) drag.setDropTarget(node.id, "before");
+      else if (y > h * 0.75) drag.setDropTarget(node.id, "after");
+      else drag.setDropTarget(node.id, "into");
+    } else {
+      drag.setDropTarget(node.id, y < h / 2 ? "before" : "after");
+    }
+  }, [drag, node.id, node.type]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (drag.draggingId && drag.dropTargetId === node.id) {
+      drag.clearDropTarget();
+    }
+  }, [drag, node.id]);
+
+  const isDragging = drag.draggingId === node.id;
+  const isDropTarget = drag.dropTargetId === node.id;
+  const dropClass = isDropTarget ? `drop-${drag.dropPosition}` : "";
 
   if (node.type === "Document") {
     const isActive = node.id === activeId;
@@ -428,10 +527,15 @@ function TreeItem({
 
     return (
       <div
-        className={`binder-item ${isActive ? "active" : ""} ${isSelected && !isActive ? "selected" : ""}`}
+        ref={itemRef}
+        className={`binder-item ${isActive ? "active" : ""} ${isSelected && !isActive ? "selected" : ""} ${dropClass} ${isDragging ? "dragging" : ""}`}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
-        onClick={() => { onSelectNode(node.id); onSelect(node.id); }}
+        onClick={() => { if (!drag.draggingId) { onSelectNode(node.id); onSelect(node.id); } }}
         onContextMenu={(e) => onContextMenu(e, node.id, "Document")}
+        onMouseDown={handleMouseDown}
+        onMouseEnter={handleMouseEnter}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
         title={node.name}
       >
         <FileText size={14} className={`binder-icon ${isMedia ? "media" : ""}`} />
@@ -447,10 +551,15 @@ function TreeItem({
   return (
     <div>
       <div
-        className={`binder-item folder ${node.id === selectedId ? "selected" : ""}`}
+        ref={itemRef}
+        className={`binder-item folder ${node.id === selectedId ? "selected" : ""} ${dropClass} ${isDragging ? "dragging" : ""}`}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
-        onClick={() => { toggleFolder(); onSelectNode(node.id); }}
+        onClick={() => { if (!drag.draggingId) { toggleFolder(); onSelectNode(node.id); } }}
         onContextMenu={(e) => onContextMenu(e, node.id, "Folder")}
+        onMouseDown={handleMouseDown}
+        onMouseEnter={handleMouseEnter}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
       >
         {open ? (
           <ChevronDown size={14} className="binder-chevron" />
