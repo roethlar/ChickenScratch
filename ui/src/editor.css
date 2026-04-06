@@ -1871,3 +1871,37 @@
 .settings-save-btn:hover {
   opacity: 0.9;
 }
+
+.welcome-warning-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
+}
+
+.welcome-warning-actions button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  color: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  opacity: 0.9;
+}
+
+.welcome-warning-actions button:hover {
+  opacity: 1;
+}
+
+.welcome-warning-hint {
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+.welcome-warning p {
+  margin: 0;
+}

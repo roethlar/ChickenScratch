@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { FolderOpen, FilePlus, FileDown, Clock, AlertTriangle } from "lucide-react";
+import { FolderOpen, FilePlus, FileDown, Clock, AlertTriangle, ExternalLink } from "lucide-react";
+import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useProjectStore } from "../../stores/projectStore";
 import { pickScrivFolder } from "../../commands/project";
@@ -86,7 +87,17 @@ export function Welcome() {
         {pandocWarning && (
           <div className="welcome-warning">
             <AlertTriangle size={16} />
-            {pandocWarning}
+            <div>
+              <p>Pandoc is not installed. Needed for Scrivener import and export.</p>
+              <div className="welcome-warning-actions">
+                <button onClick={() => shellOpen("https://pandoc.org/installing.html")}>
+                  <ExternalLink size={12} /> Install Pandoc
+                </button>
+                <span className="welcome-warning-hint">
+                  macOS: brew install pandoc | Arch: pacman -S pandoc
+                </span>
+              </div>
+            </div>
           </div>
         )}
 
