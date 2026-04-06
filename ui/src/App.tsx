@@ -35,7 +35,12 @@ type View = "editor" | "corkboard" | "preview";
 
 export default function App() {
   const project = useProjectStore((s) => s.project);
-  const { theme, setTheme, focusMode, toggleFocusMode } = useSettingsStore();
+  const { theme, setTheme, focusMode, toggleFocusMode, loadSettings } = useSettingsStore();
+
+  // Load app settings on startup
+  useEffect(() => {
+    loadSettings();
+  }, []);
   const [view, setView] = useState<View>("editor");
   const [showInspector, setShowInspector] = useState(false);
   const [showRevisions, setShowRevisions] = useState(false);

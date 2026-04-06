@@ -19,7 +19,7 @@ export function Settings({
 }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [tab, setTab] = useState<Tab>("general");
-  const { setTheme } = useSettingsStore();
+  // Settings are applied via loadSettings() in the store on save
 
   useEffect(() => {
     if (open) {
@@ -31,13 +31,13 @@ export function Settings({
     if (!settings) return;
     try {
       await saveAppSettings(settings);
-      // Apply theme immediately
-      setTheme(settings.general.theme as "light" | "dark" | "sepia");
+      // Reload and apply all settings
+      await useSettingsStore.getState().loadSettings();
       toastSuccess("Settings saved");
     } catch (e) {
       toastError("Failed to save settings: " + e);
     }
-  }, [settings, setTheme]);
+  }, [settings]);
 
   const update = <K extends keyof AppSettings>(
     section: K,

@@ -426,8 +426,8 @@
 /* ── TipTap / ProseMirror ──────────────────────────── */
 
 .editor-content {
-  font-family: "Literata Variable", "Literata", "Georgia", serif;
-  font-size: 1.125rem;
+  font-family: var(--editor-font, "Literata Variable", "Literata", "Georgia", serif);
+  font-size: var(--editor-font-size, 18px);
   line-height: 1.8;
   max-width: 680px;
   margin: 0 auto;
@@ -474,17 +474,25 @@
 }
 
 .editor-content p {
-  margin: 0;
-  text-indent: 2em;
+  margin: var(--editor-paragraph-margin, 0.6em 0);
+  text-indent: var(--editor-text-indent, 0);
 }
 
+.editor-content p:first-child {
+  margin-top: 0;
+}
+
+.editor-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* When using indent style, first paragraph after breaks has no indent */
 .editor-content h1 + p,
 .editor-content h2 + p,
 .editor-content h3 + p,
 .editor-content h4 + p,
 .editor-content hr + p,
-.editor-content blockquote + p,
-.editor-content p:first-child {
+.editor-content blockquote + p {
   text-indent: 0;
 }
 
