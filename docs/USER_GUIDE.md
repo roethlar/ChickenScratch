@@ -49,7 +49,7 @@ Click a document in the binder to open it in the editor. The toolbar above the e
 
 **Auto-save:** Your work saves automatically after you stop typing (default: 2 seconds). The status bar at the bottom shows "Saved" or "Modified".
 
-**Find & Replace:** Press **Cmd+F** to find within the current document. Press **Cmd+H** to find and replace.
+**Find & Replace:** Press **Ctrl/Cmd+F** to find within the current document. Press **Ctrl/Cmd+H** to find and replace.
 
 ### Inspector (Right Sidebar)
 
@@ -122,7 +122,7 @@ Click the **Backup** button at the bottom of the Revisions panel to push your pr
 
 ## Focus Mode
 
-Press **Cmd+Shift+F** or click the **maximize icon** in the toolbar. Everything disappears except your text — no binder, no toolbar, no distractions.
+Press **Ctrl/Cmd+Shift+F** or click the **maximize icon** in the toolbar. Everything disappears except your text — no binder, no toolbar, no distractions.
 
 - Hover the left edge of the screen to reveal the binder
 - Press **Escape** to exit focus mode
