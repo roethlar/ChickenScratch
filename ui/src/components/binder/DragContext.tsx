@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react";
+import { createContext, useContext, useCallback, useRef, useState, type ReactNode } from "react";
 
 interface DragState {
   draggingId: string | null;
@@ -6,13 +6,17 @@ interface DragState {
   dropPosition: "before" | "after" | "into" | null;
 }
 
-interface DragContextType extends DragState {
+type DropHandler = (dragId: string, targetId: string, position: "before" | "after" | "into") => void;
+
+interface DragContextType {
+  draggingId: string | null;
+  dropTargetId: string | null;
+  dropPosition: "before" | "after" | "into" | null;
   startDrag: (nodeId: string) => void;
   setDropTarget: (nodeId: string, position: "before" | "after" | "into") => void;
   clearDropTarget: () => void;
-  endDrag: () => string | null; // returns the dragging ID
-  onDrop: ((dragId: string, targetId: string, position: "before" | "after" | "into") => void) | null;
-  setOnDrop: (handler: (dragId: string, targetId: string, position: "before" | "after" | "into") => void) => void;
+  endDrag: () => void;
+  setOnDrop: (handler: DropHandler) => void;
 }
 
 const Ctx = createContext<DragContextType>({
@@ -22,54 +26,60 @@ const Ctx = createContext<DragContextType>({
   startDrag: () => {},
   setDropTarget: () => {},
   clearDropTarget: () => {},
-  endDrag: () => null,
-  onDrop: null,
+  endDrag: () => {},
   setOnDrop: () => {},
 });
 
 export function DragProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<DragState>({
+  // Use refs for mutable state that needs to be read in event handlers
+  // Use useState only to trigger re-renders for visual feedback
+  const stateRef = useRef<DragState>({
     draggingId: null,
     dropTargetId: null,
     dropPosition: null,
   });
-  const onDropRef = useRef<DragContextType["onDrop"]>(null);
+  const onDropRef = useRef<DropHandler | null>(null);
+  const [, forceRender] = useState(0);
+
+  const update = useCallback((patch: Partial<DragState>) => {
+    Object.assign(stateRef.current, patch);
+    forceRender((n) => n + 1);
+  }, []);
 
   const startDrag = useCallback((nodeId: string) => {
-    setState({ draggingId: nodeId, dropTargetId: null, dropPosition: null });
-  }, []);
+    update({ draggingId: nodeId, dropTargetId: null, dropPosition: null });
+  }, [update]);
 
   const setDropTarget = useCallback((nodeId: string, position: "before" | "after" | "into") => {
-    setState((s) => ({ ...s, dropTargetId: nodeId, dropPosition: position }));
-  }, []);
+    update({ dropTargetId: nodeId, dropPosition: position });
+  }, [update]);
 
   const clearDropTarget = useCallback(() => {
-    setState((s) => ({ ...s, dropTargetId: null, dropPosition: null }));
-  }, []);
+    update({ dropTargetId: null, dropPosition: null });
+  }, [update]);
 
   const endDrag = useCallback(() => {
-    const { draggingId, dropTargetId, dropPosition } = state;
+    const { draggingId, dropTargetId, dropPosition } = stateRef.current;
     if (draggingId && dropTargetId && dropPosition && draggingId !== dropTargetId) {
       onDropRef.current?.(draggingId, dropTargetId, dropPosition);
     }
-    const id = draggingId;
-    setState({ draggingId: null, dropTargetId: null, dropPosition: null });
-    return id;
-  }, [state]);
+    update({ draggingId: null, dropTargetId: null, dropPosition: null });
+  }, [update]);
 
-  const setOnDrop = useCallback((handler: DragContextType["onDrop"]) => {
+  const setOnDrop = useCallback((handler: DropHandler) => {
     onDropRef.current = handler;
   }, []);
 
   return (
     <Ctx.Provider
       value={{
-        ...state,
+        draggingId: stateRef.current.draggingId,
+        dropTargetId: stateRef.current.dropTargetId,
+        dropPosition: stateRef.current.dropPosition,
         startDrag,
         setDropTarget,
         clearDropTarget,
         endDrag,
-        onDrop: onDropRef.current,
         setOnDrop,
       }}
     >
