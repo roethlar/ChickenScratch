@@ -1,14 +1,13 @@
 import { useState, useMemo, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
-import type { Document, TreeNode } from "../../types";
-import { Sparkles } from "lucide-react";
+import type { Document, TreeNode, Project } from "../../types";
+import { Sparkles, Link2 } from "lucide-react";
 import { aiSummarize } from "../../commands/ai";
 import * as docCmd from "../../commands/document";
-import { toastError } from "../shared/Toast";
+import { toastError, toastSuccess } from "../shared/Toast";
 
 type GroupBy = "none" | "label" | "status" | "keyword";
 
-/** Flatten hierarchy to get ordered document IDs */
 function flattenDocs(nodes: TreeNode[]): string[] {
   const ids: string[] = [];
   for (const node of nodes) {
@@ -21,11 +20,12 @@ function flattenDocs(nodes: TreeNode[]): string[] {
 export function Corkboard() {
   const project = useProjectStore((s) => s.project);
   const selectDocument = useProjectStore((s) => s.selectDocument);
-  const setProject = (p: typeof project) =>
+  const setProject = (p: Project | null) =>
     useProjectStore.setState({ project: p });
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [summarizing, setSummarizing] = useState(false);
   const [summarizeProgress, setSummarizeProgress] = useState("");
+  const [linking, setLinking] = useState<string | null>(null);
 
   const docs = useMemo(() => {
     if (!project) return [];
@@ -42,7 +42,6 @@ export function Corkboard() {
 
   const groups = useMemo(() => {
     if (groupBy === "none") return { All: docs };
-
     const map: Record<string, Document[]> = {};
     for (const doc of docs) {
       let keys: string[];
@@ -85,7 +84,6 @@ export function Corkboard() {
         }
       } catch (e) {
         toastError(`Failed to summarize ${doc.name}: ${e}`);
-        // Continue with remaining docs instead of breaking
         continue;
       }
     }
@@ -93,10 +91,33 @@ export function Corkboard() {
     setSummarizeProgress("");
   }, [project, docs]);
 
+  const handleCardClick = useCallback((docId: string) => {
+    if (linking) {
+      if (linking !== docId && project) {
+        docCmd.linkDocuments(project.path, linking, docId)
+          .then((updated) => {
+            setProject(updated);
+            toastSuccess("Documents linked");
+          })
+          .catch((e) => toastError(`Link failed: ${e}`));
+      }
+      setLinking(null);
+    } else {
+      selectDocument(docId);
+    }
+  }, [linking, project, selectDocument]);
+
+  // Escape to cancel linking
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Escape" && linking) {
+      setLinking(null);
+    }
+  }, [linking]);
+
   if (!project) return null;
 
   return (
-    <div className="corkboard">
+    <div className="corkboard" onKeyDown={handleKeyDown} tabIndex={0}>
       <div className="corkboard-toolbar">
         <label className="corkboard-group-label">
           Group by:
@@ -113,7 +134,10 @@ export function Corkboard() {
         </label>
         <div style={{ flex: 1 }} />
         {summarizing && (
-          <span className="corkboard-linking">{summarizeProgress}</span>
+          <span className="corkboard-progress">{summarizeProgress}</span>
+        )}
+        {linking && (
+          <span className="corkboard-progress">Click a card to link (Esc to cancel)</span>
         )}
         <button
           className="corkboard-summarize-btn"
@@ -137,7 +161,11 @@ export function Corkboard() {
                 <Card
                   key={doc.id}
                   doc={doc}
-                  onClick={() => selectDocument(doc.id)}
+                  allDocs={project.documents}
+                  isLinkSource={linking === doc.id}
+                  isLinking={!!linking}
+                  onClick={() => handleCardClick(doc.id)}
+                  onStartLink={() => setLinking(doc.id)}
                 />
               ))}
             </div>
@@ -155,19 +183,46 @@ export function Corkboard() {
 
 function Card({
   doc,
+  allDocs,
+  isLinkSource,
+  isLinking,
   onClick,
+  onStartLink,
 }: {
   doc: Document;
+  allDocs: Record<string, Document>;
+  isLinkSource: boolean;
+  isLinking: boolean;
   onClick: () => void;
+  onStartLink: () => void;
 }) {
   const preview = doc.synopsis ||
     doc.content?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200) ||
     "";
 
+  const linkedNames = (doc.links || [])
+    .map((id) => allDocs[id]?.name)
+    .filter(Boolean);
+
   return (
-    <div className="card" onClick={onClick}>
+    <div
+      className={`card ${!preview ? "card-empty" : ""} ${isLinkSource ? "card-linking" : ""}`}
+      onClick={onClick}
+    >
       <div className="card-header">
         <span className="card-title">{doc.name}</span>
+        {!isLinking && (
+          <button
+            className="card-link-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStartLink();
+            }}
+            title="Link to another card"
+          >
+            <Link2 size={12} />
+          </button>
+        )}
       </div>
 
       <p className="card-synopsis">
@@ -179,6 +234,13 @@ function Card({
         {doc.label && <span className="card-tag card-label">{doc.label}</span>}
         {doc.status && <span className="card-tag card-status">{doc.status}</span>}
       </div>
+
+      {linkedNames.length > 0 && (
+        <div className="card-links">
+          <Link2 size={10} />
+          <span>{linkedNames.join(", ")}</span>
+        </div>
+      )}
     </div>
   );
 }

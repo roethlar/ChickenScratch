@@ -27,6 +27,7 @@ fn main() {
             document::update_document_content,
             document::update_document_metadata,
             document::rename_node,
+            document::link_documents,
             document::create_document,
             document::create_folder,
             document::delete_node,

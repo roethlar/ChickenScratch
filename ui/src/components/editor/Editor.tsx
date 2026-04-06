@@ -112,8 +112,18 @@ export function Editor() {
   }
 
   const words = editor?.storage.characterCount.words() ?? 0;
-  const chars = editor?.storage.characterCount.characters() ?? 0;
   const saveLabel = saving ? "Saving..." : dirty ? "Modified" : "Saved";
+
+  // Session word count
+  const project = useProjectStore((s) => s.project);
+  const sessionStartWords = useProjectStore((s) => s.sessionStartWords);
+  const totalProjectWords = project
+    ? Object.values(project.documents).reduce((sum, doc) => {
+        const text = (doc.content || "").replace(/<[^>]*>/g, "");
+        return sum + text.split(/\s+/).filter(Boolean).length;
+      }, 0)
+    : 0;
+  const sessionWords = Math.max(0, totalProjectWords - sessionStartWords);
 
   return (
     <div className="editor-pane">
@@ -128,7 +138,10 @@ export function Editor() {
         <EditorContent editor={editor} />
       </div>
       <div className="editor-status">
-        <span>{words.toLocaleString()} words &middot; {chars.toLocaleString()} chars</span>
+        <span>
+          {words.toLocaleString()} words
+          {sessionWords > 0 && ` · +${sessionWords.toLocaleString()} this session`}
+        </span>
         <span>{saveLabel}</span>
       </div>
     </div>

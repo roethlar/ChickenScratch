@@ -97,6 +97,28 @@ fn rename_in_hierarchy(nodes: &mut Vec<TreeNode>, node_id: &str, new_name: &str)
 }
 
 #[tauri::command]
+pub fn link_documents(
+    project_path: String,
+    doc_id_a: String,
+    doc_id_b: String,
+) -> Result<Project, ChiknError> {
+    let mut project = reader::read_project(Path::new(&project_path))?;
+
+    // Add bidirectional link
+    for (from, to) in [(&doc_id_a, &doc_id_b), (&doc_id_b, &doc_id_a)] {
+        if let Some(doc) = project.documents.get_mut(from) {
+            let links = doc.links.get_or_insert_with(Vec::new);
+            if !links.contains(to) {
+                links.push(to.clone());
+            }
+        }
+    }
+
+    writer::write_project(&mut project)?;
+    Ok(project)
+}
+
+#[tauri::command]
 pub fn create_document(
     project_path: String,
     name: String,

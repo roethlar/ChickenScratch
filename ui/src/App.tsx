@@ -42,14 +42,28 @@ export default function App() {
   useEffect(() => {
     loadSettings();
   }, []);
-  const [view, setView] = useState<View>("editor");
-  const [showInspector, setShowInspector] = useState(false);
-  const [showRevisions, setShowRevisions] = useState(false);
+  const [view, setView] = useState<View>(
+    () => (localStorage.getItem("cs-view") as View) || "editor"
+  );
+  const [showInspector, setShowInspector] = useState(
+    () => localStorage.getItem("cs-inspector") === "true"
+  );
+  const [showRevisions, setShowRevisions] = useState(
+    () => localStorage.getItem("cs-revisions") === "true"
+  );
   const [showPalette, setShowPalette] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  const [showBinder, setShowBinder] = useState(true);
+  const [showBinder, setShowBinder] = useState(
+    () => localStorage.getItem("cs-binder") !== "false"
+  );
+
+  // Persist UI state
+  useEffect(() => { localStorage.setItem("cs-view", view); }, [view]);
+  useEffect(() => { localStorage.setItem("cs-inspector", String(showInspector)); }, [showInspector]);
+  useEffect(() => { localStorage.setItem("cs-revisions", String(showRevisions)); }, [showRevisions]);
+  useEffect(() => { localStorage.setItem("cs-binder", String(showBinder)); }, [showBinder]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -116,6 +130,26 @@ export default function App() {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, []);
+
+  // Periodic auto-backup based on settings interval
+  useEffect(() => {
+    const settings = useSettingsStore.getState().appSettings;
+    if (!project || !settings?.backup.backup_directory) return;
+
+    const minutes = settings.backup.auto_backup_minutes || 30;
+    const interval = setInterval(async () => {
+      const store = useProjectStore.getState();
+      if (store.project) {
+        try {
+          await invoke("backup_on_close", { projectPath: store.project.path });
+        } catch {
+          // Silent — periodic backup shouldn't interrupt writing
+        }
+      }
+    }, minutes * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [project?.path]);
 
   if (!project) {
     return <Welcome />;

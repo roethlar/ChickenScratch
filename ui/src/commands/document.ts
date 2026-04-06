@@ -34,6 +34,14 @@ export async function updateDocumentMetadata(
   });
 }
 
+export async function linkDocuments(
+  projectPath: string,
+  docIdA: string,
+  docIdB: string
+): Promise<Project> {
+  return invoke("link_documents", { projectPath, docIdA, docIdB });
+}
+
 export async function renameNode(
   projectPath: string,
   nodeId: string,

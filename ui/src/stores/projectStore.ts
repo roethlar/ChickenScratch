@@ -10,6 +10,7 @@ interface ProjectState {
   activeDoc: Document | null;
   saving: boolean;
   error: string | null;
+  sessionStartWords: number;
 
   openProject: (path: string) => Promise<void>;
   createProject: (name: string, path: string) => Promise<void>;
@@ -27,11 +28,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   activeDoc: null,
   saving: false,
   error: null,
+  sessionStartWords: 0,
 
   openProject: async (path: string) => {
     try {
       const project = await projectCmd.loadProject(path);
-      set({ project, activeDocId: null, activeDoc: null, error: null });
+      const totalWords = Object.values(project.documents).reduce((sum, doc) => {
+        const text = (doc.content || "").replace(/<[^>]*>/g, "");
+        return sum + text.split(/\s+/).filter(Boolean).length;
+      }, 0);
+      set({ project, activeDocId: null, activeDoc: null, error: null, sessionStartWords: totalWords });
       addRecentProject(project.name, path).catch(() => {});
     } catch (e) {
       set({ error: String(e) });

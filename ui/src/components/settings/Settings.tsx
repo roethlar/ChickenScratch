@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { X } from "lucide-react";
+import { X, FolderOpen } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   getAppSettings,
   saveAppSettings,
+  checkPandoc,
   type AppSettings,
 } from "../../commands/settings";
 import { useSettingsStore } from "../../stores/settingsStore";
@@ -19,11 +21,15 @@ export function Settings({
 }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [tab, setTab] = useState<Tab>("general");
+  const [pandocVersion, setPandocVersion] = useState<string | null>(null);
   // Settings are applied via loadSettings() in the store on save
 
   useEffect(() => {
     if (open) {
       getAppSettings().then(setSettings).catch(() => {});
+      checkPandoc()
+        .then((v) => setPandocVersion(v))
+        .catch(() => setPandocVersion("Not installed"));
     }
   }, [open]);
 
@@ -117,6 +123,11 @@ export function Settings({
                     }
                     placeholder="/usr/local/bin/pandoc"
                   />
+                  {pandocVersion && (
+                    <p className="settings-hint">
+                      Detected: {pandocVersion}
+                    </p>
+                  )}
                 </Field>
               </div>
             )}
@@ -172,14 +183,25 @@ export function Settings({
             {tab === "backup" && (
               <div className="settings-section">
                 <Field label="Backup Directory">
-                  <input
-                    type="text"
-                    value={settings.backup.backup_directory || ""}
-                    onChange={(e) =>
-                      update("backup", "backup_directory", e.target.value || null)
-                    }
-                    placeholder="~/ChickenScratchBackups"
-                  />
+                  <div className="settings-browse-row">
+                    <input
+                      type="text"
+                      value={settings.backup.backup_directory || ""}
+                      onChange={(e) =>
+                        update("backup", "backup_directory", e.target.value || null)
+                      }
+                      placeholder="~/ChickenScratchBackups"
+                    />
+                    <button
+                      className="settings-browse-btn"
+                      onClick={async () => {
+                        const dir = await openDialog({ directory: true, title: "Choose Backup Folder" });
+                        if (dir) update("backup", "backup_directory", dir);
+                      }}
+                    >
+                      <FolderOpen size={14} />
+                    </button>
+                  </div>
                   <p className="settings-hint">
                     Each project gets a git backup repository in this folder.
                     Set this to a cloud-synced folder (Dropbox, iCloud, etc.)
