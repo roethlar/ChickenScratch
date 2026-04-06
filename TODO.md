@@ -9,64 +9,51 @@
 - [x] git2-rs integration (save revision, history, restore, branches, backup)
 - [x] Tauri app with React frontend
 - [x] WYSIWYG HTML editor (TipTap with formatting toolbar)
-- [x] Find & Replace (Cmd+F / Cmd+H)
+- [x] Find & Replace
 - [x] Binder with drag-and-drop, context menus, rename, move, delete
+- [x] Binder ... menu button (no right-click needed)
 - [x] Manuscript/Research/Trash project structure
-- [x] Corkboard card view with AI summaries
+- [x] Corkboard card view with AI summaries and document linking
 - [x] Inspector panel (synopsis, label, status, keywords, include in compile)
 - [x] Manuscript preview (continuous prose, type-aware section headers)
 - [x] Revisions UI (save revision, history, restore, draft versions)
 - [x] Filesystem backup (git remote push to configurable directory)
-- [x] Auto-backup on close
+- [x] Auto-backup on close + periodic auto-backup timer
 - [x] Compile/export to DOCX, PDF, EPUB, HTML, ODT
-- [x] Import .md/.txt files
+- [x] Import all Pandoc-supported formats (DOCX, ODT, RTF, EPUB, MD, LaTeX, etc.)
 - [x] Light/dark/sepia themes
-- [x] Focus mode (Cmd+Shift+F)
-- [x] Command palette (Cmd+K)
-- [x] Project-wide search (Cmd+Shift+P)
+- [x] Focus mode
+- [x] Command palette
+- [x] Project-wide search
 - [x] Comprehensive settings panel (General, Writing, Backup, AI, Compile)
+- [x] Writing settings apply to editor dynamically (font, size, paragraph style)
+- [x] Compile settings apply to export (font, spacing, margins)
 - [x] Recent projects list
 - [x] Error boundary
-- [x] Custom dialog system (prompt/confirm that works in Tauri)
+- [x] Custom dialog system (works in Tauri webview)
 - [x] Toast notifications
-- [x] Pandoc detection with path fallbacks
+- [x] Pandoc detection with path fallbacks + install helper
+- [x] Pandoc version shown in Settings
+- [x] Session word count in status bar
+- [x] Window/panel state persistence
+- [x] include_in_compile toggle wired end-to-end
+- [x] Document links on corkboard (bidirectional, persisted)
+- [x] Empty cards visually muted
 - [x] App icon
 - [x] PKGBUILD for Arch Linux AUR
-
-## MVP Remaining
-
-### Pandoc
-- [x] "Install Pandoc" helper — platform-specific install command or link
-- [ ] Show detected Pandoc version in Settings
-
-### Documentation
 - [x] User guide (docs/USER_GUIDE.md)
-- [x] In-app Help menu linking to user guide
-- [x] README with accurate feature state
+- [x] Developer README (build/architecture only)
+- [x] All tests passing, zero compiler warnings
 
-### Polish
-- [x] Apply writing settings (font, size, paragraph style) to editor dynamically
-- [x] Apply compile settings to export output
-- [ ] Session word count tracking in status bar
-- [ ] Window state persistence (size, position, panel widths)
-- [ ] Screenshots for README
-
-### Known Issues
-- [ ] Scrivener template docs (Short Story Format, etc.) import into Manuscript — should skip or go to Templates
-- [ ] Corkboard "Summarize" button doesn't show error if Ollama isn't running
-- [ ] Some imported Scrivener projects have empty-content documents that show blank cards
-- [ ] One unit test failing (test_read_project_success) due to metadata field addition
-
-## Post-MVP
+## Remaining
 
 ### Templates
 - [ ] Default templates (Scene, Chapter, Character Sheet, Setting)
-- [ ] "New from Template" in binder
+- [ ] "New from Template" in binder context menu
 - [ ] "Save as Template" for documents
 
 ### Search
-- [ ] Highlight matches in editor when navigating search results
-- [ ] Search within current document (separate from project search)
+- [ ] Highlight matches in editor when navigating project search results
 
 ### Statistics
 - [ ] Writing statistics panel (per-doc and project word counts)
@@ -83,14 +70,22 @@
 - [ ] Replace curl shell-out with reqwest HTTP client
 - [ ] Streaming responses
 - [ ] More AI actions (polish, expand, brainstorm)
+- [ ] AI settings UI accessible from corkboard (not just Settings panel)
 
 ### Compile
 - [ ] Per-document compile order override
 - [ ] Section separator customization
 - [ ] Front matter (title page, copyright, dedication)
-- [ ] Manuscript format preset (Shunn standard)
+- [ ] Manuscript format preset (Shunn standard submission format)
 
 ### Platform
 - [ ] Windows testing and packaging (.msi)
 - [ ] Flatpak for Linux
 - [ ] Auto-update mechanism
+- [ ] Code signing for macOS
+
+### Polish
+- [ ] Spell check integration
+- [ ] Keyboard shortcut customization
+- [ ] Binder width resizing
+- [ ] Print support

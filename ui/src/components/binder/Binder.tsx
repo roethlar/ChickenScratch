@@ -335,6 +335,16 @@ export function Binder() {
           onMoveUp={handleMoveUp}
           onMoveDown={handleMoveDown}
           onImportFile={handleImportFile}
+          onMoveTo={async (nodeId: string, targetFolderId: string) => {
+            if (!project) return;
+            try {
+              const updated = await docCmd.moveNode(project.path, nodeId, targetFolderId);
+              setProject(updated);
+            } catch (e) {
+              toastError(`Move failed: ${e}`);
+            }
+            closeMenu();
+          }}
           onClose={closeMenu}
         />
       )}
@@ -504,6 +514,7 @@ function ContextMenu({
   onMoveUp,
   onMoveDown,
   onImportFile,
+  onMoveTo,
   onClose,
 }: {
   x: number;
@@ -518,6 +529,7 @@ function ContextMenu({
   onMoveUp: (nodeId: string) => void;
   onMoveDown: (nodeId: string) => void;
   onImportFile: (parentId?: string) => void;
+  onMoveTo: (nodeId: string, targetFolderId: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -550,6 +562,14 @@ function ContextMenu({
   const canMoveUp = found !== null && found.index > 0;
   const canMoveDown = found !== null && found.index < found.siblings.length - 1;
 
+  // Find special folder IDs for "Move to..." options
+  const specialFolders = hierarchy
+    .filter((n): n is Extract<TreeNode, { type: "Folder" }> =>
+      n.type === "Folder" && ["Manuscript", "Research", "Trash"].includes(n.name)
+    )
+    .map((n) => ({ id: n.id, name: n.name }));
+  const isSpecialFolder = nodeId ? specialFolders.some((f) => f.id === nodeId) : false;
+
   return (
     <div
       ref={ref}
@@ -565,7 +585,7 @@ function ContextMenu({
       <button onClick={() => onImportFile(parentId)}>
         <FileDown size={14} /> Import File
       </button>
-      {nodeId && (
+      {nodeId && !isSpecialFolder && (
         <>
           <div className="context-menu-divider" />
           <button onClick={() => onRename(nodeId)}>
@@ -577,6 +597,19 @@ function ContextMenu({
           <button disabled={!canMoveDown} onClick={() => onMoveDown(nodeId)}>
             <ArrowDown size={14} /> Move Down
           </button>
+          {specialFolders.length > 0 && (
+            <>
+              <div className="context-menu-divider" />
+              {specialFolders.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => onMoveTo(nodeId, f.id)}
+                >
+                  <ArrowDown size={14} /> Move to {f.name}
+                </button>
+              ))}
+            </>
+          )}
           <div className="context-menu-divider" />
           <button className="danger" onClick={() => onDelete(nodeId)}>
             <Trash2 size={14} /> Delete

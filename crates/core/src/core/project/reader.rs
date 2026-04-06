@@ -253,7 +253,7 @@ fn repair_project(project: &mut Project, project_path: &Path) -> bool {
 
     // Pass 5: Ensure Manuscript and Research folders are in the hierarchy
     // (Templates and Settings are internal — they live on disk but not in the binder)
-    let binder_folders: &[&str] = &["Manuscript", "Research"];
+    let binder_folders: &[&str] = &["Manuscript", "Research", "Trash"];
     for name in binder_folders {
         let folder_name_lower = name.to_lowercase();
         let in_hierarchy = project.hierarchy.iter().any(|node| {
