@@ -92,7 +92,8 @@
       "Bash(rm -rf \"/Applications/ChickenScratch.app\")",
       "Bash(cp -r \"target/release/bundle/macos/ChickenScratch.app\" \"/Applications/ChickenScratch.app\")",
       "Bash(pandoc --list-input-formats)",
-      "Bash(pkill -f \"vite\")"
+      "Bash(pkill -f \"vite\")",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

@@ -21,6 +21,7 @@ import { importFile } from "../../commands/io";
 import { dialogPrompt, dialogConfirm } from "../shared/Dialog";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toastSuccess, toastError } from "../shared/Toast";
+import { listTemplates, createFromTemplate, type Template } from "../../commands/templates";
 import { DragProvider, useDrag } from "./DragContext";
 
 /** Find the index of a node within its parent's children list */
@@ -253,6 +254,29 @@ function BinderInner() {
     [project]
   );
 
+  const [templates, setTemplates] = useState<Template[]>([]);
+  useEffect(() => {
+    listTemplates().then(setTemplates).catch(() => {});
+  }, []);
+
+  const handleNewFromTemplate = useCallback(
+    async (templateId: string, parentId?: string) => {
+      if (!project) return;
+      const template = templates.find((t) => t.id === templateId);
+      const name = await dialogPrompt("Document name:", template?.name || "");
+      if (!name || !name.trim()) return;
+      const pid = parentId !== undefined ? parentId : getParentForNew();
+      try {
+        const updated = await createFromTemplate(project.path, templateId, name.trim(), pid);
+        setProject(updated);
+      } catch (e) {
+        toastError(`Failed: ${e}`);
+      }
+      closeMenu();
+    },
+    [project, templates, getParentForNew]
+  );
+
   const handleImportFile = useCallback(
     async (parentId?: string) => {
       if (!project) return;
@@ -413,6 +437,8 @@ function BinderInner() {
           onMoveUp={handleMoveUp}
           onMoveDown={handleMoveDown}
           onImportFile={handleImportFile}
+          templates={templates}
+          onNewFromTemplate={handleNewFromTemplate}
           onMoveTo={(nodeId: string) => {
             setMovingNodeId(nodeId);
             closeMenu();
@@ -661,6 +687,8 @@ function ContextMenu({
   onMoveUp,
   onMoveDown,
   onImportFile,
+  templates,
+  onNewFromTemplate,
   onMoveTo,
   onEmptyTrash,
   onClose,
@@ -677,6 +705,8 @@ function ContextMenu({
   onMoveUp: (nodeId: string) => void;
   onMoveDown: (nodeId: string) => void;
   onImportFile: (parentId?: string) => void;
+  templates: Template[];
+  onNewFromTemplate: (templateId: string, parentId?: string) => void;
   onMoveTo: (nodeId: string) => void;
   onEmptyTrash: () => void;
   onClose: () => void;
@@ -735,6 +765,16 @@ function ContextMenu({
       <button onClick={() => onImportFile(parentId)}>
         <FileDown size={14} /> Import File
       </button>
+      {templates.length > 0 && (
+        <>
+          <div className="context-menu-divider" />
+          {templates.map((t) => (
+            <button key={t.id} onClick={() => onNewFromTemplate(t.id, parentId)}>
+              <FileText size={14} /> {t.name}
+            </button>
+          ))}
+        </>
+      )}
       {nodeId && !isSpecialFolder && (
         <>
           <div className="context-menu-divider" />

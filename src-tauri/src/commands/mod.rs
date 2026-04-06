@@ -5,3 +5,4 @@ pub mod io;
 pub mod project;
 pub mod search;
 pub mod settings;
+pub mod templates;
