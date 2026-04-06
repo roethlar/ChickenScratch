@@ -21,6 +21,7 @@ import {
   Moon,
   BookOpen,
   Settings2,
+  HelpCircle,
 } from "lucide-react";
 import { CommandPalette } from "./components/command-palette/CommandPalette";
 import { Revisions } from "./components/revisions/Revisions";
@@ -220,6 +221,17 @@ export default function App() {
             title="Settings"
           >
             <Settings2 size={16} />
+          </button>
+          <button
+            className="view-btn"
+            onClick={() => {
+              import("@tauri-apps/plugin-shell").then(({ open }) =>
+                open("https://github.com/yourusername/ChickenScratch/blob/master/docs/USER_GUIDE.md")
+              );
+            }}
+            title="Help"
+          >
+            <HelpCircle size={16} />
           </button>
         </div>
         {view === "editor" ? <Editor /> : view === "corkboard" ? <Corkboard /> : <Preview />}

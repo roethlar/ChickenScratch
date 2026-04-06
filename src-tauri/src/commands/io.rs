@@ -14,12 +14,22 @@ pub fn compile_project(
     title: Option<String>,
     author: Option<String>,
 ) -> Result<(), ChiknError> {
+    // Read compile settings
+    let settings = super::settings::get_app_settings();
+    let options = compile::CompileOptions {
+        font: Some(settings.compile.font),
+        font_size: Some(settings.compile.font_size),
+        line_spacing: Some(settings.compile.line_spacing),
+        margin_inches: Some(settings.compile.margin_inches),
+    };
+
     compile::compile(
         Path::new(&project_path),
         Path::new(&output_path),
         &format,
         title.as_deref(),
         author.as_deref(),
+        Some(options),
     )
 }
 
