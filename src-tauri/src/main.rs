@@ -2,7 +2,7 @@
 
 mod commands;
 
-use commands::{ai, document, git, io, project, settings};
+use commands::{ai, document, git, io, project, search, settings};
 
 fn main() {
     // Work around WebKitGTK DMA-BUF renderer crash on Wayland
@@ -50,6 +50,7 @@ fn main() {
             settings::get_recent_projects,
             settings::add_recent_project,
             settings::check_pandoc,
+            search::search_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Chicken Scratch");

@@ -6,6 +6,7 @@ import { Binder } from "./components/binder/Binder";
 import { Editor } from "./components/editor/Editor";
 import { Corkboard } from "./components/corkboard/Corkboard";
 import { Inspector } from "./components/inspector/Inspector";
+import { ProjectSearch } from "./components/search/ProjectSearch";
 import {
   PenLine,
   LayoutGrid,
@@ -36,6 +37,7 @@ export default function App() {
   const [showInspector, setShowInspector] = useState(false);
   const [showRevisions, setShowRevisions] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   const [showBinder, setShowBinder] = useState(true);
 
@@ -46,6 +48,10 @@ export default function App() {
       if (mod && e.key === "k") {
         e.preventDefault();
         setShowPalette((s) => !s);
+      }
+      if (mod && e.shiftKey && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        setShowSearch((s) => !s);
       }
       if (mod && e.shiftKey && (e.key === "f" || e.key === "F")) {
         e.preventDefault();
@@ -76,12 +82,25 @@ export default function App() {
       }
       if (e.key === "Escape") {
         if (showPalette) setShowPalette(false);
+        else if (showSearch) setShowSearch(false);
         else if (focusMode) toggleFocusMode();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [focusMode, showPalette, toggleFocusMode]);
+  }, [focusMode, showPalette, showSearch, toggleFocusMode]);
+
+  // Warn before closing with unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      const store = useProjectStore.getState();
+      if (store.project && store.saving) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   if (!project) {
     return <Welcome />;
@@ -187,6 +206,7 @@ export default function App() {
       {showRevisions && <Revisions />}
       {showInspector && <Inspector />}
       <CommandPalette open={showPalette} onClose={() => setShowPalette(false)} />
+      <ProjectSearch open={showSearch} onClose={() => setShowSearch(false)} />
     </div>
   );
 }

@@ -1646,3 +1646,58 @@
   accent-color: var(--color-accent);
   cursor: pointer;
 }
+
+/* ── Project Search ────────────────────────────────── */
+
+.search-input-row {
+  display: flex;
+  align-items: center;
+  padding: 0 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.search-icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.search-input {
+  border: none !important;
+  border-bottom: none !important;
+  padding-left: 0.5rem !important;
+}
+
+.search-spinner {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.search-result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.search-result-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.search-result-snippet {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-result-count {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  padding: 1px 6px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
