@@ -9,12 +9,18 @@ import {
   ArrowUp,
   ArrowDown,
   Pencil,
+  FileDown,
+  BookText,
+  FlaskConical,
 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { TreeNode } from "../../types";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
+import { importFile } from "../../commands/io";
 import { dialogPrompt, dialogConfirm } from "../shared/Dialog";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { toastSuccess, toastError } from "../shared/Toast";
 
 /** Find the index of a node within its parent's children list */
 function findNodeIndex(hierarchy: TreeNode[], nodeId: string): { siblings: TreeNode[]; index: number } | null {
@@ -205,6 +211,28 @@ export function Binder() {
     [project]
   );
 
+  const handleImportFile = useCallback(
+    async (parentId?: string) => {
+      if (!project) return;
+      const filePath = await openDialog({
+        title: "Import File",
+        filters: [
+          { name: "Documents", extensions: ["md", "txt", "html"] },
+        ],
+      });
+      if (!filePath) return;
+      try {
+        const updated = await importFile(project.path, filePath, parentId);
+        setProject(updated);
+        toastSuccess("File imported");
+      } catch (e) {
+        toastError(`Import failed: ${e}`);
+      }
+      closeMenu();
+    },
+    [project]
+  );
+
   const handleDrop = useCallback(
     async (dragId: string, targetId: string, position: "before" | "after" | "into") => {
       if (!project) return;
@@ -296,6 +324,7 @@ export function Binder() {
           onRename={handleRename}
           onMoveUp={handleMoveUp}
           onMoveDown={handleMoveDown}
+          onImportFile={handleImportFile}
           onClose={closeMenu}
         />
       )}
@@ -391,6 +420,10 @@ function TreeItem({
       >
         <FileText size={14} className={`binder-icon ${isMedia ? "media" : ""}`} />
         <span className="binder-label">{node.name}</span>
+        <span
+          className="binder-more"
+          onClick={(e) => { e.stopPropagation(); onContextMenu(e as any, node.id, "Document"); }}
+        >...</span>
       </button>
     );
   }
@@ -414,8 +447,20 @@ function TreeItem({
         ) : (
           <ChevronRight size={14} className="binder-chevron" />
         )}
-        <Folder size={14} className="binder-icon" />
+        {node.name === "Manuscript" ? (
+          <BookText size={14} className="binder-icon" />
+        ) : node.name === "Research" ? (
+          <FlaskConical size={14} className="binder-icon" />
+        ) : node.name === "Trash" ? (
+          <Trash2 size={14} className="binder-icon" />
+        ) : (
+          <Folder size={14} className="binder-icon" />
+        )}
         <span className="binder-label">{node.name}</span>
+        <span
+          className="binder-more"
+          onClick={(e) => { e.stopPropagation(); onContextMenu(e as any, node.id, "Folder"); }}
+        >...</span>
       </button>
       {open &&
         node.children.map((child) => (
@@ -448,6 +493,7 @@ function ContextMenu({
   onRename,
   onMoveUp,
   onMoveDown,
+  onImportFile,
   onClose,
 }: {
   x: number;
@@ -461,6 +507,7 @@ function ContextMenu({
   onRename: (nodeId: string) => void;
   onMoveUp: (nodeId: string) => void;
   onMoveDown: (nodeId: string) => void;
+  onImportFile: (parentId?: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -504,6 +551,9 @@ function ContextMenu({
       </button>
       <button onClick={() => onNewFolder(parentId)}>
         <FolderPlus size={14} /> New Folder
+      </button>
+      <button onClick={() => onImportFile(parentId)}>
+        <FileDown size={14} /> Import File
       </button>
       {nodeId && (
         <>

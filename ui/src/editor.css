@@ -1944,3 +1944,25 @@
   border-color: var(--color-accent);
   color: var(--color-accent);
 }
+
+.binder-more {
+  margin-left: auto;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--color-text-muted);
+  opacity: 0;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.binder-item:hover .binder-more {
+  opacity: 0.6;
+}
+
+.binder-more:hover {
+  opacity: 1 !important;
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+}

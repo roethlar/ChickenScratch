@@ -258,10 +258,14 @@ export default function App() {
           </button>
           <button
             className="view-btn"
-            onClick={() => {
-              // Open user guide — works offline if docs/ exists alongside the app
-              const guide = "https://github.com/mcoelho/ChickenScratch/blob/master/docs/USER_GUIDE.md";
-              window.open(guide, "_blank");
+            onClick={async () => {
+              try {
+                const { open } = await import("@tauri-apps/plugin-shell");
+                await open("https://github.com/mcoelho/ChickenScratch/blob/master/docs/USER_GUIDE.md");
+              } catch {
+                // Fallback: show inline help
+                toastError("Could not open browser. See docs/USER_GUIDE.md in the project.");
+              }
             }}
             title="Help"
           >
