@@ -1,5 +1,5 @@
 {
-  "productName": "Chicken Scratch",
+  "productName": "ChickenScratch",
   "version": "0.1.0",
   "identifier": "com.chickenscratch.editor",
   "build": {
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "Chicken Scratch",
+        "title": "ChickenScratch",
         "width": 1200,
         "height": 800,
         "minWidth": 800,

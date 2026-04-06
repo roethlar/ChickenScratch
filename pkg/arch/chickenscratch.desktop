@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=Chicken Scratch
-Comment=Cross-platform writing app
+Name=ChickenScratch
+Comment=Cross-platform writing app for fiction writers
 Exec=chickenscratch
 Icon=chickenscratch
 Type=Application

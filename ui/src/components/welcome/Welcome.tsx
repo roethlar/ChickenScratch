@@ -80,7 +80,7 @@ export function Welcome() {
   return (
     <div className="welcome">
       <div className="welcome-inner">
-        <h1 className="welcome-title">Chicken Scratch</h1>
+        <h1 className="welcome-title">ChickenScratch</h1>
         <p className="welcome-sub">Where messy drafts become masterpieces</p>
 
         {pandocWarning && (

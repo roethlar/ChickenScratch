@@ -54,12 +54,28 @@ pub fn add_recent_project(name: String, path: String) -> Result<(), ChiknError> 
 
 #[tauri::command]
 pub fn check_pandoc() -> Result<String, ChiknError> {
-    let output = std::process::Command::new("pandoc")
-        .arg("--version")
-        .output()
-        .map_err(|_| ChiknError::Unknown("Pandoc is not installed. Install it from https://pandoc.org for import/export features.".to_string()))?;
+    // Bundled apps have a limited PATH — check common install locations
+    let candidates = [
+        "pandoc",
+        "/usr/local/bin/pandoc",
+        "/opt/homebrew/bin/pandoc",
+        "/usr/bin/pandoc",
+    ];
 
-    let version = String::from_utf8_lossy(&output.stdout);
-    let first_line = version.lines().next().unwrap_or("unknown").to_string();
-    Ok(first_line)
+    for pandoc in &candidates {
+        if let Ok(output) = std::process::Command::new(pandoc)
+            .arg("--version")
+            .output()
+        {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout);
+                return Ok(version.lines().next().unwrap_or("unknown").to_string());
+            }
+        }
+    }
+
+    Err(ChiknError::Unknown(
+        "Pandoc is not installed. Install it from https://pandoc.org for import/export features."
+            .to_string(),
+    ))
 }
