@@ -29,7 +29,9 @@ use uuid::Uuid;
 
 use super::format::{
     get_document_meta_path, get_manuscript_path, get_project_file_path, get_research_path,
+    get_templates_path, get_settings_path,
     validate_project_structure, DOCUMENT_EXTENSION,
+    MANUSCRIPT_FOLDER, RESEARCH_FOLDER, TEMPLATES_FOLDER, SETTINGS_FOLDER,
 };
 use crate::models::{Document, Project, TreeNode};
 use crate::utils::error::ChiknError;
@@ -232,6 +234,42 @@ fn repair_project(project: &mut Project, project_path: &Path) -> bool {
             project.documents.remove(id);
         }
         repaired = true;
+    }
+
+    // Pass 4: Ensure default directories exist on disk
+    let all_default_dirs: &[fn(&Path) -> std::path::PathBuf] = &[
+        get_manuscript_path as fn(&Path) -> std::path::PathBuf,
+        get_research_path,
+        get_templates_path,
+        get_settings_path,
+    ];
+    for path_fn in all_default_dirs {
+        let folder_path = path_fn(project_path);
+        if !folder_path.exists() {
+            let _ = std::fs::create_dir_all(&folder_path);
+            eprintln!("Repaired: created missing folder on disk: {}", folder_path.display());
+            repaired = true;
+        }
+    }
+
+    // Pass 5: Ensure Manuscript and Research folders are in the hierarchy
+    // (Templates and Settings are internal — they live on disk but not in the binder)
+    let binder_folders: &[&str] = &["Manuscript", "Research"];
+    for name in binder_folders {
+        let folder_name_lower = name.to_lowercase();
+        let in_hierarchy = project.hierarchy.iter().any(|node| {
+            matches!(node, TreeNode::Folder { name: n, .. } if n.to_lowercase() == folder_name_lower)
+        });
+
+        if !in_hierarchy {
+            project.hierarchy.push(TreeNode::Folder {
+                id: Uuid::new_v4().to_string(),
+                name: name.to_string(),
+                children: Vec::new(),
+            });
+            eprintln!("Repaired: added {} folder to hierarchy", name);
+            repaired = true;
+        }
     }
 
     repaired

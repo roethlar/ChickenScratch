@@ -27,7 +27,7 @@ use super::format::{
     get_settings_path, get_templates_path,
 };
 use super::reader::{DocumentMetadata, ProjectMetadata};
-use crate::models::Project;
+use crate::models::{Project, TreeNode};
 use crate::utils::error::ChiknError;
 
 /// Writes a Project to disk as a .chikn project.
@@ -101,7 +101,18 @@ pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
         id: uuid::Uuid::new_v4().to_string(),
         name: name.to_string(),
         path: path.to_string_lossy().to_string(),
-        hierarchy: Vec::new(),
+        hierarchy: vec![
+            TreeNode::Folder {
+                id: uuid::Uuid::new_v4().to_string(),
+                name: "Manuscript".to_string(),
+                children: Vec::new(),
+            },
+            TreeNode::Folder {
+                id: uuid::Uuid::new_v4().to_string(),
+                name: "Research".to_string(),
+                children: Vec::new(),
+            },
+        ],
         documents: std::collections::HashMap::new(),
         created: now.clone(),
         modified: now,
