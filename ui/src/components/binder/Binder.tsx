@@ -258,7 +258,7 @@ export function Binder() {
           setProject(updated);
         }
       } catch (e) {
-        console.error("Move failed:", e);
+        toastError(`Move failed: ${e}`);
       }
     },
     [project]

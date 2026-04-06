@@ -103,6 +103,10 @@ export function Editor() {
     };
   }, []);
 
+  // Session word count — hooks must be before any conditional return
+  const project = useProjectStore((s) => s.project);
+  const sessionStartWords = useProjectStore((s) => s.sessionStartWords);
+
   if (!activeDoc) {
     return (
       <div className="editor-empty">
@@ -113,10 +117,6 @@ export function Editor() {
 
   const words = editor?.storage.characterCount.words() ?? 0;
   const saveLabel = saving ? "Saving..." : dirty ? "Modified" : "Saved";
-
-  // Session word count
-  const project = useProjectStore((s) => s.project);
-  const sessionStartWords = useProjectStore((s) => s.sessionStartWords);
   const totalProjectWords = project
     ? Object.values(project.documents).reduce((sum, doc) => {
         const text = (doc.content || "").replace(/<[^>]*>/g, "");

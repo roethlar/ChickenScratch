@@ -91,7 +91,8 @@
       "Read(//tmp/corn-struct.chikn/**)",
       "Bash(rm -rf \"/Applications/ChickenScratch.app\")",
       "Bash(cp -r \"target/release/bundle/macos/ChickenScratch.app\" \"/Applications/ChickenScratch.app\")",
-      "Bash(pandoc --list-input-formats)"
+      "Bash(pandoc --list-input-formats)",
+      "Bash(pkill -f \"vite\")"
     ],
     "deny": [],
     "ask": []
