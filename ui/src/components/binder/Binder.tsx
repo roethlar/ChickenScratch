@@ -417,6 +417,25 @@ function BinderInner() {
             setMovingNodeId(nodeId);
             closeMenu();
           }}
+          onEmptyTrash={async () => {
+            if (!project || !trashId) return;
+            if (!(await dialogConfirm("Permanently delete everything in Trash?"))) return;
+            // Delete all children of Trash
+            const trashFolder = project.hierarchy.find(
+              (n) => n.type === "Folder" && n.id === trashId
+            );
+            if (trashFolder && trashFolder.type === "Folder") {
+              let latest = project;
+              for (const child of [...trashFolder.children]) {
+                try {
+                  latest = await docCmd.deleteNode(latest.path, child.id);
+                } catch { /* continue */ }
+              }
+              setProject(latest);
+              toastSuccess("Trash emptied");
+            }
+            closeMenu();
+          }}
           onClose={closeMenu}
         />
       )}
@@ -643,6 +662,7 @@ function ContextMenu({
   onMoveDown,
   onImportFile,
   onMoveTo,
+  onEmptyTrash,
   onClose,
 }: {
   x: number;
@@ -658,6 +678,7 @@ function ContextMenu({
   onMoveDown: (nodeId: string) => void;
   onImportFile: (parentId?: string) => void;
   onMoveTo: (nodeId: string) => void;
+  onEmptyTrash: () => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -697,6 +718,7 @@ function ContextMenu({
     )
     .map((n) => ({ id: n.id, name: n.name }));
   const isSpecialFolder = nodeId ? specialFolders.some((f) => f.id === nodeId) : false;
+  const isTrash = nodeId ? specialFolders.some((f) => f.id === nodeId && f.name === "Trash") : false;
 
   return (
     <div
@@ -732,6 +754,14 @@ function ContextMenu({
           <div className="context-menu-divider" />
           <button className="danger" onClick={() => onDelete(nodeId)}>
             <Trash2 size={14} /> Delete
+          </button>
+        </>
+      )}
+      {nodeId && isTrash && (
+        <>
+          <div className="context-menu-divider" />
+          <button className="danger" onClick={() => onEmptyTrash()}>
+            <Trash2 size={14} /> Empty Trash
           </button>
         </>
       )}
