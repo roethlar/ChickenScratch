@@ -3,7 +3,7 @@ use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::hierarchy;
 use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::{ChiknError, Document, Project, TreeNode};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -322,6 +322,60 @@ fn count_words_html(html: &str) -> usize {
         }
     }
     text.split_whitespace().count()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WritingHistory {
+    pub entries: Vec<DayEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DayEntry {
+    pub date: String, // YYYY-MM-DD
+    pub words: usize,
+}
+
+#[tauri::command]
+pub fn get_writing_history(project_path: String) -> Result<WritingHistory, ChiknError> {
+    let path = Path::new(&project_path).join("settings").join("writing-history.json");
+    if !path.exists() {
+        return Ok(WritingHistory::default());
+    }
+    let data = fs::read_to_string(&path)?;
+    let history: WritingHistory = serde_json::from_str(&data).unwrap_or_default();
+    Ok(history)
+}
+
+#[tauri::command]
+pub fn record_daily_words(project_path: String, words: usize) -> Result<(), ChiknError> {
+    let dir = Path::new(&project_path).join("settings");
+    fs::create_dir_all(&dir)?;
+    let path = dir.join("writing-history.json");
+
+    let mut history: WritingHistory = if path.exists() {
+        let data = fs::read_to_string(&path)?;
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        WritingHistory::default()
+    };
+
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+
+    if let Some(entry) = history.entries.iter_mut().find(|e| e.date == today) {
+        entry.words = words;
+    } else {
+        history.entries.push(DayEntry { date: today, words });
+    }
+
+    // Keep last 90 days
+    if history.entries.len() > 90 {
+        history.entries = history.entries.split_off(history.entries.len() - 90);
+    }
+
+    let json = serde_json::to_string_pretty(&history)
+        .map_err(|e| ChiknError::Unknown(format!("Failed to serialize history: {}", e)))?;
+    fs::write(&path, json)?;
+    Ok(())
 }
 
 #[tauri::command]

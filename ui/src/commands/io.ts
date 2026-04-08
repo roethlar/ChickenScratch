@@ -25,6 +25,23 @@ export interface CompileOptions {
   manuscriptFormat?: boolean;
 }
 
+export interface DayEntry {
+  date: string;
+  words: number;
+}
+
+export interface WritingHistory {
+  entries: DayEntry[];
+}
+
+export async function getWritingHistory(projectPath: string): Promise<WritingHistory> {
+  return invoke("get_writing_history", { projectPath });
+}
+
+export async function recordDailyWords(projectPath: string, words: number): Promise<void> {
+  return invoke("record_daily_words", { projectPath, words });
+}
+
 export async function compileProject(
   projectPath: string,
   outputPath: string,

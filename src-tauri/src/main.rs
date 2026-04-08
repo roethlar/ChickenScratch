@@ -62,6 +62,8 @@ fn main() {
             git::revision_diff,
             git::word_diff,
             io::get_project_stats,
+            io::get_writing_history,
+            io::record_daily_words,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ChickenScratch");

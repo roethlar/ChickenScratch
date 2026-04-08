@@ -1670,6 +1670,53 @@
   color: var(--color-text-muted);
 }
 
+.stats-history {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.history-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 80px;
+  margin-top: 6px;
+}
+
+.history-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.history-bar-bg {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.history-bar {
+  width: 100%;
+  background: var(--color-accent);
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  opacity: 0.7;
+}
+
+.history-bar-col:hover .history-bar {
+  opacity: 1;
+}
+
+.history-label {
+  font-size: 0.55rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
 .stats-docs {
   flex: 1;
   overflow-y: auto;

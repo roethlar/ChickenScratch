@@ -65,7 +65,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for detailed implementation plans.
 ### Statistics
 - [x] Writing statistics view (per-doc word counts, page estimate, read time)
 - [x] Word count targets per document (in inspector with progress bar)
-- [ ] Daily/weekly writing history chart
+- [x] Daily writing history chart (bar chart in stats panel, 14-day view)
 
 ### Compile
 - [x] Front matter (title page with title, author, word count)
