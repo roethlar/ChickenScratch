@@ -2,7 +2,7 @@
 
 A cross-platform writing app for fiction writers. Open-source Scrivener alternative with git-native revision control.
 
-**Status:** Pre-alpha (v0.1.0)
+**Status:** Alpha (v0.1.0-alpha) — functional, seeking feedback from writers
 
 For usage instructions, see the [User Guide](docs/USER_GUIDE.md).
 

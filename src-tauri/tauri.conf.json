@@ -1,6 +1,6 @@
 {
   "productName": "ChickenScratch",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha",
   "identifier": "com.chickenscratch.editor",
   "build": {
     "frontendDist": "../ui/dist",

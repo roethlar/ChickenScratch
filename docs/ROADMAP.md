@@ -1,8 +1,8 @@
 # ChickenScratch — Roadmap
 
-## Current State (v0.1.0)
+## Current State (v0.1.0-alpha)
 
-ChickenScratch is a fully functional cross-platform writing app. All core features are implemented and working.
+ChickenScratch is a functional cross-platform writing app in initial alpha testing. Core features are implemented. Seeking feedback from writers to identify issues, missing functionality, and UX problems before a stable release.
 
 ### What's Built
 
