@@ -220,25 +220,6 @@ fn collect_ordered_sections(
     }
 }
 
-/// Collect individual manuscript document sections (one per document, in hierarchy order).
-fn collect_manuscript_sections(nodes: &[TreeNode], project: &Project, sections: &mut Vec<String>) {
-    for node in nodes {
-        match node {
-            TreeNode::Document { id, path, .. } => {
-                if path.starts_with("manuscript/") && path.ends_with(".html") {
-                    if let Some(doc) = project.documents.get(id) {
-                        if doc.include_in_compile && !doc.content.trim().is_empty() {
-                            sections.push(doc.content.clone());
-                        }
-                    }
-                }
-            }
-            TreeNode::Folder { children, .. } => {
-                collect_manuscript_sections(children, project, sections);
-            }
-        }
-    }
-}
 
 fn pandoc_format(format: &str) -> &str {
     match format {

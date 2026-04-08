@@ -96,7 +96,9 @@
       "Bash(find /home/michael/dev/ChickenScratch -name \"*.rs\" -type f -exec grep -l \"fn test_\" {} \\\\;)",
       "Bash(git stash:*)",
       "Bash(git reset:*)",
-      "Bash(sh -c \"cd src-tauri && cd ../ui && echo works\")"
+      "Bash(sh -c \"cd src-tauri && cd ../ui && echo works\")",
+      "Bash(rm -rf \"/Applications/ChickenScratch.app\")",
+      "Bash(cp -r \"target/release/bundle/macos/ChickenScratch.app\" \"/Applications/ChickenScratch.app\")"
     ],
     "deny": [],
     "ask": []
