@@ -66,6 +66,18 @@ export async function pushBackup(
   return invoke("push_backup", { projectPath, backupDir });
 }
 
+export interface FileDiff {
+  path: string;
+  status: string;
+}
+
+export async function revisionDiff(
+  projectPath: string,
+  commitId: string
+): Promise<FileDiff[]> {
+  return invoke("revision_diff", { projectPath, commitId });
+}
+
 export async function hasChanges(
   projectPath: string
 ): Promise<boolean> {

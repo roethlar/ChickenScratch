@@ -8,7 +8,9 @@ import { Corkboard } from "./components/corkboard/Corkboard";
 import { Inspector } from "./components/inspector/Inspector";
 import { ProjectSearch } from "./components/search/ProjectSearch";
 import { Settings } from "./components/settings/Settings";
+import { StatsPanel } from "./components/stats/StatsPanel";
 import { invoke } from "@tauri-apps/api/core";
+import * as gitCmd from "./commands/git";
 import {
   PenLine,
   LayoutGrid,
@@ -17,6 +19,7 @@ import {
   Maximize,
   FileOutput,
   BookOpen as BookOpenIcon,
+  BarChart3,
   Sun,
   Moon,
   BookOpen,
@@ -54,6 +57,10 @@ export default function App() {
   const [showPalette, setShowPalette] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [binderWidth, setBinderWidth] = useState(
+    () => parseInt(localStorage.getItem("cs-binder-width") || "240")
+  );
 
   const [showBinder, setShowBinder] = useState(
     () => localStorage.getItem("cs-binder") !== "false"
@@ -96,6 +103,10 @@ export default function App() {
           useProjectStore.setState({ project: updated });
         })();
       }
+      if (mod && e.key === "p" && !e.shiftKey) {
+        e.preventDefault();
+        window.print();
+      }
       if (mod && e.key === "\\") {
         e.preventDefault();
         setShowBinder((s) => !s);
@@ -130,6 +141,26 @@ export default function App() {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, []);
+
+  // Persist binder width
+  useEffect(() => { localStorage.setItem("cs-binder-width", String(binderWidth)); }, [binderWidth]);
+
+  // Auto-commit every 10 minutes if there are unsaved changes
+  useEffect(() => {
+    if (!project) return;
+    const interval = setInterval(async () => {
+      try {
+        const changed = await gitCmd.hasChanges(project.path);
+        if (changed) {
+          const now = new Date().toLocaleString(undefined, {
+            month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+          });
+          await gitCmd.saveRevision(project.path, `Auto: ${now}`);
+        }
+      } catch { /* silent */ }
+    }, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [project?.path]);
 
   // Periodic auto-backup based on settings interval
   useEffect(() => {
@@ -189,7 +220,31 @@ export default function App() {
   return (
     <div className={`app ${focusMode ? "focus-mode" : ""}`}>
       {focusMode && <div className="binder-reveal" />}
-      {showBinder && <Binder />}
+      {showBinder && (
+        <>
+          <div style={{ width: binderWidth, minWidth: binderWidth, flexShrink: 0 }}>
+            <Binder />
+          </div>
+          <div
+            className="binder-resize-handle"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              const startX = e.clientX;
+              const startW = binderWidth;
+              const onMove = (ev: MouseEvent) => {
+                const newW = Math.max(180, Math.min(500, startW + ev.clientX - startX));
+                setBinderWidth(newW);
+              };
+              const onUp = () => {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+              };
+              document.addEventListener("mousemove", onMove);
+              document.addEventListener("mouseup", onUp);
+            }}
+          />
+        </>
+      )}
       <div className="main-area">
         <div className="view-toolbar">
           <button
@@ -214,6 +269,13 @@ export default function App() {
             <BookOpenIcon size={16} />
           </button>
           <div style={{ flex: 1 }} />
+          <button
+            className={`view-btn ${showStats ? "active" : ""}`}
+            onClick={() => setShowStats(!showStats)}
+            title="Statistics"
+          >
+            <BarChart3 size={16} />
+          </button>
           <button
             className="view-btn"
             onClick={handleCompile}
@@ -279,6 +341,7 @@ export default function App() {
       <CommandPalette open={showPalette} onClose={() => setShowPalette(false)} />
       <ProjectSearch open={showSearch} onClose={() => setShowSearch(false)} />
       <Settings open={showSettings} onClose={() => setShowSettings(false)} />
+      {showStats && <StatsPanel open={showStats} onClose={() => setShowStats(false)} />}
     </div>
   );
 }

@@ -63,7 +63,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for detailed implementation plans.
 - [ ] Highlight matches in editor when navigating project search results
 
 ### Statistics
-- [ ] Writing statistics view (per-doc word counts, targets, project total)
+- [x] Writing statistics view (per-doc word counts, page estimate, read time)
 - [ ] Word count targets per document (in inspector)
 - [ ] Daily/weekly writing history chart
 
@@ -79,13 +79,13 @@ See [ROADMAP.md](docs/ROADMAP.md) for detailed implementation plans.
 - [ ] Text operations on selection (polish, expand, brainstorm, simplify)
 
 ### Git
-- [ ] Auto-commit on configurable interval
+- [x] Auto-commit every 10 minutes when changes detected
 - [ ] Remote sync (push/pull to GitHub/Gitea)
 
 ### UI/UX
-- [ ] Binder width resizing (drag edge)
+- [x] Binder width resizing (drag edge, persisted)
 - [ ] Spell check integration (browser-native)
-- [ ] Print support (Ctrl/Cmd+P)
+- [x] Print support (Ctrl+P, hides chrome)
 - [ ] Keyboard shortcut customization
 
 ### Platform

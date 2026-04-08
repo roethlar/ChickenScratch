@@ -58,6 +58,8 @@ fn main() {
             templates::list_templates,
             templates::create_from_template,
             templates::save_as_template,
+            git::revision_diff,
+            io::get_project_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ChickenScratch");

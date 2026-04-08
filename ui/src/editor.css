@@ -89,14 +89,30 @@
 /* ── Binder ────────────────────────────────────────── */
 
 .binder {
-  width: 240px;
-  min-width: 240px;
+  width: 100%;
+  height: 100%;
   border-right: 1px solid var(--color-border);
   background: var(--color-bg-sidebar);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   user-select: none;
+}
+
+.binder-resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  margin-left: -2px;
+}
+
+.binder-resize-handle:hover,
+.binder-resize-handle:active {
+  background: var(--color-accent);
+  opacity: 0.5;
 }
 
 .binder-header {
@@ -1463,6 +1479,212 @@
   background: var(--color-accent);
   color: white;
   border-color: var(--color-accent);
+}
+
+/* ── Statistics Panel ──────────────────────────────── */
+
+.stats-panel {
+  width: 280px;
+  min-width: 280px;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.stats-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.stats-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.stats-close:hover {
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+}
+
+.stats-summary {
+  padding: 1rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: center;
+}
+
+.stats-big {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+}
+
+.stats-big-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stats-big-number {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.stats-big-label {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.stats-sub {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.stats-docs {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stats-docs-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.stats-doc {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 3px 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--color-text);
+}
+
+.stats-doc:hover {
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+  border-radius: 4px;
+}
+
+.stats-doc-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stats-doc-icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.stats-doc-name {
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.stats-doc-count {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.stats-doc-bar-bg {
+  height: 3px;
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  border-radius: 2px;
+  margin-top: 2px;
+}
+
+.stats-doc-bar {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 2px;
+  min-width: 2px;
+}
+
+/* ── Revision Diff ────────────────────────────────── */
+
+.revision-clickable {
+  cursor: pointer;
+}
+
+.revision-clickable:hover {
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+  border-radius: 4px;
+}
+
+.revision-diff {
+  padding: 4px 12px 8px 20px;
+  font-size: 0.75rem;
+}
+
+.revision-diff-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  color: var(--color-text-muted);
+}
+
+.diff-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.diff-added .diff-badge { background: #16a34a22; color: #16a34a; }
+.diff-modified .diff-badge { background: #2563eb22; color: #2563eb; }
+.diff-deleted .diff-badge { background: #dc262622; color: #dc2626; }
+.diff-renamed .diff-badge { background: #f59e0b22; color: #f59e0b; }
+
+/* ── Print ────────────────────────────────────────── */
+
+@media print {
+  .binder, .binder-resize-handle, .view-toolbar, .editor-toolbar,
+  .editor-status, .inspector, .revisions, .stats-panel,
+  .find-replace { display: none !important; }
+  .app { display: block !important; }
+  .main-area { display: block !important; }
+  .editor-pane { overflow: visible !important; }
+  .editor-scroll { overflow: visible !important; }
+  .editor-content { max-width: none !important; padding: 0 !important; }
 }
 
 /* ── Toast Notifications ──────────────────────────── */

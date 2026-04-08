@@ -11,7 +11,7 @@ import {
 import { useProjectStore } from "../../stores/projectStore";
 import { toastSuccess, toastError } from "../shared/Toast";
 import * as gitCmd from "../../commands/git";
-import type { Revision, DraftVersion } from "../../commands/git";
+import type { Revision, DraftVersion, FileDiff } from "../../commands/git";
 
 export function Revisions() {
   const project = useProjectStore((s) => s.project);
@@ -20,6 +20,8 @@ export function Revisions() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [tab, setTab] = useState<"history" | "drafts">("history");
+  const [diffId, setDiffId] = useState<string | null>(null);
+  const [diffFiles, setDiffFiles] = useState<FileDiff[]>([]);
 
   const refresh = useCallback(async () => {
     if (!project) return;
@@ -141,25 +143,48 @@ export function Revisions() {
         {tab === "history" && (
           <div className="revisions-list">
             {revisions.map((rev) => (
-              <div key={rev.id} className="revision-item">
-                <div className="revision-info">
-                  <span className="revision-msg">{rev.message}</span>
-                  <span className="revision-time">
-                    {new Date(rev.timestamp).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
-                  </span>
+              <div key={rev.id}>
+                <div className="revision-item">
+                  <div
+                    className="revision-info revision-clickable"
+                    onClick={async () => {
+                      if (diffId === rev.id) { setDiffId(null); setDiffFiles([]); return; }
+                      setDiffId(rev.id);
+                      try {
+                        const files = await gitCmd.revisionDiff(project!.path, rev.id);
+                        setDiffFiles(files);
+                      } catch { setDiffFiles([]); }
+                    }}
+                    title="Click to see changes"
+                  >
+                    <span className="revision-msg">{rev.message}</span>
+                    <span className="revision-time">
+                      {new Date(rev.timestamp).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                  <button
+                    className="revision-restore"
+                    onClick={() => handleRestore(rev.id)}
+                    title="Restore to this revision"
+                  >
+                    <RotateCcw size={12} />
+                  </button>
                 </div>
-                <button
-                  className="revision-restore"
-                  onClick={() => handleRestore(rev.id)}
-                  title="Restore to this revision"
-                >
-                  <RotateCcw size={12} />
-                </button>
+                {diffId === rev.id && diffFiles.length > 0 && (
+                  <div className="revision-diff">
+                    {diffFiles.map((f, i) => (
+                      <div key={i} className={`revision-diff-file diff-${f.status}`}>
+                        <span className="diff-badge">{f.status[0].toUpperCase()}</span>
+                        {f.path}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             {revisions.length === 0 && (

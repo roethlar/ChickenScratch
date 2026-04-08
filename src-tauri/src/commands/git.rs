@@ -49,6 +49,14 @@ pub fn push_backup(project_path: String, backup_dir: String) -> Result<(), Chikn
 }
 
 #[tauri::command]
+pub fn revision_diff(
+    project_path: String,
+    commit_id: String,
+) -> Result<Vec<git::FileDiff>, ChiknError> {
+    git::revision_diff(Path::new(&project_path), &commit_id)
+}
+
+#[tauri::command]
 pub fn has_changes(project_path: String) -> Result<bool, ChiknError> {
     git::has_changes(Path::new(&project_path))
 }

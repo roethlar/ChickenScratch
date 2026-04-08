@@ -5,7 +5,7 @@
 
 use crate::utils::error::ChiknError;
 use git2::{
-    BranchType, IndexAddOption, Oid, Repository, Signature, StatusOptions,
+    BranchType, DiffOptions, IndexAddOption, Oid, Repository, Signature, StatusOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -279,6 +279,42 @@ pub fn push_backup(project_path: &Path, backup_dir: &Path) -> Result<(), ChiknEr
         .map_err(|e| ChiknError::Unknown(format!("Backup push failed: {}", e)))?;
 
     Ok(())
+}
+
+/// Get files changed in a specific revision compared to its parent.
+pub fn revision_diff(path: &Path, commit_id: &str) -> Result<Vec<FileDiff>, ChiknError> {
+    let repo = Repository::open(path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    let oid = Oid::from_str(commit_id)
+        .map_err(|e| ChiknError::Unknown(format!("Invalid commit ID: {}", e)))?;
+    let commit = repo.find_commit(oid)
+        .map_err(|e| ChiknError::Unknown(format!("Commit not found: {}", e)))?;
+    let tree = commit.tree()
+        .map_err(|e| ChiknError::Unknown(format!("Failed to get tree: {}", e)))?;
+    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+
+    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut DiffOptions::new()))
+        .map_err(|e| ChiknError::Unknown(format!("Failed to compute diff: {}", e)))?;
+
+    let mut files = Vec::new();
+    for delta in diff.deltas() {
+        let path_str = delta.new_file().path()
+            .or_else(|| delta.old_file().path())
+            .and_then(|p| p.to_str())
+            .unwrap_or("").to_string();
+        if path_str == "project.yaml" || path_str.starts_with(".git") || path_str.ends_with(".meta") {
+            continue;
+        }
+        let status = match delta.status() {
+            git2::Delta::Added => "added",
+            git2::Delta::Deleted => "deleted",
+            git2::Delta::Modified => "modified",
+            git2::Delta::Renamed => "renamed",
+            _ => "changed",
+        };
+        files.push(FileDiff { path: path_str, status: status.to_string() });
+    }
+    Ok(files)
 }
 
 /// Check if the working tree has uncommitted changes.

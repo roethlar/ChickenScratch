@@ -3,6 +3,7 @@ use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::hierarchy;
 use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::{ChiknError, Document, Project, TreeNode};
+use serde::Serialize;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -284,4 +285,65 @@ pub fn import_markdown_folder(
     let _ = git::save_revision(output, &format!("Imported from: {}", name));
 
     Ok(project)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DocStats {
+    pub id: String,
+    pub name: String,
+    pub words: usize,
+    pub include_in_compile: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectStats {
+    pub total_words: usize,
+    pub manuscript_words: usize,
+    pub total_docs: usize,
+    pub docs: Vec<DocStats>,
+}
+
+fn count_words_html(html: &str) -> usize {
+    let mut text = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => { in_tag = false; text.push(' '); },
+            _ if !in_tag => text.push(ch),
+            _ => {},
+        }
+    }
+    text.split_whitespace().count()
+}
+
+#[tauri::command]
+pub fn get_project_stats(project_path: String) -> Result<ProjectStats, ChiknError> {
+    let project = reader::read_project(Path::new(&project_path))?;
+    let mut docs = Vec::new();
+    let mut total_words = 0;
+    let mut manuscript_words = 0;
+
+    for doc in project.documents.values() {
+        if !doc.path.ends_with(".html") { continue; }
+        let words = count_words_html(&doc.content);
+        total_words += words;
+        if doc.path.starts_with("manuscript/") {
+            manuscript_words += words;
+        }
+        docs.push(DocStats {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            words,
+            include_in_compile: doc.include_in_compile,
+        });
+    }
+    docs.sort_by(|a, b| b.words.cmp(&a.words));
+
+    Ok(ProjectStats {
+        total_words,
+        manuscript_words,
+        total_docs: docs.len(),
+        docs,
+    })
 }
