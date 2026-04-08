@@ -317,6 +317,121 @@ pub fn revision_diff(path: &Path, commit_id: &str) -> Result<Vec<FileDiff>, Chik
     Ok(files)
 }
 
+/// Get word-level diff of a specific document between two revisions.
+/// Returns a list of (change_type, text) pairs for rendering tracked changes.
+pub fn word_diff(
+    path: &Path,
+    commit_id: &str,
+    doc_path: &str,
+) -> Result<Vec<(String, String)>, ChiknError> {
+    let repo = Repository::open(path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+
+    let oid = Oid::from_str(commit_id)
+        .map_err(|e| ChiknError::Unknown(format!("Invalid commit ID: {}", e)))?;
+    let commit = repo.find_commit(oid)
+        .map_err(|e| ChiknError::Unknown(format!("Commit not found: {}", e)))?;
+    let tree = commit.tree()
+        .map_err(|e| ChiknError::Unknown(format!("Failed to get tree: {}", e)))?;
+
+    // Get the file content at this commit
+    let new_content = tree.get_path(std::path::Path::new(doc_path))
+        .ok()
+        .and_then(|entry| repo.find_blob(entry.id()).ok())
+        .map(|blob| String::from_utf8_lossy(blob.content()).to_string())
+        .unwrap_or_default();
+
+    // Get the file content at the parent commit
+    let old_content = commit.parent(0).ok()
+        .and_then(|p| p.tree().ok())
+        .and_then(|t| t.get_path(std::path::Path::new(doc_path)).ok())
+        .and_then(|entry| repo.find_blob(entry.id()).ok())
+        .map(|blob| String::from_utf8_lossy(blob.content()).to_string())
+        .unwrap_or_default();
+
+    // Strip HTML and compute word-level diff
+    let old_words = strip_html_words(&old_content);
+    let new_words = strip_html_words(&new_content);
+
+    Ok(simple_word_diff(&old_words, &new_words))
+}
+
+fn strip_html_words(html: &str) -> Vec<String> {
+    let mut text = String::new();
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => { in_tag = false; text.push(' '); },
+            _ if !in_tag => text.push(ch),
+            _ => {},
+        }
+    }
+    text.split_whitespace().map(|s| s.to_string()).collect()
+}
+
+/// Simple longest common subsequence word diff.
+/// Returns vec of ("equal"|"added"|"deleted", text)
+fn simple_word_diff(old: &[String], new: &[String]) -> Vec<(String, String)> {
+    // For performance, limit to reasonable sizes
+    if old.len() > 5000 || new.len() > 5000 {
+        return vec![
+            ("deleted".to_string(), old.join(" ")),
+            ("added".to_string(), new.join(" ")),
+        ];
+    }
+
+    // Build LCS table
+    let m = old.len();
+    let n = new.len();
+    let mut dp = vec![vec![0u32; n + 1]; m + 1];
+    for i in 1..=m {
+        for j in 1..=n {
+            dp[i][j] = if old[i - 1] == new[j - 1] {
+                dp[i - 1][j - 1] + 1
+            } else {
+                dp[i - 1][j].max(dp[i][j - 1])
+            };
+        }
+    }
+
+    // Backtrack to produce diff
+    let mut result: Vec<(String, String)> = Vec::new();
+    let mut i = m;
+    let mut j = n;
+    let mut buf: Vec<(String, String)> = Vec::new();
+
+    while i > 0 || j > 0 {
+        if i > 0 && j > 0 && old[i - 1] == new[j - 1] {
+            buf.push(("equal".to_string(), old[i - 1].clone()));
+            i -= 1;
+            j -= 1;
+        } else if j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j]) {
+            buf.push(("added".to_string(), new[j - 1].clone()));
+            j -= 1;
+        } else {
+            buf.push(("deleted".to_string(), old[i - 1].clone()));
+            i -= 1;
+        }
+    }
+
+    buf.reverse();
+
+    // Merge consecutive same-type spans
+    for (kind, word) in buf {
+        if let Some(last) = result.last_mut() {
+            if last.0 == kind {
+                last.1.push(' ');
+                last.1.push_str(&word);
+                continue;
+            }
+        }
+        result.push((kind, word));
+    }
+
+    result
+}
+
 /// Check if the working tree has uncommitted changes.
 pub fn has_changes(path: &Path) -> Result<bool, ChiknError> {
     let repo = Repository::open(path)

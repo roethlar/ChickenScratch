@@ -78,6 +78,14 @@ export async function revisionDiff(
   return invoke("revision_diff", { projectPath, commitId });
 }
 
+export async function wordDiff(
+  projectPath: string,
+  commitId: string,
+  docPath: string
+): Promise<[string, string][]> {
+  return invoke("word_diff", { projectPath, commitId, docPath });
+}
+
 export async function hasChanges(
   projectPath: string
 ): Promise<boolean> {

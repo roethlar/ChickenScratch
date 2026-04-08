@@ -55,8 +55,8 @@ See [ROADMAP.md](docs/ROADMAP.md) for detailed implementation plans.
 ## Remaining
 
 ### Revision Diff Viewer
-- [ ] Word-level diff between revisions (tracked-changes style, not git diff)
-- [ ] Additions highlighted green, deletions red/strikethrough
+- [x] Word-level diff between revisions (tracked-changes style)
+- [x] Additions highlighted green, deletions red/strikethrough
 - [ ] Side-by-side draft comparison mode
 
 ### Search

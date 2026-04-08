@@ -22,6 +22,8 @@ export function Revisions() {
   const [tab, setTab] = useState<"history" | "drafts">("history");
   const [diffId, setDiffId] = useState<string | null>(null);
   const [diffFiles, setDiffFiles] = useState<FileDiff[]>([]);
+  const [wordDiffData, setWordDiffData] = useState<[string, string][] | null>(null);
+  const [wordDiffFile, setWordDiffFile] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!project) return;
@@ -178,11 +180,33 @@ export function Revisions() {
                 {diffId === rev.id && diffFiles.length > 0 && (
                   <div className="revision-diff">
                     {diffFiles.map((f, i) => (
-                      <div key={i} className={`revision-diff-file diff-${f.status}`}>
+                      <button
+                        key={i}
+                        className={`revision-diff-file diff-${f.status} ${wordDiffFile === f.path ? "active" : ""}`}
+                        onClick={async () => {
+                          if (wordDiffFile === f.path) {
+                            setWordDiffFile(null);
+                            setWordDiffData(null);
+                            return;
+                          }
+                          setWordDiffFile(f.path);
+                          try {
+                            const data = await gitCmd.wordDiff(project!.path, rev.id, f.path);
+                            setWordDiffData(data);
+                          } catch { setWordDiffData(null); }
+                        }}
+                      >
                         <span className="diff-badge">{f.status[0].toUpperCase()}</span>
                         {f.path}
-                      </div>
+                      </button>
                     ))}
+                    {wordDiffData && wordDiffFile && (
+                      <div className="word-diff-view">
+                        {wordDiffData.map(([kind, text], i) => (
+                          <span key={i} className={`word-diff-${kind}`}>{text} </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

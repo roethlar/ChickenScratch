@@ -60,6 +60,7 @@ fn main() {
             templates::create_from_template,
             templates::save_as_template,
             git::revision_diff,
+            git::word_diff,
             io::get_project_stats,
         ])
         .run(tauri::generate_context!())

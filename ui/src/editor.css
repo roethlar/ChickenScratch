@@ -1784,6 +1784,40 @@
 .diff-deleted .diff-badge { background: #dc262622; color: #dc2626; }
 .diff-renamed .diff-badge { background: #f59e0b22; color: #f59e0b; }
 
+.revision-diff-file {
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+
+.revision-diff-file:hover {
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
+  border-radius: 3px;
+}
+
+.revision-diff-file.active {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  border-radius: 3px;
+}
+
+.word-diff-view {
+  margin-top: 6px;
+  padding: 8px;
+  background: var(--color-bg);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.word-diff-equal { color: var(--color-text); }
+.word-diff-added { color: #16a34a; background: #16a34a15; border-radius: 2px; }
+.word-diff-deleted { color: #dc2626; background: #dc262615; text-decoration: line-through; border-radius: 2px; }
+
 /* ── Print ────────────────────────────────────────── */
 
 @media print {

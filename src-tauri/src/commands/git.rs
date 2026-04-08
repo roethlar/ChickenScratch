@@ -57,6 +57,15 @@ pub fn revision_diff(
 }
 
 #[tauri::command]
+pub fn word_diff(
+    project_path: String,
+    commit_id: String,
+    doc_path: String,
+) -> Result<Vec<(String, String)>, ChiknError> {
+    git::word_diff(Path::new(&project_path), &commit_id, &doc_path)
+}
+
+#[tauri::command]
 pub fn has_changes(project_path: String) -> Result<bool, ChiknError> {
     git::has_changes(Path::new(&project_path))
 }
