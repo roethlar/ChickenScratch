@@ -26,6 +26,12 @@ pub struct CompileOptions {
     pub font_size: Option<f32>,
     pub line_spacing: Option<f32>,
     pub margin_inches: Option<f32>,
+    /// Section separator between documents (e.g., "# # #", "* * *", "***")
+    pub section_separator: Option<String>,
+    /// Include a title page with title, author, word count
+    pub include_title_page: bool,
+    /// Use Shunn standard manuscript format (Courier 12pt, double-spaced, 1" margins)
+    pub manuscript_format: bool,
 }
 
 /// Compile the manuscript into a single output file.
@@ -39,30 +45,100 @@ pub fn compile(
 ) -> Result<(), ChiknError> {
     let project = reader::read_project(project_path)?;
 
-    let mut html = String::new();
-    collect_manuscript_html(&project.hierarchy, &project, &mut html);
+    let opts = options.unwrap_or_default();
 
-    if html.trim().is_empty() {
+    // Apply manuscript format preset if requested
+    let (font, font_size, line_spacing, margin) = if opts.manuscript_format {
+        ("Courier New", 12.0_f32, 2.0_f32, 1.0_f32)
+    } else {
+        (
+            opts.font.as_deref().unwrap_or("Times New Roman"),
+            opts.font_size.unwrap_or(12.0),
+            opts.line_spacing.unwrap_or(2.0),
+            opts.margin_inches.unwrap_or(1.0),
+        )
+    };
+
+    let separator = opts.section_separator.as_deref().unwrap_or("# # #");
+    let doc_title = title.unwrap_or(&project.name);
+    let doc_author = author.or_else(|| project.metadata.author.as_deref());
+
+    // Collect manuscript sections in order
+    let mut sections: Vec<String> = Vec::new();
+    collect_manuscript_sections(&project.hierarchy, &project, &mut sections);
+
+    if sections.is_empty() {
         return Err(ChiknError::InvalidFormat(
             "No manuscript content to compile".to_string(),
         ));
     }
 
-    let opts = options.unwrap_or_default();
-    let doc_title = title.unwrap_or(&project.name);
-    let font = opts.font.as_deref().unwrap_or("Times New Roman");
-    let font_size = opts.font_size.unwrap_or(12.0);
-    let line_spacing = opts.line_spacing.unwrap_or(2.0);
-    let margin = opts.margin_inches.unwrap_or(1.0);
+    // Calculate approximate word count for title page
+    let word_count: usize = sections.iter().map(|s| {
+        let text = s.chars().fold(String::new(), |mut acc, c| {
+            if c == '<' || c == '>' { acc.push(' '); acc } else { acc.push(c); acc }
+        });
+        text.split_whitespace().count()
+    }).sum();
 
-    // Embed CSS for formatting
-    let css = format!(
-        "body {{ font-family: '{}', serif; font-size: {}pt; line-height: {}; margin: {}in; }}\n\
-         p {{ text-indent: 0.5in; margin: 0; }}\n\
-         p:first-child {{ text-indent: 0; }}\n\
-         h1, h2, h3 {{ text-indent: 0; margin-top: 2em; }}",
-        font, font_size, line_spacing, margin
+    // Build the HTML
+    let mut html = String::new();
+
+    // Title page
+    if opts.include_title_page {
+        html.push_str("<div class=\"title-page\">\n");
+        if let Some(a) = doc_author {
+            html.push_str(&format!("<p class=\"tp-contact\">{}</p>\n", a));
+        }
+        html.push_str(&format!("<p class=\"tp-wordcount\">Approx. {} words</p>\n",
+            ((word_count + 50) / 100) * 100)); // round to nearest 100
+        html.push_str(&format!("<h1 class=\"tp-title\">{}</h1>\n", doc_title));
+        if let Some(a) = doc_author {
+            html.push_str(&format!("<p class=\"tp-author\">by {}</p>\n", a));
+        }
+        html.push_str("</div>\n<div style=\"page-break-after:always\"></div>\n\n");
+    }
+
+    // Join sections with separator
+    let separator_html = format!(
+        "<p class=\"section-break\" style=\"text-align:center;margin:2em 0;\">{}</p>\n",
+        separator
     );
+
+    for (i, section) in sections.iter().enumerate() {
+        html.push_str(section);
+        html.push('\n');
+        if i < sections.len() - 1 {
+            html.push_str(&separator_html);
+        }
+    }
+
+    // Manuscript format CSS
+    let css = if opts.manuscript_format {
+        format!(
+            "body {{ font-family: 'Courier New', Courier, monospace; font-size: 12pt; line-height: 2; margin: 1in; }}\n\
+             p {{ text-indent: 0.5in; margin: 0; }}\n\
+             p:first-child {{ text-indent: 0; }}\n\
+             h1, h2, h3 {{ text-indent: 0; margin-top: 2em; font-family: 'Courier New', Courier, monospace; }}\n\
+             .title-page {{ text-align: center; padding-top: 33%; }}\n\
+             .tp-contact {{ text-align: left; position: absolute; top: 1in; left: 1in; }}\n\
+             .tp-wordcount {{ text-align: right; position: absolute; top: 1in; right: 1in; }}\n\
+             .tp-title {{ font-size: 24pt; margin-top: 2em; text-transform: uppercase; }}\n\
+             .tp-author {{ font-size: 14pt; }}\n\
+             .section-break {{ font-family: 'Courier New', Courier, monospace; }}")
+    } else {
+        format!(
+            "body {{ font-family: '{}', serif; font-size: {}pt; line-height: {}; margin: {}in; }}\n\
+             p {{ text-indent: 0.5in; margin: 0; }}\n\
+             p:first-child {{ text-indent: 0; }}\n\
+             h1, h2, h3 {{ text-indent: 0; margin-top: 2em; }}\n\
+             .title-page {{ text-align: center; padding-top: 20%; }}\n\
+             .tp-title {{ font-size: 2em; margin-bottom: 0.5em; }}\n\
+             .tp-author {{ font-size: 1.2em; color: #555; }}\n\
+             .tp-contact, .tp-wordcount {{ font-size: 0.9em; color: #777; }}",
+            font, font_size, line_spacing, margin
+        )
+    };
 
     let full_html = format!(
         "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n\
@@ -83,15 +159,17 @@ pub fn compile(
     if let Some(t) = title {
         cmd.arg("--metadata").arg(format!("title={}", t));
     }
-    if let Some(a) = author {
+    if let Some(a) = doc_author {
         cmd.arg("--metadata").arg(format!("author={}", a));
     }
 
-    // PDF-specific: set margins via Pandoc variables
+    // PDF-specific
     if format == "pdf" {
         cmd.arg("--variable").arg(format!("geometry:margin={}in", margin));
         cmd.arg("--variable").arg(format!("fontsize={}pt", font_size as u32));
-        cmd.arg("--variable").arg(format!("mainfont={}", font));
+        if !opts.manuscript_format {
+            cmd.arg("--variable").arg(format!("mainfont={}", font));
+        }
     }
 
     cmd.arg(&temp_html);
@@ -113,21 +191,21 @@ pub fn compile(
     Ok(())
 }
 
-fn collect_manuscript_html(nodes: &[TreeNode], project: &Project, html: &mut String) {
+/// Collect individual manuscript document sections (one per document, in hierarchy order).
+fn collect_manuscript_sections(nodes: &[TreeNode], project: &Project, sections: &mut Vec<String>) {
     for node in nodes {
         match node {
             TreeNode::Document { id, path, .. } => {
                 if path.starts_with("manuscript/") && path.ends_with(".html") {
                     if let Some(doc) = project.documents.get(id) {
                         if doc.include_in_compile && !doc.content.trim().is_empty() {
-                            html.push_str(&doc.content);
-                            html.push('\n');
+                            sections.push(doc.content.clone());
                         }
                     }
                 }
             }
             TreeNode::Folder { children, .. } => {
-                collect_manuscript_html(children, project, html);
+                collect_manuscript_sections(children, project, sections);
             }
         }
     }

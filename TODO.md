@@ -68,9 +68,9 @@ See [ROADMAP.md](docs/ROADMAP.md) for detailed implementation plans.
 - [ ] Daily/weekly writing history chart
 
 ### Compile
-- [ ] Front matter (title page, copyright, dedication)
-- [ ] Section separator customization (# # #, * * *, etc.)
-- [ ] Manuscript format preset (Shunn standard)
+- [x] Front matter (title page with title, author, word count)
+- [x] Section separator customization (# # #, * * *, etc.)
+- [x] Manuscript format preset (Courier, double-spaced, 1" margins)
 - [ ] Per-document compile order override
 
 ### AI

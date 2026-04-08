@@ -15,13 +15,20 @@ pub fn compile_project(
     format: String,
     title: Option<String>,
     author: Option<String>,
+    section_separator: Option<String>,
+    include_title_page: Option<bool>,
+    manuscript_format: Option<bool>,
 ) -> Result<(), ChiknError> {
     let settings = super::settings::get_app_settings();
+    let ms_format = manuscript_format.unwrap_or(false);
     let options = compile::CompileOptions {
         font: Some(settings.compile.font),
         font_size: Some(settings.compile.font_size),
         line_spacing: Some(settings.compile.line_spacing),
         margin_inches: Some(settings.compile.margin_inches),
+        section_separator,
+        include_title_page: include_title_page.unwrap_or(false),
+        manuscript_format: ms_format,
     };
 
     compile::compile(

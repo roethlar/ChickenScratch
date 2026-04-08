@@ -29,9 +29,8 @@ import {
 import { CommandPalette } from "./components/command-palette/CommandPalette";
 import { Revisions } from "./components/revisions/Revisions";
 import { Preview } from "./components/preview/Preview";
-import { save } from "@tauri-apps/plugin-dialog";
-import { compileProject } from "./commands/io";
-import { toastSuccess, toastError } from "./components/shared/Toast";
+import { CompileDialog } from "./components/compile/CompileDialog";
+import { toastError } from "./components/shared/Toast";
 import { dialogPrompt } from "./components/shared/Dialog";
 import * as docCmd from "./commands/document";
 
@@ -58,6 +57,7 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showCompile, setShowCompile] = useState(false);
   const [binderWidth, setBinderWidth] = useState(
     () => parseInt(localStorage.getItem("cs-binder-width") || "240")
   );
@@ -186,28 +186,7 @@ export default function App() {
     return <Welcome />;
   }
 
-  const handleCompile = async () => {
-    if (!project) return;
-    const outputPath = await save({
-      title: "Export Manuscript",
-      defaultPath: `${project.name}.docx`,
-      filters: [
-        { name: "Word", extensions: ["docx"] },
-        { name: "PDF", extensions: ["pdf"] },
-        { name: "EPUB", extensions: ["epub"] },
-        { name: "HTML", extensions: ["html"] },
-        { name: "OpenDocument", extensions: ["odt"] },
-      ],
-    });
-    if (!outputPath) return;
-    const ext = outputPath.split(".").pop() || "docx";
-    try {
-      await compileProject(project.path, outputPath, ext, project.name);
-      toastSuccess("Export complete: " + outputPath);
-    } catch (e) {
-      toastError("Export failed: " + e);
-    }
-  };
+  const handleCompile = () => setShowCompile(true);
 
   const themeIcons: Record<string, typeof Sun> = {
     light: Sun,
@@ -342,6 +321,7 @@ export default function App() {
       <ProjectSearch open={showSearch} onClose={() => setShowSearch(false)} />
       <Settings open={showSettings} onClose={() => setShowSettings(false)} />
       {showStats && <StatsPanel open={showStats} onClose={() => setShowStats(false)} />}
+      <CompileDialog open={showCompile} onClose={() => setShowCompile(false)} />
     </div>
   );
 }

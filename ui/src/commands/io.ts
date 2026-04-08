@@ -19,12 +19,19 @@ export async function getProjectStats(projectPath: string): Promise<ProjectStats
   return invoke("get_project_stats", { projectPath });
 }
 
+export interface CompileOptions {
+  sectionSeparator?: string;
+  includeTitlePage?: boolean;
+  manuscriptFormat?: boolean;
+}
+
 export async function compileProject(
   projectPath: string,
   outputPath: string,
   format: string,
   title?: string,
-  author?: string
+  author?: string,
+  options?: CompileOptions
 ): Promise<void> {
   return invoke("compile_project", {
     projectPath,
@@ -32,6 +39,9 @@ export async function compileProject(
     format,
     title: title ?? null,
     author: author ?? null,
+    sectionSeparator: options?.sectionSeparator ?? null,
+    includeTitlePage: options?.includeTitlePage ?? null,
+    manuscriptFormat: options?.manuscriptFormat ?? null,
   });
 }
 
