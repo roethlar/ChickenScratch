@@ -39,6 +39,7 @@ pub fn update_document_metadata(
     keywords: Option<Vec<String>>,
     include_in_compile: Option<bool>,
     word_count_target: Option<u32>,
+    compile_order: Option<i32>,
 ) -> Result<Project, ChiknError> {
     let mut project = reader::read_project(Path::new(&project_path))?;
     if let Some(doc) = project.documents.get_mut(&doc_id) {
@@ -51,6 +52,9 @@ pub fn update_document_metadata(
         }
         if let Some(target) = word_count_target {
             doc.word_count_target = target;
+        }
+        if let Some(order) = compile_order {
+            doc.compile_order = order;
         }
         doc.modified = chrono::Utc::now().to_rfc3339();
         writer::write_project(&mut project)?;

@@ -55,6 +55,10 @@ pub struct Document {
     /// Word count target for this document (0 = no target)
     #[serde(default)]
     pub word_count_target: u32,
+
+    /// Custom compile order (0 = use binder order, higher = later)
+    #[serde(default)]
+    pub compile_order: i32,
 }
 
 fn default_true() -> bool {
@@ -78,6 +82,7 @@ impl Default for Document {
             links: None,
             include_in_compile: true,
             word_count_target: 0,
+            compile_order: 0,
         }
     }
 }

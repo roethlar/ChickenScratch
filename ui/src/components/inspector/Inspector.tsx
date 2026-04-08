@@ -232,6 +232,32 @@ export function Inspector() {
         </div>
 
         <div className="inspector-field">
+          <label>Compile Order</label>
+          <input
+            type="number"
+            className="word-target-input"
+            value={activeDoc.compile_order || ""}
+            onChange={async (e) => {
+              if (!project || !activeDoc) return;
+              const order = parseInt(e.target.value) || 0;
+              const updated = await docCmd.updateDocumentMetadata(
+                project.path, activeDoc.id, {
+                  synopsis: synopsis || null,
+                  label: label || null,
+                  status: status || null,
+                  keywords: keywords.split(",").map(s => s.trim()).filter(Boolean).length
+                    ? keywords.split(",").map(s => s.trim()).filter(Boolean) : null,
+                  compile_order: order,
+                }
+              );
+              setProject(updated);
+            }}
+            placeholder="0 = binder order"
+          />
+          <span className="compile-order-hint">0 = binder order. Higher numbers compile later.</span>
+        </div>
+
+        <div className="inspector-field">
           <label>Words</label>
           <div className="inspector-value">
             {wordCount.toLocaleString()}

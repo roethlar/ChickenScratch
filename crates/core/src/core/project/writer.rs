@@ -248,6 +248,7 @@ fn write_document(
         scrivener_uuid: existing_meta.as_ref().and_then(|m| m.scrivener_uuid.clone()),
         links: document.links.clone(),
         word_count_target: document.word_count_target,
+        compile_order: document.compile_order,
     };
 
     let meta_content = serde_yaml::to_string(&metadata)?;

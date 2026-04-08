@@ -2008,6 +2008,13 @@
   border-color: var(--color-accent);
 }
 
+.compile-order-hint {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin-top: 2px;
+}
+
 /* ── Project Search ────────────────────────────────── */
 
 .search-input-row {

@@ -17,6 +17,7 @@ export interface Document {
   links?: string[] | null;
   include_in_compile: boolean;
   word_count_target: number;
+  compile_order: number;
 }
 
 export interface ProjectMeta {

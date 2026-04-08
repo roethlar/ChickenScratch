@@ -287,6 +287,7 @@ fn convert_binder_items_inner(
                             links: None,
                     include_in_compile: true,
                             word_count_target: 0,
+                            compile_order: 0,
                         };
                         documents.insert(doc_id.clone(), document);
 
@@ -359,6 +360,7 @@ fn convert_binder_items_inner(
                     links: None,
                     include_in_compile: true,
                             word_count_target: 0,
+                            compile_order: 0,
                 };
 
                 documents.insert(doc_id.clone(), document);
@@ -416,6 +418,7 @@ fn convert_binder_items_inner(
                             links: None,
                     include_in_compile: true,
                             word_count_target: 0,
+                            compile_order: 0,
                         };
 
                         documents.insert(doc_id.clone(), document);

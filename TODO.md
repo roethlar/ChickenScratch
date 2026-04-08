@@ -71,7 +71,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for detailed implementation plans.
 - [x] Front matter (title page with title, author, word count)
 - [x] Section separator customization (# # #, * * *, etc.)
 - [x] Manuscript format preset (Courier, double-spaced, 1" margins)
-- [ ] Per-document compile order override
+- [x] Per-document compile order override (in Inspector, sorted at compile time)
 
 ### AI
 - [ ] Replace curl shell-out with reqwest HTTP client

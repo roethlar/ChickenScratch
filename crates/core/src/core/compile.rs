@@ -63,9 +63,12 @@ pub fn compile(
     let doc_title = title.unwrap_or(&project.name);
     let doc_author = author.or_else(|| project.metadata.author.as_deref());
 
-    // Collect manuscript sections in order
-    let mut sections: Vec<String> = Vec::new();
-    collect_manuscript_sections(&project.hierarchy, &project, &mut sections);
+    // Collect manuscript sections in order, respecting compile_order
+    let mut ordered_docs: Vec<(i32, usize, String)> = Vec::new(); // (compile_order, hierarchy_index, content)
+    let mut idx = 0;
+    collect_ordered_sections(&project.hierarchy, &project, &mut ordered_docs, &mut idx);
+    ordered_docs.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    let sections: Vec<String> = ordered_docs.into_iter().map(|(_, _, content)| content).collect();
 
     if sections.is_empty() {
         return Err(ChiknError::InvalidFormat(
@@ -189,6 +192,32 @@ pub fn compile(
     }
 
     Ok(())
+}
+
+/// Collect sections with compile_order for sorting.
+fn collect_ordered_sections(
+    nodes: &[TreeNode],
+    project: &Project,
+    sections: &mut Vec<(i32, usize, String)>,
+    idx: &mut usize,
+) {
+    for node in nodes {
+        match node {
+            TreeNode::Document { id, path, .. } => {
+                if path.starts_with("manuscript/") && path.ends_with(".html") {
+                    if let Some(doc) = project.documents.get(id) {
+                        if doc.include_in_compile && !doc.content.trim().is_empty() {
+                            sections.push((doc.compile_order, *idx, doc.content.clone()));
+                            *idx += 1;
+                        }
+                    }
+                }
+            }
+            TreeNode::Folder { children, .. } => {
+                collect_ordered_sections(children, project, sections, idx);
+            }
+        }
+    }
 }
 
 /// Collect individual manuscript document sections (one per document, in hierarchy order).
