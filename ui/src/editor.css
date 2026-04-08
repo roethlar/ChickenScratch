@@ -1228,12 +1228,7 @@
   color: var(--color-text-muted);
   cursor: pointer;
   border-radius: 4px;
-  opacity: 0;
-}
-
-.revision-item:hover .revision-restore,
-.revision-item:hover .draft-actions button {
-  opacity: 1;
+  flex-shrink: 0;
 }
 
 .revision-restore:hover,
