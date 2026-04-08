@@ -1,11 +1,11 @@
-//! Error types for Chicken Scratch
+//! Error types for ChickenScratch
 //!
 //! Centralized error handling using thiserror for ergonomic error propagation.
 
 use serde::{Serialize, Serializer};
 use thiserror::Error;
 
-/// Main error type for Chicken Scratch operations
+/// Main error type for ChickenScratch operations
 #[derive(Debug, Error)]
 pub enum ChiknError {
     #[error("IO error: {0}")]

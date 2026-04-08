@@ -2,7 +2,7 @@
 name = "chickenscratch"
 version = "0.1.0"
 edition = "2021"
-description = "Chicken Scratch — cross-platform writing app"
+description = "ChickenScratch — cross-platform writing app"
 license = "MIT"
 
 [build-dependencies]

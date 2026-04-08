@@ -2,7 +2,7 @@
 name = "chickenscratch-core"
 version = "0.1.0"
 edition = "2021"
-description = "Core library for Chicken Scratch — .chikn format, Scrivener conversion, git integration"
+description = "Core library for ChickenScratch — .chikn format, Scrivener conversion, git integration"
 license = "MIT"
 
 [dependencies]

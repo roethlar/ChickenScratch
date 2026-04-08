@@ -1,4 +1,4 @@
-# Chicken Scratch Editor — Design Document
+# ChickenScratch Editor — Design Document
 
 **Status:** Active
 **Date:** 2026-04-02

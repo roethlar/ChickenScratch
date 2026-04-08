@@ -2,7 +2,7 @@
 name = "chikn-converter"
 version = "0.1.0"
 edition = "2021"
-description = "Convert between Scrivener (.scriv) and Chicken Scratch (.chikn) formats"
+description = "Convert between Scrivener (.scriv) and ChickenScratch (.chikn) formats"
 license = "MIT"
 
 [[bin]]

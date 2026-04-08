@@ -8,7 +8,7 @@ use chickenscratch_core::scrivener::exporter::export_to_scriv;
 
 #[derive(Parser)]
 #[command(name = "chikn-converter")]
-#[command(about = "Convert between Scrivener (.scriv) and Chicken Scratch (.chikn) formats")]
+#[command(about = "Convert between Scrivener (.scriv) and ChickenScratch (.chikn) formats")]
 struct Cli {
     /// Input file (.scriv or .chikn) — direction is detected automatically
     input: PathBuf,

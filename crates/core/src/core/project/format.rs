@@ -22,7 +22,7 @@
 use crate::utils::error::ChiknError;
 use std::path::{Path, PathBuf};
 
-/// File extension for Chicken Scratch projects
+/// File extension for ChickenScratch projects
 pub const PROJECT_EXTENSION: &str = "chikn";
 
 /// Project metadata file name

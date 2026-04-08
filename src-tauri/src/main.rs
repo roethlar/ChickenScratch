@@ -60,5 +60,5 @@ fn main() {
             templates::save_as_template,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Chicken Scratch");
+        .expect("error while running ChickenScratch");
 }

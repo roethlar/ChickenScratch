@@ -1,6 +1,6 @@
 //! Document model
 //!
-//! Represents a single document in a Chicken Scratch project
+//! Represents a single document in a ChickenScratch project
 
 use serde::{Deserialize, Serialize};
 

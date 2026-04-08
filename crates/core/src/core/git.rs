@@ -299,7 +299,7 @@ pub fn has_changes(path: &Path) -> Result<bool, ChiknError> {
 fn default_signature(repo: &Repository) -> Result<Signature<'static>, ChiknError> {
     // Try repo config first, fall back to generic
     repo.signature()
-        .or_else(|_| Signature::now("Chicken Scratch", "writer@chickenscratch.app"))
+        .or_else(|_| Signature::now("ChickenScratch", "writer@chickenscratch.app"))
         .map_err(|e| ChiknError::Unknown(format!("Failed to create signature: {}", e)))
 }
 
