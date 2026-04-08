@@ -74,7 +74,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for detailed implementation plans.
 - [x] Per-document compile order override (in Inspector, sorted at compile time)
 
 ### AI
-- [ ] Replace curl shell-out with reqwest HTTP client
+- [x] Replace curl shell-out with reqwest HTTP client
 - [ ] Streaming responses
 - [x] Text operations on selection (polish, expand, brainstorm, simplify)
 

@@ -1,5 +1,4 @@
 use chickenscratch_core::ChiknError;
-use std::process::Command;
 
 use super::settings::{get_app_settings, AiSettings};
 
@@ -29,23 +28,13 @@ pub fn ai_summarize(content: String) -> Result<String, ChiknError> {
         return Ok(String::new());
     }
 
-    let excerpt = if plain.len() > 2000 {
-        &plain[..2000]
-    } else {
-        &plain
-    };
-
+    let excerpt = if plain.len() > 2000 { &plain[..2000] } else { &plain };
     let prompt = format!(
         "Summarize this scene in one sentence (max 20 words). Just the summary, no preamble:\n\n{}",
         excerpt
     );
 
-    match settings.ai.provider.as_str() {
-        "ollama" => call_ollama(&settings.ai, &prompt),
-        "anthropic" => call_anthropic(&settings.ai, &prompt),
-        "openai" => call_openai(&settings.ai, &prompt),
-        other => Err(ChiknError::Unknown(format!("Unknown AI provider: {}", other))),
-    }
+    call_ai(&settings.ai, &prompt, 100)
 }
 
 /// Transform selected text with AI (polish, expand, simplify, brainstorm)
@@ -72,22 +61,33 @@ pub fn ai_transform(content: String, operation: String) -> Result<String, ChiknE
     };
 
     let prompt = format!("{}\n\n{}", instruction, excerpt);
-
-    let result = match settings.ai.provider.as_str() {
-        "ollama" => call_ollama_long(&settings.ai, &prompt),
-        "anthropic" => call_anthropic_long(&settings.ai, &prompt),
-        "openai" => call_openai_long(&settings.ai, &prompt),
-        other => Err(ChiknError::Unknown(format!("Unknown AI provider: {}", other))),
-    }?;
-
-    Ok(result)
+    call_ai(&settings.ai, &prompt, 2000)
 }
 
 fn strip_html(html: &str) -> String {
     regex::Regex::new(r"<[^>]*>").unwrap().replace_all(html, "").to_string()
 }
 
-fn call_ollama(settings: &AiSettings, prompt: &str) -> Result<String, ChiknError> {
+/// Unified AI call using reqwest
+fn call_ai(settings: &AiSettings, prompt: &str, max_tokens: u32) -> Result<String, ChiknError> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| ChiknError::Unknown(format!("HTTP client error: {}", e)))?;
+
+    match settings.provider.as_str() {
+        "ollama" => call_ollama(&client, settings, prompt),
+        "anthropic" => call_anthropic(&client, settings, prompt, max_tokens),
+        "openai" => call_openai(&client, settings, prompt, max_tokens),
+        other => Err(ChiknError::Unknown(format!("Unknown AI provider: {}", other))),
+    }
+}
+
+fn call_ollama(
+    client: &reqwest::blocking::Client,
+    settings: &AiSettings,
+    prompt: &str,
+) -> Result<String, ChiknError> {
     let endpoint = settings.endpoint.as_deref().unwrap_or("http://localhost:11434");
     let url = format!("{}/api/generate", endpoint);
 
@@ -97,107 +97,56 @@ fn call_ollama(settings: &AiSettings, prompt: &str) -> Result<String, ChiknError
         "stream": false
     });
 
-    let output = Command::new("curl")
-        .arg("-s").arg("-X").arg("POST").arg(&url)
-        .arg("-H").arg("Content-Type: application/json")
-        .arg("-d").arg(body.to_string())
-        .output()
-        .map_err(|e| ChiknError::Unknown(format!("Failed to call Ollama: {}", e)))?;
+    let resp = client.post(&url)
+        .json(&body)
+        .send()
+        .map_err(|e| ChiknError::Unknown(format!("Ollama request failed: {}. Is Ollama running?", e)))?;
 
-    if !output.status.success() {
-        return Err(ChiknError::Unknown("Ollama request failed. Is Ollama running?".to_string()));
-    }
-
-    let response: serde_json::Value = serde_json::from_slice(&output.stdout)
+    let json: serde_json::Value = resp.json()
         .map_err(|e| ChiknError::Unknown(format!("Invalid Ollama response: {}", e)))?;
 
-    Ok(response["response"].as_str().unwrap_or("").trim().to_string())
+    Ok(json["response"].as_str().unwrap_or("").trim().to_string())
 }
 
-fn call_anthropic(settings: &AiSettings, prompt: &str) -> Result<String, ChiknError> {
+fn call_anthropic(
+    client: &reqwest::blocking::Client,
+    settings: &AiSettings,
+    prompt: &str,
+    max_tokens: u32,
+) -> Result<String, ChiknError> {
     let api_key = settings.api_key.as_deref()
         .ok_or_else(|| ChiknError::Unknown("Anthropic API key not configured. Set it in Settings > AI.".to_string()))?;
 
     let body = serde_json::json!({
         "model": settings.model,
-        "max_tokens": 100,
+        "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}]
     });
 
-    let output = Command::new("curl")
-        .arg("-s").arg("-X").arg("POST")
-        .arg("https://api.anthropic.com/v1/messages")
-        .arg("-H").arg("Content-Type: application/json")
-        .arg("-H").arg(format!("x-api-key: {}", api_key))
-        .arg("-H").arg("anthropic-version: 2023-06-01")
-        .arg("-d").arg(body.to_string())
-        .output()
-        .map_err(|e| ChiknError::Unknown(format!("Failed to call Anthropic: {}", e)))?;
+    let resp = client.post("https://api.anthropic.com/v1/messages")
+        .header("Content-Type", "application/json")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .json(&body)
+        .send()
+        .map_err(|e| ChiknError::Unknown(format!("Anthropic request failed: {}", e)))?;
 
-    let response: serde_json::Value = serde_json::from_slice(&output.stdout)
+    let json: serde_json::Value = resp.json()
         .map_err(|e| ChiknError::Unknown(format!("Invalid Anthropic response: {}", e)))?;
 
-    Ok(response["content"][0]["text"].as_str().unwrap_or("").trim().to_string())
+    if let Some(err) = json["error"]["message"].as_str() {
+        return Err(ChiknError::Unknown(format!("Anthropic error: {}", err)));
+    }
+
+    Ok(json["content"][0]["text"].as_str().unwrap_or("").trim().to_string())
 }
 
-fn call_ollama_long(settings: &AiSettings, prompt: &str) -> Result<String, ChiknError> {
-    call_ollama(settings, prompt) // Ollama doesn't have a max_tokens limit by default
-}
-
-fn call_anthropic_long(settings: &AiSettings, prompt: &str) -> Result<String, ChiknError> {
-    let api_key = settings.api_key.as_deref()
-        .ok_or_else(|| ChiknError::Unknown("Anthropic API key not configured.".to_string()))?;
-
-    let body = serde_json::json!({
-        "model": settings.model,
-        "max_tokens": 2000,
-        "messages": [{"role": "user", "content": prompt}]
-    });
-
-    let output = Command::new("curl")
-        .arg("-s").arg("-X").arg("POST")
-        .arg("https://api.anthropic.com/v1/messages")
-        .arg("-H").arg("Content-Type: application/json")
-        .arg("-H").arg(format!("x-api-key: {}", api_key))
-        .arg("-H").arg("anthropic-version: 2023-06-01")
-        .arg("-d").arg(body.to_string())
-        .output()
-        .map_err(|e| ChiknError::Unknown(format!("Failed to call Anthropic: {}", e)))?;
-
-    let response: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|e| ChiknError::Unknown(format!("Invalid Anthropic response: {}", e)))?;
-
-    Ok(response["content"][0]["text"].as_str().unwrap_or("").trim().to_string())
-}
-
-fn call_openai_long(settings: &AiSettings, prompt: &str) -> Result<String, ChiknError> {
-    let api_key = settings.api_key.as_deref()
-        .ok_or_else(|| ChiknError::Unknown("OpenAI API key not configured.".to_string()))?;
-
-    let endpoint = settings.endpoint.as_deref().unwrap_or("https://api.openai.com");
-
-    let body = serde_json::json!({
-        "model": settings.model,
-        "max_tokens": 2000,
-        "messages": [{"role": "user", "content": prompt}]
-    });
-
-    let output = Command::new("curl")
-        .arg("-s").arg("-X").arg("POST")
-        .arg(format!("{}/v1/chat/completions", endpoint))
-        .arg("-H").arg("Content-Type: application/json")
-        .arg("-H").arg(format!("Authorization: Bearer {}", api_key))
-        .arg("-d").arg(body.to_string())
-        .output()
-        .map_err(|e| ChiknError::Unknown(format!("Failed to call OpenAI: {}", e)))?;
-
-    let response: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|e| ChiknError::Unknown(format!("Invalid OpenAI response: {}", e)))?;
-
-    Ok(response["choices"][0]["message"]["content"].as_str().unwrap_or("").trim().to_string())
-}
-
-fn call_openai(settings: &AiSettings, prompt: &str) -> Result<String, ChiknError> {
+fn call_openai(
+    client: &reqwest::blocking::Client,
+    settings: &AiSettings,
+    prompt: &str,
+    max_tokens: u32,
+) -> Result<String, ChiknError> {
     let api_key = settings.api_key.as_deref()
         .ok_or_else(|| ChiknError::Unknown("OpenAI API key not configured. Set it in Settings > AI.".to_string()))?;
 
@@ -205,21 +154,23 @@ fn call_openai(settings: &AiSettings, prompt: &str) -> Result<String, ChiknError
 
     let body = serde_json::json!({
         "model": settings.model,
-        "max_tokens": 100,
+        "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}]
     });
 
-    let output = Command::new("curl")
-        .arg("-s").arg("-X").arg("POST")
-        .arg(format!("{}/v1/chat/completions", endpoint))
-        .arg("-H").arg("Content-Type: application/json")
-        .arg("-H").arg(format!("Authorization: Bearer {}", api_key))
-        .arg("-d").arg(body.to_string())
-        .output()
-        .map_err(|e| ChiknError::Unknown(format!("Failed to call OpenAI: {}", e)))?;
+    let resp = client.post(format!("{}/v1/chat/completions", endpoint))
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&body)
+        .send()
+        .map_err(|e| ChiknError::Unknown(format!("OpenAI request failed: {}", e)))?;
 
-    let response: serde_json::Value = serde_json::from_slice(&output.stdout)
+    let json: serde_json::Value = resp.json()
         .map_err(|e| ChiknError::Unknown(format!("Invalid OpenAI response: {}", e)))?;
 
-    Ok(response["choices"][0]["message"]["content"].as_str().unwrap_or("").trim().to_string())
+    if let Some(err) = json["error"]["message"].as_str() {
+        return Err(ChiknError::Unknown(format!("OpenAI error: {}", err)));
+    }
+
+    Ok(json["choices"][0]["message"]["content"].as_str().unwrap_or("").trim().to_string())
 }
