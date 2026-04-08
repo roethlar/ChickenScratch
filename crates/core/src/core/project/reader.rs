@@ -109,6 +109,10 @@ pub struct DocumentMetadata {
     /// IDs of related documents (connections)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub links: Option<Vec<String>>,
+
+    /// Word count target
+    #[serde(default)]
+    pub word_count_target: u32,
 }
 
 /// Helper function to generate a new UUID
@@ -438,6 +442,7 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
             include_in_compile: None,
             scrivener_uuid: None,
             links: None,
+            word_count_target: 0,
         }
     };
 
@@ -470,6 +475,7 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
         keywords: metadata.keywords,
         links: metadata.links,
         include_in_compile: metadata.include_in_compile.as_deref() != Some("No"),
+        word_count_target: metadata.word_count_target,
     })
 }
 

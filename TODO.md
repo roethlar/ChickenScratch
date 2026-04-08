@@ -60,11 +60,11 @@ See [ROADMAP.md](docs/ROADMAP.md) for detailed implementation plans.
 - [ ] Side-by-side draft comparison mode
 
 ### Search
-- [ ] Highlight matches in editor when navigating project search results
+- [x] Highlight matches in editor when navigating project search results
 
 ### Statistics
 - [x] Writing statistics view (per-doc word counts, page estimate, read time)
-- [ ] Word count targets per document (in inspector)
+- [x] Word count targets per document (in inspector with progress bar)
 - [ ] Daily/weekly writing history chart
 
 ### Compile
@@ -76,7 +76,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for detailed implementation plans.
 ### AI
 - [ ] Replace curl shell-out with reqwest HTTP client
 - [ ] Streaming responses
-- [ ] Text operations on selection (polish, expand, brainstorm, simplify)
+- [x] Text operations on selection (polish, expand, brainstorm, simplify)
 
 ### Git
 - [x] Auto-commit every 10 minutes when changes detected
@@ -84,7 +84,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for detailed implementation plans.
 
 ### UI/UX
 - [x] Binder width resizing (drag edge, persisted)
-- [ ] Spell check integration (browser-native)
+- [x] Spell check integration (browser-native spellcheck enabled)
 - [x] Print support (Ctrl+P, hides chrome)
 - [ ] Keyboard shortcut customization
 

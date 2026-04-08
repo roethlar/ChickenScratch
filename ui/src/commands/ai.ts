@@ -18,3 +18,12 @@ export async function saveAiSettings(settings: AiSettings): Promise<void> {
 export async function aiSummarize(content: string): Promise<string> {
   return invoke("ai_summarize", { content });
 }
+
+export type AiOperation = "polish" | "expand" | "simplify" | "brainstorm";
+
+export async function aiTransform(
+  content: string,
+  operation: AiOperation
+): Promise<string> {
+  return invoke("ai_transform", { content, operation });
+}

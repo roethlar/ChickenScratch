@@ -38,6 +38,7 @@ pub fn update_document_metadata(
     status: Option<String>,
     keywords: Option<Vec<String>>,
     include_in_compile: Option<bool>,
+    word_count_target: Option<u32>,
 ) -> Result<Project, ChiknError> {
     let mut project = reader::read_project(Path::new(&project_path))?;
     if let Some(doc) = project.documents.get_mut(&doc_id) {
@@ -47,6 +48,9 @@ pub fn update_document_metadata(
         doc.keywords = keywords;
         if let Some(inc) = include_in_compile {
             doc.include_in_compile = inc;
+        }
+        if let Some(target) = word_count_target {
+            doc.word_count_target = target;
         }
         doc.modified = chrono::Utc::now().to_rfc3339();
         writer::write_project(&mut project)?;

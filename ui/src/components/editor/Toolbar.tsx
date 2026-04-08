@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Editor } from "@tiptap/react";
 import {
   Bold,
@@ -17,9 +18,12 @@ import {
   Unlink,
   Undo,
   Redo,
+  Sparkles,
 } from "lucide-react";
 import { useCallback } from "react";
 import { dialogPrompt } from "../shared/Dialog";
+import { aiTransform, type AiOperation } from "../../commands/ai";
+import { toastError } from "../shared/Toast";
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -207,6 +211,65 @@ export function Toolbar({ editor }: ToolbarProps) {
         >
           <Unlink size={s} />
         </ToolbarButton>
+      )}
+
+      <ToolbarSep />
+
+      <AiMenu editor={editor} />
+    </div>
+  );
+}
+
+function AiMenu({ editor }: { editor: Editor }) {
+  const [open, setOpen] = useState(false);
+  const [working, setWorking] = useState(false);
+
+  const handleOp = useCallback(async (op: AiOperation) => {
+    const { from, to } = editor.state.selection;
+    if (from === to) {
+      toastError("Select some text first");
+      setOpen(false);
+      return;
+    }
+    const selectedText = editor.state.doc.textBetween(from, to, " ");
+    setWorking(true);
+    setOpen(false);
+    try {
+      const result = await aiTransform(selectedText, op);
+      if (result) {
+        if (op === "brainstorm") {
+          // Insert brainstorm results after selection
+          editor.chain().focus().setTextSelection(to).insertContent(
+            `<p></p><blockquote><p>${result.replace(/\n/g, "</p><p>")}</p></blockquote>`
+          ).run();
+        } else {
+          // Replace selection
+          editor.chain().focus().setTextSelection({ from, to }).deleteSelection().insertContent(result).run();
+        }
+      }
+    } catch (e) {
+      toastError(`AI failed: ${e}`);
+    }
+    setWorking(false);
+  }, [editor]);
+
+  return (
+    <div className="ai-menu-wrapper">
+      <ToolbarButton
+        onClick={() => setOpen(!open)}
+        active={open}
+        disabled={working}
+        title="AI writing tools (select text first)"
+      >
+        {working ? <span className="ai-spinner">...</span> : <Sparkles size={15} />}
+      </ToolbarButton>
+      {open && (
+        <div className="ai-menu-dropdown">
+          <button onClick={() => handleOp("polish")}>Polish</button>
+          <button onClick={() => handleOp("expand")}>Expand</button>
+          <button onClick={() => handleOp("simplify")}>Simplify</button>
+          <button onClick={() => handleOp("brainstorm")}>Brainstorm</button>
+        </div>
       )}
     </div>
   );

@@ -233,7 +233,45 @@ export function Inspector() {
 
         <div className="inspector-field">
           <label>Words</label>
-          <div className="inspector-value">{wordCount.toLocaleString()}</div>
+          <div className="inspector-value">
+            {wordCount.toLocaleString()}
+            {activeDoc.word_count_target > 0 && (
+              <span className="word-target-fraction">
+                {" "}/ {activeDoc.word_count_target.toLocaleString()}
+              </span>
+            )}
+          </div>
+          {activeDoc.word_count_target > 0 && (
+            <div className="word-target-bar-bg">
+              <div
+                className={`word-target-bar ${wordCount >= activeDoc.word_count_target ? "complete" : ""}`}
+                style={{ width: `${Math.min(100, (wordCount / activeDoc.word_count_target) * 100)}%` }}
+              />
+            </div>
+          )}
+          <input
+            type="number"
+            className="word-target-input"
+            value={activeDoc.word_count_target || ""}
+            onChange={async (e) => {
+              if (!project || !activeDoc) return;
+              const target = parseInt(e.target.value) || 0;
+              const updated = await docCmd.updateDocumentMetadata(
+                project.path, activeDoc.id, {
+                  synopsis: synopsis || null,
+                  label: label || null,
+                  status: status || null,
+                  keywords: keywords.split(",").map(s => s.trim()).filter(Boolean).length
+                    ? keywords.split(",").map(s => s.trim()).filter(Boolean) : null,
+                  word_count_target: target,
+                }
+              );
+              setProject(updated);
+            }}
+            placeholder="Set word target..."
+            min="0"
+            step="100"
+          />
         </div>
 
         <div className="inspector-field">

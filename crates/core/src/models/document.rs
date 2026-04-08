@@ -51,6 +51,10 @@ pub struct Document {
     /// Include in compile/export output (default: true)
     #[serde(default = "default_true")]
     pub include_in_compile: bool,
+
+    /// Word count target for this document (0 = no target)
+    #[serde(default)]
+    pub word_count_target: u32,
 }
 
 fn default_true() -> bool {
@@ -73,6 +77,7 @@ impl Default for Document {
             keywords: None,
             links: None,
             include_in_compile: true,
+            word_count_target: 0,
         }
     }
 }

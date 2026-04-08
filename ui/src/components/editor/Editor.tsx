@@ -54,6 +54,7 @@ export function Editor() {
     editorProps: {
       attributes: {
         class: "editor-content",
+        spellcheck: "true",
       },
     },
     onUpdate: ({ editor }) => {
@@ -96,6 +97,32 @@ export function Editor() {
       setDirty(false);
     }
   }, [activeDoc?.id, editor]);
+
+  // Search highlight: find and select first match when navigating from search
+  const searchHighlight = useProjectStore((s) => s.searchHighlight);
+  useEffect(() => {
+    if (!editor || !searchHighlight || !activeDoc) return;
+    // Wait a tick for content to load
+    setTimeout(() => {
+      const text = editor.state.doc.textContent;
+      const idx = text.toLowerCase().indexOf(searchHighlight.toLowerCase());
+      if (idx >= 0) {
+        // Walk ProseMirror to find the position
+        let found = false;
+        editor.state.doc.descendants((node, nodePos) => {
+          if (found || !node.isText || !node.text) return;
+          const nodeIdx = node.text.toLowerCase().indexOf(searchHighlight.toLowerCase());
+          if (nodeIdx >= 0) {
+            const from = nodePos + nodeIdx;
+            const to = from + searchHighlight.length;
+            editor.chain().focus().setTextSelection({ from, to }).run();
+            found = true;
+          }
+        });
+      }
+      useProjectStore.setState({ searchHighlight: null });
+    }, 100);
+  }, [searchHighlight, activeDoc?.id, editor]);
 
   useEffect(() => {
     return () => {

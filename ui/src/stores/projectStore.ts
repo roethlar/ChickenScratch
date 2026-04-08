@@ -11,6 +11,7 @@ interface ProjectState {
   saving: boolean;
   error: string | null;
   sessionStartWords: number;
+  searchHighlight: string | null;
 
   openProject: (path: string) => Promise<void>;
   createProject: (name: string, path: string) => Promise<void>;
@@ -29,6 +30,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   saving: false,
   error: null,
   sessionStartWords: 0,
+  searchHighlight: null,
 
   openProject: async (path: string) => {
     try {

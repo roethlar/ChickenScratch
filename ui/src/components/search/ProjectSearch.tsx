@@ -50,6 +50,7 @@ export function ProjectSearch({
   }, [query, project]);
 
   const handleSelect = (docId: string) => {
+    useProjectStore.setState({ searchHighlight: query.trim() });
     selectDocument(docId);
     onClose();
   };

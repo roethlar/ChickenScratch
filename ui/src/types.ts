@@ -16,6 +16,7 @@ export interface Document {
   keywords?: string[] | null;
   links?: string[] | null;
   include_in_compile: boolean;
+  word_count_target: number;
 }
 
 export interface ProjectMeta {

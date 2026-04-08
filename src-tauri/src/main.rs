@@ -35,6 +35,7 @@ fn main() {
             ai::get_ai_settings,
             ai::save_ai_settings,
             ai::ai_summarize,
+            ai::ai_transform,
             git::save_revision,
             git::list_revisions,
             git::restore_revision,

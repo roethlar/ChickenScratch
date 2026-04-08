@@ -25,6 +25,7 @@ export async function updateDocumentMetadata(
     status?: string | null;
     keywords?: string[] | null;
     include_in_compile?: boolean | null;
+    word_count_target?: number | null;
   }
 ): Promise<Project> {
   return invoke("update_document_metadata", {
