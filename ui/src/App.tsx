@@ -72,28 +72,32 @@ export default function App() {
   useEffect(() => { localStorage.setItem("cs-revisions", String(showRevisions)); }, [showRevisions]);
   useEffect(() => { localStorage.setItem("cs-binder", String(showBinder)); }, [showBinder]);
 
+  // Parse shortcut string like "Ctrl+Shift+F" into a matcher
+  const matchShortcut = (e: KeyboardEvent, shortcut: string): boolean => {
+    const parts = shortcut.toLowerCase().split("+");
+    const needCtrl = parts.includes("ctrl") || parts.includes("cmd");
+    const needShift = parts.includes("shift");
+    const needAlt = parts.includes("alt");
+    const key = parts.filter((p) => !["ctrl", "cmd", "shift", "alt"].includes(p))[0];
+    if (!key) return false;
+    const mod = e.metaKey || e.ctrlKey;
+    if (needCtrl && !mod) return false;
+    if (!needCtrl && mod) return false;
+    if (needShift !== e.shiftKey) return false;
+    if (needAlt !== e.altKey) return false;
+    return e.key.toLowerCase() === key || e.key === key;
+  };
+
+  const shortcuts = useSettingsStore((s) => s.appSettings?.shortcuts) ?? {};
+
   // Keyboard shortcuts
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key === "k") {
-        e.preventDefault();
-        setShowPalette((s) => !s);
-      }
-      if (mod && e.shiftKey && (e.key === "p" || e.key === "P")) {
-        e.preventDefault();
-        setShowSearch((s) => !s);
-      }
-      if (mod && e.shiftKey && (e.key === "f" || e.key === "F")) {
-        e.preventDefault();
-        toggleFocusMode();
-      }
-      if (mod && e.key === "s") {
-        e.preventDefault();
-        useProjectStore.getState().saveActiveDoc();
-      }
-      if (mod && e.key === "n") {
-        e.preventDefault();
+    const actions: Record<string, () => void> = {
+      commandPalette: () => setShowPalette((s) => !s),
+      search: () => setShowSearch((s) => !s),
+      focusMode: () => toggleFocusMode(),
+      save: () => useProjectStore.getState().saveActiveDoc(),
+      newDocument: () => {
         (async () => {
           const p = useProjectStore.getState().project;
           if (!p) return;
@@ -102,18 +106,19 @@ export default function App() {
           const updated = await docCmd.createDocument(p.path, name.trim());
           useProjectStore.setState({ project: updated });
         })();
-      }
-      if (mod && e.key === "p" && !e.shiftKey) {
-        e.preventDefault();
-        window.print();
-      }
-      if (mod && e.key === "\\") {
-        e.preventDefault();
-        setShowBinder((s) => !s);
-      }
-      if (mod && e.shiftKey && (e.key === "i" || e.key === "I")) {
-        e.preventDefault();
-        setShowInspector((s) => !s);
+      },
+      print: () => window.print(),
+      toggleBinder: () => setShowBinder((s) => !s),
+      toggleInspector: () => setShowInspector((s) => !s),
+    };
+
+    const handler = (e: KeyboardEvent) => {
+      for (const [action, shortcut] of Object.entries(shortcuts)) {
+        if (matchShortcut(e, shortcut) && actions[action]) {
+          e.preventDefault();
+          actions[action]();
+          return;
+        }
       }
       if (e.key === "Escape") {
         if (showPalette) setShowPalette(false);
@@ -123,7 +128,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [focusMode, showPalette, showSearch, toggleFocusMode]);
+  }, [focusMode, showPalette, showSearch, toggleFocusMode, shortcuts]);
 
   // Auto-backup on close and warn if unsaved
   useEffect(() => {

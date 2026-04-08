@@ -17,6 +17,8 @@ pub struct AppSettings {
     pub ai: AiSettings,
     #[serde(default)]
     pub compile: CompileSettings,
+    #[serde(default = "default_shortcuts")]
+    pub shortcuts: std::collections::HashMap<String, String>,
 }
 
 impl Default for AppSettings {
@@ -27,8 +29,24 @@ impl Default for AppSettings {
             backup: BackupSettings::default(),
             ai: AiSettings::default(),
             compile: CompileSettings::default(),
+            shortcuts: default_shortcuts(),
         }
     }
+}
+
+fn default_shortcuts() -> std::collections::HashMap<String, String> {
+    let mut m = std::collections::HashMap::new();
+    m.insert("save".into(), "Ctrl+S".into());
+    m.insert("newDocument".into(), "Ctrl+N".into());
+    m.insert("search".into(), "Ctrl+Shift+P".into());
+    m.insert("commandPalette".into(), "Ctrl+K".into());
+    m.insert("focusMode".into(), "Ctrl+Shift+F".into());
+    m.insert("toggleBinder".into(), "Ctrl+\\".into());
+    m.insert("toggleInspector".into(), "Ctrl+Shift+I".into());
+    m.insert("find".into(), "Ctrl+F".into());
+    m.insert("findReplace".into(), "Ctrl+H".into());
+    m.insert("print".into(), "Ctrl+P".into());
+    m
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

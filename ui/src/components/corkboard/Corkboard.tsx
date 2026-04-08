@@ -5,6 +5,7 @@ import { Sparkles, Link2 } from "lucide-react";
 import { aiSummarize } from "../../commands/ai";
 import * as docCmd from "../../commands/document";
 import { toastError, toastSuccess } from "../shared/Toast";
+import { useSettingsStore } from "../../stores/settingsStore";
 
 type GroupBy = "none" | "label" | "status" | "keyword";
 
@@ -26,6 +27,7 @@ export function Corkboard() {
   const [summarizing, setSummarizing] = useState(false);
   const [summarizeProgress, setSummarizeProgress] = useState("");
   const [linking, setLinking] = useState<string | null>(null);
+  const aiEnabled = useSettingsStore((s) => s.appSettings?.ai.enabled) ?? false;
 
   const docs = useMemo(() => {
     if (!project) return [];
@@ -139,15 +141,17 @@ export function Corkboard() {
         {linking && (
           <span className="corkboard-progress">Click a card to link (Esc to cancel)</span>
         )}
-        <button
-          className="corkboard-summarize-btn"
-          onClick={handleSummarizeAll}
-          disabled={summarizing}
-          title="Generate AI summaries for cards without synopses"
-        >
-          <Sparkles size={14} />
-          {summarizing ? "Summarizing..." : "Summarize"}
-        </button>
+        {aiEnabled && (
+          <button
+            className="corkboard-summarize-btn"
+            onClick={handleSummarizeAll}
+            disabled={summarizing}
+            title="Generate AI summaries for cards without synopses"
+          >
+            <Sparkles size={14} />
+            {summarizing ? "Summarizing..." : "Summarize"}
+          </button>
+        )}
       </div>
 
       <div className="corkboard-scroll">

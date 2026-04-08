@@ -10,7 +10,24 @@ import {
 import { useSettingsStore } from "../../stores/settingsStore";
 import { toastSuccess, toastError } from "../shared/Toast";
 
-type Tab = "general" | "writing" | "backup" | "ai" | "compile";
+type Tab = "general" | "writing" | "backup" | "ai" | "compile" | "shortcuts";
+
+const ACTION_LABELS: Record<string, string> = {
+  save: "Save",
+  newDocument: "New Document",
+  search: "Project Search",
+  commandPalette: "Command Palette",
+  focusMode: "Focus Mode",
+  toggleBinder: "Toggle Binder",
+  toggleInspector: "Toggle Inspector",
+  find: "Find in Document",
+  findReplace: "Find & Replace",
+  print: "Print",
+};
+
+function formatActionName(action: string): string {
+  return ACTION_LABELS[action] || action.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+}
 
 export function Settings({
   open,
@@ -78,6 +95,7 @@ export function Settings({
                 ["backup", "Backup"],
                 ["ai", "AI"],
                 ["compile", "Compile"],
+                ["shortcuts", "Shortcuts"],
               ] as [Tab, string][]
             ).map(([key, label]) => (
               <button
@@ -356,6 +374,27 @@ export function Settings({
                     }
                   />
                 </Field>
+              </div>
+            )}
+
+            {tab === "shortcuts" && (
+              <div className="settings-section">
+                <p className="settings-hint">
+                  Format: Ctrl+Key, Ctrl+Shift+Key. Use Cmd on macOS.
+                </p>
+                {Object.entries(settings.shortcuts || {}).map(([action, shortcut]) => (
+                  <Field key={action} label={formatActionName(action)}>
+                    <input
+                      type="text"
+                      value={shortcut as string}
+                      onChange={(e) => {
+                        const updated = { ...settings.shortcuts, [action]: e.target.value };
+                        setSettings({ ...settings, shortcuts: updated });
+                      }}
+                      placeholder="e.g. Ctrl+Shift+F"
+                    />
+                  </Field>
+                ))}
               </div>
             )}
           </div>

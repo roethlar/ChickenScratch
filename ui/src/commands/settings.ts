@@ -32,6 +32,7 @@ export interface AppSettings {
     line_spacing: number;
     margin_inches: number;
   };
+  shortcuts: Record<string, string>;
 }
 
 export interface RecentProject {

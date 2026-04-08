@@ -86,7 +86,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for detailed implementation plans.
 - [x] Binder width resizing (drag edge, persisted)
 - [x] Spell check integration (browser-native spellcheck enabled)
 - [x] Print support (Ctrl+P, hides chrome)
-- [ ] Keyboard shortcut customization
+- [x] Keyboard shortcut customization (Settings > Shortcuts panel)
 
 ### Platform
 - [ ] Windows testing and packaging (.msi)

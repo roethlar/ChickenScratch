@@ -24,6 +24,7 @@ import { useCallback } from "react";
 import { dialogPrompt } from "../shared/Dialog";
 import { aiTransform, type AiOperation } from "../../commands/ai";
 import { toastError } from "../shared/Toast";
+import { useSettingsStore } from "../../stores/settingsStore";
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -71,6 +72,8 @@ export function Toolbar({ editor }: ToolbarProps) {
     }
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
   }, [editor]);
+
+  const aiEnabled = useSettingsStore((s) => s.appSettings?.ai.enabled) ?? false;
 
   if (!editor) return null;
 
@@ -213,9 +216,12 @@ export function Toolbar({ editor }: ToolbarProps) {
         </ToolbarButton>
       )}
 
-      <ToolbarSep />
-
-      <AiMenu editor={editor} />
+      {aiEnabled && (
+        <>
+          <ToolbarSep />
+          <AiMenu editor={editor} />
+        </>
+      )}
     </div>
   );
 }
