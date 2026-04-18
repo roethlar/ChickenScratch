@@ -15,27 +15,27 @@ fn default_templates() -> Vec<Template> {
         Template {
             id: "scene".to_string(),
             name: "Scene".to_string(),
-            content: "<p><strong>POV:</strong> </p>\n<p><strong>Setting:</strong> </p>\n<p><strong>Goal:</strong> </p>\n<hr>\n<p></p>".to_string(),
+            content: "**POV:** \n\n**Setting:** \n\n**Goal:** \n\n---\n\n".to_string(),
         },
         Template {
             id: "chapter".to_string(),
             name: "Chapter".to_string(),
-            content: "<h2>Chapter Title</h2>\n<p></p>".to_string(),
+            content: "## Chapter Title\n\n".to_string(),
         },
         Template {
             id: "character".to_string(),
             name: "Character Sheet".to_string(),
-            content: "<h2>Character Name</h2>\n<p><strong>Age:</strong> </p>\n<p><strong>Occupation:</strong> </p>\n<p><strong>Appearance:</strong> </p>\n<h3>Personality</h3>\n<p><strong>Traits:</strong> </p>\n<p><strong>Motivations:</strong> </p>\n<p><strong>Flaws:</strong> </p>\n<h3>Background</h3>\n<p></p>\n<h3>Role in Story</h3>\n<p></p>".to_string(),
+            content: "## Character Name\n\n**Age:** \n\n**Occupation:** \n\n**Appearance:** \n\n### Personality\n\n**Traits:** \n\n**Motivations:** \n\n**Flaws:** \n\n### Background\n\n\n\n### Role in Story\n\n".to_string(),
         },
         Template {
             id: "setting".to_string(),
             name: "Setting".to_string(),
-            content: "<h2>Location Name</h2>\n<p><strong>Type:</strong> </p>\n<p><strong>Time period:</strong> </p>\n<h3>Description</h3>\n<p></p>\n<h3>Atmosphere</h3>\n<p></p>\n<h3>Significance to Story</h3>\n<p></p>".to_string(),
+            content: "## Location Name\n\n**Type:** \n\n**Time period:** \n\n### Description\n\n\n\n### Atmosphere\n\n\n\n### Significance to Story\n\n".to_string(),
         },
         Template {
             id: "outline".to_string(),
             name: "Outline".to_string(),
-            content: "<h2>Act 1</h2>\n<ul>\n<li>Inciting incident</li>\n<li>Key scenes</li>\n</ul>\n<h2>Act 2</h2>\n<ul>\n<li>Rising action</li>\n<li>Midpoint</li>\n</ul>\n<h2>Act 3</h2>\n<ul>\n<li>Climax</li>\n<li>Resolution</li>\n</ul>".to_string(),
+            content: "## Act 1\n\n- Inciting incident\n- Key scenes\n\n## Act 2\n\n- Rising action\n- Midpoint\n\n## Act 3\n\n- Climax\n- Resolution\n".to_string(),
         },
     ]
 }
@@ -61,7 +61,7 @@ pub fn create_from_template(
 
     let doc_id = uuid::Uuid::new_v4().to_string();
     let slug = chickenscratch_core::utils::slug::unique_slug(&name, "manuscript/", &project.documents);
-    let doc_path = format!("manuscript/{}.html", slug);
+    let doc_path = format!("manuscript/{}.md", slug);
     let now = chrono::Utc::now().to_rfc3339();
 
     let document = Document {

@@ -1,4 +1,4 @@
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor as TipTapEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import CharacterCount from "@tiptap/extension-character-count";
@@ -13,26 +13,49 @@ import { FindReplace } from "./FindReplace";
 import { CommentMark } from "../comments/CommentMark";
 import { FootnoteNode } from "./FootnoteNode";
 import { setCurrentEditor } from "./editorRef";
+import { markdownToHtml, htmlToMarkdown } from "../../commands/convert";
+import * as docCmd from "../../commands/document";
+import { toastError } from "../shared/Toast";
 
 export function Editor() {
   const activeDoc = useProjectStore((s) => s.activeDoc);
-  const updateContent = useProjectStore((s) => s.updateContent);
-  const saveActiveDoc = useProjectStore((s) => s.saveActiveDoc);
   const saving = useProjectStore((s) => s.saving);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const docIdRef = useRef<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [findReplace, setFindReplace] = useState(false);
+  const editorRef = useRef<TipTapEditor | null>(null);
+
+  const saveCurrent = useCallback(async () => {
+    const editor = editorRef.current;
+    const p = useProjectStore.getState().project;
+    const d = useProjectStore.getState().activeDoc;
+    if (!editor || !p || !d) return;
+    useProjectStore.setState({ saving: true });
+    try {
+      const html = editor.getHTML();
+      const markdown = await htmlToMarkdown(html);
+      await docCmd.updateDocumentContent(p.path, d.id, markdown);
+      // Also update the in-store doc content so other features see fresh markdown
+      useProjectStore.setState({
+        activeDoc: { ...d, content: markdown },
+      });
+      setDirty(false);
+    } catch (e) {
+      toastError(`Save failed: ${e}`);
+    } finally {
+      useProjectStore.setState({ saving: false });
+    }
+  }, []);
 
   const debouncedSave = useCallback(() => {
     setDirty(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      saveActiveDoc();
-      setDirty(false);
+      saveCurrent();
     }, 2000);
-  }, [saveActiveDoc]);
+  }, [saveCurrent]);
 
   const editor = useEditor({
     extensions: [
@@ -62,12 +85,12 @@ export function Editor() {
         spellcheck: "true",
       },
     },
-    onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      updateContent(html);
+    onUpdate: () => {
       debouncedSave();
     },
   });
+
+  useEffect(() => { editorRef.current = editor; }, [editor]);
 
   // Ctrl+F / Ctrl+H shortcuts
   useEffect(() => {
@@ -88,7 +111,7 @@ export function Editor() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Load document content when active doc changes
+  // Load document content when active doc changes — markdown → HTML via pandoc.
   useEffect(() => {
     if (!editor) return;
     if (!activeDoc) {
@@ -98,7 +121,18 @@ export function Editor() {
     }
     if (docIdRef.current !== activeDoc.id) {
       docIdRef.current = activeDoc.id;
-      editor.commands.setContent(activeDoc.content || "");
+      const md = activeDoc.content || "";
+      if (md.trim().length === 0) {
+        editor.commands.setContent("");
+      } else {
+        markdownToHtml(md)
+          .then((html) => {
+            if (docIdRef.current === activeDoc.id) {
+              editor.commands.setContent(html);
+            }
+          })
+          .catch((e) => toastError(`Load failed: ${e}`));
+      }
       setDirty(false);
     }
   }, [activeDoc?.id, editor]);
@@ -107,12 +141,10 @@ export function Editor() {
   const searchHighlight = useProjectStore((s) => s.searchHighlight);
   useEffect(() => {
     if (!editor || !searchHighlight || !activeDoc) return;
-    // Wait a tick for content to load
     setTimeout(() => {
       const text = editor.state.doc.textContent;
       const idx = text.toLowerCase().indexOf(searchHighlight.toLowerCase());
       if (idx >= 0) {
-        // Walk ProseMirror to find the position
         let found = false;
         editor.state.doc.descendants((node, nodePos) => {
           if (found || !node.isText || !node.text) return;
@@ -135,13 +167,11 @@ export function Editor() {
     };
   }, []);
 
-  // Publish editor instance for external components (comments, etc.)
   useEffect(() => {
     setCurrentEditor(editor);
     return () => setCurrentEditor(null);
   }, [editor]);
 
-  // Session word count — hooks must be before any conditional return
   const project = useProjectStore((s) => s.project);
   const sessionStartWords = useProjectStore((s) => s.sessionStartWords);
 
@@ -157,8 +187,7 @@ export function Editor() {
   const saveLabel = saving ? "Saving..." : dirty ? "Modified" : "Saved";
   const totalProjectWords = project
     ? Object.values(project.documents).reduce((sum, doc) => {
-        const text = (doc.content || "").replace(/<[^>]*>/g, "");
-        return sum + text.split(/\s+/).filter(Boolean).length;
+        return sum + (doc.content || "").split(/\s+/).filter(Boolean).length;
       }, 0)
     : 0;
   const sessionWords = Math.max(0, totalProjectWords - sessionStartWords);

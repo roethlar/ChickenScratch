@@ -28,25 +28,22 @@ pub enum Mode {
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum ViewMode {
-    Markdown,
-    Source,
-    Formatted,
+    Edit,     // editable markdown
+    Preview,  // read-only formatted rendering
 }
 
 impl ViewMode {
     pub fn label(self) -> &'static str {
         match self {
-            ViewMode::Markdown => "markdown",
-            ViewMode::Source => "source",
-            ViewMode::Formatted => "preview",
+            ViewMode::Edit => "edit",
+            ViewMode::Preview => "preview",
         }
     }
 
     pub fn next(self) -> ViewMode {
         match self {
-            ViewMode::Markdown => ViewMode::Source,
-            ViewMode::Source => ViewMode::Formatted,
-            ViewMode::Formatted => ViewMode::Markdown,
+            ViewMode::Edit => ViewMode::Preview,
+            ViewMode::Preview => ViewMode::Edit,
         }
     }
 }
@@ -107,7 +104,7 @@ impl<'a> App<'a> {
             active_doc_id: None,
             editor: TextArea::default(),
             dirty: false,
-            view_mode: ViewMode::Markdown,
+            view_mode: ViewMode::Edit,
             wrap: true,
             status: "Ready. ?=help  Tab=switch pane  q=quit".to_string(),
             prompt_input: String::new(),
@@ -209,6 +206,14 @@ impl<'a> App<'a> {
                     self.comments_selected -= 1;
                 }
             }
+            KeyCode::Char('n') | KeyCode::Char('a') => {
+                // New document-level comment (no anchor)
+                if self.active_doc_id.is_some() {
+                    self.comment_edit_id = Some(String::new()); // empty id = new comment
+                    self.prompt_input.clear();
+                    self.mode = Mode::CommentEdit;
+                }
+            }
             KeyCode::Char('r') => {
                 if let Some(id) = comments.get(self.comments_selected).map(|c| c.id.clone()) {
                     self.toggle_resolve_comment(&id);
@@ -223,6 +228,11 @@ impl<'a> App<'a> {
                 if let Some(c) = comments.get(self.comments_selected) {
                     self.comment_edit_id = Some(c.id.clone());
                     self.prompt_input = c.body.clone();
+                    self.mode = Mode::CommentEdit;
+                } else if n == 0 && self.active_doc_id.is_some() {
+                    // Empty list — Enter/e creates a new doc-level comment
+                    self.comment_edit_id = Some(String::new());
+                    self.prompt_input.clear();
                     self.mode = Mode::CommentEdit;
                 }
             }
@@ -241,7 +251,12 @@ impl<'a> App<'a> {
             KeyCode::Enter => {
                 if let Some(id) = self.comment_edit_id.take() {
                     let body = self.prompt_input.clone();
-                    self.update_comment_body(&id, &body);
+                    if id.is_empty() {
+                        // Create new document-level comment (no anchor)
+                        self.add_orphan_comment(&body);
+                    } else {
+                        self.update_comment_body(&id, &body);
+                    }
                 }
                 self.prompt_input.clear();
                 self.mode = Mode::Comments;
@@ -251,6 +266,36 @@ impl<'a> App<'a> {
             _ => {}
         }
         Ok(())
+    }
+
+    fn add_orphan_comment(&mut self, body: &str) {
+        if body.trim().is_empty() {
+            return;
+        }
+        let doc_id = match self.active_doc_id.as_ref() {
+            Some(id) => id.clone(),
+            None => return,
+        };
+        let comment_id = format!("c_{}", uuid::Uuid::new_v4().simple());
+        let now = chrono::Utc::now().to_rfc3339();
+        let did_add = if let Some(doc) = self.project.documents.get_mut(&doc_id) {
+            doc.comments.push(chickenscratch_core::models::Comment {
+                id: comment_id,
+                body: body.to_string(),
+                resolved: false,
+                created: now.clone(),
+                modified: now.clone(),
+            });
+            doc.modified = now;
+            true
+        } else {
+            false
+        };
+        if did_add {
+            let _ = writer::write_project(&mut self.project);
+            self.comments_selected = self.current_comments().len().saturating_sub(1);
+            self.status = "Comment added".to_string();
+        }
     }
 
     pub fn current_comments(&self) -> Vec<chickenscratch_core::models::Comment> {
@@ -341,10 +386,9 @@ impl<'a> App<'a> {
         writer::write_project(&mut self.project)
             .map_err(|e| anyhow!("Write failed: {:?}", e))?;
 
-        if let Some(html) = new_content {
-            if self.view_mode != ViewMode::Formatted {
-                let vm = self.view_mode;
-                self.load_content_for_mode(&html, vm);
+        if let Some(md) = new_content {
+            if self.view_mode == ViewMode::Edit {
+                self.load_markdown(&md);
             }
         }
 
@@ -357,6 +401,16 @@ impl<'a> App<'a> {
     }
 
     fn handle_normal_key(&mut self, key: KeyEvent) -> Result<()> {
+        // F2: toggle comments overlay (works regardless of focus)
+        if key.code == KeyCode::F(2) {
+            if self.active_doc_id.is_some() {
+                self.mode = Mode::Comments;
+                self.comments_selected = 0;
+            } else {
+                self.status = "Open a document first to see comments".to_string();
+            }
+            return Ok(());
+        }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
                 KeyCode::Char('s') => { self.save_active_doc()?; return Ok(()); }
@@ -458,14 +512,8 @@ impl<'a> App<'a> {
             self.focus = Focus::Binder;
             return Ok(());
         }
-        if self.view_mode == ViewMode::Formatted {
-            match key.code {
-                KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right
-                | KeyCode::PageUp | KeyCode::PageDown | KeyCode::Home | KeyCode::End => {
-                    self.editor.input(key);
-                }
-                _ => {}
-            }
+        if self.view_mode == ViewMode::Preview {
+            // Preview is read-only — no keys do anything here
             return Ok(());
         }
         let changed = self.editor.input(key);
@@ -476,43 +524,15 @@ impl<'a> App<'a> {
     }
 
     fn cycle_view_mode(&mut self) {
-        if self.active_doc_id.is_none() {
-            self.view_mode = self.view_mode.next();
-            self.status = format!("View: {}", self.view_mode.label());
-            return;
-        }
-        let current_html = self.current_content_as_html();
-        let new_mode = self.view_mode.next();
-        self.load_content_for_mode(&current_html, new_mode);
-        self.view_mode = new_mode;
-        self.status = format!("View: {}", new_mode.label());
+        self.view_mode = self.view_mode.next();
+        self.status = format!("View: {}", self.view_mode.label());
     }
 
-    fn current_content_as_html(&self) -> String {
-        let text = self.editor.lines().join("\n");
-        match self.view_mode {
-            ViewMode::Markdown => convert::markdown_to_html(&text),
-            ViewMode::Source => text,
-            ViewMode::Formatted => {
-                self.active_doc_id
-                    .as_ref()
-                    .and_then(|id| self.project.documents.get(id))
-                    .map(|d| d.content.clone())
-                    .unwrap_or_default()
-            }
-        }
-    }
-
-    fn load_content_for_mode(&mut self, html: &str, mode: ViewMode) {
-        let text = match mode {
-            ViewMode::Markdown => convert::html_to_markdown(html),
-            ViewMode::Source => pretty_print_html(html),
-            ViewMode::Formatted => convert::html_to_markdown(html),
-        };
-        let lines: Vec<String> = if text.is_empty() {
+    fn load_markdown(&mut self, md: &str) {
+        let lines: Vec<String> = if md.is_empty() {
             vec![String::new()]
         } else {
-            text.lines().map(String::from).collect()
+            md.lines().map(String::from).collect()
         };
         self.editor = TextArea::new(lines);
         self.apply_editor_settings();
@@ -574,8 +594,7 @@ impl<'a> App<'a> {
             Some(doc) => (doc.content.clone(), doc.name.clone()),
             None => return,
         };
-        let mode = self.view_mode;
-        self.load_content_for_mode(&content, mode);
+        self.load_markdown(&content);
         self.active_doc_id = Some(doc_id.to_string());
         self.dirty = false;
         self.status = format!("Opened: {}", name);
@@ -586,19 +605,15 @@ impl<'a> App<'a> {
             Some(id) => id.clone(),
             None => return Ok(()),
         };
-        let html = self.current_content_as_html();
-        let word_source = match self.view_mode {
-            ViewMode::Source | ViewMode::Formatted => convert::html_to_markdown(&html),
-            ViewMode::Markdown => self.editor_content_string(),
-        };
+        let md = self.editor_content_string();
         if let Some(doc) = self.project.documents.get_mut(&doc_id) {
-            doc.content = html;
+            doc.content = md.clone();
             doc.modified = chrono::Utc::now().to_rfc3339();
         }
         writer::write_project(&mut self.project)
             .map_err(|e| anyhow!("Write failed: {:?}", e))?;
         self.dirty = false;
-        let word_count = convert::count_words(&word_source);
+        let word_count = convert::count_words(&md);
         self.status = format!("Saved. {} words.", word_count);
         Ok(())
     }
@@ -711,16 +726,3 @@ fn strip_comment_span(html: &str, id: &str) -> String {
     out
 }
 
-fn pretty_print_html(html: &str) -> String {
-    let html = html.trim();
-    if html.is_empty() {
-        return String::new();
-    }
-    let mut s = html
-        .replace("><", ">\n<")
-        .replace("</p>", "</p>\n");
-    while s.contains("\n\n\n") {
-        s = s.replace("\n\n\n", "\n\n");
-    }
-    s
-}

@@ -48,7 +48,7 @@ fn render_comments_overlay(f: &mut Frame, area: Rect, app: &App) {
     let popup = Rect { x, y, width: w, height: h };
     f.render_widget(Clear, popup);
 
-    let title = format!(" Comments ({})  ↑↓=nav  e/Enter=edit  r=resolve  d=delete  Esc=close ", comments.len());
+    let title = format!(" Comments ({})  ↑↓=nav  n=new  e/Enter=edit  r=resolve  d=delete  Esc=close ", comments.len());
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan))
@@ -56,7 +56,10 @@ fn render_comments_overlay(f: &mut Frame, area: Rect, app: &App) {
 
     if comments.is_empty() {
         let inner = Paragraph::new(
-            "No comments in this document yet.\n\nComments are created in the Tauri app by selecting text and pressing the comment button.",
+            "No comments in this document yet.\n\n\
+             Press n (or Enter) to add a document-level note.\n\n\
+             Comments anchored to specific text are created in the Tauri app\n\
+             by selecting text and pressing the comment button.",
         )
         .block(block)
         .wrap(Wrap { trim: false })
@@ -187,7 +190,7 @@ fn render_editor(f: &mut Frame, area: Rect, app: &mut App) {
         return;
     }
 
-    if app.view_mode == ViewMode::Formatted {
+    if app.view_mode == ViewMode::Preview {
         render_formatted_preview(f, area, app, block);
         return;
     }

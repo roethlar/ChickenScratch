@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
 import { invoke } from "@tauri-apps/api/core";
+import { marked } from "marked";
 import type { TreeNode, Document, Project } from "../../types";
 
 /** Find the main manuscript folder(s) and flatten their documents in order */
@@ -82,7 +83,8 @@ export function Preview() {
 
   const totalWords = useMemo(() => {
     return docs.reduce((sum, doc) => {
-      const text = doc.content?.replace(/<[^>]*>/g, "") || "";
+      // Content is markdown; strip any inline HTML and count tokens
+      const text = (doc.content || "").replace(/<[^>]*>/g, "");
       return sum + text.split(/\s+/).filter(Boolean).length;
     }, 0);
   }, [docs]);
@@ -162,7 +164,9 @@ export function Preview() {
               )}
               <div
                 className="preview-section-body"
-                dangerouslySetInnerHTML={{ __html: doc.content || "" }}
+                dangerouslySetInnerHTML={{
+                  __html: marked.parse(doc.content || "", { async: false }) as string,
+                }}
               />
             </section>
           ))}

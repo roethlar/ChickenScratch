@@ -211,7 +211,7 @@ pub fn create_document(
 
     let doc_id = uuid::Uuid::new_v4().to_string();
     let s = slug::unique_slug(&name, "manuscript/", &project.documents);
-    let doc_path = format!("manuscript/{}.html", s);
+    let doc_path = format!("manuscript/{}.md", s);
     let now = chrono::Utc::now().to_rfc3339();
 
     let document = Document {

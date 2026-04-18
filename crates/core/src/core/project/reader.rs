@@ -4,7 +4,7 @@
 //!
 //! ## Responsibilities
 //! - Load project.yaml and parse into Project
-//! - Read all document content (.html files)
+//! - Read all document content (.md files)
 //! - Build document hierarchy from filesystem
 //! - Validate project structure
 //!
@@ -187,7 +187,7 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
 ///
 /// Handles:
 /// 1. Hierarchy references a file that doesn't exist — remove from hierarchy
-/// 2. A .html file exists on disk but isn't in hierarchy — add to hierarchy
+/// 2. A .md file exists on disk but isn't in hierarchy — add to hierarchy
 /// 3. Document in hierarchy has no matching loaded document — remove
 fn repair_project(project: &mut Project, project_path: &Path) -> bool {
     let mut repaired = false;
@@ -390,7 +390,7 @@ fn read_documents_from_folder(
         let path = entry.path();
 
         if path.is_file() {
-            // Process .html files
+            // Process .md files
             if let Some(extension) = path.extension() {
                 if extension == DOCUMENT_EXTENSION {
                     let doc = read_document(&path, project_path)?;
@@ -522,14 +522,14 @@ hierarchy:
   - type: Document
     id: "doc1"
     name: "Chapter 1"
-    path: "manuscript/chapter-01.html"
+    path: "manuscript/chapter-01.md"
 "#,
             generate_id()
         );
         fs::write(project_path.join(PROJECT_FILE), project_yaml).unwrap();
 
         // Create a test document
-        let doc_path = project_path.join(MANUSCRIPT_FOLDER).join("chapter-01.html");
+        let doc_path = project_path.join(MANUSCRIPT_FOLDER).join("chapter-01.md");
         fs::write(&doc_path, "# Chapter 1\n\nOnce upon a time...").unwrap();
 
         // Create metadata file
@@ -574,7 +574,7 @@ modified: "2025-01-01T00:00:00Z"
     #[test]
     fn test_read_document() {
         let (_temp, project_path) = create_test_project();
-        let doc_path = project_path.join(MANUSCRIPT_FOLDER).join("chapter-01.html");
+        let doc_path = project_path.join(MANUSCRIPT_FOLDER).join("chapter-01.md");
 
         let result = read_document(&doc_path, &project_path);
         assert!(result.is_ok());
@@ -614,7 +614,7 @@ modified: "2025-01-01T00:00:00Z"
 
         // Create document in nested folder
         fs::write(
-            nested_folder.join("chapter-01.html"),
+            nested_folder.join("chapter-01.md"),
             "# Nested Chapter\n\nContent in subfolder",
         )
         .unwrap();
@@ -647,7 +647,7 @@ hierarchy: []
         let doc = documents.get("nested-doc1").unwrap();
         assert_eq!(doc.name, "chapter-01");
         // Verify relative path
-        assert_eq!(doc.path, "manuscript/part-one/chapter-01.html");
+        assert_eq!(doc.path, "manuscript/part-one/chapter-01.md");
     }
 
     #[test]
@@ -661,7 +661,7 @@ hierarchy: []
         fs::create_dir_all(&nested).unwrap();
 
         // Create document
-        let doc_path = nested.join("test.html");
+        let doc_path = nested.join("test.md");
         fs::write(&doc_path, "Test content").unwrap();
 
         // Create metadata
@@ -675,7 +675,7 @@ hierarchy: []
 
         // Verify path is relative, not absolute
         assert!(!doc.path.starts_with("/"));
-        assert_eq!(doc.path, "manuscript/subfolder/test.html");
+        assert_eq!(doc.path, "manuscript/subfolder/test.md");
     }
 
     #[test]
@@ -683,7 +683,7 @@ hierarchy: []
         let (_temp, project_path) = create_test_project();
 
         // Delete the document file but leave project.yaml referencing it
-        fs::remove_file(project_path.join("manuscript/chapter-01.html")).unwrap();
+        fs::remove_file(project_path.join("manuscript/chapter-01.md")).unwrap();
         fs::remove_file(project_path.join("manuscript/chapter-01.meta")).unwrap();
 
         // Load should succeed and repair
@@ -700,7 +700,7 @@ hierarchy: []
 
         // Add a new .md file that's NOT in project.yaml
         fs::write(
-            project_path.join("manuscript/orphan.html"),
+            project_path.join("manuscript/orphan.md"),
             "# Orphan\n\nThis file was restored but not in hierarchy.",
         )
         .unwrap();

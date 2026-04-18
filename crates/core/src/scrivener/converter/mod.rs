@@ -152,7 +152,7 @@ fn build_uuid_map(
                 if rtf_path.exists() {
                     let name = item.title.clone().unwrap_or_else(|| "folder".to_string());
                     let slug = crate::utils::slug::slugify(&name);
-                    uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.html", target_folder, slug));
+                    uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.md", target_folder, slug));
                 }
                 build_uuid_map(&item.children.items, scriv_path, uuid_to_path, target_folder);
             }
@@ -160,7 +160,7 @@ fn build_uuid_map(
             "Text" => {
                 let name = item.title.clone().unwrap_or_else(|| "untitled".to_string());
                 let slug = crate::utils::slug::slugify(&name);
-                uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.html", target_folder, slug));
+                uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.md", target_folder, slug));
                 // Scrivener Text items can have children too
                 if !item.children.items.is_empty() {
                     build_uuid_map(&item.children.items, scriv_path, uuid_to_path, target_folder);
@@ -185,7 +185,7 @@ fn find_first_text_path(items: &[BinderItem], scriv_path: &Path, target_folder: 
         if item.item_type == "Text" {
             let name = item.title.clone().unwrap_or_else(|| "untitled".to_string());
             let slug = crate::utils::slug::slugify(&name);
-            return Some(format!("{}/{}.html", target_folder, slug));
+            return Some(format!("{}/{}.md", target_folder, slug));
         }
         if let Some(path) = find_first_text_path(&item.children.items, scriv_path, target_folder) {
             return Some(path);
@@ -266,7 +266,7 @@ fn convert_binder_items_inner(
                             &format!("{}/", target_folder),
                             documents,
                         );
-                        let doc_path = format!("{}/{}.html", target_folder, slug);
+                        let doc_path = format!("{}/{}.md", target_folder, slug);
                         let created = item.created.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
                         let modified = item.modified.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
 
@@ -332,7 +332,7 @@ fn convert_binder_items_inner(
                     &format!("{}/", target_folder),
                     documents,
                 );
-                let doc_path = format!("{}/{}.html", target_folder, slug);
+                let doc_path = format!("{}/{}.md", target_folder, slug);
 
                 let created = item
                     .created

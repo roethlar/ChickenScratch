@@ -78,36 +78,27 @@ pub fn import_file(
         .unwrap_or("")
         .to_lowercase();
 
-    // Convert to HTML
-    let html_content = match ext.as_str() {
-        "html" | "htm" => fs::read_to_string(path)?,
-        "txt" => {
-            // Plain text: wrap paragraphs in <p> tags
-            let content = fs::read_to_string(path)?;
-            content
-                .split("\n\n")
-                .filter(|p| !p.trim().is_empty())
-                .map(|p| format!("<p>{}</p>", p.trim()))
-                .collect::<Vec<_>>()
-                .join("\n")
-        }
+    // Convert to markdown (canonical content format)
+    let content = match ext.as_str() {
+        "md" | "markdown" => fs::read_to_string(path)?,
+        "txt" => fs::read_to_string(path)?, // plain text is valid markdown
         _ => {
-            // Use Pandoc to convert to HTML
-            convert_to_html_via_pandoc(path, &ext)?
+            // Use Pandoc to convert to markdown
+            convert_to_markdown_via_pandoc(path, &ext)?
         }
     };
 
     let doc_id = uuid::Uuid::new_v4().to_string();
     let slug =
         chickenscratch_core::utils::slug::unique_slug(&name, "manuscript/", &project.documents);
-    let doc_path = format!("manuscript/{}.html", slug);
+    let doc_path = format!("manuscript/{}.md", slug);
     let now = chrono::Utc::now().to_rfc3339();
 
     let document = Document {
         id: doc_id.clone(),
         name: name.clone(),
         path: doc_path.clone(),
-        content: html_content,
+        content: content.clone(),
         parent_id: parent_id.clone(),
         created: now.clone(),
         modified: now,
@@ -131,7 +122,7 @@ pub fn import_file(
     Ok(project)
 }
 
-fn convert_to_html_via_pandoc(file_path: &Path, ext: &str) -> Result<String, ChiknError> {
+fn convert_to_markdown_via_pandoc(file_path: &Path, ext: &str) -> Result<String, ChiknError> {
     // Map file extensions to Pandoc input format names
     let format = match ext {
         "docx" | "doc" => "docx",
@@ -156,7 +147,7 @@ fn convert_to_html_via_pandoc(file_path: &Path, ext: &str) -> Result<String, Chi
         .arg("-f")
         .arg(format)
         .arg("-t")
-        .arg("html")
+        .arg("markdown")
         .arg("--wrap=none")
         .arg(file_path)
         .output()
@@ -246,18 +237,9 @@ pub fn import_markdown_folder(
             .unwrap_or("Untitled")
             .to_string();
 
-        let html_content = match ext.as_str() {
-            "html" | "htm" => fs::read_to_string(&path).unwrap_or_default(),
-            "txt" => {
-                let content = fs::read_to_string(&path).unwrap_or_default();
-                content
-                    .split("\n\n")
-                    .filter(|p| !p.trim().is_empty())
-                    .map(|p| format!("<p>{}</p>", p.trim()))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            }
-            _ => convert_to_html_via_pandoc(&path, &ext).unwrap_or_default(),
+        let content = match ext.as_str() {
+            "md" | "markdown" | "txt" => fs::read_to_string(&path).unwrap_or_default(),
+            _ => convert_to_markdown_via_pandoc(&path, &ext).unwrap_or_default(),
         };
 
         let doc_id = uuid::Uuid::new_v4().to_string();
@@ -266,14 +248,14 @@ pub fn import_markdown_folder(
             "manuscript/",
             &project.documents,
         );
-        let doc_path = format!("manuscript/{}.html", slug);
+        let doc_path = format!("manuscript/{}.md", slug);
         let now = chrono::Utc::now().to_rfc3339();
 
         let document = Document {
             id: doc_id.clone(),
             name: doc_name.clone(),
             path: doc_path.clone(),
-            content: html_content,
+            content,
             parent_id: None,
             created: now.clone(),
             modified: now,
@@ -310,10 +292,12 @@ pub struct ProjectStats {
     pub docs: Vec<DocStats>,
 }
 
-fn count_words_html(html: &str) -> usize {
-    let mut text = String::with_capacity(html.len());
+/// Count words in markdown content. Strips inline HTML tags defensively
+/// (pandoc markdown allows raw HTML and we don't want tags counted as words).
+fn count_words_md(md: &str) -> usize {
+    let mut text = String::with_capacity(md.len());
     let mut in_tag = false;
-    for ch in html.chars() {
+    for ch in md.chars() {
         match ch {
             '<' => in_tag = true,
             '>' => { in_tag = false; text.push(' '); },
@@ -321,7 +305,10 @@ fn count_words_html(html: &str) -> usize {
             _ => {},
         }
     }
-    text.split_whitespace().count()
+    // Also skip pure markdown punctuation tokens (#, *, -, etc.)
+    text.split_whitespace()
+        .filter(|w| !w.chars().all(|c| matches!(c, '#' | '*' | '-' | '_' | '`' | '>' | '=' | '|')))
+        .count()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -386,8 +373,8 @@ pub fn get_project_stats(project_path: String) -> Result<ProjectStats, ChiknErro
     let mut manuscript_words = 0;
 
     for doc in project.documents.values() {
-        if !doc.path.ends_with(".html") { continue; }
-        let words = count_words_html(&doc.content);
+        if !doc.path.ends_with(".md") { continue; }
+        let words = count_words_md(&doc.content);
         total_words += words;
         if doc.path.starts_with("manuscript/") {
             manuscript_words += words;

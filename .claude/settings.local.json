@@ -125,7 +125,8 @@
       "Bash(python3 -c \"import sys,json;d=json.load\\(sys.stdin\\);[print\\(x['crate_id'],x['req']\\) for x in d['dependencies'] if x['kind']=='normal' and \\('ratatui' in x['crate_id'] or 'crossterm' in x['crate_id'] or 'tui' in x['crate_id']\\)]\")",
       "Bash(cargo add *)",
       "Bash(cargo metadata *)",
-      "Bash(npm view *)"
+      "Bash(npm view *)",
+      "Bash(curl --version)"
     ],
     "deny": [],
     "ask": []

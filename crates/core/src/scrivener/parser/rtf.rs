@@ -17,7 +17,7 @@ pub fn rtf_to_html(rtf_path: &Path) -> Result<String, ChiknError> {
         .arg("-f")
         .arg("rtf")
         .arg("-t")
-        .arg("html")
+        .arg("markdown")
         .arg("--wrap=none")
         .arg(rtf_path)
         .output()
@@ -55,7 +55,7 @@ pub fn html_to_rtf(html_path: &Path, rtf_path: &Path) -> Result<(), ChiknError> 
 
     let output = Command::new("pandoc")
         .arg("-f")
-        .arg("html")
+        .arg("markdown")
         .arg("-t")
         .arg("rtf")
         .arg("-o")
@@ -78,7 +78,7 @@ pub fn html_to_rtf(html_path: &Path, rtf_path: &Path) -> Result<(), ChiknError> 
 /// Converts HTML string to RTF string using Pandoc.
 pub fn html_string_to_rtf(html_content: &str) -> Result<String, ChiknError> {
     let temp_dir = std::env::temp_dir();
-    let temp_html = temp_dir.join(format!("temp_{}.html", uuid::Uuid::new_v4()));
+    let temp_html = temp_dir.join(format!("temp_{}.md", uuid::Uuid::new_v4()));
     let temp_rtf = temp_dir.join(format!("temp_{}.rtf", uuid::Uuid::new_v4()));
 
     fs::write(&temp_html, html_content)?;

@@ -635,6 +635,7 @@ dependencies = [
  "ratatui",
  "ratatui-textarea",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

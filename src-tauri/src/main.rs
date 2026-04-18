@@ -2,7 +2,7 @@
 
 mod commands;
 
-use commands::{ai, document, git, io, project, search, settings, templates};
+use commands::{ai, convert, document, git, io, project, search, settings, templates};
 
 fn main() {
     // Work around WebKitGTK DMA-BUF renderer crash on Wayland
@@ -63,6 +63,8 @@ fn main() {
             templates::create_from_template,
             templates::save_as_template,
             git::revision_diff,
+            convert::markdown_to_html,
+            convert::html_to_markdown,
             git::word_diff,
             io::get_project_stats,
             io::get_writing_history,
