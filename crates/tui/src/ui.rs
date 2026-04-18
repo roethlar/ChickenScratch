@@ -1,8 +1,9 @@
+use edtui::{EditorTheme, EditorView};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Widget, Wrap},
     Frame,
 };
 
@@ -11,13 +12,11 @@ use crate::app::{App, Focus, Mode, ViewMode};
 pub fn render(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
-    // Vertical split: main content / status bar
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(3), Constraint::Length(1)])
         .split(area);
 
-    // Horizontal split: binder / editor
     let main_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(32), Constraint::Min(20)])
@@ -27,7 +26,6 @@ pub fn render(f: &mut Frame, app: &mut App) {
     render_editor(f, main_chunks[1], app);
     render_status(f, chunks[1], app);
 
-    // Overlays
     if app.mode == Mode::RevisionPrompt {
         render_prompt(f, area, "Save revision with message:", &app.prompt_input);
     }
@@ -89,10 +87,14 @@ fn render_editor(f: &mut Frame, area: Rect, app: &mut App) {
         Style::default().fg(Color::DarkGray)
     };
 
+    let wrap_label = if app.wrap { "wrap" } else { "no-wrap" };
     let title = match app.active_doc_name() {
         Some(name) => {
             let marker = if app.dirty { "●" } else { " " };
-            format!(" {} {}  [{}]  Ctrl+T to switch ", marker, name, app.view_mode.label())
+            format!(
+                " {} {}  [{}]  [{}]  Ctrl+T/Ctrl+W ",
+                marker, name, app.view_mode.label(), wrap_label
+            )
         }
         None => " No document open ".to_string(),
     };
@@ -108,6 +110,7 @@ fn render_editor(f: &mut Frame, area: Rect, app: &mut App) {
              Keys:\n  ↑↓       navigate\n  Enter    open document / expand folder\n  \
              Tab      switch focus\n  Ctrl+S   save\n  Ctrl+R   save revision\n  \
              Ctrl+T   cycle view (markdown/source/preview)\n  \
+             Ctrl+W   toggle word wrap\n  \
              Esc      back to binder\n  q        quit",
         )
         .block(block)
@@ -119,19 +122,85 @@ fn render_editor(f: &mut Frame, area: Rect, app: &mut App) {
 
     if app.view_mode == ViewMode::Formatted {
         render_formatted_preview(f, area, app, block);
-    } else {
-        app.editor.set_block(block);
-        f.render_widget(&app.editor, area);
+        return;
     }
+
+    // Render edtui editor (with wrap honored)
+    let buf = f.buffer_mut();
+    // Draw the block first so its border appears around the editor
+    let inner = block.inner(area);
+    block.render(area, buf);
+
+    let theme = EditorTheme::default()
+        .base(Style::default())
+        .cursor_style(Style::default().bg(Color::White).fg(Color::Black));
+
+    let editor_view = EditorView::new(&mut app.editor_state)
+        .theme(theme)
+        .wrap(app.wrap);
+    editor_view.render(inner, buf);
 }
 
 fn render_formatted_preview(f: &mut Frame, area: Rect, app: &App, block: Block) {
-    let md = app.editor.lines().join("\n");
+    let md = app.editor_content_string();
     let lines = render_markdown_as_lines(&md);
     let para = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false });
     f.render_widget(para, area);
+}
+
+fn render_status(f: &mut Frame, area: Rect, app: &App) {
+    let left = if let Some(name) = app.active_doc_name() {
+        format!(
+            "{} · {} words{}",
+            name,
+            app.word_count(),
+            if app.dirty { " · modified" } else { "" }
+        )
+    } else {
+        app.status.clone()
+    };
+
+    let right = match app.focus {
+        Focus::Binder => "[Binder]".to_string(),
+        Focus::Editor => "[Editor]".to_string(),
+    };
+
+    let text = if app.active_doc_id.is_some() && app.status != "Ready. ?=help  Tab=switch pane  q=quit" {
+        format!("{} · {}", left, app.status)
+    } else {
+        left
+    };
+
+    let padded = format!(
+        " {:<width$}{}",
+        text,
+        right,
+        width = area.width.saturating_sub(right.len() as u16 + 2) as usize
+    );
+    let para = Paragraph::new(padded).style(Style::default().bg(Color::DarkGray).fg(Color::White));
+    f.render_widget(para, area);
+}
+
+fn render_prompt(f: &mut Frame, area: Rect, title: &str, value: &str) {
+    let w = 60.min(area.width - 4);
+    let h = 5;
+    let x = (area.width - w) / 2;
+    let y = (area.height - h) / 2;
+    let popup = Rect { x, y, width: w, height: h };
+    f.render_widget(Clear, popup);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(format!(" {} ", title));
+    let inner = block.inner(popup);
+    f.render_widget(block, popup);
+
+    let content = Paragraph::new(format!("> {}", value))
+        .style(Style::default().fg(Color::White));
+    f.render_widget(content, inner);
 }
 
 /// Convert markdown into styled ratatui lines for terminal rendering.
@@ -295,49 +364,4 @@ fn render_markdown_as_lines(md: &str) -> Vec<Line<'static>> {
     }
 
     lines
-}
-
-fn render_status(f: &mut Frame, area: Rect, app: &App) {
-    let left = if let Some(name) = app.active_doc_name() {
-        format!("{} · {} words{}", name, app.word_count(), if app.dirty { " · modified" } else { "" })
-    } else {
-        app.status.clone()
-    };
-
-    let right = match app.focus {
-        Focus::Binder => "[Binder]".to_string(),
-        Focus::Editor => "[Editor]".to_string(),
-    };
-
-    // If there's a transient status message and no active doc, show it; otherwise
-    // show doc info on the left and status on the right of doc info.
-    let text = if app.active_doc_id.is_some() && app.status != "Ready. ?=help  Tab=switch pane  q=quit" {
-        format!("{} · {}", left, app.status)
-    } else {
-        left
-    };
-
-    let padded = format!(" {:<width$}{}", text, right, width = area.width.saturating_sub(right.len() as u16 + 2) as usize);
-    let para = Paragraph::new(padded).style(Style::default().bg(Color::DarkGray).fg(Color::White));
-    f.render_widget(para, area);
-}
-
-fn render_prompt(f: &mut Frame, area: Rect, title: &str, value: &str) {
-    let w = 60.min(area.width - 4);
-    let h = 5;
-    let x = (area.width - w) / 2;
-    let y = (area.height - h) / 2;
-    let popup = Rect { x, y, width: w, height: h };
-    f.render_widget(Clear, popup);
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan))
-        .title(format!(" {} ", title));
-    let inner = block.inner(popup);
-    f.render_widget(block, popup);
-
-    let content = Paragraph::new(format!("> {}", value))
-        .style(Style::default().fg(Color::White));
-    f.render_widget(content, inner);
 }

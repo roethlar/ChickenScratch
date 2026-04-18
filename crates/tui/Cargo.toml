@@ -13,7 +13,7 @@ path = "src/main.rs"
 chickenscratch-core = { path = "../core" }
 ratatui = "0.29"
 crossterm = "0.28"
-tui-textarea = "0.7"
+edtui = "=0.9.9"
 pulldown-cmark = "0.12"
 html2md = "0.2"
 chrono = "0.4"

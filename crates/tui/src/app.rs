@@ -3,10 +3,10 @@ use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::{Project, TreeNode};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use edtui::{EditorEventHandler, EditorMode, EditorState, Lines};
 use ratatui::{backend::Backend, Terminal};
 use std::path::PathBuf;
 use std::time::Duration;
-use tui_textarea::TextArea;
 
 use crate::convert;
 use crate::ui;
@@ -60,7 +60,7 @@ pub struct BinderItem {
     pub is_folder: bool,
 }
 
-pub struct App<'a> {
+pub struct App {
     pub project: Project,
     pub project_path: PathBuf,
 
@@ -72,16 +72,18 @@ pub struct App<'a> {
     pub expanded: std::collections::HashSet<String>,
 
     pub active_doc_id: Option<String>,
-    pub editor: TextArea<'a>,
+    pub editor_state: EditorState,
+    pub editor_events: EditorEventHandler,
     pub dirty: bool,
     pub view_mode: ViewMode,
+    pub wrap: bool,
 
     pub status: String,
     pub prompt_input: String,
     pub should_quit: bool,
 }
 
-impl<'a> App<'a> {
+impl App {
     pub fn new(project_path: PathBuf) -> Result<Self> {
         let project = reader::read_project(&project_path)
             .map_err(|e| anyhow!("Failed to read project: {:?}", e))?;
@@ -94,6 +96,9 @@ impl<'a> App<'a> {
             }
         }
 
+        let mut editor_state = EditorState::new(Lines::default());
+        editor_state.mode = EditorMode::Insert;
+
         let mut app = Self {
             project,
             project_path,
@@ -103,23 +108,17 @@ impl<'a> App<'a> {
             binder_selected: 0,
             expanded,
             active_doc_id: None,
-            editor: TextArea::default(),
+            editor_state,
+            editor_events: EditorEventHandler::default(),
             dirty: false,
             view_mode: ViewMode::Markdown,
+            wrap: true,
             status: "Ready. ?=help  Tab=switch pane  q=quit".to_string(),
             prompt_input: String::new(),
             should_quit: false,
         };
         app.rebuild_binder();
-        app.configure_editor();
         Ok(app)
-    }
-
-    fn configure_editor(&mut self) {
-        self.editor.set_cursor_line_style(ratatui::style::Style::default());
-        self.editor.set_line_number_style(
-            ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray),
-        );
     }
 
     pub fn rebuild_binder(&mut self) {
@@ -195,6 +194,11 @@ impl<'a> App<'a> {
                     self.cycle_view_mode();
                     return Ok(());
                 }
+                KeyCode::Char('w') => {
+                    self.wrap = !self.wrap;
+                    self.status = format!("Wrap {}", if self.wrap { "on" } else { "off (horizontal scroll)" });
+                    return Ok(());
+                }
                 KeyCode::Char('q') => { self.try_quit(); return Ok(()); }
                 _ => {}
             }
@@ -219,7 +223,7 @@ impl<'a> App<'a> {
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => self.try_quit(),
             KeyCode::Char('?') => {
-                self.status = "Keys: ↑↓=nav  Enter=open  Space=expand/collapse  Tab=editor  Ctrl+S=save  Ctrl+R=revision  q=quit".to_string();
+                self.status = "Keys: ↑↓=nav  Enter=open  Space=expand/collapse  Tab=editor  Ctrl+S=save  Ctrl+R=revision  Ctrl+T=view  Ctrl+W=wrap  q=quit".to_string();
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 if self.binder_selected + 1 < self.binder_items.len() {
@@ -275,20 +279,30 @@ impl<'a> App<'a> {
             self.focus = Focus::Binder;
             return Ok(());
         }
+
         // Formatted view is read-only — allow only scroll/cursor nav
         if self.view_mode == ViewMode::Formatted {
             match key.code {
                 KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right
                 | KeyCode::PageUp | KeyCode::PageDown | KeyCode::Home | KeyCode::End => {
-                    self.editor.input(key);
+                    self.editor_events.on_key_event(key, &mut self.editor_state);
                 }
                 _ => {}
             }
             return Ok(());
         }
-        // Editable mode — pass to textarea
-        let changed = self.editor.input(key);
-        if changed {
+
+        // Snapshot content to detect changes (edtui doesn't signal "changed" directly)
+        let before = self.editor_content_string();
+
+        // Force Insert mode so typing works for non-vim users
+        self.editor_state.mode = EditorMode::Insert;
+        self.editor_events.on_key_event(key, &mut self.editor_state);
+        // Keep in Insert mode (never let edtui flip to Normal from within editing)
+        self.editor_state.mode = EditorMode::Insert;
+
+        let after = self.editor_content_string();
+        if before != after {
             self.dirty = true;
         }
         Ok(())
@@ -310,7 +324,7 @@ impl<'a> App<'a> {
     }
 
     fn current_content_as_html(&self) -> String {
-        let text = self.editor.lines().join("\n");
+        let text = self.editor_content_string();
         match self.view_mode {
             ViewMode::Markdown => convert::markdown_to_html(&text),
             ViewMode::Source => text,
@@ -334,13 +348,12 @@ impl<'a> App<'a> {
                 convert::html_to_markdown(html)
             }
         };
-        let lines: Vec<String> = if text.is_empty() {
-            vec![String::new()]
-        } else {
-            text.lines().map(String::from).collect()
-        };
-        self.editor = TextArea::new(lines);
-        self.configure_editor();
+        self.editor_state = EditorState::new(Lines::from(text.as_str()));
+        self.editor_state.mode = EditorMode::Insert;
+    }
+
+    pub fn editor_content_string(&self) -> String {
+        self.editor_state.lines.to_string()
     }
 
     fn handle_prompt_key(&mut self, key: KeyEvent) -> Result<()> {
@@ -409,15 +422,10 @@ impl<'a> App<'a> {
             None => return Ok(()),
         };
 
-        // Formatted mode is read-only, but save should still work using the
-        // source of truth from the project (no edits possible anyway).
         let html = self.current_content_as_html();
-        let word_source = if self.view_mode == ViewMode::Source {
-            convert::html_to_markdown(&html)
-        } else if self.view_mode == ViewMode::Formatted {
-            convert::html_to_markdown(&html)
-        } else {
-            self.editor.lines().join("\n")
+        let word_source = match self.view_mode {
+            ViewMode::Source | ViewMode::Formatted => convert::html_to_markdown(&html),
+            ViewMode::Markdown => self.editor_content_string(),
         };
 
         if let Some(doc) = self.project.documents.get_mut(&doc_id) {
@@ -435,7 +443,6 @@ impl<'a> App<'a> {
     }
 
     fn save_revision(&mut self, message: &str) -> Result<()> {
-        // Ensure any current edits are saved first
         if self.dirty {
             self.save_active_doc()?;
         }
@@ -461,13 +468,13 @@ impl<'a> App<'a> {
         if self.active_doc_id.is_none() {
             return 0;
         }
-        let md = self.editor.lines().join("\n");
+        let md = self.editor_content_string();
         convert::count_words(&md)
     }
 }
 
-impl App<'_> {
-    // Silence "context" unused import warning while still using it via anyhow
+impl App {
+    // Silence unused-import warning while still using Context via anyhow
     #[allow(dead_code)]
     fn _ctx(&self) {
         let _: fn() = || {
@@ -482,12 +489,9 @@ fn pretty_print_html(html: &str) -> String {
     if html.is_empty() {
         return String::new();
     }
-    // Insert newlines before/after common block tags so raw HTML is readable.
     let mut s = html
         .replace("><", ">\n<")
-        .replace("<p>", "<p>")
         .replace("</p>", "</p>\n");
-    // Collapse triple+ newlines
     while s.contains("\n\n\n") {
         s = s.replace("\n\n\n", "\n\n");
     }
