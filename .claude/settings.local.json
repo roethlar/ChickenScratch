@@ -100,7 +100,8 @@
       "Bash(rm -rf \"/Applications/ChickenScratch.app\")",
       "Bash(cp -r \"target/release/bundle/macos/ChickenScratch.app\" \"/Applications/ChickenScratch.app\")",
       "Bash(cargo search *)",
-      "Bash(./target/release/chikn)"
+      "Bash(./target/release/chikn)",
+      "Bash(cargo clean *)"
     ],
     "deny": [],
     "ask": []

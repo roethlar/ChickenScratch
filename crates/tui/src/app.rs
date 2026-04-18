@@ -24,6 +24,34 @@ pub enum Mode {
     Confirm,
 }
 
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum ViewMode {
+    /// Edit markdown (default)
+    Markdown,
+    /// Edit raw HTML source
+    Source,
+    /// Read-only formatted preview
+    Formatted,
+}
+
+impl ViewMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            ViewMode::Markdown => "markdown",
+            ViewMode::Source => "source",
+            ViewMode::Formatted => "preview",
+        }
+    }
+
+    pub fn next(self) -> ViewMode {
+        match self {
+            ViewMode::Markdown => ViewMode::Source,
+            ViewMode::Source => ViewMode::Formatted,
+            ViewMode::Formatted => ViewMode::Markdown,
+        }
+    }
+}
+
 /// A flat list of (depth, node_id, display_name, is_folder) for the binder view.
 pub struct BinderItem {
     pub depth: usize,
@@ -46,6 +74,7 @@ pub struct App<'a> {
     pub active_doc_id: Option<String>,
     pub editor: TextArea<'a>,
     pub dirty: bool,
+    pub view_mode: ViewMode,
 
     pub status: String,
     pub prompt_input: String,
@@ -76,6 +105,7 @@ impl<'a> App<'a> {
             active_doc_id: None,
             editor: TextArea::default(),
             dirty: false,
+            view_mode: ViewMode::Markdown,
             status: "Ready. ?=help  Tab=switch pane  q=quit".to_string(),
             prompt_input: String::new(),
             should_quit: false,
@@ -161,6 +191,10 @@ impl<'a> App<'a> {
                     self.mode = Mode::RevisionPrompt;
                     return Ok(());
                 }
+                KeyCode::Char('t') => {
+                    self.cycle_view_mode();
+                    return Ok(());
+                }
                 KeyCode::Char('q') => { self.try_quit(); return Ok(()); }
                 _ => {}
             }
@@ -232,7 +266,6 @@ impl<'a> App<'a> {
 
     fn handle_editor_key(&mut self, key: KeyEvent) -> Result<()> {
         if self.active_doc_id.is_none() {
-            // No doc open; any key goes back to binder
             if key.code == KeyCode::Esc {
                 self.focus = Focus::Binder;
             }
@@ -242,12 +275,72 @@ impl<'a> App<'a> {
             self.focus = Focus::Binder;
             return Ok(());
         }
-        // Pass to textarea
+        // Formatted view is read-only — allow only scroll/cursor nav
+        if self.view_mode == ViewMode::Formatted {
+            match key.code {
+                KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right
+                | KeyCode::PageUp | KeyCode::PageDown | KeyCode::Home | KeyCode::End => {
+                    self.editor.input(key);
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+        // Editable mode — pass to textarea
         let changed = self.editor.input(key);
         if changed {
             self.dirty = true;
         }
         Ok(())
+    }
+
+    fn cycle_view_mode(&mut self) {
+        if self.active_doc_id.is_none() {
+            self.view_mode = self.view_mode.next();
+            self.status = format!("View: {}", self.view_mode.label());
+            return;
+        }
+
+        // Get current content as raw HTML by converting from whatever mode we're in
+        let current_html = self.current_content_as_html();
+        let new_mode = self.view_mode.next();
+        self.load_content_for_mode(&current_html, new_mode);
+        self.view_mode = new_mode;
+        self.status = format!("View: {}", new_mode.label());
+    }
+
+    fn current_content_as_html(&self) -> String {
+        let text = self.editor.lines().join("\n");
+        match self.view_mode {
+            ViewMode::Markdown => convert::markdown_to_html(&text),
+            ViewMode::Source => text,
+            ViewMode::Formatted => {
+                // Formatted is read-only, so the underlying HTML is whatever's in the doc
+                self.active_doc_id
+                    .as_ref()
+                    .and_then(|id| self.project.documents.get(id))
+                    .map(|d| d.content.clone())
+                    .unwrap_or_default()
+            }
+        }
+    }
+
+    fn load_content_for_mode(&mut self, html: &str, mode: ViewMode) {
+        let text = match mode {
+            ViewMode::Markdown => convert::html_to_markdown(html),
+            ViewMode::Source => pretty_print_html(html),
+            ViewMode::Formatted => {
+                // Formatted view uses lines of plain-ish text; rendering handles the styling
+                convert::html_to_markdown(html)
+            }
+        };
+        let lines: Vec<String> = if text.is_empty() {
+            vec![String::new()]
+        } else {
+            text.lines().map(String::from).collect()
+        };
+        self.editor = TextArea::new(lines);
+        self.configure_editor();
     }
 
     fn handle_prompt_key(&mut self, key: KeyEvent) -> Result<()> {
@@ -303,14 +396,8 @@ impl<'a> App<'a> {
             Some(doc) => (doc.content.clone(), doc.name.clone()),
             None => return,
         };
-        let md = convert::html_to_markdown(&content);
-        let lines: Vec<String> = if md.is_empty() {
-            vec![String::new()]
-        } else {
-            md.lines().map(String::from).collect()
-        };
-        self.editor = TextArea::new(lines);
-        self.configure_editor();
+        let mode = self.view_mode;
+        self.load_content_for_mode(&content, mode);
         self.active_doc_id = Some(doc_id.to_string());
         self.dirty = false;
         self.status = format!("Opened: {}", name);
@@ -321,8 +408,17 @@ impl<'a> App<'a> {
             Some(id) => id.clone(),
             None => return Ok(()),
         };
-        let md = self.editor.lines().join("\n");
-        let html = convert::markdown_to_html(&md);
+
+        // Formatted mode is read-only, but save should still work using the
+        // source of truth from the project (no edits possible anyway).
+        let html = self.current_content_as_html();
+        let word_source = if self.view_mode == ViewMode::Source {
+            convert::html_to_markdown(&html)
+        } else if self.view_mode == ViewMode::Formatted {
+            convert::html_to_markdown(&html)
+        } else {
+            self.editor.lines().join("\n")
+        };
 
         if let Some(doc) = self.project.documents.get_mut(&doc_id) {
             doc.content = html;
@@ -333,7 +429,7 @@ impl<'a> App<'a> {
             .map_err(|e| anyhow!("Write failed: {:?}", e))?;
         self.dirty = false;
 
-        let word_count = convert::count_words(&md);
+        let word_count = convert::count_words(&word_source);
         self.status = format!("Saved. {} words.", word_count);
         Ok(())
     }
@@ -378,4 +474,22 @@ impl App<'_> {
             let _: Result<()> = Err(anyhow!("x")).context("y");
         };
     }
+}
+
+/// Minimal HTML pretty-printer — newlines between block elements.
+fn pretty_print_html(html: &str) -> String {
+    let html = html.trim();
+    if html.is_empty() {
+        return String::new();
+    }
+    // Insert newlines before/after common block tags so raw HTML is readable.
+    let mut s = html
+        .replace("><", ">\n<")
+        .replace("<p>", "<p>")
+        .replace("</p>", "</p>\n");
+    // Collapse triple+ newlines
+    while s.contains("\n\n\n") {
+        s = s.replace("\n\n\n", "\n\n");
+    }
+    s
 }

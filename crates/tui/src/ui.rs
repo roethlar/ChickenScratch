@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::{App, Focus, Mode};
+use crate::app::{App, Focus, Mode, ViewMode};
 
 pub fn render(f: &mut Frame, app: &mut App) {
     let area = f.area();
@@ -92,7 +92,7 @@ fn render_editor(f: &mut Frame, area: Rect, app: &mut App) {
     let title = match app.active_doc_name() {
         Some(name) => {
             let marker = if app.dirty { "●" } else { " " };
-            format!(" {} {} ", marker, name)
+            format!(" {} {}  [{}]  Ctrl+T to switch ", marker, name, app.view_mode.label())
         }
         None => " No document open ".to_string(),
     };
@@ -105,9 +105,10 @@ fn render_editor(f: &mut Frame, area: Rect, app: &mut App) {
     if app.active_doc_id.is_none() {
         let inner = Paragraph::new(
             "Select a document from the binder (←) and press Enter.\n\n\
-             Keys:\n  ↑↓  navigate  \n  Enter  open document / expand folder\n  \
-             Tab  switch focus\n  Ctrl+S  save\n  Ctrl+R  save revision\n  \
-             Esc  back to binder\n  q  quit",
+             Keys:\n  ↑↓       navigate\n  Enter    open document / expand folder\n  \
+             Tab      switch focus\n  Ctrl+S   save\n  Ctrl+R   save revision\n  \
+             Ctrl+T   cycle view (markdown/source/preview)\n  \
+             Esc      back to binder\n  q        quit",
         )
         .block(block)
         .wrap(Wrap { trim: false })
@@ -116,8 +117,184 @@ fn render_editor(f: &mut Frame, area: Rect, app: &mut App) {
         return;
     }
 
-    app.editor.set_block(block);
-    f.render_widget(&app.editor, area);
+    if app.view_mode == ViewMode::Formatted {
+        render_formatted_preview(f, area, app, block);
+    } else {
+        app.editor.set_block(block);
+        f.render_widget(&app.editor, area);
+    }
+}
+
+fn render_formatted_preview(f: &mut Frame, area: Rect, app: &App, block: Block) {
+    let md = app.editor.lines().join("\n");
+    let lines = render_markdown_as_lines(&md);
+    let para = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    f.render_widget(para, area);
+}
+
+/// Convert markdown into styled ratatui lines for terminal rendering.
+fn render_markdown_as_lines(md: &str) -> Vec<Line<'static>> {
+    use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
+
+    let parser = Parser::new(md);
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let mut current: Vec<Span<'static>> = Vec::new();
+
+    let mut heading_level: Option<HeadingLevel> = None;
+    let mut in_emph = false;
+    let mut in_strong = false;
+    let mut in_code = false;
+    let mut in_blockquote = false;
+    let mut list_depth: usize = 0;
+    let mut ordered_counters: Vec<usize> = Vec::new();
+
+    let push_line = |lines: &mut Vec<Line<'static>>, buf: &mut Vec<Span<'static>>| {
+        if buf.is_empty() {
+            lines.push(Line::from(""));
+        } else {
+            lines.push(Line::from(std::mem::take(buf)));
+        }
+    };
+
+    for event in parser {
+        match event {
+            Event::Start(tag) => match tag {
+                Tag::Heading { level, .. } => heading_level = Some(level),
+                Tag::Emphasis => in_emph = true,
+                Tag::Strong => in_strong = true,
+                Tag::BlockQuote(_) => in_blockquote = true,
+                Tag::CodeBlock(_) => in_code = true,
+                Tag::List(start) => {
+                    list_depth += 1;
+                    ordered_counters.push(start.unwrap_or(0) as usize);
+                }
+                Tag::Item => {
+                    let indent = "  ".repeat(list_depth.saturating_sub(1));
+                    let marker = if let Some(last) = ordered_counters.last_mut() {
+                        if *last > 0 {
+                            let m = format!("{}{}. ", indent, *last);
+                            *last += 1;
+                            m
+                        } else {
+                            format!("{}• ", indent)
+                        }
+                    } else {
+                        format!("{}• ", indent)
+                    };
+                    current.push(Span::styled(
+                        marker,
+                        Style::default().fg(Color::Yellow),
+                    ));
+                }
+                Tag::Link { .. } => {
+                    current.push(Span::styled("[", Style::default().fg(Color::Blue)));
+                }
+                _ => {}
+            },
+            Event::End(tag) => match tag {
+                TagEnd::Heading(_) => {
+                    push_line(&mut lines, &mut current);
+                    lines.push(Line::from(""));
+                    heading_level = None;
+                }
+                TagEnd::Paragraph => {
+                    push_line(&mut lines, &mut current);
+                    lines.push(Line::from(""));
+                }
+                TagEnd::Emphasis => in_emph = false,
+                TagEnd::Strong => in_strong = false,
+                TagEnd::BlockQuote(_) => {
+                    push_line(&mut lines, &mut current);
+                    lines.push(Line::from(""));
+                    in_blockquote = false;
+                }
+                TagEnd::CodeBlock => {
+                    push_line(&mut lines, &mut current);
+                    lines.push(Line::from(""));
+                    in_code = false;
+                }
+                TagEnd::List(_) => {
+                    list_depth = list_depth.saturating_sub(1);
+                    ordered_counters.pop();
+                    if list_depth == 0 {
+                        lines.push(Line::from(""));
+                    }
+                }
+                TagEnd::Item => {
+                    push_line(&mut lines, &mut current);
+                }
+                TagEnd::Link => {
+                    current.push(Span::styled("]", Style::default().fg(Color::Blue)));
+                }
+                _ => {}
+            },
+            Event::Text(text) => {
+                let text = text.to_string();
+                let mut style = Style::default();
+                if let Some(level) = heading_level {
+                    let (color, add) = match level {
+                        HeadingLevel::H1 => (Color::Magenta, Modifier::BOLD | Modifier::UNDERLINED),
+                        HeadingLevel::H2 => (Color::Cyan, Modifier::BOLD),
+                        HeadingLevel::H3 => (Color::Blue, Modifier::BOLD),
+                        _ => (Color::Gray, Modifier::BOLD),
+                    };
+                    style = style.fg(color).add_modifier(add);
+                }
+                if in_strong {
+                    style = style.add_modifier(Modifier::BOLD);
+                }
+                if in_emph {
+                    style = style.add_modifier(Modifier::ITALIC);
+                }
+                if in_code {
+                    style = style.fg(Color::Green).bg(Color::Black);
+                }
+                if in_blockquote {
+                    style = style.fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
+                    if current.is_empty() {
+                        current.push(Span::styled("│ ", Style::default().fg(Color::DarkGray)));
+                    }
+                }
+                current.push(Span::styled(text, style));
+            }
+            Event::Code(code) => {
+                current.push(Span::styled(
+                    code.to_string(),
+                    Style::default().fg(Color::Green).bg(Color::Black),
+                ));
+            }
+            Event::SoftBreak => {
+                current.push(Span::raw(" "));
+            }
+            Event::HardBreak => {
+                push_line(&mut lines, &mut current);
+            }
+            Event::Rule => {
+                push_line(&mut lines, &mut current);
+                lines.push(Line::from(Span::styled(
+                    "─".repeat(40),
+                    Style::default().fg(Color::DarkGray),
+                )));
+                lines.push(Line::from(""));
+            }
+            _ => {}
+        }
+    }
+
+    if !current.is_empty() {
+        push_line(&mut lines, &mut current);
+    }
+
+    if lines.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "(empty)",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    lines
 }
 
 fn render_status(f: &mut Frame, area: Rect, app: &App) {
