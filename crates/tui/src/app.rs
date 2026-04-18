@@ -428,7 +428,16 @@ impl<'a> App<'a> {
         }
         match git::save_revision(&self.project_path, message) {
             Ok(rev) => {
-                self.status = format!("Revision saved: {} ({})", message, &rev.short_id);
+                let short = rev.short_id.clone();
+                // After a named revision: push to backup if configured.
+                let backup_msg = match read_backup_directory() {
+                    Some(dir) => match git::push_backup(&self.project_path, &dir) {
+                        Ok(()) => " · backed up".to_string(),
+                        Err(e) => format!(" · backup failed: {:?}", e),
+                    },
+                    None => String::new(),
+                };
+                self.status = format!("Revision saved: {} ({}){}", message, short, backup_msg);
             }
             Err(e) => {
                 self.status = format!("Revision failed: {:?}", e);
@@ -460,6 +469,21 @@ impl App<'_> {
             let _: Result<()> = Err(anyhow!("x")).context("y");
         };
     }
+}
+
+/// Read the backup directory from the shared settings file at
+/// `~/.config/chickenscratch/settings.json`. Returns None if unset, file missing,
+/// or parse fails.
+fn read_backup_directory() -> Option<PathBuf> {
+    let mut path = dirs::config_dir()?;
+    path.push("chickenscratch");
+    path.push("settings.json");
+    let data = std::fs::read_to_string(&path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&data).ok()?;
+    v.get("backup")?
+        .get("backup_directory")?
+        .as_str()
+        .map(PathBuf::from)
 }
 
 fn pretty_print_html(html: &str) -> String {

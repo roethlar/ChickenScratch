@@ -7,7 +7,17 @@ pub fn save_revision(
     project_path: String,
     message: String,
 ) -> Result<git::Revision, ChiknError> {
-    git::save_revision(Path::new(&project_path), &message)
+    let path = Path::new(&project_path);
+    let rev = git::save_revision(path, &message)?;
+
+    // After named revision: push to backup remote if configured. Fire-and-forget:
+    // a failed push should not fail the revision.
+    let settings = super::settings::get_app_settings();
+    if let Some(ref backup_dir) = settings.backup.backup_directory {
+        let _ = git::push_backup(path, Path::new(backup_dir));
+    }
+
+    Ok(rev)
 }
 
 #[tauri::command]

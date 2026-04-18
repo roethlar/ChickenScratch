@@ -629,10 +629,12 @@ dependencies = [
  "chickenscratch-core",
  "chrono",
  "crossterm",
+ "dirs",
  "html2md",
  "pulldown-cmark",
  "ratatui",
  "ratatui-textarea",
+ "serde_json",
 ]
 
 [[package]]
