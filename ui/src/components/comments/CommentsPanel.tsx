@@ -4,7 +4,7 @@ import { MessageSquare, Check, Trash2, X, CornerDownLeft } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
 import { toastError } from "../shared/Toast";
-import { htmlToMarkdown } from "../../commands/convert";
+import { getEditorMarkdown } from "../editor/editorRef";
 
 interface CommentsPanelProps {
   editor: Editor | null;
@@ -60,9 +60,8 @@ export function CommentsPanel({ editor, onClose }: CommentsPanelProps) {
       });
     });
     editor.view.dispatch(tr);
-    const html = editor.getHTML();
     try {
-      const newContent = await htmlToMarkdown(html);
+      const newContent = getEditorMarkdown(editor);
       const updated = await docCmd.deleteComment(
         project.path, activeDoc.id, id, newContent
       );

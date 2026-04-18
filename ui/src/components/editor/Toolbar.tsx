@@ -29,7 +29,7 @@ import { toastError, toastSuccess } from "../shared/Toast";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
-import { htmlToMarkdown } from "../../commands/convert";
+import { getEditorMarkdown } from "./editorRef";
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -103,10 +103,9 @@ export function Toolbar({ editor }: ToolbarProps) {
     const commentId = "c_" + Math.random().toString(36).slice(2, 10);
     // Apply the mark locally first
     editor.chain().focus().setMark("comment", { id: commentId }).run();
-    const html = editor.getHTML();
     try {
-      // Canonical storage is markdown; convert before persisting
-      const newContent = await htmlToMarkdown(html);
+      // tiptap-markdown serializes in-process
+      const newContent = getEditorMarkdown(editor);
       const updated = await docCmd.addComment(
         project.path, activeDoc.id, commentId, body, newContent
       );

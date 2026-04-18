@@ -12,8 +12,8 @@ import { Toolbar } from "./Toolbar";
 import { FindReplace } from "./FindReplace";
 import { CommentMark } from "../comments/CommentMark";
 import { FootnoteNode } from "./FootnoteNode";
-import { setCurrentEditor } from "./editorRef";
-import { markdownToHtml, htmlToMarkdown } from "../../commands/convert";
+import { setCurrentEditor, getEditorMarkdown } from "./editorRef";
+import { Markdown } from "tiptap-markdown";
 import * as docCmd from "../../commands/document";
 import { toastError } from "../shared/Toast";
 
@@ -34,10 +34,9 @@ export function Editor() {
     if (!editor || !p || !d) return;
     useProjectStore.setState({ saving: true });
     try {
-      const html = editor.getHTML();
-      const markdown = await htmlToMarkdown(html);
+      // tiptap-markdown serializes in-process; no subprocess
+      const markdown = getEditorMarkdown(editor);
       await docCmd.updateDocumentContent(p.path, d.id, markdown);
-      // Also update the in-store doc content so other features see fresh markdown
       useProjectStore.setState({
         activeDoc: { ...d, content: markdown },
       });
@@ -77,6 +76,15 @@ export function Editor() {
       }),
       CommentMark,
       FootnoteNode,
+      Markdown.configure({
+        html: true,            // allow inline HTML to pass through untouched
+        tightLists: true,
+        bulletListMarker: "-",
+        linkify: false,
+        breaks: false,
+        transformPastedText: false,
+        transformCopiedText: false,
+      }),
     ],
     content: "",
     editorProps: {
@@ -122,17 +130,8 @@ export function Editor() {
     if (docIdRef.current !== activeDoc.id) {
       docIdRef.current = activeDoc.id;
       const md = activeDoc.content || "";
-      if (md.trim().length === 0) {
-        editor.commands.setContent("");
-      } else {
-        markdownToHtml(md)
-          .then((html) => {
-            if (docIdRef.current === activeDoc.id) {
-              editor.commands.setContent(html);
-            }
-          })
-          .catch((e) => toastError(`Load failed: ${e}`));
-      }
+      // tiptap-markdown parses markdown directly when setContent is given markdown string
+      editor.commands.setContent(md);
       setDirty(false);
     }
   }, [activeDoc?.id, editor]);

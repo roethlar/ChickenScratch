@@ -12,3 +12,12 @@ export function setCurrentEditor(editor: Editor | null) {
 export function getCurrentEditor(): Editor | null {
   return currentEditor;
 }
+
+/** Extract markdown from the TipTap editor via the tiptap-markdown extension. */
+export function getEditorMarkdown(editor: Editor): string {
+  // tiptap-markdown attaches `markdown.getMarkdown()` to editor.storage
+  const storage = editor.storage as unknown as {
+    markdown?: { getMarkdown: () => string };
+  };
+  return storage.markdown?.getMarkdown() ?? editor.getHTML();
+}
