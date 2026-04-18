@@ -1,5 +1,6 @@
 use chickenscratch_core::core::project::{hierarchy, reader, writer};
 use chickenscratch_core::utils::slug;
+use chickenscratch_core::models::Comment;
 use chickenscratch_core::{ChiknError, Document, Project, TreeNode};
 use std::path::Path;
 
@@ -26,6 +27,80 @@ pub fn update_document_content(
             "Document not found: {}",
             doc_id
         )))
+    }
+}
+
+/// Add a comment anchored to the given span id. Caller wraps the span with
+/// `<span class="comment" data-comment-id="{id}">...</span>` in the content first.
+#[tauri::command]
+pub fn add_comment(
+    project_path: String,
+    doc_id: String,
+    comment_id: String,
+    body: String,
+    new_content: String,
+) -> Result<Project, ChiknError> {
+    let mut project = reader::read_project(Path::new(&project_path))?;
+    if let Some(doc) = project.documents.get_mut(&doc_id) {
+        let now = chrono::Utc::now().to_rfc3339();
+        doc.content = new_content;
+        doc.comments.push(Comment {
+            id: comment_id,
+            body,
+            resolved: false,
+            created: now.clone(),
+            modified: now.clone(),
+        });
+        doc.modified = now;
+        writer::write_project(&mut project)?;
+        Ok(project)
+    } else {
+        Err(ChiknError::NotFound(format!("Document not found: {}", doc_id)))
+    }
+}
+
+#[tauri::command]
+pub fn update_comment(
+    project_path: String,
+    doc_id: String,
+    comment_id: String,
+    body: Option<String>,
+    resolved: Option<bool>,
+) -> Result<Project, ChiknError> {
+    let mut project = reader::read_project(Path::new(&project_path))?;
+    if let Some(doc) = project.documents.get_mut(&doc_id) {
+        if let Some(c) = doc.comments.iter_mut().find(|c| c.id == comment_id) {
+            if let Some(b) = body { c.body = b; }
+            if let Some(r) = resolved { c.resolved = r; }
+            c.modified = chrono::Utc::now().to_rfc3339();
+            doc.modified = chrono::Utc::now().to_rfc3339();
+            writer::write_project(&mut project)?;
+            Ok(project)
+        } else {
+            Err(ChiknError::NotFound(format!("Comment not found: {}", comment_id)))
+        }
+    } else {
+        Err(ChiknError::NotFound(format!("Document not found: {}", doc_id)))
+    }
+}
+
+/// Delete a comment and unwrap its span in the content.
+#[tauri::command]
+pub fn delete_comment(
+    project_path: String,
+    doc_id: String,
+    comment_id: String,
+    new_content: String,
+) -> Result<Project, ChiknError> {
+    let mut project = reader::read_project(Path::new(&project_path))?;
+    if let Some(doc) = project.documents.get_mut(&doc_id) {
+        doc.comments.retain(|c| c.id != comment_id);
+        doc.content = new_content;
+        doc.modified = chrono::Utc::now().to_rfc3339();
+        writer::write_project(&mut project)?;
+        Ok(project)
+    } else {
+        Err(ChiknError::NotFound(format!("Document not found: {}", doc_id)))
     }
 }
 

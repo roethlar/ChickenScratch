@@ -68,7 +68,16 @@ pub fn compile(
     let mut idx = 0;
     collect_ordered_sections(&project.hierarchy, &project, &mut ordered_docs, &mut idx);
     ordered_docs.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-    let sections: Vec<String> = ordered_docs.into_iter().map(|(_, _, content)| content).collect();
+    let sections: Vec<String> = ordered_docs
+        .into_iter()
+        .map(|(_, _, content)| strip_comments(&content))
+        .collect();
+
+    // Transform footnotes across all sections with continuous numbering.
+    // Inputs: `<sup class="footnote" data-body="...">●</sup>`
+    // Output: per-section, numbered `<sup class="footnote-ref"><a href="#fnN">N</a></sup>`
+    //         plus a single footnotes section appended at the end.
+    let (sections, footnotes_html) = transform_footnotes(sections);
 
     if sections.is_empty() {
         return Err(ChiknError::InvalidFormat(
@@ -114,6 +123,11 @@ pub fn compile(
         if i < sections.len() - 1 {
             html.push_str(&separator_html);
         }
+    }
+
+    // Append collected footnotes section
+    if !footnotes_html.is_empty() {
+        html.push_str(&footnotes_html);
     }
 
     // Manuscript format CSS
@@ -220,6 +234,126 @@ fn collect_ordered_sections(
     }
 }
 
+
+/// Strip `<span class="comment" data-comment-id="...">...</span>` wrappers on
+/// compile. Preserves inner text. Tracks depth so non-comment spans pass through.
+fn strip_comments(html: &str) -> String {
+    // Walk through, tracking depth of comment spans we've opened.
+    let mut out = String::with_capacity(html.len());
+    let mut depth: i32 = 0;
+    let mut i = 0;
+    let s = html;
+    while i < s.len() {
+        if s[i..].starts_with("<span") {
+            // Find end of tag
+            if let Some(end_rel) = s[i..].find('>') {
+                let tag = &s[i..i + end_rel + 1];
+                if tag.contains("class=\"comment\"") || tag.contains("class='comment'") {
+                    depth += 1;
+                    i += end_rel + 1;
+                    continue;
+                }
+                // non-comment span — pass through
+                out.push_str(tag);
+                i += end_rel + 1;
+                continue;
+            }
+        }
+        if s[i..].starts_with("</span>") {
+            if depth > 0 {
+                depth -= 1;
+                i += 7; // len("</span>")
+                continue;
+            }
+            out.push_str("</span>");
+            i += 7;
+            continue;
+        }
+        let ch = s[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+/// Transform editor-stored footnotes `<sup class="footnote" data-body="...">●</sup>`
+/// into pandoc-native footnote HTML with continuous numbering across sections.
+/// Returns (transformed_sections, trailing_footnotes_section_html).
+fn transform_footnotes(sections: Vec<String>) -> (Vec<String>, String) {
+    let mut bodies: Vec<String> = Vec::new();
+    let mut transformed: Vec<String> = Vec::with_capacity(sections.len());
+
+    for section in sections {
+        let mut out = String::with_capacity(section.len());
+        let mut rest = section.as_str();
+        loop {
+            // Find next footnote opening tag
+            let idx = match rest.find("<sup class=\"footnote\"") {
+                Some(i) => i,
+                None => { out.push_str(rest); break; }
+            };
+            out.push_str(&rest[..idx]);
+            // Find end of opening tag
+            let tag_end_rel = match rest[idx..].find('>') {
+                Some(e) => e,
+                None => { out.push_str(rest); break; }
+            };
+            let tag = &rest[idx..idx + tag_end_rel + 1];
+
+            // Extract body from data-body attribute
+            let body = extract_data_body(tag).unwrap_or_default();
+
+            // Skip to the closing </sup>
+            let inner_start = idx + tag_end_rel + 1;
+            let close_rel = match rest[inner_start..].find("</sup>") {
+                Some(e) => e,
+                None => { out.push_str(&rest[idx..]); break; }
+            };
+            let after_close = inner_start + close_rel + "</sup>".len();
+
+            // Emit numbered reference
+            bodies.push(body);
+            let n = bodies.len();
+            out.push_str(&format!(
+                "<sup class=\"footnote-ref\"><a href=\"#fn{}\" id=\"fnref{}\">{}</a></sup>",
+                n, n, n
+            ));
+
+            rest = &rest[after_close..];
+        }
+        transformed.push(out);
+    }
+
+    let footnotes_html = if bodies.is_empty() {
+        String::new()
+    } else {
+        let mut s = String::from("\n<section class=\"footnotes\">\n<hr/>\n<ol>\n");
+        for (i, body) in bodies.iter().enumerate() {
+            let n = i + 1;
+            s.push_str(&format!(
+                "<li id=\"fn{}\"><p>{} <a href=\"#fnref{}\">↩</a></p></li>\n",
+                n, html_escape(body), n
+            ));
+        }
+        s.push_str("</ol>\n</section>\n");
+        s
+    };
+
+    (transformed, footnotes_html)
+}
+
+fn extract_data_body(tag: &str) -> Option<String> {
+    let key = "data-body=\"";
+    let start = tag.find(key)? + key.len();
+    let end = tag[start..].find('"')? + start;
+    Some(tag[start..end].to_string())
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
 
 fn pandoc_format(format: &str) -> &str {
     match format {

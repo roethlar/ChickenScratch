@@ -10,6 +10,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
 import { Toolbar } from "./Toolbar";
 import { FindReplace } from "./FindReplace";
+import { CommentMark } from "../comments/CommentMark";
+import { FootnoteNode } from "./FootnoteNode";
+import { setCurrentEditor } from "./editorRef";
 
 export function Editor() {
   const activeDoc = useProjectStore((s) => s.activeDoc);
@@ -49,6 +52,8 @@ export function Editor() {
           rel: "noopener noreferrer nofollow",
         },
       }),
+      CommentMark,
+      FootnoteNode,
     ],
     content: "",
     editorProps: {
@@ -129,6 +134,12 @@ export function Editor() {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, []);
+
+  // Publish editor instance for external components (comments, etc.)
+  useEffect(() => {
+    setCurrentEditor(editor);
+    return () => setCurrentEditor(null);
+  }, [editor]);
 
   // Session word count — hooks must be before any conditional return
   const project = useProjectStore((s) => s.project);

@@ -31,6 +31,74 @@ pub fn render(f: &mut Frame, app: &mut App) {
     if app.mode == Mode::Confirm {
         render_prompt(f, area, "Unsaved changes. Quit anyway?", "[y/N]");
     }
+    if app.mode == Mode::Comments {
+        render_comments_overlay(f, area, app);
+    }
+    if app.mode == Mode::CommentEdit {
+        render_prompt(f, area, "Edit comment (Enter to save, Esc to cancel):", &app.prompt_input);
+    }
+}
+
+fn render_comments_overlay(f: &mut Frame, area: Rect, app: &App) {
+    let comments = app.current_comments();
+    let w = 70.min(area.width.saturating_sub(4));
+    let h = (area.height.saturating_sub(4)).min(24);
+    let x = (area.width.saturating_sub(w)) / 2;
+    let y = (area.height.saturating_sub(h)) / 2;
+    let popup = Rect { x, y, width: w, height: h };
+    f.render_widget(Clear, popup);
+
+    let title = format!(" Comments ({})  ↑↓=nav  e/Enter=edit  r=resolve  d=delete  Esc=close ", comments.len());
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(title);
+
+    if comments.is_empty() {
+        let inner = Paragraph::new(
+            "No comments in this document yet.\n\nComments are created in the Tauri app by selecting text and pressing the comment button.",
+        )
+        .block(block)
+        .wrap(Wrap { trim: false })
+        .style(Style::default().fg(Color::DarkGray));
+        f.render_widget(inner, popup);
+        return;
+    }
+
+    let inner_area = block.inner(popup);
+    f.render_widget(block, popup);
+
+    let items: Vec<ListItem> = comments
+        .iter()
+        .map(|c| {
+            let anchor = app.comment_anchor_text(&c.id);
+            let preview = if anchor.len() > 40 {
+                format!("{}...", &anchor.chars().take(40).collect::<String>())
+            } else {
+                anchor
+            };
+            let marker = if c.resolved { "✓" } else { "●" };
+            let marker_color = if c.resolved { Color::DarkGray } else { Color::Yellow };
+            let body_preview = c.body.lines().next().unwrap_or("").chars().take(60).collect::<String>();
+            ListItem::new(vec![
+                Line::from(vec![
+                    Span::styled(format!("{} ", marker), Style::default().fg(marker_color)),
+                    Span::styled(format!("\"{}\"", preview), Style::default().fg(Color::DarkGray)),
+                ]),
+                Line::from(Span::raw(format!("  {}", body_preview))),
+            ])
+        })
+        .collect();
+
+    let list = List::new(items)
+        .highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        );
+    let mut state = ListState::default();
+    state.select(Some(app.comments_selected));
+    f.render_stateful_widget(list, inner_area, &mut state);
 }
 
 fn render_binder(f: &mut Frame, area: Rect, app: &App) {

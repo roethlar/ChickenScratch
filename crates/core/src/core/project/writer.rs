@@ -249,6 +249,7 @@ fn write_document(
         links: document.links.clone(),
         word_count_target: document.word_count_target,
         compile_order: document.compile_order,
+        comments: document.comments.clone(),
     };
 
     let meta_content = serde_yaml::to_string(&metadata)?;

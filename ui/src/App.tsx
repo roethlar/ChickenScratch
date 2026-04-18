@@ -9,6 +9,8 @@ import { Inspector } from "./components/inspector/Inspector";
 import { ProjectSearch } from "./components/search/ProjectSearch";
 import { Settings } from "./components/settings/Settings";
 import { StatsPanel } from "./components/stats/StatsPanel";
+import { CommentsPanel } from "./components/comments/CommentsPanel";
+import { getCurrentEditor } from "./components/editor/editorRef";
 import { invoke } from "@tauri-apps/api/core";
 import * as gitCmd from "./commands/git";
 import {
@@ -20,6 +22,7 @@ import {
   FileOutput,
   BookOpen as BookOpenIcon,
   BarChart3,
+  MessageSquare,
   Sun,
   Moon,
   BookOpen,
@@ -57,6 +60,7 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const [showCompile, setShowCompile] = useState(false);
   const [binderWidth, setBinderWidth] = useState(
     () => parseInt(localStorage.getItem("cs-binder-width") || "240")
@@ -261,6 +265,13 @@ export default function App() {
             <BarChart3 size={16} />
           </button>
           <button
+            className={`view-btn ${showComments ? "active" : ""}`}
+            onClick={() => setShowComments(!showComments)}
+            title="Comments"
+          >
+            <MessageSquare size={16} />
+          </button>
+          <button
             className="view-btn"
             onClick={handleCompile}
             title="Export manuscript"
@@ -326,6 +337,12 @@ export default function App() {
       <ProjectSearch open={showSearch} onClose={() => setShowSearch(false)} />
       <Settings open={showSettings} onClose={() => setShowSettings(false)} />
       {showStats && <StatsPanel open={showStats} onClose={() => setShowStats(false)} />}
+      {showComments && (
+        <CommentsPanel
+          editor={getCurrentEditor()}
+          onClose={() => setShowComments(false)}
+        />
+      )}
       <CompileDialog open={showCompile} onClose={() => setShowCompile(false)} />
     </div>
   );

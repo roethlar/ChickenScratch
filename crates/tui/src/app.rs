@@ -22,6 +22,8 @@ pub enum Mode {
     Normal,
     RevisionPrompt,
     Confirm,
+    Comments,
+    CommentEdit,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -76,6 +78,10 @@ pub struct App<'a> {
     pub status: String,
     pub prompt_input: String,
     pub should_quit: bool,
+
+    // Comments overlay state
+    pub comments_selected: usize,
+    pub comment_edit_id: Option<String>,
 }
 
 impl<'a> App<'a> {
@@ -106,6 +112,8 @@ impl<'a> App<'a> {
             status: "Ready. ?=help  Tab=switch pane  q=quit".to_string(),
             prompt_input: String::new(),
             should_quit: false,
+            comments_selected: 0,
+            comment_edit_id: None,
         };
         app.rebuild_binder();
         app.apply_editor_settings();
@@ -179,7 +187,173 @@ impl<'a> App<'a> {
             Mode::RevisionPrompt => self.handle_prompt_key(key),
             Mode::Confirm => self.handle_confirm_key(key),
             Mode::Normal => self.handle_normal_key(key),
+            Mode::Comments => self.handle_comments_key(key),
+            Mode::CommentEdit => self.handle_comment_edit_key(key),
         }
+    }
+
+    fn handle_comments_key(&mut self, key: KeyEvent) -> Result<()> {
+        let comments = self.current_comments();
+        let n = comments.len();
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.mode = Mode::Normal;
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if n > 0 && self.comments_selected + 1 < n {
+                    self.comments_selected += 1;
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.comments_selected > 0 {
+                    self.comments_selected -= 1;
+                }
+            }
+            KeyCode::Char('r') => {
+                if let Some(id) = comments.get(self.comments_selected).map(|c| c.id.clone()) {
+                    self.toggle_resolve_comment(&id);
+                }
+            }
+            KeyCode::Char('d') => {
+                if let Some(id) = comments.get(self.comments_selected).map(|c| c.id.clone()) {
+                    self.delete_comment(&id)?;
+                }
+            }
+            KeyCode::Char('e') | KeyCode::Enter => {
+                if let Some(c) = comments.get(self.comments_selected) {
+                    self.comment_edit_id = Some(c.id.clone());
+                    self.prompt_input = c.body.clone();
+                    self.mode = Mode::CommentEdit;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn handle_comment_edit_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                self.mode = Mode::Comments;
+                self.prompt_input.clear();
+                self.comment_edit_id = None;
+            }
+            KeyCode::Enter => {
+                if let Some(id) = self.comment_edit_id.take() {
+                    let body = self.prompt_input.clone();
+                    self.update_comment_body(&id, &body);
+                }
+                self.prompt_input.clear();
+                self.mode = Mode::Comments;
+            }
+            KeyCode::Backspace => { self.prompt_input.pop(); }
+            KeyCode::Char(c) => { self.prompt_input.push(c); }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn current_comments(&self) -> Vec<chickenscratch_core::models::Comment> {
+        self.active_doc_id
+            .as_ref()
+            .and_then(|id| self.project.documents.get(id))
+            .map(|d| d.comments.clone())
+            .unwrap_or_default()
+    }
+
+    /// Extract the anchor text between `<span class="comment" data-comment-id="id">`
+    /// and `</span>` from the document's HTML content.
+    pub fn comment_anchor_text(&self, comment_id: &str) -> String {
+        let doc = match self.active_doc_id.as_ref().and_then(|id| self.project.documents.get(id)) {
+            Some(d) => d,
+            None => return String::new(),
+        };
+        let needle = format!("data-comment-id=\"{}\"", comment_id);
+        let html = &doc.content;
+        if let Some(start) = html.find(&needle) {
+            if let Some(close) = html[start..].find('>') {
+                let content_start = start + close + 1;
+                if let Some(end_rel) = html[content_start..].find("</span>") {
+                    let text_html = &html[content_start..content_start + end_rel];
+                    return strip_tags_inline(text_html);
+                }
+            }
+        }
+        String::new()
+    }
+
+    fn toggle_resolve_comment(&mut self, comment_id: &str) {
+        let doc_id = match self.active_doc_id.as_ref() {
+            Some(id) => id.clone(),
+            None => return,
+        };
+        let resolved_after = {
+            if let Some(doc) = self.project.documents.get_mut(&doc_id) {
+                if let Some(c) = doc.comments.iter_mut().find(|c| c.id == comment_id) {
+                    c.resolved = !c.resolved;
+                    c.modified = chrono::Utc::now().to_rfc3339();
+                    doc.modified = chrono::Utc::now().to_rfc3339();
+                    Some(c.resolved)
+                } else { None }
+            } else { None }
+        };
+        if let Some(r) = resolved_after {
+            let _ = writer::write_project(&mut self.project);
+            self.status = format!("Comment {}", if r { "resolved" } else { "reopened" });
+        }
+    }
+
+    fn update_comment_body(&mut self, comment_id: &str, body: &str) {
+        let doc_id = match self.active_doc_id.as_ref() {
+            Some(id) => id.clone(),
+            None => return,
+        };
+        let did_update = {
+            if let Some(doc) = self.project.documents.get_mut(&doc_id) {
+                if let Some(c) = doc.comments.iter_mut().find(|c| c.id == comment_id) {
+                    c.body = body.to_string();
+                    c.modified = chrono::Utc::now().to_rfc3339();
+                    doc.modified = chrono::Utc::now().to_rfc3339();
+                    true
+                } else { false }
+            } else { false }
+        };
+        if did_update {
+            let _ = writer::write_project(&mut self.project);
+            self.status = "Comment updated".to_string();
+        }
+    }
+
+    fn delete_comment(&mut self, comment_id: &str) -> Result<()> {
+        let doc_id = match self.active_doc_id.as_ref() {
+            Some(id) => id.clone(),
+            None => return Ok(()),
+        };
+        let new_content = if let Some(doc) = self.project.documents.get_mut(&doc_id) {
+            doc.comments.retain(|c| c.id != comment_id);
+            doc.content = strip_comment_span(&doc.content, comment_id);
+            doc.modified = chrono::Utc::now().to_rfc3339();
+            Some(doc.content.clone())
+        } else {
+            None
+        };
+
+        writer::write_project(&mut self.project)
+            .map_err(|e| anyhow!("Write failed: {:?}", e))?;
+
+        if let Some(html) = new_content {
+            if self.view_mode != ViewMode::Formatted {
+                let vm = self.view_mode;
+                self.load_content_for_mode(&html, vm);
+            }
+        }
+
+        let n = self.current_comments().len();
+        if n > 0 && self.comments_selected >= n {
+            self.comments_selected = n - 1;
+        }
+        self.status = "Comment deleted".to_string();
+        Ok(())
     }
 
     fn handle_normal_key(&mut self, key: KeyEvent) -> Result<()> {
@@ -196,6 +370,13 @@ impl<'a> App<'a> {
                     self.wrap = !self.wrap;
                     self.apply_editor_settings();
                     self.status = format!("Wrap {}", if self.wrap { "on" } else { "off" });
+                    return Ok(());
+                }
+                KeyCode::Char(';') => {
+                    if self.active_doc_id.is_some() {
+                        self.mode = Mode::Comments;
+                        self.comments_selected = 0;
+                    }
                     return Ok(());
                 }
                 KeyCode::Char('q') => { self.try_quit(); return Ok(()); }
@@ -484,6 +665,50 @@ fn read_backup_directory() -> Option<PathBuf> {
         .get("backup_directory")?
         .as_str()
         .map(PathBuf::from)
+}
+
+/// Strip all HTML tags and entities, returning plain text. Used to get the
+/// anchor text of a comment span for display in the comments panel.
+fn strip_tags_inline(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+    out.trim().to_string()
+}
+
+/// Remove the `<span class="comment" data-comment-id="{id}">...</span>` wrapper
+/// for the given id, preserving the inner text/HTML.
+fn strip_comment_span(html: &str, id: &str) -> String {
+    let needle = format!("data-comment-id=\"{}\"", id);
+    let opening_idx = match html.find(&needle) {
+        Some(i) => i,
+        None => return html.to_string(),
+    };
+    // Walk back to find `<span`
+    let tag_start = html[..opening_idx].rfind("<span").unwrap_or(opening_idx);
+    let tag_end = match html[tag_start..].find('>') {
+        Some(e) => tag_start + e + 1,
+        None => return html.to_string(),
+    };
+    // Inner content starts at tag_end; find matching `</span>`
+    let inner_end = match html[tag_end..].find("</span>") {
+        Some(e) => tag_end + e,
+        None => return html.to_string(),
+    };
+    let close_end = inner_end + "</span>".len();
+
+    let mut out = String::with_capacity(html.len());
+    out.push_str(&html[..tag_start]);
+    out.push_str(&html[tag_end..inner_end]);
+    out.push_str(&html[close_end..]);
+    out
 }
 
 fn pretty_print_html(html: &str) -> String {

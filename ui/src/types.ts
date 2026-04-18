@@ -18,6 +18,15 @@ export interface Document {
   include_in_compile: boolean;
   word_count_target: number;
   compile_order: number;
+  comments?: Comment[];
+}
+
+export interface Comment {
+  id: string;
+  body: string;
+  resolved: boolean;
+  created: string;
+  modified: string;
 }
 
 export interface ProjectMeta {

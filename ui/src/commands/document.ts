@@ -96,3 +96,38 @@ export async function moveNode(
     newIndex: newIndex ?? null,
   });
 }
+
+export async function addComment(
+  projectPath: string,
+  docId: string,
+  commentId: string,
+  body: string,
+  newContent: string
+): Promise<Project> {
+  return invoke("add_comment", { projectPath, docId, commentId, body, newContent });
+}
+
+export async function updateComment(
+  projectPath: string,
+  docId: string,
+  commentId: string,
+  body?: string,
+  resolved?: boolean
+): Promise<Project> {
+  return invoke("update_comment", {
+    projectPath,
+    docId,
+    commentId,
+    body: body ?? null,
+    resolved: resolved ?? null,
+  });
+}
+
+export async function deleteComment(
+  projectPath: string,
+  docId: string,
+  commentId: string,
+  newContent: string
+): Promise<Project> {
+  return invoke("delete_comment", { projectPath, docId, commentId, newContent });
+}

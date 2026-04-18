@@ -117,6 +117,10 @@ pub struct DocumentMetadata {
     /// Custom compile order
     #[serde(default)]
     pub compile_order: i32,
+
+    /// Comments anchored to spans in the content
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub comments: Vec<crate::models::Comment>,
 }
 
 /// Helper function to generate a new UUID
@@ -448,6 +452,7 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
             links: None,
             word_count_target: 0,
             compile_order: 0,
+            comments: Vec::new(),
         }
     };
 
@@ -482,6 +487,7 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
         include_in_compile: metadata.include_in_compile.as_deref() != Some("No"),
         word_count_target: metadata.word_count_target,
         compile_order: metadata.compile_order,
+        comments: metadata.comments,
     })
 }
 

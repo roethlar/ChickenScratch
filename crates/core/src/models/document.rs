@@ -59,6 +59,27 @@ pub struct Document {
     /// Custom compile order (0 = use binder order, higher = later)
     #[serde(default)]
     pub compile_order: i32,
+
+    /// Comments on spans in this document (keyed by comment id)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub comments: Vec<Comment>,
+}
+
+/// A comment anchored to a span in the document.
+/// The anchor is a `<span class="comment" data-comment-id="...">` element in `content`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Comment {
+    /// Unique comment id (matches the data-comment-id attribute in the content)
+    pub id: String,
+    /// Comment body (plain text)
+    pub body: String,
+    /// Whether the comment is resolved
+    #[serde(default)]
+    pub resolved: bool,
+    /// Creation timestamp (RFC3339)
+    pub created: String,
+    /// Last modified timestamp (RFC3339)
+    pub modified: String,
 }
 
 fn default_true() -> bool {
@@ -83,6 +104,7 @@ impl Default for Document {
             include_in_compile: true,
             word_count_target: 0,
             compile_order: 0,
+            comments: Vec::new(),
         }
     }
 }

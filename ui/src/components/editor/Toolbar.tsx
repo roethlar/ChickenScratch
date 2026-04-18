@@ -19,12 +19,16 @@ import {
   Undo,
   Redo,
   Sparkles,
+  MessageSquare,
+  Asterisk,
 } from "lucide-react";
 import { useCallback } from "react";
 import { dialogPrompt } from "../shared/Dialog";
 import { aiTransform, type AiOperation } from "../../commands/ai";
-import { toastError } from "../shared/Toast";
+import { toastError, toastSuccess } from "../shared/Toast";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { useProjectStore } from "../../stores/projectStore";
+import * as docCmd from "../../commands/document";
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -71,6 +75,43 @@ export function Toolbar({ editor }: ToolbarProps) {
       return;
     }
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+  }, [editor]);
+
+  const addFootnote = useCallback(async () => {
+    if (!editor) return;
+    const body = await dialogPrompt("Footnote text:");
+    if (body === null || body.trim() === "") return;
+    editor.chain().focus().insertContent({
+      type: "footnote",
+      attrs: { body: body.trim() },
+    }).run();
+  }, [editor]);
+
+  const addComment = useCallback(async () => {
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    if (from === to) {
+      toastError("Select text first to comment on");
+      return;
+    }
+    const body = await dialogPrompt("Comment:");
+    if (body === null) return;
+    const project = useProjectStore.getState().project;
+    const activeDoc = useProjectStore.getState().activeDoc;
+    if (!project || !activeDoc) return;
+    const commentId = "c_" + Math.random().toString(36).slice(2, 10);
+    // Apply the mark locally first
+    editor.chain().focus().setMark("comment", { id: commentId }).run();
+    const newContent = editor.getHTML();
+    try {
+      const updated = await docCmd.addComment(
+        project.path, activeDoc.id, commentId, body, newContent
+      );
+      useProjectStore.setState({ project: updated });
+      toastSuccess("Comment added");
+    } catch (e) {
+      toastError(`Failed: ${e}`);
+    }
   }, [editor]);
 
   const aiEnabled = useSettingsStore((s) => s.appSettings?.ai.enabled) ?? false;
@@ -215,6 +256,22 @@ export function Toolbar({ editor }: ToolbarProps) {
           <Unlink size={s} />
         </ToolbarButton>
       )}
+
+      <ToolbarSep />
+
+      <ToolbarButton
+        onClick={addComment}
+        active={editor.isActive("comment")}
+        title="Add Comment"
+      >
+        <MessageSquare size={s} />
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={addFootnote}
+        title="Insert Footnote"
+      >
+        <Asterisk size={s} />
+      </ToolbarButton>
 
       {aiEnabled && (
         <>
