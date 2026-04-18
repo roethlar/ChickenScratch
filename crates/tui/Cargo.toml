@@ -1,0 +1,20 @@
+[package]
+name = "chickenscratch-tui"
+version = "0.1.0"
+edition = "2021"
+description = "Terminal UI for ChickenScratch"
+license = "MIT"
+
+[[bin]]
+name = "chikn"
+path = "src/main.rs"
+
+[dependencies]
+chickenscratch-core = { path = "../core" }
+ratatui = "0.29"
+crossterm = "0.28"
+tui-textarea = "0.7"
+pulldown-cmark = "0.12"
+html2md = "0.2"
+chrono = "0.4"
+anyhow = "1"
