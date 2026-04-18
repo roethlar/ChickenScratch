@@ -1,9 +1,8 @@
-use edtui::{EditorTheme, EditorView};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Widget, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
 
@@ -125,20 +124,8 @@ fn render_editor(f: &mut Frame, area: Rect, app: &mut App) {
         return;
     }
 
-    // Render edtui editor (with wrap honored)
-    let buf = f.buffer_mut();
-    // Draw the block first so its border appears around the editor
-    let inner = block.inner(area);
-    block.render(area, buf);
-
-    let theme = EditorTheme::default()
-        .base(Style::default())
-        .cursor_style(Style::default().bg(Color::White).fg(Color::Black));
-
-    let editor_view = EditorView::new(&mut app.editor_state)
-        .theme(theme)
-        .wrap(app.wrap);
-    editor_view.render(inner, buf);
+    app.editor.set_block(block);
+    f.render_widget(&app.editor, area);
 }
 
 fn render_formatted_preview(f: &mut Frame, area: Rect, app: &App, block: Block) {

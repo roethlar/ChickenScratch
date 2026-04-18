@@ -3,8 +3,8 @@ use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::{Project, TreeNode};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
-use edtui::{EditorEventHandler, EditorMode, EditorState, Lines};
 use ratatui::{backend::Backend, Terminal};
+use ratatui_textarea::{TextArea, WrapMode};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -26,11 +26,8 @@ pub enum Mode {
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum ViewMode {
-    /// Edit markdown (default)
     Markdown,
-    /// Edit raw HTML source
     Source,
-    /// Read-only formatted preview
     Formatted,
 }
 
@@ -52,7 +49,6 @@ impl ViewMode {
     }
 }
 
-/// A flat list of (depth, node_id, display_name, is_folder) for the binder view.
 pub struct BinderItem {
     pub depth: usize,
     pub id: String,
@@ -60,7 +56,7 @@ pub struct BinderItem {
     pub is_folder: bool,
 }
 
-pub struct App {
+pub struct App<'a> {
     pub project: Project,
     pub project_path: PathBuf,
 
@@ -72,8 +68,7 @@ pub struct App {
     pub expanded: std::collections::HashSet<String>,
 
     pub active_doc_id: Option<String>,
-    pub editor_state: EditorState,
-    pub editor_events: EditorEventHandler,
+    pub editor: TextArea<'a>,
     pub dirty: bool,
     pub view_mode: ViewMode,
     pub wrap: bool,
@@ -83,21 +78,17 @@ pub struct App {
     pub should_quit: bool,
 }
 
-impl App {
+impl<'a> App<'a> {
     pub fn new(project_path: PathBuf) -> Result<Self> {
         let project = reader::read_project(&project_path)
             .map_err(|e| anyhow!("Failed to read project: {:?}", e))?;
 
         let mut expanded = std::collections::HashSet::new();
-        // Expand top-level folders by default
         for node in &project.hierarchy {
             if let TreeNode::Folder { id, .. } = node {
                 expanded.insert(id.clone());
             }
         }
-
-        let mut editor_state = EditorState::new(Lines::default());
-        editor_state.mode = EditorMode::Insert;
 
         let mut app = Self {
             project,
@@ -108,8 +99,7 @@ impl App {
             binder_selected: 0,
             expanded,
             active_doc_id: None,
-            editor_state,
-            editor_events: EditorEventHandler::default(),
+            editor: TextArea::default(),
             dirty: false,
             view_mode: ViewMode::Markdown,
             wrap: true,
@@ -118,7 +108,16 @@ impl App {
             should_quit: false,
         };
         app.rebuild_binder();
+        app.apply_editor_settings();
         Ok(app)
+    }
+
+    fn apply_editor_settings(&mut self) {
+        self.editor.set_wrap_mode(if self.wrap {
+            WrapMode::WordOrGlyph
+        } else {
+            WrapMode::None
+        });
     }
 
     pub fn rebuild_binder(&mut self) {
@@ -156,7 +155,10 @@ impl App {
         }
     }
 
-    pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
+    pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()>
+    where
+        <B as Backend>::Error: Send + Sync + 'static,
+    {
         while !self.should_quit {
             terminal.draw(|f| ui::render(f, self))?;
 
@@ -181,7 +183,6 @@ impl App {
     }
 
     fn handle_normal_key(&mut self, key: KeyEvent) -> Result<()> {
-        // Global shortcuts
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
                 KeyCode::Char('s') => { self.save_active_doc()?; return Ok(()); }
@@ -190,13 +191,11 @@ impl App {
                     self.mode = Mode::RevisionPrompt;
                     return Ok(());
                 }
-                KeyCode::Char('t') => {
-                    self.cycle_view_mode();
-                    return Ok(());
-                }
+                KeyCode::Char('t') => { self.cycle_view_mode(); return Ok(()); }
                 KeyCode::Char('w') => {
                     self.wrap = !self.wrap;
-                    self.status = format!("Wrap {}", if self.wrap { "on" } else { "off (horizontal scroll)" });
+                    self.apply_editor_settings();
+                    self.status = format!("Wrap {}", if self.wrap { "on" } else { "off" });
                     return Ok(());
                 }
                 KeyCode::Char('q') => { self.try_quit(); return Ok(()); }
@@ -204,7 +203,6 @@ impl App {
             }
         }
 
-        // Tab to switch pane
         if key.code == KeyCode::Tab {
             self.focus = match self.focus {
                 Focus::Binder => Focus::Editor,
@@ -279,30 +277,18 @@ impl App {
             self.focus = Focus::Binder;
             return Ok(());
         }
-
-        // Formatted view is read-only — allow only scroll/cursor nav
         if self.view_mode == ViewMode::Formatted {
             match key.code {
                 KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right
                 | KeyCode::PageUp | KeyCode::PageDown | KeyCode::Home | KeyCode::End => {
-                    self.editor_events.on_key_event(key, &mut self.editor_state);
+                    self.editor.input(key);
                 }
                 _ => {}
             }
             return Ok(());
         }
-
-        // Snapshot content to detect changes (edtui doesn't signal "changed" directly)
-        let before = self.editor_content_string();
-
-        // Force Insert mode so typing works for non-vim users
-        self.editor_state.mode = EditorMode::Insert;
-        self.editor_events.on_key_event(key, &mut self.editor_state);
-        // Keep in Insert mode (never let edtui flip to Normal from within editing)
-        self.editor_state.mode = EditorMode::Insert;
-
-        let after = self.editor_content_string();
-        if before != after {
+        let changed = self.editor.input(key);
+        if changed {
             self.dirty = true;
         }
         Ok(())
@@ -314,8 +300,6 @@ impl App {
             self.status = format!("View: {}", self.view_mode.label());
             return;
         }
-
-        // Get current content as raw HTML by converting from whatever mode we're in
         let current_html = self.current_content_as_html();
         let new_mode = self.view_mode.next();
         self.load_content_for_mode(&current_html, new_mode);
@@ -324,12 +308,11 @@ impl App {
     }
 
     fn current_content_as_html(&self) -> String {
-        let text = self.editor_content_string();
+        let text = self.editor.lines().join("\n");
         match self.view_mode {
             ViewMode::Markdown => convert::markdown_to_html(&text),
             ViewMode::Source => text,
             ViewMode::Formatted => {
-                // Formatted is read-only, so the underlying HTML is whatever's in the doc
                 self.active_doc_id
                     .as_ref()
                     .and_then(|id| self.project.documents.get(id))
@@ -343,17 +326,19 @@ impl App {
         let text = match mode {
             ViewMode::Markdown => convert::html_to_markdown(html),
             ViewMode::Source => pretty_print_html(html),
-            ViewMode::Formatted => {
-                // Formatted view uses lines of plain-ish text; rendering handles the styling
-                convert::html_to_markdown(html)
-            }
+            ViewMode::Formatted => convert::html_to_markdown(html),
         };
-        self.editor_state = EditorState::new(Lines::from(text.as_str()));
-        self.editor_state.mode = EditorMode::Insert;
+        let lines: Vec<String> = if text.is_empty() {
+            vec![String::new()]
+        } else {
+            text.lines().map(String::from).collect()
+        };
+        self.editor = TextArea::new(lines);
+        self.apply_editor_settings();
     }
 
     pub fn editor_content_string(&self) -> String {
-        self.editor_state.lines.to_string()
+        self.editor.lines().join("\n")
     }
 
     fn handle_prompt_key(&mut self, key: KeyEvent) -> Result<()> {
@@ -401,7 +386,6 @@ impl App {
     }
 
     fn open_document(&mut self, doc_id: &str) {
-        // Save current doc first if dirty
         if self.dirty {
             let _ = self.save_active_doc();
         }
@@ -421,22 +405,18 @@ impl App {
             Some(id) => id.clone(),
             None => return Ok(()),
         };
-
         let html = self.current_content_as_html();
         let word_source = match self.view_mode {
             ViewMode::Source | ViewMode::Formatted => convert::html_to_markdown(&html),
             ViewMode::Markdown => self.editor_content_string(),
         };
-
         if let Some(doc) = self.project.documents.get_mut(&doc_id) {
             doc.content = html;
             doc.modified = chrono::Utc::now().to_rfc3339();
         }
-
         writer::write_project(&mut self.project)
             .map_err(|e| anyhow!("Write failed: {:?}", e))?;
         self.dirty = false;
-
         let word_count = convert::count_words(&word_source);
         self.status = format!("Saved. {} words.", word_count);
         Ok(())
@@ -473,8 +453,7 @@ impl App {
     }
 }
 
-impl App {
-    // Silence unused-import warning while still using Context via anyhow
+impl App<'_> {
     #[allow(dead_code)]
     fn _ctx(&self) {
         let _: fn() = || {
@@ -483,7 +462,6 @@ impl App {
     }
 }
 
-/// Minimal HTML pretty-printer — newlines between block elements.
 fn pretty_print_html(html: &str) -> String {
     let html = html.trim();
     if html.is_empty() {

@@ -11,9 +11,9 @@ path = "src/main.rs"
 
 [dependencies]
 chickenscratch-core = { path = "../core" }
-ratatui = "0.29"
-crossterm = "0.28"
-edtui = "=0.9.9"
+ratatui = "0.30"
+crossterm = "0.29"
+ratatui-textarea = "0.9"
 pulldown-cmark = "0.12"
 html2md = "0.2"
 chrono = "0.4"
