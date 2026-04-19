@@ -3,6 +3,7 @@ use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::scrivener::converter;
 use chickenscratch_core::{ChiknError, Project};
 use std::path::Path;
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
 #[tauri::command]

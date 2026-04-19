@@ -1,6 +1,6 @@
-# .chikn Format Specification v1.0
+# .chikn Format Specification v1.1
 **Status**: Living Specification
-**Last Updated**: 2025-10-14
+**Last Updated**: 2026-04-18
 **Purpose**: Define the .chikn project format for creative writing with git integration
 
 ---
@@ -161,12 +161,26 @@ settings:
 - Em-dashes: `---`
 - Ellipses: `...`
 
-**Custom Styles** (via metadata):
+**Custom Styles** via Pandoc bracketed spans (`[text]{attrs}`):
 ```markdown
 This is [emphasized text]{.emphasis-red}
 
-<!-- Styles defined in .meta file -->
+Colored text: [red words]{style="color:#ff0000"}
+Underlined: [text]{.underline}
 ```
+
+**Inline Comments** (anchored to a span of text):
+```markdown
+The protagonist <span class="comment" data-comment-id="c1">hesitates</span>.
+```
+The comment body, resolved state, and timestamps live in the sidecar `.meta` file under the `comments` field, keyed by `id`. The anchor span in the content uses raw HTML (valid pandoc markdown); markdown tools that don't understand it preserve it as-is.
+
+**Footnotes**:
+```markdown
+^[Inline footnote body] — for short notes
+[^ref] ... [^ref]: Body text — for longer notes
+```
+Both forms compile to proper footnotes in DOCX/PDF/EPUB via pandoc.
 
 #### File Naming Convention
 
@@ -243,6 +257,18 @@ character_count: number       # Character count (with spaces)
 
 # Scrivener compatibility
 scrivener_uuid: string        # Original Scrivener UUID (for import/export)
+
+# Compile ordering & targeting
+word_count_target: integer    # Target for this document (0 = no target)
+compile_order: integer        # Override order at compile time (0 = use hierarchy order)
+
+# Inline comments anchored to spans in the content
+comments:
+  - id: string                # Matches data-comment-id in the content span
+    body: string              # Comment text
+    resolved: boolean         # Whether reviewer has resolved it
+    created: string           # ISO 8601
+    modified: string          # ISO 8601
 ```
 
 #### Example .meta file
@@ -395,18 +421,20 @@ revs/
 
 ## Format Versioning
 
-### Version 1.0 (Current)
-- Basic project.yaml with hierarchy
-- Markdown documents with .meta files
+### Version 1.0
+- project.yaml with hierarchy
+- Markdown documents with .meta sidecar files
 - Git integration required
 - Simple metadata schema
 
-### Future Versions (Planned)
+### Version 1.1 (Current)
+- Comments anchored to spans via inline HTML + `.meta` sidecar
+- Inline and reference footnotes (pandoc-native)
+- `word_count_target`, `compile_order`, `include_in_compile` fields
+- Bracketed-span syntax documented for custom styles (`[text]{.class}`)
+- Scrivener import/export with full metadata round-trip
 
-**Version 1.1** (Scrivener Import):
-- Extended .meta schema with Scrivener fields
-- RTF conversion metadata
-- Compile settings in settings/
+### Future Versions (Planned)
 
 **Version 1.2** (AI Integration):
 - AI provider configurations
@@ -415,8 +443,13 @@ revs/
 
 **Version 1.3** (Collaboration):
 - Multi-author metadata
-- Comment threads
+- Threaded comment replies
 - Review/approval workflows
+
+**Version 2.0** (Format evolution):
+- Potential migration to [djot](https://djot.net) once it reaches 1.0
+  — cleaner attribute semantics, faster parsing via `jotdown` (Rust),
+  same writer-visible `[text]{.class}` syntax
 
 ---
 
