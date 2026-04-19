@@ -126,7 +126,8 @@
       "Bash(cargo add *)",
       "Bash(cargo metadata *)",
       "Bash(npm view *)",
-      "Bash(curl --version)"
+      "Bash(curl --version)",
+      "Bash(NODE_ENV=development npm --prefix /home/michael/dev/ChickenScratch/ui run build)"
     ],
     "deny": [],
     "ask": []

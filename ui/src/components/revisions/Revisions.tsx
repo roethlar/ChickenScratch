@@ -7,7 +7,9 @@ import {
   GitBranch,
   GitMerge,
   HardDrive,
+  GitCompare,
 } from "lucide-react";
+import { DraftCompare } from "./DraftCompare";
 import { useProjectStore } from "../../stores/projectStore";
 import { toastSuccess, toastError } from "../shared/Toast";
 import * as gitCmd from "../../commands/git";
@@ -24,6 +26,7 @@ export function Revisions() {
   const [diffFiles, setDiffFiles] = useState<FileDiff[]>([]);
   const [wordDiffData, setWordDiffData] = useState<[string, string][] | null>(null);
   const [wordDiffFile, setWordDiffFile] = useState<string | null>(null);
+  const [showCompare, setShowCompare] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!project) return;
@@ -251,9 +254,16 @@ export function Revisions() {
             <button className="drafts-new-btn" onClick={handleNewDraft}>
               <GitBranch size={14} /> New Draft Version
             </button>
+            {drafts.length >= 2 && (
+              <button className="drafts-new-btn" onClick={() => setShowCompare(true)}>
+                <GitCompare size={14} /> Compare Drafts
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      <DraftCompare open={showCompare} onClose={() => setShowCompare(false)} />
 
       <div className="revisions-footer">
         <button className="revisions-backup-btn" onClick={handleBackup}>

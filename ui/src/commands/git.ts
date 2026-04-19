@@ -86,6 +86,23 @@ export async function wordDiff(
   return invoke("word_diff", { projectPath, commitId, docPath });
 }
 
+export async function compareDrafts(
+  projectPath: string,
+  draftA: string,
+  draftB: string
+): Promise<FileDiff[]> {
+  return invoke("compare_drafts", { projectPath, draftA, draftB });
+}
+
+export async function wordDiffDrafts(
+  projectPath: string,
+  draftA: string,
+  draftB: string,
+  docPath: string
+): Promise<[string, string][]> {
+  return invoke("word_diff_drafts", { projectPath, draftA, draftB, docPath });
+}
+
 export async function hasChanges(
   projectPath: string
 ): Promise<boolean> {

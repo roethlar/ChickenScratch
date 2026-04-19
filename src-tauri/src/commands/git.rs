@@ -76,6 +76,25 @@ pub fn word_diff(
 }
 
 #[tauri::command]
+pub fn compare_drafts(
+    project_path: String,
+    draft_a: String,
+    draft_b: String,
+) -> Result<Vec<git::FileDiff>, ChiknError> {
+    git::compare_drafts(Path::new(&project_path), &draft_a, &draft_b)
+}
+
+#[tauri::command]
+pub fn word_diff_drafts(
+    project_path: String,
+    draft_a: String,
+    draft_b: String,
+    doc_path: String,
+) -> Result<Vec<(String, String)>, ChiknError> {
+    git::word_diff_drafts(Path::new(&project_path), &draft_a, &draft_b, &doc_path)
+}
+
+#[tauri::command]
 pub fn has_changes(project_path: String) -> Result<bool, ChiknError> {
     git::has_changes(Path::new(&project_path))
 }

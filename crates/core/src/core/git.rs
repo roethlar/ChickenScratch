@@ -432,6 +432,102 @@ fn simple_word_diff(old: &[String], new: &[String]) -> Vec<(String, String)> {
     result
 }
 
+/// Compare two drafts (branches) by name. Returns the list of files that differ
+/// between their tip commits. Skips metadata and git files.
+pub fn compare_drafts(
+    path: &Path,
+    draft_a: &str,
+    draft_b: &str,
+) -> Result<Vec<FileDiff>, ChiknError> {
+    let repo = Repository::open(path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+
+    let tree_for = |name: &str| -> Result<git2::Tree, ChiknError> {
+        let branch = repo
+            .find_branch(name, BranchType::Local)
+            .map_err(|e| ChiknError::Unknown(format!("Branch '{}' not found: {}", name, e)))?;
+        let commit = branch
+            .get()
+            .peel_to_commit()
+            .map_err(|e| ChiknError::Unknown(format!("Can't resolve {}: {}", name, e)))?;
+        commit
+            .tree()
+            .map_err(|e| ChiknError::Unknown(format!("Can't read tree for {}: {}", name, e)))
+    };
+
+    let tree_a = tree_for(draft_a)?;
+    let tree_b = tree_for(draft_b)?;
+
+    let diff = repo
+        .diff_tree_to_tree(Some(&tree_a), Some(&tree_b), Some(&mut DiffOptions::new()))
+        .map_err(|e| ChiknError::Unknown(format!("Failed to compute diff: {}", e)))?;
+
+    let mut files = Vec::new();
+    for delta in diff.deltas() {
+        let path_str = delta
+            .new_file()
+            .path()
+            .or_else(|| delta.old_file().path())
+            .and_then(|p| p.to_str())
+            .unwrap_or("")
+            .to_string();
+        if path_str == "project.yaml" || path_str.starts_with(".git") || path_str.ends_with(".meta") {
+            continue;
+        }
+        let status = match delta.status() {
+            git2::Delta::Added => "added",
+            git2::Delta::Deleted => "deleted",
+            git2::Delta::Modified => "modified",
+            git2::Delta::Renamed => "renamed",
+            _ => "changed",
+        };
+        files.push(FileDiff {
+            path: path_str,
+            status: status.to_string(),
+        });
+    }
+    Ok(files)
+}
+
+/// Word-level diff of a single document between two drafts (branches).
+/// Returns the same format as word_diff: vec of (change_type, text) pairs.
+pub fn word_diff_drafts(
+    path: &Path,
+    draft_a: &str,
+    draft_b: &str,
+    doc_path: &str,
+) -> Result<Vec<(String, String)>, ChiknError> {
+    let repo = Repository::open(path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+
+    let content_for = |name: &str| -> Result<String, ChiknError> {
+        let branch = repo
+            .find_branch(name, BranchType::Local)
+            .map_err(|e| ChiknError::Unknown(format!("Branch '{}' not found: {}", name, e)))?;
+        let commit = branch
+            .get()
+            .peel_to_commit()
+            .map_err(|e| ChiknError::Unknown(format!("Resolve {}: {}", name, e)))?;
+        let tree = commit
+            .tree()
+            .map_err(|e| ChiknError::Unknown(format!("Tree {}: {}", name, e)))?;
+        Ok(tree
+            .get_path(std::path::Path::new(doc_path))
+            .ok()
+            .and_then(|entry| repo.find_blob(entry.id()).ok())
+            .map(|blob| String::from_utf8_lossy(blob.content()).to_string())
+            .unwrap_or_default())
+    };
+
+    let old_content = content_for(draft_a)?;
+    let new_content = content_for(draft_b)?;
+
+    let old_words = strip_html_words(&old_content);
+    let new_words = strip_html_words(&new_content);
+
+    Ok(simple_word_diff(&old_words, &new_words))
+}
+
 /// Check if the working tree has uncommitted changes.
 pub fn has_changes(path: &Path) -> Result<bool, ChiknError> {
     let repo = Repository::open(path)

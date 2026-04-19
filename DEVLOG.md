@@ -4,6 +4,23 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-04-18 — Side-by-side draft comparison
+
+**Change:** New "Compare Drafts" dialog accessible from the Revisions panel when a project has ≥ 2 draft versions.
+
+**Why:** Writers who experiment on branches ("what if this chapter started differently?") want to see what actually changed without committing to a merge.
+
+**After:**
+- Backend: `compare_drafts(project_path, draft_a, draft_b)` returns `Vec<FileDiff>` — files that differ between branch tips, skipping `.meta` / `project.yaml` / `.git`
+- Backend: `word_diff_drafts(project_path, draft_a, draft_b, doc_path)` — tracked-changes style word diff for a single doc
+- Frontend: `DraftCompare` dialog with two dropdowns (pick left / right draft), swap button, file list on left pane, word-level diff view on right pane
+- Uses the same green/red strikethrough visual as the per-revision diff viewer
+- Non-destructive (read-only comparison)
+
+**Commit:** `<pending>`
+
+---
+
 ## 2026-04-18 — TUI anchored inline comments
 
 **Change:** F3 in the TUI wraps the currently-selected text with a comment span and prompts for a body. Adds the comment to the document's `.meta` with the same ID as the `data-comment-id` attribute in the span.

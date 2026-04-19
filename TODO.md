@@ -102,7 +102,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 
 ### v1.1 — Feature work
 - [ ] AI streaming responses (word-by-word via Tauri events)
-- [ ] Side-by-side draft comparison mode
+- [x] Side-by-side draft comparison mode (Compare Drafts button in Revisions)
 - [ ] Remote sync (push/pull to GitHub/Gitea)
 
 ### Platform packaging
