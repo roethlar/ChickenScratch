@@ -2,76 +2,79 @@
 
 ## Current State (v0.1.0-alpha)
 
-ChickenScratch is a functional cross-platform writing app in initial alpha testing. Core features are implemented. Seeking feedback from writers to identify issues, missing functionality, and UX problems before a stable release.
+ChickenScratch is a functional cross-platform writing app in alpha testing. Core features implemented. Seeking feedback from writers to identify issues, missing functionality, and UX problems before stable release.
+
+**Two frontends, one canonical storage format:**
+- **Tauri + React + TipTap** — desktop GUI with WYSIWYG rich-text editing
+- **Rust + ratatui + ratatui-textarea** — terminal UI (`chikn` binary)
+- **Canonical storage** — Pandoc Markdown (`.md` files on disk)
+
+Pandoc is a runtime dependency but only for compile/export and import — not for core editing. The Tauri editor uses `tiptap-markdown` for in-process markdown ↔ HTML. The TUI edits markdown directly, no conversion at all.
 
 ### What's Built
 
-**Editor**
+**Editor (Tauri)**
 - TipTap WYSIWYG with formatting toolbar (bold, italic, underline, strike, headings, lists, blockquote, code, links)
+- Inline comments (right-gutter panel) and footnotes
 - Find & Replace (Ctrl+F / Ctrl+H)
-- AI text operations (select text → polish, expand, simplify, brainstorm)
+- AI text operations (polish, expand, simplify, brainstorm)
 - Browser-native spell check
-- Auto-save with debounce (configurable interval)
-- Session word count in status bar
-- Focus mode with typewriter scrolling
-- Light/dark/sepia themes
-- Print support (Ctrl+P)
+- Auto-save, session word count, focus mode with typewriter scrolling
+- Light/dark/sepia themes, print support (Ctrl+P)
+
+**Editor (TUI)**
+- Simple-mode editing (type to insert, Emacs-style shortcuts, no vim modes)
+- Native soft word-wrap (toggle via Ctrl+W)
+- Edit / Preview view modes (Ctrl+T)
+- Comments overlay (F2) with add/edit/resolve/delete
+- Save (Ctrl+S), Save Revision (Ctrl+R)
 
 **Organization**
-- Binder with drag-and-drop, context menus, folder management
+- Binder: drag-and-drop, context menus, folder management, width-resizable
 - Manuscript/Research/Trash structure (auto-created, self-healing)
-- Delete moves to Trash, Empty Trash permanently deletes
-- Move to... folder picker
-- Binder width resizable (drag edge)
+- Move to... folder picker, Empty Trash
 - Templates: Scene, Chapter, Character Sheet, Setting, Outline
-- Inspector: synopsis, label, status, keywords, include in compile, word count target, compile order
+- Inspector: synopsis, label, status, keywords, include-in-compile, word count target, compile order
 - Corkboard: card grid with grouping, AI summaries, document linking
 - Manuscript preview: continuous prose with type-aware section headers
 - Command palette (Ctrl+K)
 - Project-wide search (Ctrl+Shift+P) with editor highlight
 
-**Compile/Export**
-- Export to DOCX, PDF, EPUB, HTML, ODT via Pandoc
-- Compile dialog: title page, section separators, manuscript format preset (Shunn)
-- Per-document include/exclude toggle
-- Per-document compile order override
-- Settings-driven formatting (font, size, spacing, margins)
+**Compile / Export**
+- DOCX, PDF, EPUB, HTML, ODT via Pandoc
+- Compile dialog with title page, section separators, Shunn manuscript format
+- Per-document include/exclude and compile-order override
+- Settings-driven formatting
 
 **Import**
-- Scrivener (.scriv) with full metadata, hierarchy, RTF conversion
-- All Pandoc-supported formats (DOCX, ODT, RTF, EPUB, MD, LaTeX, etc.)
+- Scrivener (.scriv) with metadata, hierarchy, RTF → markdown
+- All Pandoc-supported formats → markdown
 - Markdown folder import
 
 **Revisions**
-- Embedded git (git2-rs, no system git required)
-- Save revision, view history, restore
+- Embedded git2-rs (no system git required)
+- Save revision, history, restore
 - Word-level diff viewer (tracked-changes style)
 - Draft versions (branches): create, switch, merge
 - Auto-commit every 10 minutes
-- Auto-backup on close + periodic backup
-- Filesystem backup push
+- Auto-backup on close + periodic + on-named-revision
 
 **Statistics**
 - Per-document word counts with bar chart
 - Word count targets with progress bar
-- Page estimate and reading time
-- Daily writing history chart (14 days)
+- Page estimate, reading time
+- Daily writing history chart (14-day view)
 
 **Settings**
-- General: theme, Pandoc path, recent projects limit
-- Writing: font, size, paragraph style, auto-save interval
-- Backup: directory, auto-backup on close, interval
-- AI: enable/disable, provider (Ollama/Anthropic/OpenAI), model, API key
-- Compile: format, font, size, spacing, margins
-- Shortcuts: all keyboard shortcuts customizable
+- General, Writing, Backup, AI (with kill switch), Compile, Shortcuts
+- All keyboard shortcuts customizable
 
 **Infrastructure**
-- Error boundary (graceful crash recovery)
-- Toast notifications
-- Custom dialog system (works in Tauri webview)
-- Window/panel state persistence (localStorage)
+- Error boundary, toast notifications, custom dialogs
+- Window/panel state persistence
 - Pandoc detection with install helper
-- Wayland compatibility
+- Recent projects, Wayland compatibility
+- AI via reqwest (no curl dependency)
 
 ---
 
@@ -96,6 +99,9 @@ Push/pull to GitHub, Gitea, or any git remote.
 - **Conflict resolution:** Show conflicts, let writer choose
 - **UI:** Sync button in Revisions panel
 
+### TUI inline-anchored comments
+Currently the TUI can only add document-level (orphan) comments. Adding anchored comments requires text selection in ratatui-textarea plus a way to wrap the selected range with a comment span in the stored markdown. Doable; not yet built.
+
 ---
 
 ## Platform Packaging
@@ -113,7 +119,7 @@ Push/pull to GitHub, Gitea, or any git remote.
 - Flathub submission
 
 ### macOS Code Signing
-- Apple Developer account ($99/year)
+- Apple Developer account
 - Signing identity in tauri.conf.json
 - Notarization via xcrun notarytool
 - CI/CD automation
@@ -123,3 +129,10 @@ Push/pull to GitHub, Gitea, or any git remote.
 - GitHub Releases as update source
 - Update notification toast
 - Signed updates (public/private key pair)
+
+---
+
+## Format evolution (future)
+
+### djot migration
+[djot](https://djot.net) is the successor format to CommonMark, designed by pandoc's author to fix round-trip and attribute-handling issues. The Rust parser `jotdown` is fast and the syntax for attributes (`[text]{.class #id key=val}`) is nearly identical to what we already use with pandoc. When djot reaches 1.0 and TipTap gains a djot serializer, a format version bump to `.chikn` v2.0 using djot is worth considering — same writer-visible syntax, cleaner semantics, faster parsing.
