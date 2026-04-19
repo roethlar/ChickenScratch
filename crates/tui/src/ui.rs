@@ -48,7 +48,7 @@ fn render_comments_overlay(f: &mut Frame, area: Rect, app: &App) {
     let popup = Rect { x, y, width: w, height: h };
     f.render_widget(Clear, popup);
 
-    let title = format!(" Comments ({})  ↑↓=nav  n=new  e/Enter=edit  r=resolve  d=delete  Esc=close ", comments.len());
+    let title = format!(" Comments ({})  ↑↓=nav  n=doc note  e/Enter=edit  r=resolve  d=delete  Esc=close ", comments.len());
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan))
@@ -179,8 +179,10 @@ fn render_editor(f: &mut Frame, area: Rect, app: &mut App) {
             "Select a document from the binder (←) and press Enter.\n\n\
              Keys:\n  ↑↓       navigate\n  Enter    open document / expand folder\n  \
              Tab      switch focus\n  Ctrl+S   save\n  Ctrl+R   save revision\n  \
-             Ctrl+T   cycle view (markdown/source/preview)\n  \
+             Ctrl+T   toggle edit/preview\n  \
              Ctrl+W   toggle word wrap\n  \
+             F2       comments overlay\n  \
+             F3       anchor comment on selected text\n  \
              Esc      back to binder\n  q        quit",
         )
         .block(block)

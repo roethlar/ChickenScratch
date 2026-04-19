@@ -79,6 +79,9 @@ pub struct App<'a> {
     // Comments overlay state
     pub comments_selected: usize,
     pub comment_edit_id: Option<String>,
+    /// Snapshot of editor selection while we prompt for an anchored-comment body.
+    /// Tuple: (start_row, start_col, end_row, end_col).
+    pub pending_selection: Option<(usize, usize, usize, usize)>,
 }
 
 impl<'a> App<'a> {
@@ -111,6 +114,7 @@ impl<'a> App<'a> {
             should_quit: false,
             comments_selected: 0,
             comment_edit_id: None,
+            pending_selection: None,
         };
         app.rebuild_binder();
         app.apply_editor_settings();
@@ -252,19 +256,82 @@ impl<'a> App<'a> {
                 if let Some(id) = self.comment_edit_id.take() {
                     let body = self.prompt_input.clone();
                     if id.is_empty() {
-                        // Create new document-level comment (no anchor)
-                        self.add_orphan_comment(&body);
+                        // New comment — anchored if we have a pending selection,
+                        // otherwise document-level (orphan).
+                        if let Some(sel) = self.pending_selection.take() {
+                            self.add_anchored_comment(&body, sel)?;
+                        } else {
+                            self.add_orphan_comment(&body);
+                        }
                     } else {
                         self.update_comment_body(&id, &body);
                     }
                 }
                 self.prompt_input.clear();
-                self.mode = Mode::Comments;
+                // After anchored comment, return to Normal (focus stays on editor);
+                // after orphan from overlay, return to Comments overlay.
+                self.mode = if self.focus == Focus::Editor {
+                    Mode::Normal
+                } else {
+                    Mode::Comments
+                };
             }
             KeyCode::Backspace => { self.prompt_input.pop(); }
             KeyCode::Char(c) => { self.prompt_input.push(c); }
             _ => {}
         }
+        Ok(())
+    }
+
+    fn add_anchored_comment(
+        &mut self,
+        body: &str,
+        selection: (usize, usize, usize, usize),
+    ) -> Result<()> {
+        if body.trim().is_empty() {
+            self.status = "Empty body; comment not added".to_string();
+            return Ok(());
+        }
+        let doc_id = match self.active_doc_id.as_ref() {
+            Some(id) => id.clone(),
+            None => return Ok(()),
+        };
+
+        let (sr, sc, er, ec) = normalize_selection(selection);
+        let mut lines: Vec<String> = self.editor.lines().iter().map(|l| l.to_string()).collect();
+
+        let comment_id = format!("c_{}", uuid::Uuid::new_v4().simple());
+        let open_tag = format!("<span class=\"comment\" data-comment-id=\"{}\">", comment_id);
+        let close_tag = "</span>";
+
+        if !wrap_selection_in_lines(&mut lines, sr, sc, er, ec, &open_tag, close_tag) {
+            self.status = "Empty selection; nothing to anchor".to_string();
+            return Ok(());
+        }
+
+        // Update editor with wrapped content
+        self.editor = TextArea::new(lines.clone());
+        self.apply_editor_settings();
+        self.dirty = true;
+
+        let md = lines.join("\n");
+        let now = chrono::Utc::now().to_rfc3339();
+        if let Some(doc) = self.project.documents.get_mut(&doc_id) {
+            doc.content = md;
+            doc.comments.push(chickenscratch_core::models::Comment {
+                id: comment_id,
+                body: body.to_string(),
+                resolved: false,
+                created: now.clone(),
+                modified: now.clone(),
+            });
+            doc.modified = now;
+        }
+
+        writer::write_project(&mut self.project)
+            .map_err(|e| anyhow!("Write failed: {:?}", e))?;
+        self.dirty = false;
+        self.status = "Comment anchored to selection".to_string();
         Ok(())
     }
 
@@ -411,6 +478,23 @@ impl<'a> App<'a> {
             }
             return Ok(());
         }
+
+        // F3: add anchored comment on current editor selection
+        if key.code == KeyCode::F(3) {
+            if self.active_doc_id.is_some() && self.focus == Focus::Editor {
+                if let Some((start, end)) = self.editor.selection_range() {
+                    self.pending_selection = Some((start.0, start.1, end.0, end.1));
+                    self.comment_edit_id = Some(String::new());
+                    self.prompt_input.clear();
+                    self.mode = Mode::CommentEdit;
+                } else {
+                    self.status = "Select text first (Shift+arrows), then F3 to anchor a comment".to_string();
+                }
+            } else {
+                self.status = "Focus the editor and select text first".to_string();
+            }
+            return Ok(());
+        }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
                 KeyCode::Char('s') => { self.save_active_doc()?; return Ok(()); }
@@ -456,7 +540,7 @@ impl<'a> App<'a> {
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => self.try_quit(),
             KeyCode::Char('?') => {
-                self.status = "Keys: ↑↓=nav  Enter=open  Space=expand/collapse  Tab=editor  Ctrl+S=save  Ctrl+R=revision  Ctrl+T=view  Ctrl+W=wrap  q=quit".to_string();
+                self.status = "Keys: ↑↓=nav Enter=open Tab=editor Ctrl+S=save Ctrl+R=rev Ctrl+T=view Ctrl+W=wrap F2=comments F3=anchor q=quit".to_string();
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 if self.binder_selected + 1 < self.binder_items.len() {
@@ -680,6 +764,74 @@ fn read_backup_directory() -> Option<PathBuf> {
         .get("backup_directory")?
         .as_str()
         .map(PathBuf::from)
+}
+
+/// Ensure start ≤ end in (row, col) order.
+fn normalize_selection(
+    sel: (usize, usize, usize, usize),
+) -> (usize, usize, usize, usize) {
+    let (sr, sc, er, ec) = sel;
+    if (sr, sc) <= (er, ec) { (sr, sc, er, ec) } else { (er, ec, sr, sc) }
+}
+
+/// Safely slice a string at a character boundary (col is a char index, not byte).
+fn char_byte_index(s: &str, col: usize) -> usize {
+    s.char_indices().nth(col).map(|(i, _)| i).unwrap_or(s.len())
+}
+
+/// Wrap the selected region of `lines` (from row sr, col sc to row er, col ec)
+/// with `open_tag` at the start and `close_tag` at the end. Mutates `lines` in place.
+/// Returns false if the selection is empty.
+fn wrap_selection_in_lines(
+    lines: &mut Vec<String>,
+    sr: usize,
+    sc: usize,
+    er: usize,
+    ec: usize,
+    open_tag: &str,
+    close_tag: &str,
+) -> bool {
+    if lines.is_empty() || sr >= lines.len() {
+        return false;
+    }
+    if sr == er && sc == ec {
+        return false;
+    }
+
+    // Single-line selection
+    if sr == er {
+        let line = lines[sr].clone();
+        let start_b = char_byte_index(&line, sc);
+        let end_b = char_byte_index(&line, ec);
+        if start_b >= end_b {
+            return false;
+        }
+        let new_line = format!(
+            "{}{}{}{}{}",
+            &line[..start_b],
+            open_tag,
+            &line[start_b..end_b],
+            close_tag,
+            &line[end_b..]
+        );
+        lines[sr] = new_line;
+        return true;
+    }
+
+    // Multi-line selection
+    let first = lines[sr].clone();
+    let last_idx = er.min(lines.len() - 1);
+    let last = lines[last_idx].clone();
+    let start_b = char_byte_index(&first, sc);
+    let end_b = char_byte_index(&last, ec);
+
+    // Insert open_tag into first line at start_b
+    lines[sr] = format!("{}{}{}", &first[..start_b], open_tag, &first[start_b..]);
+
+    // Insert close_tag into last line at end_b (remember first-line insertion
+    // shifted nothing in the last line since they're different lines).
+    lines[last_idx] = format!("{}{}{}", &last[..end_b], close_tag, &last[end_b..]);
+    true
 }
 
 /// Strip all HTML tags and entities, returning plain text. Used to get the

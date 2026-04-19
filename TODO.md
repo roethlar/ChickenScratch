@@ -34,6 +34,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [x] Edit / Preview view modes (Ctrl+T to toggle)
 - [x] Wrap toggle (Ctrl+W)
 - [x] Comments overlay (F2) with navigate/edit/resolve/delete + new orphan comment
+- [x] Anchored inline comments (F3 on a text selection wraps with comment span)
 
 ### Organization
 - [x] Binder with mouse-based drag-and-drop, context menus, ... menu button
@@ -103,7 +104,6 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [ ] AI streaming responses (word-by-word via Tauri events)
 - [ ] Side-by-side draft comparison mode
 - [ ] Remote sync (push/pull to GitHub/Gitea)
-- [ ] TUI: anchored-text inline comment insertion (hotkey + text selection)
 
 ### Platform packaging
 - [ ] Windows testing and packaging (.msi)

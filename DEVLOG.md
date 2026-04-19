@@ -4,6 +4,21 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-04-18 — TUI anchored inline comments
+
+**Change:** F3 in the TUI wraps the currently-selected text with a comment span and prompts for a body. Adds the comment to the document's `.meta` with the same ID as the `data-comment-id` attribute in the span.
+
+**Why:** The TUI had comments only as document-level orphans. Writers expected to anchor comments to specific text, just like the Tauri app. ratatui-textarea exposes `selection_range()` returning `((row, col), (row, col))`, which we use to wrap the selection in lines with `<span class="comment" data-comment-id="X">…</span>`.
+
+**After:**
+- F3 (editor focus + active selection): prompt for body, on confirm wrap selection + add to .meta + save
+- F2 (any focus): opens comments overlay (unchanged)
+- Normalizes selection direction; handles single-line and multi-line selections; char-boundary-safe string slicing
+
+**Commit:** `<pending>`
+
+---
+
 ## 2026-04-18 — Edit path no longer touches pandoc
 
 **Change:** Replaced pandoc subprocess for markdown ↔ HTML conversion in the Tauri editor with `tiptap-markdown` (in-process, markdown-it + prosemirror-markdown).
