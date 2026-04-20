@@ -35,7 +35,12 @@ pub fn render(f: &mut Frame, app: &mut App) {
         render_comments_overlay(f, area, app);
     }
     if app.mode == Mode::CommentEdit {
-        render_prompt(f, area, "Edit comment (Enter to save, Esc to cancel):", &app.prompt_input);
+        render_prompt(
+            f,
+            area,
+            "Edit comment (Enter to save, Esc to cancel):",
+            &app.prompt_input,
+        );
     }
 }
 
@@ -45,10 +50,18 @@ fn render_comments_overlay(f: &mut Frame, area: Rect, app: &App) {
     let h = (area.height.saturating_sub(4)).min(24);
     let x = (area.width.saturating_sub(w)) / 2;
     let y = (area.height.saturating_sub(h)) / 2;
-    let popup = Rect { x, y, width: w, height: h };
+    let popup = Rect {
+        x,
+        y,
+        width: w,
+        height: h,
+    };
     f.render_widget(Clear, popup);
 
-    let title = format!(" Comments ({})  ↑↓=nav  n=doc note  e/Enter=edit  r=resolve  d=delete  Esc=close ", comments.len());
+    let title = format!(
+        " Comments ({})  ↑↓=nav  n=doc note  e/Enter=edit  r=resolve  d=delete  Esc=close ",
+        comments.len()
+    );
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan))
@@ -81,24 +94,37 @@ fn render_comments_overlay(f: &mut Frame, area: Rect, app: &App) {
                 anchor
             };
             let marker = if c.resolved { "✓" } else { "●" };
-            let marker_color = if c.resolved { Color::DarkGray } else { Color::Yellow };
-            let body_preview = c.body.lines().next().unwrap_or("").chars().take(60).collect::<String>();
+            let marker_color = if c.resolved {
+                Color::DarkGray
+            } else {
+                Color::Yellow
+            };
+            let body_preview = c
+                .body
+                .lines()
+                .next()
+                .unwrap_or("")
+                .chars()
+                .take(60)
+                .collect::<String>();
             ListItem::new(vec![
                 Line::from(vec![
                     Span::styled(format!("{} ", marker), Style::default().fg(marker_color)),
-                    Span::styled(format!("\"{}\"", preview), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        format!("\"{}\"", preview),
+                        Style::default().fg(Color::DarkGray),
+                    ),
                 ]),
                 Line::from(Span::raw(format!("  {}", body_preview))),
             ])
         })
         .collect();
 
-    let list = List::new(items)
-        .highlight_style(
-            Style::default()
-                .bg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
-        );
+    let list = List::new(items).highlight_style(
+        Style::default()
+            .bg(Color::DarkGray)
+            .add_modifier(Modifier::BOLD),
+    );
     let mut state = ListState::default();
     state.select(Some(app.comments_selected));
     f.render_stateful_widget(list, inner_area, &mut state);
@@ -118,13 +144,19 @@ fn render_binder(f: &mut Frame, area: Rect, app: &App) {
         .map(|item| {
             let indent = "  ".repeat(item.depth);
             let icon = if item.is_folder {
-                if app.expanded.contains(&item.id) { "▾ " } else { "▸ " }
+                if app.expanded.contains(&item.id) {
+                    "▾ "
+                } else {
+                    "▸ "
+                }
             } else {
                 "  "
             };
             let label = format!("{}{}{}", indent, icon, item.name);
             let style = if item.is_folder {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else if Some(&item.id) == app.active_doc_id.as_ref() {
                 Style::default().fg(Color::Green)
             } else {
@@ -135,7 +167,12 @@ fn render_binder(f: &mut Frame, area: Rect, app: &App) {
         .collect();
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).border_style(border_style).title(title))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(border_style)
+                .title(title),
+        )
         .highlight_style(
             Style::default()
                 .bg(Color::DarkGray)
@@ -163,7 +200,10 @@ fn render_editor(f: &mut Frame, area: Rect, app: &mut App) {
             let marker = if app.dirty { "●" } else { " " };
             format!(
                 " {} {}  [{}]  [{}]  Ctrl+T/Ctrl+W ",
-                marker, name, app.view_mode.label(), wrap_label
+                marker,
+                name,
+                app.view_mode.label(),
+                wrap_label
             )
         }
         None => " No document open ".to_string(),
@@ -227,11 +267,12 @@ fn render_status(f: &mut Frame, area: Rect, app: &App) {
         Focus::Editor => "[Editor]".to_string(),
     };
 
-    let text = if app.active_doc_id.is_some() && app.status != "Ready. ?=help  Tab=switch pane  q=quit" {
-        format!("{} · {}", left, app.status)
-    } else {
-        left
-    };
+    let text =
+        if app.active_doc_id.is_some() && app.status != "Ready. ?=help  Tab=switch pane  q=quit" {
+            format!("{} · {}", left, app.status)
+        } else {
+            left
+        };
 
     let padded = format!(
         " {:<width$}{}",
@@ -248,7 +289,12 @@ fn render_prompt(f: &mut Frame, area: Rect, title: &str, value: &str) {
     let h = 5;
     let x = (area.width - w) / 2;
     let y = (area.height - h) / 2;
-    let popup = Rect { x, y, width: w, height: h };
+    let popup = Rect {
+        x,
+        y,
+        width: w,
+        height: h,
+    };
     f.render_widget(Clear, popup);
 
     let block = Block::default()
@@ -258,8 +304,7 @@ fn render_prompt(f: &mut Frame, area: Rect, title: &str, value: &str) {
     let inner = block.inner(popup);
     f.render_widget(block, popup);
 
-    let content = Paragraph::new(format!("> {}", value))
-        .style(Style::default().fg(Color::White));
+    let content = Paragraph::new(format!("> {}", value)).style(Style::default().fg(Color::White));
     f.render_widget(content, inner);
 }
 
@@ -312,10 +357,7 @@ fn render_markdown_as_lines(md: &str) -> Vec<Line<'static>> {
                     } else {
                         format!("{}• ", indent)
                     };
-                    current.push(Span::styled(
-                        marker,
-                        Style::default().fg(Color::Yellow),
-                    ));
+                    current.push(Span::styled(marker, Style::default().fg(Color::Yellow)));
                 }
                 Tag::Link { .. } => {
                     current.push(Span::styled("[", Style::default().fg(Color::Blue)));

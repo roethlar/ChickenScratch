@@ -1,0 +1,96 @@
+<UserControl
+    x:Class="ChickenScratch.App.Controls.BinderControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:ChickenScratch.App.ViewModels">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- Toolbar -->
+        <Grid Grid.Row="0" Padding="8,6" ColumnDefinitions="*,Auto,Auto,Auto"
+              Background="{ThemeResource LayerFillColorDefaultBrush}"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+              BorderThickness="0,0,0,1">
+
+            <TextBlock Grid.Column="0" Text="Binder"
+                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                       VerticalAlignment="Center" Margin="4,0,0,0" />
+
+            <Button Grid.Column="1" Click="NewDocument_Click"
+                    ToolTipService.ToolTip="New Document"
+                    Style="{StaticResource TransparentButtonStyle}" Padding="6">
+                <FontIcon Glyph="&#xE8A5;" FontSize="14" />
+            </Button>
+            <Button Grid.Column="2" Click="NewFolder_Click"
+                    ToolTipService.ToolTip="New Folder"
+                    Style="{StaticResource TransparentButtonStyle}" Padding="6">
+                <FontIcon Glyph="&#xE8F4;" FontSize="14" />
+            </Button>
+            <Button Grid.Column="3" Click="Delete_Click"
+                    ToolTipService.ToolTip="Delete"
+                    Style="{StaticResource TransparentButtonStyle}" Padding="6">
+                <FontIcon Glyph="&#xE74D;" FontSize="14" />
+            </Button>
+        </Grid>
+
+        <!-- Tree -->
+        <TreeView Grid.Row="1" x:Name="BinderTree"
+                  ItemsSource="{x:Bind ViewModel.Nodes, Mode=OneWay}"
+                  SelectionMode="Single"
+                  CanDragItems="True" CanReorderItems="True" AllowDrop="True"
+                  ItemInvoked="Tree_ItemInvoked"
+                  Padding="4,4">
+
+            <TreeView.ItemTemplate>
+                <DataTemplate x:DataType="vm:BinderItemViewModel">
+                    <TreeViewItem ItemsSource="{x:Bind Children}"
+                                  IsExpanded="True"
+                                  Style="{StaticResource BinderTreeViewItemStyle}">
+                        <TreeViewItem.ContextFlyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem Text="New Document" Click="ContextNewDoc_Click"
+                                                Tag="{x:Bind Id}">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A5;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="New Folder" Click="ContextNewFolder_Click"
+                                                Tag="{x:Bind Id}">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8F4;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="Rename" Click="ContextRename_Click"
+                                                Tag="{x:Bind Id}">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AC;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="Delete" Click="ContextDelete_Click"
+                                                Tag="{x:Bind Id}">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                            </MenuFlyout>
+                        </TreeViewItem.ContextFlyout>
+
+                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,1">
+                            <!-- Icon -->
+                            <FontIcon Grid.Column="0"
+                                      Glyph="{x:Bind IsDocument, Converter={StaticResource NodeIconConverter}}"
+                                      FontSize="13" Margin="0,0,6,0" Opacity="0.7" />
+
+                            <!-- Name (display) -->
+                            <TextBlock Grid.Column="1"
+                                       Text="{x:Bind Name, Mode=OneWay}"
+                                       TextTrimming="CharacterEllipsis"
+                                       Visibility="{x:Bind IsEditing, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+
+                            <!-- Name (editing) -->
+                            <TextBox Grid.Column="1"
+                                     Text="{x:Bind EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     Visibility="{x:Bind IsEditing, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                     KeyDown="RenameBox_KeyDown"
+                                     LostFocus="RenameBox_LostFocus"
+                                     Tag="{x:Bind Id}" />
+                        </Grid>
+                    </TreeViewItem>
+                </DataTemplate>
+            </TreeView.ItemTemplate>
+        </TreeView>
+    </Grid>
+</UserControl>

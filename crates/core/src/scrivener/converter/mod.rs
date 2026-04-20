@@ -18,6 +18,21 @@
 use chrono::Utc;
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
+
+static SCRIV_LINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"scrivlnk://([A-Fa-f0-9-]+)").unwrap());
+static SCR_TAG_HTML_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"&lt;[!]?\$Scr_[CP]s::\d+&gt;").unwrap());
+static SCR_TAG_RAW_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<[!]?\$Scr_[CP]s::\d+>").unwrap());
+static SCR_TAG_ESC_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\\<[!]?\\?\$Scr_[CP]s::\d+\\>").unwrap());
+static SCR_VAR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"&lt;\$\w+:\w+&gt;").unwrap());
+static EMPTY_STRONG_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<strong>\s*</strong>").unwrap());
+static EMPTY_EM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<em>\s*</em>").unwrap());
+static EMPTY_P_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<p>\s*</p>").unwrap());
 use std::fs;
 use std::path::Path;
 use uuid::Uuid;
@@ -38,11 +53,15 @@ use crate::utils::error::ChiknError;
 /// * `Err(ChiknError)` on conversion failure
 ///
 /// # Example
-/// ```rust
+/// ```no_run
+/// use std::path::Path;
+/// use chickenscratch_core::scrivener::converter::import_scriv;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let project = import_scriv(
 ///     Path::new("MyNovel.scriv"),
 ///     Path::new("MyNovel.chikn")
 /// )?;
+/// # Ok(()) }
 /// ```
 pub fn import_scriv(scriv_path: &Path, output_path: &Path) -> Result<Project, ChiknError> {
     // Find .scrivx file
@@ -57,7 +76,12 @@ pub fn import_scriv(scriv_path: &Path, output_path: &Path) -> Result<Project, Ch
     // Pre-pass: build Scrivener UUID -> chikn path map from the entire binder tree
     // This must happen before conversion so all links can be resolved
     let mut uuid_to_path: HashMap<String, String> = HashMap::new();
-    build_uuid_map(&scriv_project.binder, scriv_path, &mut uuid_to_path, "manuscript");
+    build_uuid_map(
+        &scriv_project.binder,
+        scriv_path,
+        &mut uuid_to_path,
+        "manuscript",
+    );
 
     // Convert binder items to documents and hierarchy
     let mut documents = HashMap::new();
@@ -144,7 +168,7 @@ fn build_uuid_map(
 
             "DraftFolder" | "Folder" => {
                 // For folders, map UUID to the first child doc if one exists
-                if let Some(path) = find_first_text_path(&item.children.items, scriv_path, target_folder) {
+                if let Some(path) = find_first_text_path(&item.children.items, target_folder) {
                     uuid_to_path.insert(item.uuid.clone(), path);
                 }
                 // Also map if the folder itself has content
@@ -152,9 +176,15 @@ fn build_uuid_map(
                 if rtf_path.exists() {
                     let name = item.title.clone().unwrap_or_else(|| "folder".to_string());
                     let slug = crate::utils::slug::slugify(&name);
-                    uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.md", target_folder, slug));
+                    uuid_to_path
+                        .insert(item.uuid.clone(), format!("{}/{}.md", target_folder, slug));
                 }
-                build_uuid_map(&item.children.items, scriv_path, uuid_to_path, target_folder);
+                build_uuid_map(
+                    &item.children.items,
+                    scriv_path,
+                    uuid_to_path,
+                    target_folder,
+                );
             }
 
             "Text" => {
@@ -163,16 +193,28 @@ fn build_uuid_map(
                 uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.md", target_folder, slug));
                 // Scrivener Text items can have children too
                 if !item.children.items.is_empty() {
-                    build_uuid_map(&item.children.items, scriv_path, uuid_to_path, target_folder);
+                    build_uuid_map(
+                        &item.children.items,
+                        scriv_path,
+                        uuid_to_path,
+                        target_folder,
+                    );
                 }
             }
 
             // Media types (PDF, Image, etc.) — map by file extension
             _ => {
-                if let Some(ext) = item.metadata.as_ref().and_then(|m| m.file_extension.as_deref()) {
+                if let Some(ext) = item
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.file_extension.as_deref())
+                {
                     let name = item.title.clone().unwrap_or_else(|| "untitled".to_string());
                     let slug = crate::utils::slug::slugify(&name);
-                    uuid_to_path.insert(item.uuid.clone(), format!("{}/{}.{}", target_folder, slug, ext));
+                    uuid_to_path.insert(
+                        item.uuid.clone(),
+                        format!("{}/{}.{}", target_folder, slug, ext),
+                    );
                 }
             }
         }
@@ -180,14 +222,14 @@ fn build_uuid_map(
 }
 
 /// Finds the .md path of the first Text item in a binder subtree.
-fn find_first_text_path(items: &[BinderItem], scriv_path: &Path, target_folder: &str) -> Option<String> {
+fn find_first_text_path(items: &[BinderItem], target_folder: &str) -> Option<String> {
     for item in items {
         if item.item_type == "Text" {
             let name = item.title.clone().unwrap_or_else(|| "untitled".to_string());
             let slug = crate::utils::slug::slugify(&name);
             return Some(format!("{}/{}.md", target_folder, slug));
         }
-        if let Some(path) = find_first_text_path(&item.children.items, scriv_path, target_folder) {
+        if let Some(path) = find_first_text_path(&item.children.items, target_folder) {
             return Some(path);
         }
     }
@@ -201,7 +243,14 @@ fn convert_binder_items(
     documents: &mut HashMap<String, Document>,
     uuid_to_path: &mut HashMap<String, String>,
 ) -> Result<Vec<TreeNode>, ChiknError> {
-    convert_binder_items_inner(items, scriv_path, documents, uuid_to_path, None, "manuscript")
+    convert_binder_items_inner(
+        items,
+        scriv_path,
+        documents,
+        uuid_to_path,
+        None,
+        "manuscript",
+    )
 }
 
 /// Converts Scrivener binder items with parent and target folder tracking
@@ -267,8 +316,14 @@ fn convert_binder_items_inner(
                             documents,
                         );
                         let doc_path = format!("{}/{}.md", target_folder, slug);
-                        let created = item.created.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
-                        let modified = item.modified.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
+                        let created = item
+                            .created
+                            .clone()
+                            .unwrap_or_else(|| Utc::now().to_rfc3339());
+                        let modified = item
+                            .modified
+                            .clone()
+                            .unwrap_or_else(|| Utc::now().to_rfc3339());
 
                         uuid_to_path.insert(item.uuid.clone(), doc_path.clone());
 
@@ -285,7 +340,7 @@ fn convert_binder_items_inner(
                             status: None,
                             keywords: None,
                             links: None,
-                    include_in_compile: true,
+                            include_in_compile: true,
                             word_count_target: 0,
                             compile_order: 0,
                             comments: Vec::new(),
@@ -360,9 +415,9 @@ fn convert_binder_items_inner(
                     keywords: meta.and_then(|m| m.keywords.clone()),
                     links: None,
                     include_in_compile: true,
-                            word_count_target: 0,
-                            compile_order: 0,
-                            comments: Vec::new(),
+                    word_count_target: 0,
+                    compile_order: 0,
+                    comments: Vec::new(),
                 };
 
                 documents.insert(doc_id.clone(), document);
@@ -402,8 +457,14 @@ fn convert_binder_items_inner(
                         // For now, record as a document entry so it appears in the tree
                         let doc_path = dest_rel.clone();
 
-                        let created = item.created.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
-                        let modified = item.modified.clone().unwrap_or_else(|| Utc::now().to_rfc3339());
+                        let created = item
+                            .created
+                            .clone()
+                            .unwrap_or_else(|| Utc::now().to_rfc3339());
+                        let modified = item
+                            .modified
+                            .clone()
+                            .unwrap_or_else(|| Utc::now().to_rfc3339());
 
                         let document = Document {
                             id: doc_id.clone(),
@@ -418,7 +479,7 @@ fn convert_binder_items_inner(
                             status: None,
                             keywords: None,
                             links: None,
-                    include_in_compile: true,
+                            include_in_compile: true,
                             word_count_target: 0,
                             compile_order: 0,
                             comments: Vec::new(),
@@ -439,7 +500,10 @@ fn convert_binder_items_inner(
                             format!("{}|{}", media_src.display(), dest_rel),
                         );
                     } else {
-                        eprintln!("Skipping binder item \"{}\" (type: {}, file not found)", title, other);
+                        eprintln!(
+                            "Skipping binder item \"{}\" (type: {}, file not found)",
+                            title, other
+                        );
                     }
                 } else {
                     eprintln!("Skipping binder item \"{}\" (type: {})", title, other);
@@ -458,6 +522,7 @@ fn convert_binder_items_inner(
 /// - `\<\$Scr_Ps::N\>` / `\<!\$Scr_Ps::N\>` → paragraph style tags, stripped
 /// - `\<\$Scr_Cs::N\>` / `\<!\$Scr_Cs::N\>` → character style tags, stripped
 /// - `{\\Scrv_annot ...}` → inline annotations, converted to HTML comments
+///
 /// Ensure the hierarchy has Manuscript, Research, and Trash at the top level.
 /// Loose items (not inside one of these) are moved into Manuscript.
 fn ensure_project_structure(mut hierarchy: Vec<TreeNode>) -> Vec<TreeNode> {
@@ -470,8 +535,7 @@ fn ensure_project_structure(mut hierarchy: Vec<TreeNode>) -> Vec<TreeNode> {
     for node in hierarchy.drain(..) {
         match &node {
             TreeNode::Folder { name, id, .. }
-                if name.to_lowercase() == "manuscript"
-                    || name.to_lowercase() == "draft" =>
+                if name.to_lowercase() == "manuscript" || name.to_lowercase() == "draft" =>
             {
                 // This is the manuscript folder — keep its ID
                 if let TreeNode::Folder { id, children, .. } = node {
@@ -479,17 +543,13 @@ fn ensure_project_structure(mut hierarchy: Vec<TreeNode>) -> Vec<TreeNode> {
                     manuscript_children.extend(children);
                 }
             }
-            TreeNode::Folder { name, .. }
-                if name.to_lowercase() == "research" =>
-            {
+            TreeNode::Folder { name, .. } if name.to_lowercase() == "research" => {
                 if let TreeNode::Folder { id, children, .. } = node {
                     research_id = Some(id.clone());
                     research_children.extend(children);
                 }
             }
-            TreeNode::Folder { name, .. }
-                if name.to_lowercase() == "trash" =>
-            {
+            TreeNode::Folder { name, .. } if name.to_lowercase() == "trash" => {
                 // Skip — we'll create our own
             }
             _ => {
@@ -524,8 +584,7 @@ fn clean_scrivener_markup(content: &str, uuid_to_path: &HashMap<String, String>)
 
     // Rewrite scrivlnk:// links to relative paths
     // In HTML: <a href="scrivlnk://UUID">text</a>
-    let scriv_link_re = Regex::new(r"scrivlnk://([A-Fa-f0-9-]+)").unwrap();
-    result = scriv_link_re
+    result = SCRIV_LINK_RE
         .replace_all(&result, |caps: &regex::Captures| {
             let uuid = &caps[1];
             match uuid_to_path.get(uuid) {
@@ -538,21 +597,17 @@ fn clean_scrivener_markup(content: &str, uuid_to_path: &HashMap<String, String>)
     // Strip Scrivener compile style tags (HTML-escaped by Pandoc)
     // &lt;$Scr_Ps::N&gt; and &lt;!$Scr_Ps::N&gt;
     // &lt;$Scr_Cs::N&gt; and &lt;!$Scr_Cs::N&gt;
-    let scr_tag_html = Regex::new(r"&lt;[!]?\$Scr_[CP]s::\d+&gt;").unwrap();
-    result = scr_tag_html.replace_all(&result, "").to_string();
+    result = SCR_TAG_HTML_RE.replace_all(&result, "").to_string();
 
     // Also catch unescaped variants
-    let scr_tag_raw = Regex::new(r"<[!]?\$Scr_[CP]s::\d+>").unwrap();
-    result = scr_tag_raw.replace_all(&result, "").to_string();
+    result = SCR_TAG_RAW_RE.replace_all(&result, "").to_string();
 
     // Also catch backslash-escaped variants from older conversions
-    let scr_tag_esc = Regex::new(r"\\<[!]?\\?\$Scr_[CP]s::\d+\\>").unwrap();
-    result = scr_tag_esc.replace_all(&result, "").to_string();
+    result = SCR_TAG_ESC_RE.replace_all(&result, "").to_string();
 
     // Strip Scrivener custom variable placeholders
     // &lt;$custom:shortcut&gt; etc.
-    let scr_var = Regex::new(r"&lt;\$\w+:\w+&gt;").unwrap();
-    result = scr_var.replace_all(&result, "").to_string();
+    result = SCR_VAR_RE.replace_all(&result, "").to_string();
 
     // Scrivener uses hard line breaks between paragraphs in RTF.
     // Pandoc converts these to <br /> within a single <p> tag.
@@ -561,14 +616,9 @@ fn clean_scrivener_markup(content: &str, uuid_to_path: &HashMap<String, String>)
     result = result.replace("<br/>", "</p><p>");
 
     // Clean up empty elements left by stripped tags
-    let empty_strong = Regex::new(r"<strong>\s*</strong>").unwrap();
-    result = empty_strong.replace_all(&result, "").to_string();
-
-    let empty_em = Regex::new(r"<em>\s*</em>").unwrap();
-    result = empty_em.replace_all(&result, "").to_string();
-
-    let empty_p = Regex::new(r"<p>\s*</p>").unwrap();
-    result = empty_p.replace_all(&result, "").to_string();
+    result = EMPTY_STRONG_RE.replace_all(&result, "").to_string();
+    result = EMPTY_EM_RE.replace_all(&result, "").to_string();
+    result = EMPTY_P_RE.replace_all(&result, "").to_string();
 
     result
 }
@@ -625,8 +675,8 @@ mod tests {
 
         // Verify basic structure
         assert!(project.name.contains("Corn")); // Filename varies
-        assert!(project.documents.len() > 0);
-        assert!(project.hierarchy.len() > 0);
+        assert!(!project.documents.is_empty());
+        assert!(!project.hierarchy.is_empty());
 
         // Verify project was written to disk
         assert!(output_path.exists());

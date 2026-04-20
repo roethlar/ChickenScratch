@@ -60,7 +60,8 @@ pub fn create_from_template(
         .ok_or_else(|| ChiknError::NotFound(format!("Template not found: {}", template_id)))?;
 
     let doc_id = uuid::Uuid::new_v4().to_string();
-    let slug = chickenscratch_core::utils::slug::unique_slug(&name, "manuscript/", &project.documents);
+    let slug =
+        chickenscratch_core::utils::slug::unique_slug(&name, "manuscript/", &project.documents);
     let doc_path = format!("manuscript/{}.md", slug);
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -89,8 +90,14 @@ pub fn create_from_template(
             // Default to Manuscript folder
             let ms_id = project.hierarchy.iter().find_map(|n| {
                 if let TreeNode::Folder { id, name, .. } = n {
-                    if name == "Manuscript" { Some(id.clone()) } else { None }
-                } else { None }
+                    if name == "Manuscript" {
+                        Some(id.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
             });
             if let Some(mid) = ms_id {
                 hierarchy::add_child_to_folder(&mut project.hierarchy, &mid, node)?;
@@ -105,12 +112,11 @@ pub fn create_from_template(
 }
 
 #[tauri::command]
-pub fn save_as_template(
-    project_path: String,
-    doc_id: String,
-) -> Result<Template, ChiknError> {
+pub fn save_as_template(project_path: String, doc_id: String) -> Result<Template, ChiknError> {
     let project = reader::read_project(Path::new(&project_path))?;
-    let doc = project.documents.get(&doc_id)
+    let doc = project
+        .documents
+        .get(&doc_id)
         .ok_or_else(|| ChiknError::NotFound(format!("Document not found: {}", doc_id)))?;
 
     // For now, return the template data. In the future, save to templates/ folder.

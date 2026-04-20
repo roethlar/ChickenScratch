@@ -38,7 +38,10 @@ export function Revisions() {
     setDrafts(drs);
   }, [project]);
 
+  // Loading revisions and drafts from an external system (git) — an effect is
+  // the correct boundary for this async side-effect that sets multiple states.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, [refresh]);
 

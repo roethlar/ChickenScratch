@@ -10,9 +10,9 @@
 //! - Find nodes by ID
 //!
 //! ## Example
-//! ```rust
-//! use crate::core::project::hierarchy::add_document_to_hierarchy;
-//! use crate::models::TreeNode;
+//! ```
+//! use chickenscratch_core::core::project::hierarchy::add_document_to_hierarchy;
+//! use chickenscratch_core::TreeNode;
 //!
 //! let mut hierarchy = Vec::new();
 //! let node = TreeNode::Document {
@@ -33,8 +33,14 @@ use crate::utils::error::ChiknError;
 /// * `node` - TreeNode to add
 ///
 /// # Example
-/// ```rust
-/// add_document_to_hierarchy(&mut project.hierarchy, new_doc);
+/// ```
+/// # use chickenscratch_core::core::project::hierarchy::add_document_to_hierarchy;
+/// # use chickenscratch_core::TreeNode;
+/// # let mut project_hierarchy: Vec<TreeNode> = Vec::new();
+/// # let new_doc = TreeNode::Document {
+/// #     id: "doc1".into(), name: "Doc".into(), path: "manuscript/doc.md".into(),
+/// # };
+/// add_document_to_hierarchy(&mut project_hierarchy, new_doc);
 /// ```
 pub fn add_document_to_hierarchy(hierarchy: &mut Vec<TreeNode>, node: TreeNode) {
     hierarchy.push(node);
@@ -53,11 +59,21 @@ pub fn add_document_to_hierarchy(hierarchy: &mut Vec<TreeNode>, node: TreeNode) 
 /// * `Err(ChiknError::InvalidFormat)` if parent is a document (not a folder)
 ///
 /// # Example
-/// ```rust
-/// add_child_to_folder(&mut project.hierarchy, "folder1", new_doc)?;
+/// ```
+/// # use chickenscratch_core::core::project::hierarchy::add_child_to_folder;
+/// # use chickenscratch_core::TreeNode;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # let mut project_hierarchy: Vec<TreeNode> = vec![TreeNode::Folder {
+/// #     id: "folder1".into(), name: "F".into(), children: Vec::new(),
+/// # }];
+/// # let new_doc = TreeNode::Document {
+/// #     id: "doc1".into(), name: "Doc".into(), path: "manuscript/doc.md".into(),
+/// # };
+/// add_child_to_folder(&mut project_hierarchy, "folder1", new_doc)?;
+/// # Ok(()) }
 /// ```
 pub fn add_child_to_folder(
-    hierarchy: &mut Vec<TreeNode>,
+    hierarchy: &mut [TreeNode],
     parent_id: &str,
     node: TreeNode,
 ) -> Result<(), ChiknError> {
@@ -66,7 +82,7 @@ pub fn add_child_to_folder(
 
 /// Recursive helper to find folder and add child
 fn find_and_add_child(
-    nodes: &mut Vec<TreeNode>,
+    nodes: &mut [TreeNode],
     parent_id: &str,
     child: TreeNode,
 ) -> Result<(), ChiknError> {
@@ -109,8 +125,18 @@ fn find_and_add_child(
 /// * `Err(ChiknError::NotFound)` if node not found
 ///
 /// # Example
-/// ```rust
-/// let removed = remove_node(&mut project.hierarchy, "doc1")?;
+/// ```
+/// # use chickenscratch_core::core::project::hierarchy::{
+/// #     add_document_to_hierarchy, remove_node,
+/// # };
+/// # use chickenscratch_core::TreeNode;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # let mut project_hierarchy: Vec<TreeNode> = Vec::new();
+/// # add_document_to_hierarchy(&mut project_hierarchy, TreeNode::Document {
+/// #     id: "doc1".into(), name: "Doc".into(), path: "manuscript/doc.md".into(),
+/// # });
+/// let removed = remove_node(&mut project_hierarchy, "doc1")?;
+/// # Ok(()) }
 /// ```
 pub fn remove_node(hierarchy: &mut Vec<TreeNode>, node_id: &str) -> Result<TreeNode, ChiknError> {
     remove_node_recursive(hierarchy, node_id)
@@ -146,8 +172,11 @@ fn remove_node_recursive(nodes: &mut Vec<TreeNode>, node_id: &str) -> Result<Tre
 /// * `None` if not found
 ///
 /// # Example
-/// ```rust
-/// if let Some(node) = find_node(&project.hierarchy, "doc1") {
+/// ```
+/// # use chickenscratch_core::core::project::hierarchy::find_node;
+/// # use chickenscratch_core::TreeNode;
+/// # let project_hierarchy: Vec<TreeNode> = Vec::new();
+/// if let Some(node) = find_node(&project_hierarchy, "doc1") {
 ///     println!("Found: {}", node.name());
 /// }
 /// ```
@@ -183,12 +212,24 @@ fn find_node_recursive<'a>(nodes: &'a [TreeNode], node_id: &str) -> Option<&'a T
 /// * `Err(ChiknError)` if node or parent not found
 ///
 /// # Example
-/// ```rust
+/// ```
+/// # use chickenscratch_core::core::project::hierarchy::{
+/// #     add_document_to_hierarchy, move_node,
+/// # };
+/// # use chickenscratch_core::TreeNode;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # let mut project_hierarchy: Vec<TreeNode> = vec![TreeNode::Folder {
+/// #     id: "folder1".into(), name: "F".into(), children: Vec::new(),
+/// # }];
+/// # add_document_to_hierarchy(&mut project_hierarchy, TreeNode::Document {
+/// #     id: "doc1".into(), name: "Doc".into(), path: "manuscript/doc.md".into(),
+/// # });
 /// // Move document to root level
-/// move_node(&mut project.hierarchy, "doc1", None)?;
+/// move_node(&mut project_hierarchy, "doc1", None)?;
 ///
 /// // Move document into folder
-/// move_node(&mut project.hierarchy, "doc1", Some("folder1"))?;
+/// move_node(&mut project_hierarchy, "doc1", Some("folder1"))?;
+/// # Ok(()) }
 /// ```
 pub fn move_node(
     hierarchy: &mut Vec<TreeNode>,
@@ -225,9 +266,21 @@ pub fn move_node(
 /// * `Err(ChiknError)` if node not found or index out of bounds
 ///
 /// # Example
-/// ```rust
+/// ```
+/// # use chickenscratch_core::core::project::hierarchy::{
+/// #     add_document_to_hierarchy, reorder_node,
+/// # };
+/// # use chickenscratch_core::TreeNode;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # let mut project_hierarchy: Vec<TreeNode> = Vec::new();
+/// # for id in ["doc1", "doc2"] {
+/// #     add_document_to_hierarchy(&mut project_hierarchy, TreeNode::Document {
+/// #         id: id.into(), name: id.into(), path: format!("manuscript/{}.md", id),
+/// #     });
+/// # }
 /// // Move first item to second position
-/// reorder_node(&mut project.hierarchy, "doc1", 1)?;
+/// reorder_node(&mut project_hierarchy, "doc1", 1)?;
+/// # Ok(()) }
 /// ```
 pub fn reorder_node(
     hierarchy: &mut Vec<TreeNode>,

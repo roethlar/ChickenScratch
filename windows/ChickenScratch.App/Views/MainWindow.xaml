@@ -1,0 +1,120 @@
+<Window
+    x:Class="ChickenScratch.App.Views.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ChickenScratch.App.Controls"
+    xmlns:views="using:ChickenScratch.App.Views"
+    Title="ChickenScratch">
+
+    <Grid x:Name="RootGrid" RowDefinitions="Auto,*,Auto">
+
+        <!-- Custom Title Bar -->
+        <Grid x:Name="AppTitleBar" Grid.Row="0" Height="48" Background="Transparent">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" MinWidth="120" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0"
+                       Text="ChickenScratch"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       VerticalAlignment="Center" Margin="16,0,0,0" Opacity="0.8" />
+
+            <TextBlock Grid.Column="1"
+                       VerticalAlignment="Center" HorizontalAlignment="Center"
+                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                       Text="{x:Bind ViewModel.ProjectTitle, Mode=OneWay}"
+                       Opacity="0.9" />
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                        VerticalAlignment="Center" Margin="0,0,8,0">
+                <Button Click="ToggleBinder_Click"
+                        ToolTipService.ToolTip="Toggle Binder"
+                        Style="{StaticResource TransparentButtonStyle}">
+                    <FontIcon Glyph="&#xE700;" FontSize="14" />
+                </Button>
+                <Button Click="ToggleInspector_Click"
+                        ToolTipService.ToolTip="Toggle Inspector"
+                        Style="{StaticResource TransparentButtonStyle}">
+                    <FontIcon Glyph="&#xE946;" FontSize="14" />
+                </Button>
+                <Button Click="SaveRevision_Click"
+                        ToolTipService.ToolTip="Save Revision"
+                        Style="{StaticResource TransparentButtonStyle}">
+                    <FontIcon Glyph="&#xE74E;" FontSize="14" />
+                </Button>
+                <Button Click="OpenSettings_Click"
+                        ToolTipService.ToolTip="Settings"
+                        Style="{StaticResource TransparentButtonStyle}">
+                    <FontIcon Glyph="&#xE713;" FontSize="14" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Three-column layout -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="BinderColumn" Width="240" MinWidth="0" MaxWidth="480" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="*" MinWidth="320" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition x:Name="InspectorColumn" Width="260" MinWidth="0" MaxWidth="420" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Binder -->
+            <controls:BinderControl Grid.Column="0"
+                x:Name="BinderPanel"
+                ViewModel="{x:Bind ViewModel.Binder, Mode=OneWay}"
+                DocumentSelected="Binder_DocumentSelected" />
+
+            <Border Grid.Column="1" Width="1"
+                    Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+            <!-- Editor / Welcome -->
+            <Grid Grid.Column="2">
+                <views:WelcomePage x:Name="WelcomePanel"
+                    Visibility="{x:Bind ViewModel.WelcomeVisibility, Mode=OneWay}"
+                    ProjectOpened="Welcome_ProjectOpened"
+                    ProjectCreated="Welcome_ProjectCreated" />
+
+                <controls:EditorControl x:Name="EditorPanel"
+                    ViewModel="{x:Bind ViewModel.Editor, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.EditorVisibility, Mode=OneWay}" />
+            </Grid>
+
+            <Border Grid.Column="3" Width="1"
+                    Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+            <!-- Inspector -->
+            <controls:InspectorControl Grid.Column="4"
+                x:Name="InspectorPanel"
+                ViewModel="{x:Bind ViewModel.Inspector, Mode=OneWay}" />
+        </Grid>
+
+        <!-- Status bar -->
+        <Border Grid.Row="2" Height="28"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="12,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" VerticalAlignment="Center"
+                           Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                           Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16"
+                            VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6"
+                               Text="{x:Bind ViewModel.Editor.WordCountText, Mode=OneWay}" />
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6"
+                               Text="{x:Bind ViewModel.Editor.SaveStatusText, Mode=OneWay}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+    </Grid>
+</Window>

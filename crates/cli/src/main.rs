@@ -51,7 +51,10 @@ fn detect_format(path: &Path) -> Option<Format> {
     }
 }
 
-fn scriv_to_chikn(scriv_path: &Path, output: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
+fn scriv_to_chikn(
+    scriv_path: &Path,
+    output: Option<&Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
     if !scriv_path.exists() {
         return Err(format!("Path does not exist: {}", scriv_path.display()).into());
     }
@@ -81,7 +84,10 @@ fn scriv_to_chikn(scriv_path: &Path, output: Option<&Path>) -> Result<(), Box<dy
     Ok(())
 }
 
-fn chikn_to_scriv(chikn_path: &Path, output: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
+fn chikn_to_scriv(
+    chikn_path: &Path,
+    output: Option<&Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
     if !chikn_path.exists() {
         return Err(format!("Path does not exist: {}", chikn_path.display()).into());
     }

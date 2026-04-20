@@ -134,6 +134,8 @@ export function Editor() {
       editor.commands.setContent(md);
       setDirty(false);
     }
+    // Only want to reload content on id change; content changes flow through the editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDoc?.id, editor]);
 
   // Search highlight: find and select first match when navigating from search
@@ -158,6 +160,7 @@ export function Editor() {
       }
       useProjectStore.setState({ searchHighlight: null });
     }, 100);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchHighlight, activeDoc?.id, editor]);
 
   useEffect(() => {

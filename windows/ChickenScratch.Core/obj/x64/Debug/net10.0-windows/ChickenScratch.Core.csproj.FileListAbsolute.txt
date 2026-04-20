@@ -1,0 +1,13 @@
+D:\source\ChickenScratch\windows\ChickenScratch.Core\bin\x64\Debug\net10.0-windows\ChickenScratch.Core.deps.json
+D:\source\ChickenScratch\windows\ChickenScratch.Core\bin\x64\Debug\net10.0-windows\ChickenScratch.Core.dll
+D:\source\ChickenScratch\windows\ChickenScratch.Core\bin\x64\Debug\net10.0-windows\ChickenScratch.Core.pdb
+D:\source\ChickenScratch\windows\ChickenScratch.Core\obj\x64\Debug\net10.0-windows\ChickenScratch.Core.csproj.AssemblyReference.cache
+D:\source\ChickenScratch\windows\ChickenScratch.Core\obj\x64\Debug\net10.0-windows\ChickenScratch.Core.GeneratedMSBuildEditorConfig.editorconfig
+D:\source\ChickenScratch\windows\ChickenScratch.Core\obj\x64\Debug\net10.0-windows\ChickenScratch.Core.AssemblyInfoInputs.cache
+D:\source\ChickenScratch\windows\ChickenScratch.Core\obj\x64\Debug\net10.0-windows\ChickenScratch.Core.AssemblyInfo.cs
+D:\source\ChickenScratch\windows\ChickenScratch.Core\obj\x64\Debug\net10.0-windows\ChickenScratch.Core.csproj.CoreCompileInputs.cache
+D:\source\ChickenScratch\windows\ChickenScratch.Core\obj\x64\Debug\net10.0-windows\ChickenScratch.Core.sourcelink.json
+D:\source\ChickenScratch\windows\ChickenScratch.Core\obj\x64\Debug\net10.0-windows\ChickenScratch.Core.dll
+D:\source\ChickenScratch\windows\ChickenScratch.Core\obj\x64\Debug\net10.0-windows\refint\ChickenScratch.Core.dll
+D:\source\ChickenScratch\windows\ChickenScratch.Core\obj\x64\Debug\net10.0-windows\ChickenScratch.Core.pdb
+D:\source\ChickenScratch\windows\ChickenScratch.Core\obj\x64\Debug\net10.0-windows\ref\ChickenScratch.Core.dll

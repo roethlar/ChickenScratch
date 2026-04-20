@@ -139,7 +139,7 @@ export function Settings({
                     onChange={(e) =>
                       update("general", "pandoc_path", e.target.value || null)
                     }
-                    placeholder="/usr/local/bin/pandoc"
+                    placeholder="e.g. /usr/local/bin/pandoc or C:\Program Files\Pandoc\pandoc.exe"
                   />
                   {pandocVersion && (
                     <p className="settings-hint">

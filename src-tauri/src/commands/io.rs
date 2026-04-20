@@ -9,6 +9,7 @@ use std::path::Path;
 use std::process::Command;
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn compile_project(
     project_path: String,
     output_path: String,
@@ -51,9 +52,27 @@ pub fn get_compile_formats() -> Vec<(String, String)> {
 
 /// File extensions that Pandoc can convert to HTML
 const PANDOC_IMPORT_EXTENSIONS: &[&str] = &[
-    "docx", "doc", "odt", "rtf", "epub", "latex", "tex", "md", "markdown",
-    "rst", "org", "textile", "mediawiki", "html", "htm", "txt", "csv",
-    "json", "fb2", "pptx", "xlsx",
+    "docx",
+    "doc",
+    "odt",
+    "rtf",
+    "epub",
+    "latex",
+    "tex",
+    "md",
+    "markdown",
+    "rst",
+    "org",
+    "textile",
+    "mediawiki",
+    "html",
+    "htm",
+    "txt",
+    "csv",
+    "json",
+    "fb2",
+    "pptx",
+    "xlsx",
 ];
 
 /// Import a file into an existing project. Uses Pandoc for conversion when needed.
@@ -174,12 +193,18 @@ fn find_pandoc() -> Result<String, ChiknError> {
         }
     }
 
-    for candidate in &[
+    #[cfg(target_os = "windows")]
+    let candidates: &[&str] = &["pandoc", "pandoc.exe"];
+
+    #[cfg(not(target_os = "windows"))]
+    let candidates: &[&str] = &[
         "pandoc",
         "/usr/local/bin/pandoc",
         "/opt/homebrew/bin/pandoc",
         "/usr/bin/pandoc",
-    ] {
+    ];
+
+    for candidate in candidates {
         if Command::new(candidate)
             .arg("--version")
             .output()
@@ -300,14 +325,20 @@ fn count_words_md(md: &str) -> usize {
     for ch in md.chars() {
         match ch {
             '<' => in_tag = true,
-            '>' => { in_tag = false; text.push(' '); },
+            '>' => {
+                in_tag = false;
+                text.push(' ');
+            }
             _ if !in_tag => text.push(ch),
-            _ => {},
+            _ => {}
         }
     }
     // Also skip pure markdown punctuation tokens (#, *, -, etc.)
     text.split_whitespace()
-        .filter(|w| !w.chars().all(|c| matches!(c, '#' | '*' | '-' | '_' | '`' | '>' | '=' | '|')))
+        .filter(|w| {
+            !w.chars()
+                .all(|c| matches!(c, '#' | '*' | '-' | '_' | '`' | '>' | '=' | '|'))
+        })
         .count()
 }
 
@@ -324,7 +355,9 @@ pub struct DayEntry {
 
 #[tauri::command]
 pub fn get_writing_history(project_path: String) -> Result<WritingHistory, ChiknError> {
-    let path = Path::new(&project_path).join("settings").join("writing-history.json");
+    let path = Path::new(&project_path)
+        .join("settings")
+        .join("writing-history.json");
     if !path.exists() {
         return Ok(WritingHistory::default());
     }
@@ -373,7 +406,9 @@ pub fn get_project_stats(project_path: String) -> Result<ProjectStats, ChiknErro
     let mut manuscript_words = 0;
 
     for doc in project.documents.values() {
-        if !doc.path.ends_with(".md") { continue; }
+        if !doc.path.ends_with(".md") {
+            continue;
+        }
         let words = count_words_md(&doc.content);
         total_words += words;
         if doc.path.starts_with("manuscript/") {
@@ -386,7 +421,7 @@ pub fn get_project_stats(project_path: String) -> Result<ProjectStats, ChiknErro
             include_in_compile: doc.include_in_compile,
         });
     }
-    docs.sort_by(|a, b| b.words.cmp(&a.words));
+    docs.sort_by_key(|d| std::cmp::Reverse(d.words));
 
     Ok(ProjectStats {
         total_words,

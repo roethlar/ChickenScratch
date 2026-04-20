@@ -20,7 +20,9 @@ pub fn save_ai_settings(ai: AiSettings) -> Result<(), ChiknError> {
 pub fn ai_summarize(content: String) -> Result<String, ChiknError> {
     let settings = get_app_settings();
     if !settings.ai.enabled {
-        return Err(ChiknError::Unknown("AI features are disabled. Enable in Settings.".to_string()));
+        return Err(ChiknError::Unknown(
+            "AI features are disabled. Enable in Settings.".to_string(),
+        ));
     }
 
     let plain = strip_html(&content);
@@ -28,7 +30,11 @@ pub fn ai_summarize(content: String) -> Result<String, ChiknError> {
         return Ok(String::new());
     }
 
-    let excerpt = if plain.len() > 2000 { &plain[..2000] } else { &plain };
+    let excerpt = if plain.len() > 2000 {
+        &plain[..2000]
+    } else {
+        &plain
+    };
     let prompt = format!(
         "Summarize this scene in one sentence (max 20 words). Just the summary, no preamble:\n\n{}",
         excerpt
@@ -42,7 +48,9 @@ pub fn ai_summarize(content: String) -> Result<String, ChiknError> {
 pub fn ai_transform(content: String, operation: String) -> Result<String, ChiknError> {
     let settings = get_app_settings();
     if !settings.ai.enabled {
-        return Err(ChiknError::Unknown("AI features are disabled. Enable in Settings.".to_string()));
+        return Err(ChiknError::Unknown(
+            "AI features are disabled. Enable in Settings.".to_string(),
+        ));
     }
 
     let plain = strip_html(&content);
@@ -50,7 +58,11 @@ pub fn ai_transform(content: String, operation: String) -> Result<String, ChiknE
         return Ok(String::new());
     }
 
-    let excerpt = if plain.len() > 4000 { &plain[..4000] } else { &plain };
+    let excerpt = if plain.len() > 4000 {
+        &plain[..4000]
+    } else {
+        &plain
+    };
 
     let instruction = match operation.as_str() {
         "polish" => "Improve the writing quality of this text. Fix grammar, improve word choice, and enhance clarity. Keep the same meaning and tone. Return only the improved text, no commentary.",
@@ -65,7 +77,10 @@ pub fn ai_transform(content: String, operation: String) -> Result<String, ChiknE
 }
 
 fn strip_html(html: &str) -> String {
-    regex::Regex::new(r"<[^>]*>").unwrap().replace_all(html, "").to_string()
+    regex::Regex::new(r"<[^>]*>")
+        .unwrap()
+        .replace_all(html, "")
+        .to_string()
 }
 
 /// Unified AI call using reqwest
@@ -79,7 +94,10 @@ fn call_ai(settings: &AiSettings, prompt: &str, max_tokens: u32) -> Result<Strin
         "ollama" => call_ollama(&client, settings, prompt),
         "anthropic" => call_anthropic(&client, settings, prompt, max_tokens),
         "openai" => call_openai(&client, settings, prompt, max_tokens),
-        other => Err(ChiknError::Unknown(format!("Unknown AI provider: {}", other))),
+        other => Err(ChiknError::Unknown(format!(
+            "Unknown AI provider: {}",
+            other
+        ))),
     }
 }
 
@@ -88,7 +106,10 @@ fn call_ollama(
     settings: &AiSettings,
     prompt: &str,
 ) -> Result<String, ChiknError> {
-    let endpoint = settings.endpoint.as_deref().unwrap_or("http://localhost:11434");
+    let endpoint = settings
+        .endpoint
+        .as_deref()
+        .unwrap_or("http://localhost:11434");
     let url = format!("{}/api/generate", endpoint);
 
     let body = serde_json::json!({
@@ -97,12 +118,12 @@ fn call_ollama(
         "stream": false
     });
 
-    let resp = client.post(&url)
-        .json(&body)
-        .send()
-        .map_err(|e| ChiknError::Unknown(format!("Ollama request failed: {}. Is Ollama running?", e)))?;
+    let resp = client.post(&url).json(&body).send().map_err(|e| {
+        ChiknError::Unknown(format!("Ollama request failed: {}. Is Ollama running?", e))
+    })?;
 
-    let json: serde_json::Value = resp.json()
+    let json: serde_json::Value = resp
+        .json()
         .map_err(|e| ChiknError::Unknown(format!("Invalid Ollama response: {}", e)))?;
 
     Ok(json["response"].as_str().unwrap_or("").trim().to_string())
@@ -114,8 +135,11 @@ fn call_anthropic(
     prompt: &str,
     max_tokens: u32,
 ) -> Result<String, ChiknError> {
-    let api_key = settings.api_key.as_deref()
-        .ok_or_else(|| ChiknError::Unknown("Anthropic API key not configured. Set it in Settings > AI.".to_string()))?;
+    let api_key = settings.api_key.as_deref().ok_or_else(|| {
+        ChiknError::Unknown(
+            "Anthropic API key not configured. Set it in Settings > AI.".to_string(),
+        )
+    })?;
 
     let body = serde_json::json!({
         "model": settings.model,
@@ -123,7 +147,8 @@ fn call_anthropic(
         "messages": [{"role": "user", "content": prompt}]
     });
 
-    let resp = client.post("https://api.anthropic.com/v1/messages")
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
         .header("Content-Type", "application/json")
         .header("x-api-key", api_key)
         .header("anthropic-version", "2023-06-01")
@@ -131,14 +156,19 @@ fn call_anthropic(
         .send()
         .map_err(|e| ChiknError::Unknown(format!("Anthropic request failed: {}", e)))?;
 
-    let json: serde_json::Value = resp.json()
+    let json: serde_json::Value = resp
+        .json()
         .map_err(|e| ChiknError::Unknown(format!("Invalid Anthropic response: {}", e)))?;
 
     if let Some(err) = json["error"]["message"].as_str() {
         return Err(ChiknError::Unknown(format!("Anthropic error: {}", err)));
     }
 
-    Ok(json["content"][0]["text"].as_str().unwrap_or("").trim().to_string())
+    Ok(json["content"][0]["text"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_string())
 }
 
 fn call_openai(
@@ -147,10 +177,14 @@ fn call_openai(
     prompt: &str,
     max_tokens: u32,
 ) -> Result<String, ChiknError> {
-    let api_key = settings.api_key.as_deref()
-        .ok_or_else(|| ChiknError::Unknown("OpenAI API key not configured. Set it in Settings > AI.".to_string()))?;
+    let api_key = settings.api_key.as_deref().ok_or_else(|| {
+        ChiknError::Unknown("OpenAI API key not configured. Set it in Settings > AI.".to_string())
+    })?;
 
-    let endpoint = settings.endpoint.as_deref().unwrap_or("https://api.openai.com");
+    let endpoint = settings
+        .endpoint
+        .as_deref()
+        .unwrap_or("https://api.openai.com");
 
     let body = serde_json::json!({
         "model": settings.model,
@@ -158,19 +192,25 @@ fn call_openai(
         "messages": [{"role": "user", "content": prompt}]
     });
 
-    let resp = client.post(format!("{}/v1/chat/completions", endpoint))
+    let resp = client
+        .post(format!("{}/v1/chat/completions", endpoint))
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&body)
         .send()
         .map_err(|e| ChiknError::Unknown(format!("OpenAI request failed: {}", e)))?;
 
-    let json: serde_json::Value = resp.json()
+    let json: serde_json::Value = resp
+        .json()
         .map_err(|e| ChiknError::Unknown(format!("Invalid OpenAI response: {}", e)))?;
 
     if let Some(err) = json["error"]["message"].as_str() {
         return Err(ChiknError::Unknown(format!("OpenAI error: {}", err)));
     }
 
-    Ok(json["choices"][0]["message"]["content"].as_str().unwrap_or("").trim().to_string())
+    Ok(json["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_string())
 }

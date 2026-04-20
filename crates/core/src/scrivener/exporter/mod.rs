@@ -36,8 +36,14 @@ use crate::utils::error::ChiknError;
 /// * `Err(ChiknError)` on export failure
 ///
 /// # Example
-/// ```rust
+/// ```no_run
+/// use std::path::Path;
+/// use chickenscratch_core::scrivener::exporter::export_to_scriv;
+/// use chickenscratch_core::core::project::reader::read_project;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # let project = read_project(Path::new("MyNovel.chikn"))?;
 /// export_to_scriv(&project, Path::new("MyNovel.scriv"))?;
+/// # Ok(()) }
 /// ```
 pub fn export_to_scriv(project: &Project, output_path: &Path) -> Result<(), ChiknError> {
     // Create .scriv directory structure
@@ -204,13 +210,9 @@ fn generate_binder_xml(items: &[BinderItem], indent_level: usize) -> String {
     let mut xml = String::new();
 
     for item in items {
-        let title = item
-            .title
-            .as_ref()
-            .map(|s| s.as_str())
-            .unwrap_or("Untitled");
-        let created = item.created.as_ref().map(|s| s.as_str()).unwrap_or("");
-        let modified = item.modified.as_ref().map(|s| s.as_str()).unwrap_or("");
+        let title = item.title.as_deref().unwrap_or("Untitled");
+        let created = item.created.as_deref().unwrap_or("");
+        let modified = item.modified.as_deref().unwrap_or("");
 
         xml.push_str(&format!(
             r#"{}<BinderItem UUID="{}" Type="{}" Created="{}" Modified="{}">

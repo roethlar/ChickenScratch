@@ -7,6 +7,10 @@ import { DialogProvider } from './components/shared/Dialog.tsx'
 import { ToastProvider } from './components/shared/Toast.tsx'
 import { ErrorBoundary } from './components/shared/ErrorBoundary.tsx'
 
+window.addEventListener("unhandledrejection", (event) => {
+  console.error("Unhandled promise rejection:", event.reason);
+});
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>

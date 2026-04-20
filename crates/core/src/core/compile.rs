@@ -61,7 +61,7 @@ pub fn compile(
 
     let separator = opts.section_separator.as_deref().unwrap_or("# # #");
     let doc_title = title.unwrap_or(&project.name);
-    let doc_author = author.or_else(|| project.metadata.author.as_deref());
+    let doc_author = author.or(project.metadata.author.as_deref());
 
     // Collect manuscript sections in order, respecting compile_order
     let mut ordered_docs: Vec<(i32, usize, String)> = Vec::new(); // (compile_order, hierarchy_index, content)
@@ -80,10 +80,7 @@ pub fn compile(
     }
 
     // Calculate approximate word count for title page
-    let word_count: usize = sections
-        .iter()
-        .map(|s| s.split_whitespace().count())
-        .sum();
+    let word_count: usize = sections.iter().map(|s| s.split_whitespace().count()).sum();
 
     // Build the markdown document
     let mut md = String::new();
@@ -135,8 +132,10 @@ pub fn compile(
 
     // PDF-specific
     if format == "pdf" {
-        cmd.arg("--variable").arg(format!("geometry:margin={}in", margin));
-        cmd.arg("--variable").arg(format!("fontsize={}pt", font_size as u32));
+        cmd.arg("--variable")
+            .arg(format!("geometry:margin={}in", margin));
+        cmd.arg("--variable")
+            .arg(format!("fontsize={}pt", font_size as u32));
         if !opts.manuscript_format {
             cmd.arg("--variable").arg(format!("mainfont={}", font));
         }
@@ -188,7 +187,6 @@ fn collect_ordered_sections(
         }
     }
 }
-
 
 fn pandoc_format(format: &str) -> &str {
     match format {

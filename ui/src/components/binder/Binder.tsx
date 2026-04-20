@@ -85,8 +85,10 @@ function BinderInner() {
   const project = useProjectStore((s) => s.project);
   const activeDocId = useProjectStore((s) => s.activeDocId);
   const selectDocument = useProjectStore((s) => s.selectDocument);
-  const setProject = (p: typeof project) =>
-    useProjectStore.setState({ project: p });
+  const setProject = useCallback(
+    (p: typeof project) => useProjectStore.setState({ project: p }),
+    []
+  );
 
   // Selected node — determines where + adds items. Separate from activeDocId (editing).
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -155,7 +157,7 @@ function BinderInner() {
       setProject(updated);
       closeMenu();
     },
-    [project, getParentForNew]
+    [project, getParentForNew, setProject, closeMenu]
   );
 
   const handleNewFolder = useCallback(
@@ -168,7 +170,7 @@ function BinderInner() {
       setProject(updated);
       closeMenu();
     },
-    [project, getParentForNew]
+    [project, getParentForNew, setProject, closeMenu]
   );
 
   // Find Trash folder ID
@@ -204,7 +206,7 @@ function BinderInner() {
       }
       closeMenu();
     },
-    [project, activeDocId, trashId]
+    [project, activeDocId, trashId, setProject, closeMenu]
   );
 
   const handleRename = useCallback(
@@ -227,7 +229,7 @@ function BinderInner() {
       setProject(updated);
       closeMenu();
     },
-    [project]
+    [project, setProject, closeMenu]
   );
 
   const handleMoveUp = useCallback(
@@ -239,7 +241,7 @@ function BinderInner() {
       setProject(updated);
       closeMenu();
     },
-    [project]
+    [project, setProject, closeMenu]
   );
 
   const handleMoveDown = useCallback(
@@ -251,7 +253,7 @@ function BinderInner() {
       setProject(updated);
       closeMenu();
     },
-    [project]
+    [project, setProject, closeMenu]
   );
 
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -274,7 +276,7 @@ function BinderInner() {
       }
       closeMenu();
     },
-    [project, templates, getParentForNew]
+    [project, templates, getParentForNew, setProject, closeMenu]
   );
 
   const handleImportFile = useCallback(
@@ -306,7 +308,7 @@ function BinderInner() {
       }
       closeMenu();
     },
-    [project]
+    [project, setProject, closeMenu]
   );
 
   // State for "Move to..." folder picker
@@ -341,7 +343,7 @@ function BinderInner() {
       setMovingNodeId(null);
       closeMenu();
     },
-    [project]
+    [project, setProject, closeMenu]
   );
 
   // Wire drag-and-drop handler
@@ -365,7 +367,7 @@ function BinderInner() {
         toastError(`Move failed: ${e}`);
       }
     });
-  }, [project, drag]);
+  }, [project, drag, setProject]);
 
   if (!project) return null;
 
@@ -614,7 +616,7 @@ function TreeItem({
         <span className="binder-label">{node.name}</span>
         <span
           className="binder-more"
-          onClick={(e) => { e.stopPropagation(); onContextMenu(e as any, node.id, "Document"); }}
+          onClick={(e) => { e.stopPropagation(); onContextMenu(e, node.id, "Document"); }}
         >...</span>
       </div>
     );
@@ -650,7 +652,7 @@ function TreeItem({
         <span className="binder-label">{node.name}</span>
         <span
           className="binder-more"
-          onClick={(e) => { e.stopPropagation(); onContextMenu(e as any, node.id, "Folder"); }}
+          onClick={(e) => { e.stopPropagation(); onContextMenu(e, node.id, "Folder"); }}
         >...</span>
       </div>
       {open && node.children.length > 0 && (

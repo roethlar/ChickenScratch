@@ -33,11 +33,20 @@ export function CommandPalette({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  // Reset state when opening (derived from prop — React's "adjust state on prop change" pattern)
+  const [lastOpen, setLastOpen] = useState(open);
+  if (open !== lastOpen) {
+    setLastOpen(open);
     if (open) {
       setQuery("");
       setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }
+
+  useEffect(() => {
+    if (open) {
+      const id = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(id);
     }
   }, [open]);
 
@@ -59,7 +68,7 @@ export function CommandPalette({
       : [];
 
     return [...docs, ...actions];
-  }, [project]);
+  }, [project, selectDocument, setTheme, toggleFocusMode]);
 
   const filtered = useMemo(() => {
     if (!query) return items;
@@ -67,9 +76,10 @@ export function CommandPalette({
     return items.filter((item) => item.label.toLowerCase().includes(q));
   }, [items, query]);
 
-  useEffect(() => {
+  const handleQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuery(e.target.value);
     setSelectedIndex(0);
-  }, [query]);
+  };
 
   const execute = (item: CommandItem) => {
     item.action();
@@ -99,7 +109,7 @@ export function CommandPalette({
           ref={inputRef}
           className="palette-input"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={handleQueryChange}
           onKeyDown={handleKeyDown}
           placeholder="Search documents and commands..."
         />

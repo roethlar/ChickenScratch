@@ -4,9 +4,7 @@
 //! Writers see "Save Revision" / "Revision History" — never "git".
 
 use crate::utils::error::ChiknError;
-use git2::{
-    BranchType, DiffOptions, IndexAddOption, Oid, Repository, Signature, StatusOptions,
-};
+use git2::{BranchType, DiffOptions, IndexAddOption, Oid, Repository, Signature, StatusOptions};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -105,8 +103,12 @@ pub fn list_revisions(path: &Path) -> Result<Vec<Revision>, ChiknError> {
     let mut revwalk = repo
         .revwalk()
         .map_err(|e| ChiknError::Unknown(format!("Failed to walk revisions: {}", e)))?;
+    let head_target = match head.target() {
+        Some(oid) => oid,
+        None => return Ok(Vec::new()), // symbolic ref with no target
+    };
     revwalk
-        .push(head.target().unwrap())
+        .push(head_target)
         .map_err(|e| ChiknError::Unknown(format!("Failed to push head: {}", e)))?;
 
     let mut revisions = Vec::new();
@@ -135,11 +137,17 @@ pub fn restore_revision(path: &Path, commit_id: &str) -> Result<Revision, ChiknE
         .map_err(|e| ChiknError::Unknown(format!("Failed to get tree: {}", e)))?;
 
     // Checkout that tree into the working directory
-    repo.checkout_tree(tree.as_object(), Some(git2::build::CheckoutBuilder::new().force()))
-        .map_err(|e| ChiknError::Unknown(format!("Failed to restore: {}", e)))?;
+    repo.checkout_tree(
+        tree.as_object(),
+        Some(git2::build::CheckoutBuilder::new().force()),
+    )
+    .map_err(|e| ChiknError::Unknown(format!("Failed to restore: {}", e)))?;
 
     // Create a new commit on HEAD pointing to the restored state
-    let msg = format!("Restored to: {}", commit.message().unwrap_or("(no message)"));
+    let msg = format!(
+        "Restored to: {}",
+        commit.message().unwrap_or("(no message)")
+    );
     save_revision(path, &msg)
 }
 
@@ -173,7 +181,10 @@ pub fn list_drafts(path: &Path) -> Result<Vec<DraftVersion>, ChiknError> {
     let repo = Repository::open(path)
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
 
-    let head_ref = repo.head().ok().and_then(|h| h.shorthand().map(String::from));
+    let head_ref = repo
+        .head()
+        .ok()
+        .and_then(|h| h.shorthand().map(String::from));
 
     let branches = repo
         .branches(Some(BranchType::Local))
@@ -287,22 +298,33 @@ pub fn revision_diff(path: &Path, commit_id: &str) -> Result<Vec<FileDiff>, Chik
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
     let oid = Oid::from_str(commit_id)
         .map_err(|e| ChiknError::Unknown(format!("Invalid commit ID: {}", e)))?;
-    let commit = repo.find_commit(oid)
+    let commit = repo
+        .find_commit(oid)
         .map_err(|e| ChiknError::Unknown(format!("Commit not found: {}", e)))?;
-    let tree = commit.tree()
+    let tree = commit
+        .tree()
         .map_err(|e| ChiknError::Unknown(format!("Failed to get tree: {}", e)))?;
     let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
 
-    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut DiffOptions::new()))
+    let diff = repo
+        .diff_tree_to_tree(
+            parent_tree.as_ref(),
+            Some(&tree),
+            Some(&mut DiffOptions::new()),
+        )
         .map_err(|e| ChiknError::Unknown(format!("Failed to compute diff: {}", e)))?;
 
     let mut files = Vec::new();
     for delta in diff.deltas() {
-        let path_str = delta.new_file().path()
+        let path_str = delta
+            .new_file()
+            .path()
             .or_else(|| delta.old_file().path())
             .and_then(|p| p.to_str())
-            .unwrap_or("").to_string();
-        if path_str == "project.yaml" || path_str.starts_with(".git") || path_str.ends_with(".meta") {
+            .unwrap_or("")
+            .to_string();
+        if path_str == "project.yaml" || path_str.starts_with(".git") || path_str.ends_with(".meta")
+        {
             continue;
         }
         let status = match delta.status() {
@@ -312,7 +334,10 @@ pub fn revision_diff(path: &Path, commit_id: &str) -> Result<Vec<FileDiff>, Chik
             git2::Delta::Renamed => "renamed",
             _ => "changed",
         };
-        files.push(FileDiff { path: path_str, status: status.to_string() });
+        files.push(FileDiff {
+            path: path_str,
+            status: status.to_string(),
+        });
     }
     Ok(files)
 }
@@ -329,20 +354,25 @@ pub fn word_diff(
 
     let oid = Oid::from_str(commit_id)
         .map_err(|e| ChiknError::Unknown(format!("Invalid commit ID: {}", e)))?;
-    let commit = repo.find_commit(oid)
+    let commit = repo
+        .find_commit(oid)
         .map_err(|e| ChiknError::Unknown(format!("Commit not found: {}", e)))?;
-    let tree = commit.tree()
+    let tree = commit
+        .tree()
         .map_err(|e| ChiknError::Unknown(format!("Failed to get tree: {}", e)))?;
 
     // Get the file content at this commit
-    let new_content = tree.get_path(std::path::Path::new(doc_path))
+    let new_content = tree
+        .get_path(std::path::Path::new(doc_path))
         .ok()
         .and_then(|entry| repo.find_blob(entry.id()).ok())
         .map(|blob| String::from_utf8_lossy(blob.content()).to_string())
         .unwrap_or_default();
 
     // Get the file content at the parent commit
-    let old_content = commit.parent(0).ok()
+    let old_content = commit
+        .parent(0)
+        .ok()
         .and_then(|p| p.tree().ok())
         .and_then(|t| t.get_path(std::path::Path::new(doc_path)).ok())
         .and_then(|entry| repo.find_blob(entry.id()).ok())
@@ -362,9 +392,12 @@ fn strip_html_words(html: &str) -> Vec<String> {
     for ch in html.chars() {
         match ch {
             '<' => in_tag = true,
-            '>' => { in_tag = false; text.push(' '); },
+            '>' => {
+                in_tag = false;
+                text.push(' ');
+            }
             _ if !in_tag => text.push(ch),
-            _ => {},
+            _ => {}
         }
     }
     text.split_whitespace().map(|s| s.to_string()).collect()

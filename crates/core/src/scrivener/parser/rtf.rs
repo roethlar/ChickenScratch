@@ -147,9 +147,7 @@ mod tests {
 }";
         fs::write(&rtf_file, rtf_content).unwrap();
 
-        let result = rtf_to_html(&rtf_file);
-        if result.is_ok() {
-            let html = result.unwrap();
+        if let Ok(html) = rtf_to_html(&rtf_file) {
             assert!(html.contains("Hello world") || html.contains("Hello"));
         }
     }
@@ -162,10 +160,8 @@ mod tests {
         }
 
         let rtf = r"{\rtf1\ansi Simple text}";
-        let result = rtf_string_to_html(rtf);
 
-        if result.is_ok() {
-            let html = result.unwrap();
+        if let Ok(html) = rtf_string_to_html(rtf) {
             assert!(html.contains("Simple") || !html.is_empty());
         }
     }

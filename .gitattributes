@@ -1,0 +1,15 @@
+# Normalize line endings
+* text=auto
+
+# C# / WinUI — keep CRLF on Windows, LF on Linux/macOS CI
+windows/**/*.cs    text eol=crlf
+windows/**/*.xaml  text eol=crlf
+windows/**/*.csproj text eol=crlf
+windows/**/*.sln   text eol=crlf
+
+# CI workflows always LF
+.github/**/*.yml   text eol=lf
+
+# Binaries
+windows/**/*.png   binary
+windows/**/*.ico   binary

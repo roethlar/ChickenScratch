@@ -8,7 +8,7 @@
 //! - Ensure format compliance
 //!
 //! ## Format Structure
-//! ```
+//! ```text
 //! MyProject.chikn/
 //! ├── project.yaml              # Project metadata
 //! ├── manuscript/               # Main writing folder
@@ -68,12 +68,14 @@ pub const REQUIRED_FOLDERS: &[&str] = &[
 /// - `InvalidFormat`: Missing required files/folders
 ///
 /// # Example
-/// ```rust
+/// ```no_run
 /// use std::path::Path;
-/// use crate::core::project::format::validate_project_structure;
+/// use chickenscratch_core::core::project::format::validate_project_structure;
 ///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let project_path = Path::new("MyNovel.chikn");
 /// validate_project_structure(project_path)?;
+/// # Ok(()) }
 /// ```
 pub fn validate_project_structure(path: &Path) -> Result<(), ChiknError> {
     // Check if path exists

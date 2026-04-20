@@ -10,12 +10,15 @@
 //! - Create required directory structure
 //!
 //! ## Example
-//! ```rust
-//! use crate::core::project::writer::write_project;
+//! ```no_run
+//! use std::path::Path;
+//! use chickenscratch_core::core::project::writer::{create_project, write_project};
 //!
-//! let project = /* ... */;
-//! write_project(&project)?;
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let mut project = create_project(Path::new("MyNovel.chikn"), "My Novel")?;
+//! write_project(&mut project)?;
 //! println!("Project saved successfully");
+//! # Ok(()) }
 //! ```
 
 use chrono::Utc;
@@ -44,8 +47,13 @@ use crate::utils::error::ChiknError;
 /// - `Serialization`: YAML serialization errors
 ///
 /// # Example
-/// ```rust
+/// ```no_run
+/// # use std::path::Path;
+/// # use chickenscratch_core::core::project::writer::{create_project, write_project};
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # let mut project = create_project(Path::new("MyNovel.chikn"), "My Novel")?;
 /// write_project(&mut project)?;
+/// # Ok(()) }
 /// ```
 pub fn write_project(project: &mut Project) -> Result<(), ChiknError> {
     let project_path = Path::new(&project.path);
@@ -80,8 +88,12 @@ pub fn write_project(project: &mut Project) -> Result<(), ChiknError> {
 /// - `InvalidFormat`: Path already exists
 ///
 /// # Example
-/// ```rust
+/// ```no_run
+/// use std::path::Path;
+/// use chickenscratch_core::core::project::writer::create_project;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let project = create_project(Path::new("MyNovel.chikn"), "My Novel")?;
+/// # Ok(()) }
 /// ```
 pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
     // Check if path already exists
@@ -177,7 +189,7 @@ fn write_project_metadata(project: &Project) -> Result<(), ChiknError> {
 fn write_all_documents(project: &Project) -> Result<(), ChiknError> {
     let project_path = Path::new(&project.path);
 
-    for (_, document) in &project.documents {
+    for document in project.documents.values() {
         write_document(project_path, document)?;
     }
 
@@ -244,8 +256,17 @@ fn write_document(
         keywords: document.keywords.clone(),
         synopsis: document.synopsis.clone(),
         section_type: existing_meta.as_ref().and_then(|m| m.section_type.clone()),
-        include_in_compile: Some(if document.include_in_compile { "Yes" } else { "No" }.to_string()),
-        scrivener_uuid: existing_meta.as_ref().and_then(|m| m.scrivener_uuid.clone()),
+        include_in_compile: Some(
+            if document.include_in_compile {
+                "Yes"
+            } else {
+                "No"
+            }
+            .to_string(),
+        ),
+        scrivener_uuid: existing_meta
+            .as_ref()
+            .and_then(|m| m.scrivener_uuid.clone()),
         links: document.links.clone(),
         word_count_target: document.word_count_target,
         compile_order: document.compile_order,

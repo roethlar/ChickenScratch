@@ -1,0 +1,68 @@
+<UserControl
+    x:Class="ChickenScratch.App.Controls.EditorControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:ChickenScratch.App.ViewModels">
+
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <!-- Formatting toolbar -->
+        <CommandBar Grid.Row="0" DefaultLabelPosition="Collapsed"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,0,1"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left">
+            <AppBarToggleButton x:Name="BoldBtn" Icon="Bold" Label="Bold"
+                                IsChecked="{x:Bind ViewModel.IsBold, Mode=OneWay}"
+                                Click="Bold_Click" KeyboardAcceleratorPlacementMode="Hidden" />
+            <AppBarToggleButton x:Name="ItalicBtn" Icon="Italic" Label="Italic"
+                                IsChecked="{x:Bind ViewModel.IsItalic, Mode=OneWay}"
+                                Click="Italic_Click" />
+            <AppBarToggleButton x:Name="UnderlineBtn" Icon="Underline" Label="Underline"
+                                IsChecked="{x:Bind ViewModel.IsUnderline, Mode=OneWay}"
+                                Click="Underline_Click" />
+            <AppBarSeparator />
+            <AppBarButton Label="H1" Click="H1_Click">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE8D2;" /></AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton Label="H2" Click="H2_Click">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE8D3;" /></AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton Label="H3" Click="H3_Click">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE8D4;" /></AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarSeparator />
+            <AppBarButton Icon="Undo" Label="Undo" Click="Undo_Click" />
+            <AppBarButton Icon="Redo" Label="Redo" Click="Redo_Click" />
+            <AppBarSeparator />
+            <AppBarButton Icon="Find" Label="Find" Click="Find_Click" />
+        </CommandBar>
+
+        <!-- Find bar (collapsed by default) -->
+        <Grid x:Name="FindBar" Grid.Row="1" Visibility="Collapsed"
+              Padding="12,6" ColumnDefinitions="*,Auto,Auto,Auto"
+              Background="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+              BorderThickness="0,0,0,1">
+            <TextBox Grid.Column="0" x:Name="FindBox"
+                     PlaceholderText="Find in document…"
+                     TextChanged="FindBox_TextChanged"
+                     KeyDown="FindBox_KeyDown" />
+            <TextBox Grid.Column="1" x:Name="ReplaceBox"
+                     PlaceholderText="Replace with…"
+                     Margin="8,0,0,0" />
+            <Button Grid.Column="2" Content="Replace" Margin="8,0,0,0"
+                    Click="Replace_Click" />
+            <Button Grid.Column="3" Content="✕" Margin="8,0,0,0"
+                    Style="{StaticResource TransparentButtonStyle}"
+                    Click="CloseFind_Click" />
+        </Grid>
+
+        <!-- WebView2 editor -->
+        <Border Grid.Row="2" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <!-- WebView2 is added programmatically in code-behind -->
+            <ContentPresenter x:Name="WebViewHost" />
+        </Border>
+    </Grid>
+</UserControl>

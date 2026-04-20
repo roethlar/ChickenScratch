@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+/* eslint-disable react-refresh/only-export-components */
+import { useState, useCallback, useEffect } from "react";
 
 interface ToastMessage {
   id: number;
@@ -6,7 +7,8 @@ interface ToastMessage {
   type: "success" | "error" | "info";
 }
 
-let addToast: (text: string, type?: "success" | "error" | "info") => void = () => {};
+type ToastFn = (text: string, type?: "success" | "error" | "info") => void;
+let addToast: ToastFn = () => {};
 let nextId = 0;
 
 export function toast(text: string, type: "success" | "error" | "info" = "info") {
@@ -19,13 +21,18 @@ export function toastError(text: string) { toast(text, "error"); }
 export function ToastProvider() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  addToast = useCallback((text: string, type: "success" | "error" | "info" = "info") => {
+  const handleAdd = useCallback<ToastFn>((text, type = "info") => {
     const id = ++nextId;
     setToasts((prev) => [...prev, { id, text, type }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 3500);
   }, []);
+
+  useEffect(() => {
+    addToast = handleAdd;
+    return () => { addToast = () => {}; };
+  }, [handleAdd]);
 
   if (toasts.length === 0) return null;
 
