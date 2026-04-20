@@ -276,14 +276,18 @@ pub fn check_pandoc() -> Result<String, ChiknError> {
     }
 
     // Check common install locations
-    let candidates = [
+    #[cfg(target_os = "windows")]
+    let candidates: &[&str] = &["pandoc", "pandoc.exe"];
+
+    #[cfg(not(target_os = "windows"))]
+    let candidates: &[&str] = &[
         "pandoc",
         "/usr/local/bin/pandoc",
         "/opt/homebrew/bin/pandoc",
         "/usr/bin/pandoc",
     ];
 
-    for pandoc in &candidates {
+    for pandoc in candidates {
         if let Ok(output) = std::process::Command::new(pandoc)
             .arg("--version")
             .output()

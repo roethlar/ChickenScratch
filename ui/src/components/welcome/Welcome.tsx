@@ -48,8 +48,9 @@ export function Welcome() {
     });
     if (dir) {
       setBusy(true);
-      const name = dir.split("/").pop()?.replace(".chikn", "") || "Untitled";
-      const parent = dir.substring(0, dir.lastIndexOf("/"));
+      const normalized = dir.replace(/\\/g, "/");
+      const name = normalized.split("/").pop()?.replace(".chikn", "") || "Untitled";
+      const parent = normalized.substring(0, normalized.lastIndexOf("/"));
       await createProject(name, parent);
       setBusy(false);
     }
@@ -60,7 +61,7 @@ export function Welcome() {
     if (!scrivPath) return;
 
     const defaultName =
-      scrivPath.split("/").pop()?.replace(".scriv", ".chikn") || "Imported.chikn";
+      scrivPath.replace(/\\/g, "/").split("/").pop()?.replace(".scriv", ".chikn") || "Imported.chikn";
     const outputPath = await save({
       title: "Save Converted Project As",
       defaultPath: defaultName,
@@ -94,7 +95,7 @@ export function Welcome() {
                   <ExternalLink size={12} /> Install Pandoc
                 </button>
                 <span className="welcome-warning-hint">
-                  macOS: brew install pandoc | Arch: pacman -S pandoc
+                  macOS: brew install pandoc | Windows: winget install pandoc | Linux: see pandoc.org
                 </span>
               </div>
             </div>
@@ -137,7 +138,7 @@ export function Welcome() {
               >
                 <span className="welcome-recent-name">{r.name}</span>
                 <span className="welcome-recent-path">
-                  {r.path.replace(/^\/Users\/\w+\//, "~/")}
+                  {r.path.replace(/\\/g, "/").replace(/^(?:[A-Za-z]:)?\/Users\/[^/]+\//, "~/")}
                 </span>
               </button>
             ))}

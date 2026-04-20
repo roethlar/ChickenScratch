@@ -174,12 +174,18 @@ fn find_pandoc() -> Result<String, ChiknError> {
         }
     }
 
-    for candidate in &[
+    #[cfg(target_os = "windows")]
+    let candidates: &[&str] = &["pandoc", "pandoc.exe"];
+
+    #[cfg(not(target_os = "windows"))]
+    let candidates: &[&str] = &[
         "pandoc",
         "/usr/local/bin/pandoc",
         "/opt/homebrew/bin/pandoc",
         "/usr/bin/pandoc",
-    ] {
+    ];
+
+    for candidate in candidates {
         if Command::new(candidate)
             .arg("--version")
             .output()
