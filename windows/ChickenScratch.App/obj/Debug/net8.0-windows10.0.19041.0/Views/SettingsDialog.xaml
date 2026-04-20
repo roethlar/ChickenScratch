@@ -1,0 +1,182 @@
+﻿<ContentDialog x:ConnectionId='1'
+    x:Class="ChickenScratch.App.Views.SettingsDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Settings"
+    PrimaryButtonText="Save"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+                                   
+    MinWidth="560">
+
+    <ScrollViewer MaxHeight="600" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="0">
+
+            <Pivot x:ConnectionId='2' x:Name="SettingsPivot">
+
+                <!-- General -->
+                <PivotItem Header="General">
+                    <StackPanel Spacing="16" Padding="0,12,0,0">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Theme" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <ComboBox x:ConnectionId='26' x:Name="ThemeBox" HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="Dark" Tag="dark" />
+                                <ComboBoxItem Content="Light" Tag="light" />
+                                <ComboBoxItem Content="Sepia" Tag="sepia" />
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Recent Projects Limit" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <NumberBox x:ConnectionId='25' x:Name="RecentLimitBox" Minimum="1" Maximum="50"
+                                       SpinButtonPlacementMode="Compact" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Pandoc Path (leave empty for auto-detect)"
+                                       Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <TextBox x:ConnectionId='23' x:Name="PandocPathBox"
+                                     PlaceholderText="e.g. C:\Program Files\Pandoc\pandoc.exe" />
+                            <TextBlock x:ConnectionId='24' x:Name="PandocVersionText"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Opacity="0.5" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+                </PivotItem>
+
+                <!-- Writing -->
+                <PivotItem Header="Writing">
+                    <StackPanel Spacing="16" Padding="0,12,0,0">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Font Family" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <ComboBox x:ConnectionId='22' x:Name="FontFamilyBox" HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="Segoe UI Variable" />
+                                <ComboBoxItem Content="Georgia" />
+                                <ComboBoxItem Content="Times New Roman" />
+                                <ComboBoxItem Content="Palatino Linotype" />
+                                <ComboBoxItem Content="Calibri" />
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Font Size (px)" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <NumberBox x:ConnectionId='21' x:Name="FontSizeBox" Minimum="12" Maximum="28"
+                                       SpinButtonPlacementMode="Compact" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Paragraph Style" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <ComboBox x:ConnectionId='20' x:Name="ParagraphStyleBox" HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="Block (spacing between paragraphs)" Tag="block" />
+                                <ComboBoxItem Content="Indent (first-line indent)" Tag="indent" />
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Auto-Save Delay (seconds)" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <NumberBox x:ConnectionId='19' x:Name="AutoSaveBox" Minimum="1" Maximum="30"
+                                       SpinButtonPlacementMode="Compact" />
+                        </StackPanel>
+                    </StackPanel>
+                </PivotItem>
+
+                <!-- Backup -->
+                <PivotItem Header="Backup">
+                    <StackPanel Spacing="16" Padding="0,12,0,0">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Backup Directory" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <TextBox x:ConnectionId='17' Grid.Column="0" x:Name="BackupDirBox"
+                                         PlaceholderText="~/ChickenScratchBackups" />
+                                <Button x:ConnectionId='18' Grid.Column="1" Content="Browse"                            />
+                            </Grid>
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.5"
+                                       TextWrapping="Wrap"
+                                       Text="Point this at a cloud-synced folder (OneDrive, Dropbox) for offsite backup." />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Auto-backup on close" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <ToggleSwitch x:ConnectionId='16' x:Name="AutoBackupCloseToggle" OnContent="Yes" OffContent="No" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Auto-backup interval (minutes)" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <NumberBox x:ConnectionId='15' x:Name="BackupIntervalBox" Minimum="5" Maximum="120"
+                                       SpinButtonPlacementMode="Compact" />
+                        </StackPanel>
+                    </StackPanel>
+                </PivotItem>
+
+                <!-- AI -->
+                <PivotItem Header="AI">
+                    <StackPanel Spacing="16" Padding="0,12,0,0">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Enable AI features" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <ToggleSwitch x:ConnectionId='14' x:Name="AiEnabledToggle" OnContent="Enabled" OffContent="Disabled"
+                                                                      />
+                        </StackPanel>
+                        <StackPanel x:ConnectionId='8' x:Name="AiFields" Spacing="16">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Provider" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                                <ComboBox x:ConnectionId='13' x:Name="AiProviderBox" HorizontalAlignment="Stretch"
+                                                                               >
+                                    <ComboBoxItem Content="Ollama (local, no API key)" Tag="ollama" />
+                                    <ComboBoxItem Content="Anthropic (Claude)" Tag="anthropic" />
+                                    <ComboBoxItem Content="OpenAI (ChatGPT)" Tag="openai" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Model" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                                <TextBox x:ConnectionId='12' x:Name="AiModelBox" PlaceholderText="llama3.2" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Endpoint URL" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                                <TextBox x:ConnectionId='11' x:Name="AiEndpointBox" PlaceholderText="http://localhost:11434" />
+                            </StackPanel>
+                            <StackPanel x:ConnectionId='9' x:Name="ApiKeyField" Spacing="4">
+                                <TextBlock Text="API Key" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                                <PasswordBox x:ConnectionId='10' x:Name="AiApiKeyBox" PlaceholderText="sk-..." />
+                                <TextBlock Text="Stored locally, never shared."
+                                           Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.5" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </PivotItem>
+
+                <!-- Compile -->
+                <PivotItem Header="Compile">
+                    <StackPanel Spacing="16" Padding="0,12,0,0">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Default Export Format" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <ComboBox x:ConnectionId='7' x:Name="CompileFormatBox" HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="Word (.docx)" Tag="docx" />
+                                <ComboBoxItem Content="PDF" Tag="pdf" />
+                                <ComboBoxItem Content="EPUB" Tag="epub" />
+                                <ComboBoxItem Content="HTML" Tag="html" />
+                                <ComboBoxItem Content="OpenDocument (.odt)" Tag="odt" />
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Manuscript Font" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <TextBox x:ConnectionId='6' x:Name="CompileFontBox" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Font Size (pt)" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <NumberBox x:ConnectionId='5' x:Name="CompileFontSizeBox" Minimum="8" Maximum="18"
+                                       SpinButtonPlacementMode="Compact" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Line Spacing" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <ComboBox x:ConnectionId='4' x:Name="LineSpacingBox" HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="Single" Tag="1" />
+                                <ComboBoxItem Content="1.5" Tag="1.5" />
+                                <ComboBoxItem Content="Double" Tag="2" />
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Margins (inches)" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                            <NumberBox x:ConnectionId='3' x:Name="MarginsBox" Minimum="0.5" Maximum="2"
+                                       SmallChange="0.25" SpinButtonPlacementMode="Compact" />
+                        </StackPanel>
+                    </StackPanel>
+                </PivotItem>
+
+            </Pivot>
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>
+

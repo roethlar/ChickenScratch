@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="ChickenScratch.App/ChickenScratch.App.csproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="ChickenScratch.Core/ChickenScratch.Core.csproj" />
+</Solution>

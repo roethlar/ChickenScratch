@@ -1,0 +1,45 @@
+<Project>
+  <!-- WinUI 3 XAML compiler on .NET SDK (dotnet build) uses XamlCompiler.exe which reads
+       input.json for references. The WinUI winmd metadata files from the microsoft.windowsappsdk.winui
+       NuGet package are not automatically included in ReferencePath. Without them, the compiler
+       fails WMC1007 "Cannot resolve metadata for WinUI types".
+       _MuxPackageToolsFolder points to tools/net6.0/ inside that package, so ../../metadata/
+       resolves to the metadata directory.
+
+       CS0433 avoidance: Microsoft.WinUI.dll (from NuGet lib/) also defines the same types as the
+       winmd files, causing CS0433 for the C# compiler. We add the winmds only during XAML compile
+       passes (XamlCompiler.exe needs them, it cannot load the .NET 6+ Microsoft.WinUI.dll) and
+       remove them before CoreCompile so the C# compiler only sees Microsoft.WinUI.dll. -->
+
+  <PropertyGroup>
+    <_WinUIMetadataXaml>$(_MuxPackageToolsFolder)..\..\metadata\Microsoft.UI.Xaml.winmd</_WinUIMetadataXaml>
+    <_WinUIMetadataText>$(_MuxPackageToolsFolder)..\..\metadata\Microsoft.UI.Text.winmd</_WinUIMetadataText>
+  </PropertyGroup>
+
+  <Target Name="AddWinUIWinMDRefsPass1" BeforeTargets="MarkupCompilePass1">
+    <ItemGroup>
+      <ReferencePath Include="$(_WinUIMetadataXaml)" Condition="Exists('$(_WinUIMetadataXaml)')" />
+      <ReferencePath Include="$(_WinUIMetadataText)" Condition="Exists('$(_WinUIMetadataText)')" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RemoveWinUIWinMDRefsPass1" AfterTargets="MarkupCompilePass1">
+    <ItemGroup>
+      <ReferencePath Remove="$(_WinUIMetadataXaml)" />
+      <ReferencePath Remove="$(_WinUIMetadataText)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Pass2 uses Microsoft.WinUI.dll from NuGet for runtime type resolution.
+       Adding winmds here as well causes type-ambiguity in XamlCompiler's TypeInfo
+       generator and produces an empty XamlTypeInfo.g.cs → exit code 1.
+       Pass2 already has the winmds via the SavedStateFile fingerprint; omitting them
+       from ReferencePath here lets the compiler use only the managed DLL path. -->
+  <Target Name="AddWinUIWinMDRefsPass2" BeforeTargets="MarkupCompilePass2">
+    <ItemGroup>
+      <ReferencePath Remove="$(_WinUIMetadataXaml)" />
+      <ReferencePath Remove="$(_WinUIMetadataText)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

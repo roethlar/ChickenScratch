@@ -1,0 +1,35 @@
+name: Windows (WinUI 3)
+
+on:
+  push:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+  pull_request:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        working-directory: windows
+        run: dotnet restore ChickenScratch.sln /p:Platform=x64
+
+      - name: Build
+        working-directory: windows
+        run: dotnet build ChickenScratch.sln /p:Platform=x64 /p:Configuration=Release --no-restore
+
+      - name: Build Core (tests)
+        working-directory: windows
+        run: dotnet build ChickenScratch.Core/ChickenScratch.Core.csproj /p:Platform=x64 /p:Configuration=Release --no-restore
