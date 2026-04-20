@@ -37,7 +37,7 @@ export function Corkboard() {
       .filter(
         (d): d is Document =>
           !!d &&
-          d.path.endsWith(".html") &&
+          d.path.endsWith(".md") &&
           d.path.startsWith("manuscript/")
       );
   }, [project]);

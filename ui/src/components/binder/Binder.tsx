@@ -597,7 +597,7 @@ function TreeItem({
   if (node.type === "Document") {
     const isActive = node.id === activeId;
     const isSelected = node.id === selectedId;
-    const isMedia = !node.path.endsWith(".html");
+    const isMedia = !node.path.endsWith(".md");
 
     return (
       <div
