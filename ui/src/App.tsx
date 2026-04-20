@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useProjectStore } from "./stores/projectStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { Welcome } from "./components/welcome/Welcome";
@@ -46,6 +46,7 @@ export default function App() {
   // Load app settings on startup
   useEffect(() => {
     loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [view, setView] = useState<View>(
     () => (localStorage.getItem("cs-view") as View) || "editor"
@@ -92,7 +93,8 @@ export default function App() {
     return e.key.toLowerCase() === key || e.key === key;
   };
 
-  const shortcuts = useSettingsStore((s) => s.appSettings?.shortcuts) ?? {};
+  const rawShortcuts = useSettingsStore((s) => s.appSettings?.shortcuts);
+  const shortcuts = useMemo(() => rawShortcuts ?? {}, [rawShortcuts]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -169,6 +171,9 @@ export default function App() {
       } catch { /* silent */ }
     }, 10 * 60 * 1000);
     return () => clearInterval(interval);
+    // Re-run only on project path change; full `project` object identity
+    // updates on every edit, which would reset the 10-minute interval.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.path]);
 
   // Periodic auto-backup based on settings interval
@@ -189,6 +194,8 @@ export default function App() {
     }, minutes * 60 * 1000);
 
     return () => clearInterval(interval);
+    // Same rationale: tie interval to path, not full project identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.path]);
 
   if (!project) {

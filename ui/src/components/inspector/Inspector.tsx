@@ -60,8 +60,10 @@ function PresetSelect({
 export function Inspector() {
   const project = useProjectStore((s) => s.project);
   const activeDoc = useProjectStore((s) => s.activeDoc);
-  const setProject = (p: typeof project) =>
-    useProjectStore.setState({ project: p });
+  const setProject = useCallback(
+    (p: typeof project) => useProjectStore.setState({ project: p }),
+    []
+  );
 
   const [title, setTitle] = useState("");
   const [synopsis, setSynopsis] = useState("");
@@ -70,16 +72,17 @@ export function Inspector() {
   const [keywords, setKeywords] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
 
-  // Load metadata when active doc changes
-  useEffect(() => {
-    if (!activeDoc) return;
+  // Load metadata when active doc changes (React's "adjust state on prop change" pattern)
+  const [lastDocId, setLastDocId] = useState<string | undefined>(activeDoc?.id);
+  if (activeDoc && activeDoc.id !== lastDocId) {
+    setLastDocId(activeDoc.id);
     setTitle(activeDoc.name || "");
     setSynopsis(activeDoc.synopsis || "");
     setLabel(activeDoc.label || "");
     setStatus(activeDoc.status || "");
     setKeywords((activeDoc.keywords || []).join(", "));
     setEditingTitle(false);
-  }, [activeDoc?.id]);
+  }
 
   const save = useCallback(async () => {
     if (!project || !activeDoc) return;
@@ -98,7 +101,7 @@ export function Inspector() {
       }
     );
     setProject(updated);
-  }, [project, activeDoc, synopsis, label, status, keywords]);
+  }, [project, activeDoc, synopsis, label, status, keywords, setProject]);
 
   const handleTitleSave = useCallback(async () => {
     if (!project || !activeDoc) return;
@@ -111,13 +114,17 @@ export function Inspector() {
     const updated = await docCmd.renameNode(project.path, activeDoc.id, trimmed);
     setProject(updated);
     setEditingTitle(false);
-  }, [project, activeDoc, title]);
+  }, [project, activeDoc, title, setProject]);
 
   // Debounced save on metadata changes
   useEffect(() => {
     if (!activeDoc) return;
     const timer = setTimeout(save, 1500);
     return () => clearTimeout(timer);
+    // `save` is intentionally omitted; its identity changes with form state,
+    // which would restart the debounce on every keystroke instead of every
+    // 1.5s idle window.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [synopsis, label, status, keywords]);
 
   if (!activeDoc) {

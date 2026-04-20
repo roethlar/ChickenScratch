@@ -28,8 +28,8 @@ pub enum Mode {
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum ViewMode {
-    Edit,     // editable markdown
-    Preview,  // read-only formatted rendering
+    Edit,    // editable markdown
+    Preview, // read-only formatted rendering
 }
 
 impl ViewMode {
@@ -200,24 +200,21 @@ impl<'a> App<'a> {
             KeyCode::Esc | KeyCode::Char('q') => {
                 self.mode = Mode::Normal;
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if n > 0 && self.comments_selected + 1 < n {
+            KeyCode::Down | KeyCode::Char('j')
+                if n > 0 && self.comments_selected + 1 < n => {
                     self.comments_selected += 1;
                 }
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                if self.comments_selected > 0 {
+            KeyCode::Up | KeyCode::Char('k')
+                if self.comments_selected > 0 => {
                     self.comments_selected -= 1;
                 }
-            }
-            KeyCode::Char('n') | KeyCode::Char('a') => {
+            KeyCode::Char('n') | KeyCode::Char('a')
                 // New document-level comment (no anchor)
-                if self.active_doc_id.is_some() {
+                if self.active_doc_id.is_some() => {
                     self.comment_edit_id = Some(String::new()); // empty id = new comment
                     self.prompt_input.clear();
                     self.mode = Mode::CommentEdit;
                 }
-            }
             KeyCode::Char('r') => {
                 if let Some(id) = comments.get(self.comments_selected).map(|c| c.id.clone()) {
                     self.toggle_resolve_comment(&id);
@@ -276,8 +273,12 @@ impl<'a> App<'a> {
                     Mode::Comments
                 };
             }
-            KeyCode::Backspace => { self.prompt_input.pop(); }
-            KeyCode::Char(c) => { self.prompt_input.push(c); }
+            KeyCode::Backspace => {
+                self.prompt_input.pop();
+            }
+            KeyCode::Char(c) => {
+                self.prompt_input.push(c);
+            }
             _ => {}
         }
         Ok(())
@@ -301,7 +302,10 @@ impl<'a> App<'a> {
         let mut lines: Vec<String> = self.editor.lines().iter().map(|l| l.to_string()).collect();
 
         let comment_id = format!("c_{}", uuid::Uuid::new_v4().simple());
-        let open_tag = format!("<span class=\"comment\" data-comment-id=\"{}\">", comment_id);
+        let open_tag = format!(
+            "<span class=\"comment\" data-comment-id=\"{}\">",
+            comment_id
+        );
         let close_tag = "</span>";
 
         if !wrap_selection_in_lines(&mut lines, sr, sc, er, ec, &open_tag, close_tag) {
@@ -328,8 +332,7 @@ impl<'a> App<'a> {
             doc.modified = now;
         }
 
-        writer::write_project(&mut self.project)
-            .map_err(|e| anyhow!("Write failed: {:?}", e))?;
+        writer::write_project(&mut self.project).map_err(|e| anyhow!("Write failed: {:?}", e))?;
         self.dirty = false;
         self.status = "Comment anchored to selection".to_string();
         Ok(())
@@ -376,7 +379,11 @@ impl<'a> App<'a> {
     /// Extract the anchor text between `<span class="comment" data-comment-id="id">`
     /// and `</span>` from the document's HTML content.
     pub fn comment_anchor_text(&self, comment_id: &str) -> String {
-        let doc = match self.active_doc_id.as_ref().and_then(|id| self.project.documents.get(id)) {
+        let doc = match self
+            .active_doc_id
+            .as_ref()
+            .and_then(|id| self.project.documents.get(id))
+        {
             Some(d) => d,
             None => return String::new(),
         };
@@ -406,8 +413,12 @@ impl<'a> App<'a> {
                     c.modified = chrono::Utc::now().to_rfc3339();
                     doc.modified = chrono::Utc::now().to_rfc3339();
                     Some(c.resolved)
-                } else { None }
-            } else { None }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         };
         if let Some(r) = resolved_after {
             let _ = writer::write_project(&mut self.project);
@@ -427,8 +438,12 @@ impl<'a> App<'a> {
                     c.modified = chrono::Utc::now().to_rfc3339();
                     doc.modified = chrono::Utc::now().to_rfc3339();
                     true
-                } else { false }
-            } else { false }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
         };
         if did_update {
             let _ = writer::write_project(&mut self.project);
@@ -450,8 +465,7 @@ impl<'a> App<'a> {
             None
         };
 
-        writer::write_project(&mut self.project)
-            .map_err(|e| anyhow!("Write failed: {:?}", e))?;
+        writer::write_project(&mut self.project).map_err(|e| anyhow!("Write failed: {:?}", e))?;
 
         if let Some(md) = new_content {
             if self.view_mode == ViewMode::Edit {
@@ -488,7 +502,8 @@ impl<'a> App<'a> {
                     self.prompt_input.clear();
                     self.mode = Mode::CommentEdit;
                 } else {
-                    self.status = "Select text first (Shift+arrows), then F3 to anchor a comment".to_string();
+                    self.status =
+                        "Select text first (Shift+arrows), then F3 to anchor a comment".to_string();
                 }
             } else {
                 self.status = "Focus the editor and select text first".to_string();
@@ -497,13 +512,20 @@ impl<'a> App<'a> {
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
-                KeyCode::Char('s') => { self.save_active_doc()?; return Ok(()); }
+                KeyCode::Char('s') => {
+                    self.save_active_doc()?;
+                    return Ok(());
+                }
                 KeyCode::Char('r') => {
-                    self.prompt_input = format!("Revision {}", chrono::Utc::now().format("%Y-%m-%d %H:%M"));
+                    self.prompt_input =
+                        format!("Revision {}", chrono::Utc::now().format("%Y-%m-%d %H:%M"));
                     self.mode = Mode::RevisionPrompt;
                     return Ok(());
                 }
-                KeyCode::Char('t') => { self.cycle_view_mode(); return Ok(()); }
+                KeyCode::Char('t') => {
+                    self.cycle_view_mode();
+                    return Ok(());
+                }
                 KeyCode::Char('w') => {
                     self.wrap = !self.wrap;
                     self.apply_editor_settings();
@@ -517,7 +539,10 @@ impl<'a> App<'a> {
                     }
                     return Ok(());
                 }
-                KeyCode::Char('q') => { self.try_quit(); return Ok(()); }
+                KeyCode::Char('q') => {
+                    self.try_quit();
+                    return Ok(());
+                }
                 _ => {}
             }
         }
@@ -542,15 +567,13 @@ impl<'a> App<'a> {
             KeyCode::Char('?') => {
                 self.status = "Keys: ↑↓=nav Enter=open Tab=editor Ctrl+S=save Ctrl+R=rev Ctrl+T=view Ctrl+W=wrap F2=comments F3=anchor q=quit".to_string();
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if self.binder_selected + 1 < self.binder_items.len() {
-                    self.binder_selected += 1;
-                }
+            KeyCode::Down | KeyCode::Char('j')
+                if self.binder_selected + 1 < self.binder_items.len() =>
+            {
+                self.binder_selected += 1;
             }
-            KeyCode::Up | KeyCode::Char('k') => {
-                if self.binder_selected > 0 {
-                    self.binder_selected -= 1;
-                }
+            KeyCode::Up | KeyCode::Char('k') if self.binder_selected > 0 => {
+                self.binder_selected -= 1;
             }
             KeyCode::Enter => {
                 if let Some(item) = self.binder_items.get(self.binder_selected) {
@@ -640,8 +663,12 @@ impl<'a> App<'a> {
                     self.save_revision(&msg)?;
                 }
             }
-            KeyCode::Backspace => { self.prompt_input.pop(); }
-            KeyCode::Char(c) => { self.prompt_input.push(c); }
+            KeyCode::Backspace => {
+                self.prompt_input.pop();
+            }
+            KeyCode::Char(c) => {
+                self.prompt_input.push(c);
+            }
             _ => {}
         }
         Ok(())
@@ -694,8 +721,7 @@ impl<'a> App<'a> {
             doc.content = md.clone();
             doc.modified = chrono::Utc::now().to_rfc3339();
         }
-        writer::write_project(&mut self.project)
-            .map_err(|e| anyhow!("Write failed: {:?}", e))?;
+        writer::write_project(&mut self.project).map_err(|e| anyhow!("Write failed: {:?}", e))?;
         self.dirty = false;
         let word_count = convert::count_words(&md);
         self.status = format!("Saved. {} words.", word_count);
@@ -767,11 +793,13 @@ fn read_backup_directory() -> Option<PathBuf> {
 }
 
 /// Ensure start ≤ end in (row, col) order.
-fn normalize_selection(
-    sel: (usize, usize, usize, usize),
-) -> (usize, usize, usize, usize) {
+fn normalize_selection(sel: (usize, usize, usize, usize)) -> (usize, usize, usize, usize) {
     let (sr, sc, er, ec) = sel;
-    if (sr, sc) <= (er, ec) { (sr, sc, er, ec) } else { (er, ec, sr, sc) }
+    if (sr, sc) <= (er, ec) {
+        (sr, sc, er, ec)
+    } else {
+        (er, ec, sr, sc)
+    }
 }
 
 /// Safely slice a string at a character boundary (col is a char index, not byte).
@@ -783,7 +811,7 @@ fn char_byte_index(s: &str, col: usize) -> usize {
 /// with `open_tag` at the start and `close_tag` at the end. Mutates `lines` in place.
 /// Returns false if the selection is empty.
 fn wrap_selection_in_lines(
-    lines: &mut Vec<String>,
+    lines: &mut [String],
     sr: usize,
     sc: usize,
     er: usize,
@@ -877,4 +905,3 @@ fn strip_comment_span(html: &str, id: &str) -> String {
     out.push_str(&html[close_end..]);
     out
 }
-

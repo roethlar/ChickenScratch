@@ -30,7 +30,11 @@ pub fn slugify(s: &str) -> String {
 /// Unique slug with counter suffix if needed
 ///
 /// # Example
-/// ```rust
+/// ```
+/// # use std::collections::HashMap;
+/// # use chickenscratch_core::Document;
+/// # use chickenscratch_core::utils::slug::unique_slug;
+/// let documents: HashMap<String, Document> = HashMap::new();
 /// let slug = unique_slug("Chapter 1", "manuscript/", &documents);
 /// // Returns "chapter-1" or "chapter-1-1" if collision
 /// ```

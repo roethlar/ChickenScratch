@@ -1,6 +1,6 @@
 use chickenscratch_core::core::project::{hierarchy, reader, writer};
-use chickenscratch_core::utils::slug;
 use chickenscratch_core::models::Comment;
+use chickenscratch_core::utils::slug;
 use chickenscratch_core::{ChiknError, Document, Project, TreeNode};
 use std::path::Path;
 
@@ -55,7 +55,10 @@ pub fn add_comment(
         writer::write_project(&mut project)?;
         Ok(project)
     } else {
-        Err(ChiknError::NotFound(format!("Document not found: {}", doc_id)))
+        Err(ChiknError::NotFound(format!(
+            "Document not found: {}",
+            doc_id
+        )))
     }
 }
 
@@ -70,17 +73,27 @@ pub fn update_comment(
     let mut project = reader::read_project(Path::new(&project_path))?;
     if let Some(doc) = project.documents.get_mut(&doc_id) {
         if let Some(c) = doc.comments.iter_mut().find(|c| c.id == comment_id) {
-            if let Some(b) = body { c.body = b; }
-            if let Some(r) = resolved { c.resolved = r; }
+            if let Some(b) = body {
+                c.body = b;
+            }
+            if let Some(r) = resolved {
+                c.resolved = r;
+            }
             c.modified = chrono::Utc::now().to_rfc3339();
             doc.modified = chrono::Utc::now().to_rfc3339();
             writer::write_project(&mut project)?;
             Ok(project)
         } else {
-            Err(ChiknError::NotFound(format!("Comment not found: {}", comment_id)))
+            Err(ChiknError::NotFound(format!(
+                "Comment not found: {}",
+                comment_id
+            )))
         }
     } else {
-        Err(ChiknError::NotFound(format!("Document not found: {}", doc_id)))
+        Err(ChiknError::NotFound(format!(
+            "Document not found: {}",
+            doc_id
+        )))
     }
 }
 
@@ -100,11 +113,15 @@ pub fn delete_comment(
         writer::write_project(&mut project)?;
         Ok(project)
     } else {
-        Err(ChiknError::NotFound(format!("Document not found: {}", doc_id)))
+        Err(ChiknError::NotFound(format!(
+            "Document not found: {}",
+            doc_id
+        )))
     }
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn update_document_metadata(
     project_path: String,
     doc_id: String,
@@ -135,7 +152,10 @@ pub fn update_document_metadata(
         writer::write_project(&mut project)?;
         Ok(project)
     } else {
-        Err(ChiknError::NotFound(format!("Document not found: {}", doc_id)))
+        Err(ChiknError::NotFound(format!(
+            "Document not found: {}",
+            doc_id
+        )))
     }
 }
 
@@ -281,7 +301,11 @@ pub fn delete_node(project_path: String, node_id: String) -> Result<Project, Chi
     Ok(project)
 }
 
-fn delete_node_files(node: &TreeNode, project: &Project, project_path: &Path) -> Result<(), ChiknError> {
+fn delete_node_files(
+    node: &TreeNode,
+    project: &Project,
+    project_path: &Path,
+) -> Result<(), ChiknError> {
     match node {
         TreeNode::Document { id, .. } => {
             if let Some(doc) = project.documents.get(id) {
@@ -306,11 +330,7 @@ pub fn move_node(
 ) -> Result<Project, ChiknError> {
     let mut project = reader::read_project(Path::new(&project_path))?;
 
-    hierarchy::move_node(
-        &mut project.hierarchy,
-        &node_id,
-        new_parent_id.as_deref(),
-    )?;
+    hierarchy::move_node(&mut project.hierarchy, &node_id, new_parent_id.as_deref())?;
 
     if let Some(idx) = new_index {
         let _ = hierarchy::reorder_node(&mut project.hierarchy, &node_id, idx);

@@ -3,10 +3,7 @@ use chickenscratch_core::ChiknError;
 use std::path::Path;
 
 #[tauri::command]
-pub fn save_revision(
-    project_path: String,
-    message: String,
-) -> Result<git::Revision, ChiknError> {
+pub fn save_revision(project_path: String, message: String) -> Result<git::Revision, ChiknError> {
     let path = Path::new(&project_path);
     let rev = git::save_revision(path, &message)?;
 

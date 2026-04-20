@@ -22,8 +22,7 @@ fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    let mut app = app::App::new(project_path.unwrap())
-        .context("Failed to load project")?;
+    let mut app = app::App::new(project_path.unwrap()).context("Failed to load project")?;
 
     // Setup terminal
     enable_raw_mode()?;

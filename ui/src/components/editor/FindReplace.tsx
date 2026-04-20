@@ -18,9 +18,12 @@ export function FindReplace({ editor, open, showReplace, onClose }: FindReplaceP
   const findRef = useRef<HTMLInputElement>(null);
   const decorationsRef = useRef<{ from: number; to: number }[]>([]);
 
-  useEffect(() => {
+  // Sync replaceMode with the showReplace prop when it changes
+  const [lastShowReplace, setLastShowReplace] = useState(showReplace);
+  if (showReplace !== lastShowReplace) {
+    setLastShowReplace(showReplace);
     setReplaceMode(showReplace);
-  }, [showReplace]);
+  }
 
   useEffect(() => {
     if (open && findRef.current) {
@@ -64,8 +67,12 @@ export function FindReplace({ editor, open, showReplace, onClose }: FindReplaceP
     return matches;
   }, [editor, find, currentMatch]);
 
+  // Syncing with external editor doc state — the editor's doc is not React state,
+  // so an effect is the right boundary for observing it.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     searchDoc();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [find, editor?.state.doc]);
 
   const goToMatch = useCallback((index: number) => {

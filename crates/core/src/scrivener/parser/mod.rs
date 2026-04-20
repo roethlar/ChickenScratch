@@ -9,7 +9,7 @@
 //! - Extract metadata (labels, status, keywords, synopsis)
 //!
 //! ## Scrivener Format
-//! ```
+//! ```text
 //! MyProject.scriv/
 //! ├── MyProject.scrivx           # XML: project structure
 //! ├── Files/

@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useCallback, useRef, useState, type ReactNode } from "react";
 
 interface DragState {
@@ -31,19 +32,22 @@ const Ctx = createContext<DragContextType>({
 });
 
 export function DragProvider({ children }: { children: ReactNode }) {
-  // Use refs for mutable state that needs to be read in event handlers
-  // Use useState only to trigger re-renders for visual feedback
-  const stateRef = useRef<DragState>({
+  // Visible state drives rendering; a mirror ref lets event handlers read the
+  // latest values without re-creating callbacks on every change.
+  const [visible, setVisible] = useState<DragState>({
     draggingId: null,
     dropTargetId: null,
     dropPosition: null,
   });
+  const stateRef = useRef<DragState>(visible);
   const onDropRef = useRef<DropHandler | null>(null);
-  const [, forceRender] = useState(0);
 
   const update = useCallback((patch: Partial<DragState>) => {
-    Object.assign(stateRef.current, patch);
-    forceRender((n) => n + 1);
+    setVisible((prev) => {
+      const next = { ...prev, ...patch };
+      stateRef.current = next;
+      return next;
+    });
   }, []);
 
   const startDrag = useCallback((nodeId: string) => {
@@ -73,9 +77,9 @@ export function DragProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider
       value={{
-        draggingId: stateRef.current.draggingId,
-        dropTargetId: stateRef.current.dropTargetId,
-        dropPosition: stateRef.current.dropPosition,
+        draggingId: visible.draggingId,
+        dropTargetId: visible.dropTargetId,
+        dropPosition: visible.dropPosition,
         startDrag,
         setDropTarget,
         clearDropTarget,

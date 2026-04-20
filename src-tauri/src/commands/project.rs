@@ -70,7 +70,7 @@ pub fn pick_scriv_folder() -> Result<Option<String>, ChiknError> {
         if path.is_empty() {
             Ok(None)
         } else {
-            Ok(Some(path.trim_end_matches(|c| c == '/' || c == '\\').to_string()))
+            Ok(Some(path.trim_end_matches(['/', '\\']).to_string()))
         }
     }
 

@@ -1,25 +1,34 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useState, useEffect, useRef, useCallback } from "react";
 
-interface DialogState {
-  type: "prompt" | "confirm";
+interface PromptDialogState {
+  type: "prompt";
   title: string;
   defaultValue?: string;
-  resolve: (value: string | boolean | null) => void;
+  resolve: (value: string | null) => void;
 }
+
+interface ConfirmDialogState {
+  type: "confirm";
+  title: string;
+  resolve: (value: boolean) => void;
+}
+
+type DialogState = PromptDialogState | ConfirmDialogState;
 
 let showDialog: (state: DialogState) => void = () => {};
 
 /** Drop-in replacement for window.prompt() that works in Tauri webview */
 export function dialogPrompt(title: string, defaultValue = ""): Promise<string | null> {
   return new Promise((resolve) => {
-    showDialog({ type: "prompt", title, defaultValue, resolve: resolve as any });
+    showDialog({ type: "prompt", title, defaultValue, resolve });
   });
 }
 
 /** Drop-in replacement for window.confirm() that works in Tauri webview */
 export function dialogConfirm(title: string): Promise<boolean> {
   return new Promise((resolve) => {
-    showDialog({ type: "confirm", title, resolve: resolve as any });
+    showDialog({ type: "confirm", title, resolve });
   });
 }
 
@@ -31,8 +40,9 @@ export function DialogProvider() {
   useEffect(() => {
     showDialog = (s) => {
       setState(s);
-      setInputValue(s.defaultValue || "");
+      setInputValue(s.type === "prompt" ? (s.defaultValue || "") : "");
     };
+    return () => { showDialog = () => {}; };
   }, []);
 
   useEffect(() => {
@@ -56,7 +66,11 @@ export function DialogProvider() {
 
   const handleCancel = useCallback(() => {
     if (!state) return;
-    state.resolve(state.type === "prompt" ? null : false);
+    if (state.type === "prompt") {
+      state.resolve(null);
+    } else {
+      state.resolve(false);
+    }
     setState(null);
   }, [state]);
 

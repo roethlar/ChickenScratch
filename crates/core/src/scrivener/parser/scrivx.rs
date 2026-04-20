@@ -128,8 +128,12 @@ pub struct BinderMetadata {
 /// * `Err(ChiknError)` on parse failure
 ///
 /// # Example
-/// ```rust
+/// ```no_run
+/// use std::path::Path;
+/// use chickenscratch_core::scrivener::parser::parse_scrivx;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let project = parse_scrivx(Path::new("MyNovel.scriv/MyNovel.scrivx"))?;
+/// # Ok(()) }
 /// ```
 pub fn parse_scrivx(scrivx_path: &Path) -> Result<ScrivenerProject, ChiknError> {
     // Read XML file

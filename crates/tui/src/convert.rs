@@ -7,6 +7,9 @@
 /// Count words in markdown, skipping pure markdown punctuation tokens.
 pub fn count_words(md: &str) -> usize {
     md.split_whitespace()
-        .filter(|w| !w.chars().all(|c| matches!(c, '#' | '*' | '-' | '_' | '`' | '>' | '=' | '|')))
+        .filter(|w| {
+            !w.chars()
+                .all(|c| matches!(c, '#' | '*' | '-' | '_' | '`' | '>' | '=' | '|'))
+        })
         .count()
 }

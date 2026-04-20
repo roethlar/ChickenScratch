@@ -167,21 +167,51 @@ impl Default for CompileSettings {
     }
 }
 
-fn default_true() -> bool { true }
-fn default_theme() -> String { "dark".to_string() }
-fn default_ten() -> usize { 10 }
-fn default_font() -> String { "Literata Variable".to_string() }
-fn default_font_size() -> f32 { 18.0 }
-fn default_paragraph_style() -> String { "block".to_string() }
-fn default_auto_save() -> u32 { 2 }
-fn default_backup_interval() -> u32 { 30 }
-fn default_provider() -> String { "ollama".to_string() }
-fn default_model() -> String { "llama3.2".to_string() }
-fn default_format() -> String { "docx".to_string() }
-fn default_compile_font() -> String { "Times New Roman".to_string() }
-fn default_twelve() -> f32 { 12.0 }
-fn default_double() -> f32 { 2.0 }
-fn default_one() -> f32 { 1.0 }
+fn default_true() -> bool {
+    true
+}
+fn default_theme() -> String {
+    "dark".to_string()
+}
+fn default_ten() -> usize {
+    10
+}
+fn default_font() -> String {
+    "Literata Variable".to_string()
+}
+fn default_font_size() -> f32 {
+    18.0
+}
+fn default_paragraph_style() -> String {
+    "block".to_string()
+}
+fn default_auto_save() -> u32 {
+    2
+}
+fn default_backup_interval() -> u32 {
+    30
+}
+fn default_provider() -> String {
+    "ollama".to_string()
+}
+fn default_model() -> String {
+    "llama3.2".to_string()
+}
+fn default_format() -> String {
+    "docx".to_string()
+}
+fn default_compile_font() -> String {
+    "Times New Roman".to_string()
+}
+fn default_twelve() -> f32 {
+    12.0
+}
+fn default_double() -> f32 {
+    2.0
+}
+fn default_one() -> f32 {
+    1.0
+}
 
 // ── Persistence ───────────────────────────────────────
 
@@ -264,10 +294,7 @@ pub fn check_pandoc() -> Result<String, ChiknError> {
 
     // If user configured a specific path, try that first
     if let Some(ref custom) = settings.general.pandoc_path {
-        if let Ok(output) = std::process::Command::new(custom)
-            .arg("--version")
-            .output()
-        {
+        if let Ok(output) = std::process::Command::new(custom).arg("--version").output() {
             if output.status.success() {
                 let version = String::from_utf8_lossy(&output.stdout);
                 return Ok(version.lines().next().unwrap_or("unknown").to_string());
@@ -288,10 +315,7 @@ pub fn check_pandoc() -> Result<String, ChiknError> {
     ];
 
     for pandoc in candidates {
-        if let Ok(output) = std::process::Command::new(pandoc)
-            .arg("--version")
-            .output()
-        {
+        if let Ok(output) = std::process::Command::new(pandoc).arg("--version").output() {
             if output.status.success() {
                 let version = String::from_utf8_lossy(&output.stdout);
                 return Ok(version.lines().next().unwrap_or("unknown").to_string());
@@ -300,7 +324,6 @@ pub fn check_pandoc() -> Result<String, ChiknError> {
     }
 
     Err(ChiknError::Unknown(
-        "Pandoc is not installed. Required for Scrivener import and manuscript export."
-            .to_string(),
+        "Pandoc is not installed. Required for Scrivener import and manuscript export.".to_string(),
     ))
 }

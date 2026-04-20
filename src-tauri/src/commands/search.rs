@@ -12,7 +12,10 @@ pub struct SearchResult {
 }
 
 #[tauri::command]
-pub fn search_project(project_path: String, query: String) -> Result<Vec<SearchResult>, ChiknError> {
+pub fn search_project(
+    project_path: String,
+    query: String,
+) -> Result<Vec<SearchResult>, ChiknError> {
     let project = reader::read_project(Path::new(&project_path))?;
     let q = query.to_lowercase();
     let mut results = Vec::new();
@@ -51,7 +54,7 @@ pub fn search_project(project_path: String, query: String) -> Result<Vec<SearchR
     }
 
     // Sort by match count descending
-    results.sort_by(|a, b| b.match_count.cmp(&a.match_count));
+    results.sort_by_key(|r| std::cmp::Reverse(r.match_count));
     Ok(results)
 }
 

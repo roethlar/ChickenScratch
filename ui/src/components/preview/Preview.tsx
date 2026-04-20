@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
 import { invoke } from "@tauri-apps/api/core";
 import { marked } from "marked";
@@ -47,8 +47,10 @@ export function Preview() {
     summary: "",
   });
 
-  useEffect(() => {
-    if (!project) return;
+  // Sync meta form state to the loaded project (React's "adjust state on prop change" pattern)
+  const [lastProjectPath, setLastProjectPath] = useState<string | undefined>(project?.path);
+  if (project && project.path !== lastProjectPath) {
+    setLastProjectPath(project.path);
     setMeta({
       title: project.metadata.title || "",
       author: project.metadata.author || "",
@@ -57,7 +59,7 @@ export function Preview() {
       theme: project.metadata.theme || "",
       summary: project.metadata.summary || "",
     });
-  }, [project?.path]);
+  }
 
   const saveMeta = useCallback(async () => {
     if (!project) return;

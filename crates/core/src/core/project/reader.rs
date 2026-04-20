@@ -9,12 +9,14 @@
 //! - Validate project structure
 //!
 //! ## Example
-//! ```rust
+//! ```no_run
 //! use std::path::Path;
-//! use crate::core::project::reader::read_project;
+//! use chickenscratch_core::core::project::reader::read_project;
 //!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let project = read_project(Path::new("MyNovel.chikn"))?;
 //! println!("Loaded project: {}", project.name);
+//! # Ok(()) }
 //! ```
 
 use std::collections::HashMap;
@@ -29,8 +31,7 @@ use uuid::Uuid;
 
 use super::format::{
     get_document_meta_path, get_manuscript_path, get_project_file_path, get_research_path,
-    get_templates_path, get_settings_path,
-    validate_project_structure, DOCUMENT_EXTENSION,
+    get_settings_path, get_templates_path, validate_project_structure, DOCUMENT_EXTENSION,
 };
 use crate::models::{Document, Project, TreeNode};
 use crate::utils::error::ChiknError;
@@ -148,8 +149,12 @@ fn current_timestamp() -> String {
 /// - `Serialization`: YAML parsing errors
 ///
 /// # Example
-/// ```rust
+/// ```no_run
+/// use std::path::Path;
+/// use chickenscratch_core::core::project::reader::read_project;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let project = read_project(Path::new("MyNovel.chikn"))?;
+/// # Ok(()) }
 /// ```
 pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
     // Validate project structure
@@ -220,7 +225,9 @@ fn repair_project(project: &mut Project, project_path: &Path) -> bool {
             orphans.len()
         );
         for (id, name, path) in orphans {
-            project.hierarchy.push(TreeNode::Document { id, name, path });
+            project
+                .hierarchy
+                .push(TreeNode::Document { id, name, path });
         }
         repaired = true;
     }
@@ -258,7 +265,10 @@ fn repair_project(project: &mut Project, project_path: &Path) -> bool {
         let folder_path = path_fn(project_path);
         if !folder_path.exists() {
             let _ = std::fs::create_dir_all(&folder_path);
-            eprintln!("Repaired: created missing folder on disk: {}", folder_path.display());
+            eprintln!(
+                "Repaired: created missing folder on disk: {}",
+                folder_path.display()
+            );
             repaired = true;
         }
     }
@@ -298,11 +308,7 @@ fn prune_missing_files(hierarchy: &[TreeNode], project_path: &Path) -> Vec<TreeN
                     result.push(node.clone());
                 }
             }
-            TreeNode::Folder {
-                id,
-                name,
-                children,
-            } => {
+            TreeNode::Folder { id, name, children } => {
                 let pruned_children = prune_missing_files(children, project_path);
                 result.push(TreeNode::Folder {
                     id: id.clone(),
@@ -351,10 +357,10 @@ fn collect_paths_inner(hierarchy: &[TreeNode], paths: &mut std::collections::Has
 fn read_project_metadata(path: &Path) -> Result<ProjectMetadata, ChiknError> {
     let project_file = get_project_file_path(path);
 
-    let content = fs::read_to_string(&project_file).map_err(|e| ChiknError::Io(e))?;
+    let content = fs::read_to_string(&project_file).map_err(ChiknError::Io)?;
 
     let metadata: ProjectMetadata =
-        serde_yaml::from_str(&content).map_err(|e| ChiknError::Serialization(e))?;
+        serde_yaml::from_str(&content).map_err(ChiknError::Serialization)?;
 
     Ok(metadata)
 }
@@ -533,12 +539,11 @@ hierarchy:
         fs::write(&doc_path, "# Chapter 1\n\nOnce upon a time...").unwrap();
 
         // Create metadata file
-        let meta_yaml = format!(
-            r#"id: "doc1"
+        let meta_yaml = r#"id: "doc1"
 created: "2025-01-01T00:00:00Z"
 modified: "2025-01-01T00:00:00Z"
 "#
-        );
+        .to_string();
         fs::write(
             project_path.join(MANUSCRIPT_FOLDER).join("chapter-01.meta"),
             meta_yaml,
@@ -557,7 +562,7 @@ modified: "2025-01-01T00:00:00Z"
         let project = result.unwrap();
         assert_eq!(project.name, "Test Project");
         // Hierarchy includes the original doc + auto-added Manuscript/Research folders
-        assert!(project.hierarchy.len() >= 1);
+        assert!(!project.hierarchy.is_empty());
         assert_eq!(project.documents.len(), 1);
     }
 
