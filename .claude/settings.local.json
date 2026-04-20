@@ -241,7 +241,8 @@
       "Bash(tasklist /FI \"IMAGENAME eq ChickenScratch.App.exe\")",
       "Bash(Start-Process *)",
       "Bash(\"ChickenScratch.App.exe\")",
-      "Bash(git pull *)"
+      "Bash(git pull *)",
+      "Bash(git push *)"
     ],
     "deny": [],
     "ask": []
