@@ -626,6 +626,7 @@ name = "chickenscratch-linux"
 version = "0.1.0"
 dependencies = [
  "chickenscratch-core",
+ "chrono",
  "cxx",
  "cxx-qt",
  "cxx-qt-build",

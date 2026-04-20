@@ -39,33 +39,63 @@ Rectangle {
             ScrollBar.vertical: ScrollBar {}
 
             delegate: ItemDelegate {
+                id: itemDelegate
                 width: list.width
                 height: 28
                 highlighted: controller.active_doc_id === controller.binder_ids[index]
 
+                readonly property bool isFolder: controller.binder_kinds[index] === "Folder"
+                readonly property bool hasChildren: controller.binder_has_children[index] === "1"
+                readonly property bool isExpanded: controller.binder_expanded[index] === "1"
+                readonly property int depth: parseInt(controller.binder_depths[index])
+                readonly property string nodeId: controller.binder_ids[index]
+
                 contentItem: RowLayout {
-                    spacing: 6
+                    spacing: 4
                     Item {
-                        Layout.preferredWidth: 12 + parseInt(controller.binder_depths[index]) * 14
+                        Layout.preferredWidth: 8 + itemDelegate.depth * 14
+                    }
+                    // Chevron for folders that have children
+                    Label {
+                        Layout.preferredWidth: 14
+                        horizontalAlignment: Text.AlignHCenter
+                        text: itemDelegate.isFolder && itemDelegate.hasChildren
+                              ? (itemDelegate.isExpanded ? "▾" : "▸")
+                              : ""
+                        color: "#707070"
+                        font.pixelSize: 10
+                        MouseArea {
+                            anchors.fill: parent
+                            visible: itemDelegate.isFolder && itemDelegate.hasChildren
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: (mouse) => {
+                                mouse.accepted = true
+                                controller.toggle_folder(itemDelegate.nodeId)
+                            }
+                        }
                     }
                     Label {
-                        text: controller.binder_kinds[index] === "Folder" ? "▸" : "•"
-                        color: controller.binder_kinds[index] === "Folder" ? "#7a9a7a" : "#808080"
-                        font.pixelSize: 12
+                        Layout.preferredWidth: 12
+                        horizontalAlignment: Text.AlignHCenter
+                        text: itemDelegate.isFolder ? "▤" : "•"
+                        color: itemDelegate.isFolder ? "#7a9a7a" : "#808080"
+                        font.pixelSize: 11
                     }
                     Label {
                         text: modelData
-                        color: controller.binder_kinds[index] === "Folder" ? "#d0d0d0" : "#b8b8b8"
+                        color: itemDelegate.isFolder ? "#d0d0d0" : "#b8b8b8"
                         font.pixelSize: 13
-                        font.bold: controller.binder_kinds[index] === "Folder"
+                        font.bold: itemDelegate.isFolder
                         Layout.fillWidth: true
                         elide: Text.ElideRight
                     }
                 }
 
                 onClicked: {
-                    if (controller.binder_kinds[index] === "Document") {
-                        controller.select_document(controller.binder_ids[index])
+                    if (!itemDelegate.isFolder) {
+                        controller.select_document(itemDelegate.nodeId)
+                    } else if (itemDelegate.hasChildren) {
+                        controller.toggle_folder(itemDelegate.nodeId)
                     }
                 }
             }
