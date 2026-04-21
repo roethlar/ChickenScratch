@@ -8,9 +8,9 @@ namespace ChickenScratch.App.ViewModels;
 
 public partial class BinderItemViewModel : ObservableObject
 {
-    [ObservableProperty] private string _name;
-    [ObservableProperty] private bool _isEditing;
-    [ObservableProperty] private string _editName;
+    [ObservableProperty] public partial string Name { get; set; }
+    [ObservableProperty] public partial bool IsEditing { get; set; }
+    [ObservableProperty] public partial string EditName { get; set; }
 
     public string Id { get; }
     public bool IsDocument { get; }
@@ -20,20 +20,25 @@ public partial class BinderItemViewModel : ObservableObject
     public BinderItemViewModel(string id, string name, bool isDocument)
     {
         Id = id;
-        _name = name;
-        _editName = name;
+        Name = name;
+        EditName = name;
         IsDocument = isDocument;
     }
 }
 
 public partial class BinderViewModel : ObservableObject
 {
-    [ObservableProperty] private ObservableCollection<BinderItemViewModel> _nodes = [];
-    [ObservableProperty] private BinderItemViewModel? _selectedItem;
+    [ObservableProperty] public partial ObservableCollection<BinderItemViewModel> Nodes { get; set; }
+    [ObservableProperty] public partial BinderItemViewModel? SelectedItem { get; set; }
 
     private string? _projectPath;
 
     public event Action<Project>? ProjectChanged;
+
+    public BinderViewModel()
+    {
+        Nodes = [];
+    }
 
     public void LoadProject(Project project)
     {

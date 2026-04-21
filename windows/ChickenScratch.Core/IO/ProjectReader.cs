@@ -47,7 +47,7 @@ public static class ProjectReader
 
     private static TreeNode ConvertNode(TreeNodeYaml yaml)
     {
-        if (yaml.Type == "folder")
+        if (yaml.Type.Equals("folder", StringComparison.OrdinalIgnoreCase))
         {
             return new FolderNode
             {

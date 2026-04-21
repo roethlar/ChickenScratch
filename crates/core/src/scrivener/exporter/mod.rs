@@ -45,7 +45,11 @@ use crate::utils::error::ChiknError;
 /// export_to_scriv(&project, Path::new("MyNovel.scriv"))?;
 /// # Ok(()) }
 /// ```
-pub fn export_to_scriv(project: &Project, output_path: &Path) -> Result<(), ChiknError> {
+pub fn export_to_scriv(
+    project: &Project,
+    output_path: &Path,
+    pandoc_path: Option<&Path>,
+) -> Result<(), ChiknError> {
     // Create .scriv directory structure
     create_scriv_structure(output_path)?;
 
@@ -54,7 +58,7 @@ pub fn export_to_scriv(project: &Project, output_path: &Path) -> Result<(), Chik
     let binder_items = convert_to_binder_items(&project.hierarchy, project, &mut uuid_map)?;
 
     // Convert documents to RTF and write them
-    write_rtf_documents(project, output_path, &uuid_map)?;
+    write_rtf_documents(project, output_path, &uuid_map, pandoc_path)?;
 
     // Generate .scrivx XML
     write_scrivx(output_path, &project.name, &binder_items)?;
@@ -146,6 +150,7 @@ fn write_rtf_documents(
     project: &Project,
     scriv_path: &Path,
     uuid_map: &HashMap<String, String>,
+    pandoc_path: Option<&Path>,
 ) -> Result<(), ChiknError> {
     for (doc_id, document) in &project.documents {
         if let Some(scriv_uuid) = uuid_map.get(doc_id) {
@@ -161,7 +166,7 @@ fn write_rtf_documents(
             fs::write(&temp_html, &document.content)?;
 
             // Convert to RTF and ensure cleanup
-            let result = html_to_rtf(&temp_html, &rtf_path);
+            let result = html_to_rtf(&temp_html, &rtf_path, pandoc_path);
 
             // Always clean up temp file
             let _ = fs::remove_file(&temp_html);

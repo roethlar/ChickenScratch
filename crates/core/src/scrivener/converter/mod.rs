@@ -63,7 +63,11 @@ use crate::utils::error::ChiknError;
 /// )?;
 /// # Ok(()) }
 /// ```
-pub fn import_scriv(scriv_path: &Path, output_path: &Path) -> Result<Project, ChiknError> {
+pub fn import_scriv(
+    scriv_path: &Path,
+    output_path: &Path,
+    pandoc_path: Option<&Path>,
+) -> Result<Project, ChiknError> {
     // Find .scrivx file
     let scrivx_file = find_scrivx_file(scriv_path)?;
 
@@ -90,6 +94,7 @@ pub fn import_scriv(scriv_path: &Path, output_path: &Path) -> Result<Project, Ch
         scriv_path,
         &mut documents,
         &mut uuid_to_path,
+        pandoc_path,
     )?;
 
     // Second pass: clean up Scrivener markup in all document content
@@ -242,6 +247,7 @@ fn convert_binder_items(
     scriv_path: &Path,
     documents: &mut HashMap<String, Document>,
     uuid_to_path: &mut HashMap<String, String>,
+    pandoc_path: Option<&Path>,
 ) -> Result<Vec<TreeNode>, ChiknError> {
     convert_binder_items_inner(
         items,
@@ -250,6 +256,7 @@ fn convert_binder_items(
         uuid_to_path,
         None,
         "manuscript",
+        pandoc_path,
     )
 }
 
@@ -261,6 +268,7 @@ fn convert_binder_items_inner(
     uuid_to_path: &mut HashMap<String, String>,
     parent_id: Option<String>,
     target_folder: &str,
+    pandoc_path: Option<&Path>,
 ) -> Result<Vec<TreeNode>, ChiknError> {
     let mut hierarchy = Vec::new();
 
@@ -281,6 +289,7 @@ fn convert_binder_items_inner(
                     uuid_to_path,
                     Some(folder_id.clone()),
                     "research",
+                    pandoc_path,
                 )?;
 
                 hierarchy.push(TreeNode::Folder {
@@ -302,12 +311,13 @@ fn convert_binder_items_inner(
                     uuid_to_path,
                     Some(folder_id.clone()),
                     target_folder,
+                    pandoc_path,
                 )?;
 
                 // Folders in Scrivener can also have their own text content
                 let rtf_path = get_rtf_path(scriv_path, &item.uuid);
                 if rtf_path.exists() {
-                    let content = rtf_to_html(&rtf_path)?;
+                    let content = rtf_to_html(&rtf_path, pandoc_path)?;
                     if !content.trim().is_empty() {
                         let doc_id = Uuid::new_v4().to_string();
                         let slug = crate::utils::slug::unique_slug(
@@ -377,7 +387,7 @@ fn convert_binder_items_inner(
 
                 let rtf_path = get_rtf_path(scriv_path, &item.uuid);
                 let content = if rtf_path.exists() {
-                    rtf_to_html(&rtf_path)?
+                    rtf_to_html(&rtf_path, pandoc_path)?
                 } else {
                     String::new()
                 };
@@ -663,7 +673,7 @@ mod tests {
         let output_path = temp_dir.path().join("Corn.chikn");
 
         // Import Scrivener project
-        let result = import_scriv(&sample_path, &output_path);
+        let result = import_scriv(&sample_path, &output_path, None);
 
         if result.is_err() {
             eprintln!("Import error: {:?}", result.err());

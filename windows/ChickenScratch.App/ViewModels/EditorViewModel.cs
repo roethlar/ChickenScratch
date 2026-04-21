@@ -10,14 +10,14 @@ public enum SaveStatus { Saved, Modified, Saving }
 
 public partial class EditorViewModel : ObservableObject
 {
-    [ObservableProperty] private string _htmlContent = string.Empty;
-    [ObservableProperty] private int _wordCount;
-    [ObservableProperty] private int _sessionWordCount;
-    [ObservableProperty] private SaveStatus _saveStatus = SaveStatus.Saved;
-    [ObservableProperty] private bool _isBold;
-    [ObservableProperty] private bool _isItalic;
-    [ObservableProperty] private bool _isUnderline;
-    [ObservableProperty] private bool _isEditable = true;
+    [ObservableProperty] public partial string HtmlContent { get; set; }
+    [ObservableProperty] public partial int WordCount { get; set; }
+    [ObservableProperty] public partial int SessionWordCount { get; set; }
+    [ObservableProperty] public partial SaveStatus SaveStatus { get; set; }
+    [ObservableProperty] public partial bool IsBold { get; set; }
+    [ObservableProperty] public partial bool IsItalic { get; set; }
+    [ObservableProperty] public partial bool IsUnderline { get; set; }
+    [ObservableProperty] public partial bool IsEditable { get; set; }
 
     public string WordCountText => $"{WordCount:N0} words";
     public string SaveStatusText => SaveStatus switch
@@ -32,9 +32,15 @@ public partial class EditorViewModel : ObservableObject
     partial void OnSaveStatusChanged(SaveStatus value) => OnPropertyChanged(nameof(SaveStatusText));
 
     private Document? _document;
-    private string? _projectPath; // absolute project root path
+    private string? _projectPath;
     private DispatcherQueueTimer? _autoSaveTimer;
     private int _sessionStartWords;
+
+    public EditorViewModel()
+    {
+        HtmlContent = string.Empty;
+        IsEditable = true;
+    }
 
     public void Initialize(DispatcherQueue queue)
     {
@@ -103,7 +109,7 @@ public partial class EditorViewModel : ObservableObject
         {
             _document.Content = HtmlContent;
             DocumentService.UpdateContent(
-                Path.GetFullPath(Path.Combine(_projectPath, "..")),
+                _projectPath,
                 _document.Id,
                 HtmlContent);
             SaveStatus = SaveStatus.Saved;

@@ -7,12 +7,12 @@ namespace ChickenScratch.App.ViewModels;
 
 public partial class InspectorViewModel : ObservableObject
 {
-    [ObservableProperty] private string? _synopsis;
-    [ObservableProperty] private string? _label;
-    [ObservableProperty] private string? _status;
-    [ObservableProperty] private bool _includeInCompile = true;
-    [ObservableProperty] private uint _wordCountTarget;
-    [ObservableProperty] private bool _hasDocument;
+    [ObservableProperty] public partial string? Synopsis { get; set; }
+    [ObservableProperty] public partial string? Label { get; set; }
+    [ObservableProperty] public partial string? Status { get; set; }
+    [ObservableProperty] public partial bool IncludeInCompile { get; set; }
+    [ObservableProperty] public partial uint WordCountTarget { get; set; }
+    [ObservableProperty] public partial bool HasDocument { get; set; }
 
     // NumberBox requires double binding
     public double WordCountTargetDouble
@@ -25,6 +25,11 @@ public partial class InspectorViewModel : ObservableObject
     private string? _projectPath;
     private DispatcherQueueTimer? _debounceTimer;
     private bool _loading;
+
+    public InspectorViewModel()
+    {
+        IncludeInCompile = true;
+    }
 
     public void Initialize(DispatcherQueue queue)
     {
@@ -43,8 +48,6 @@ public partial class InspectorViewModel : ObservableObject
 
         if (doc == null) return;
 
-        // Resolve project root: doc.Path is relative like "documents/foo.html"
-        // We'll receive the full project path from AppViewModel
         _loading = true;
         Synopsis = doc.Synopsis ?? string.Empty;
         Label = doc.Label ?? string.Empty;

@@ -10,17 +10,17 @@ public enum ViewMode { Editor, Preview }
 
 public partial class AppViewModel : ObservableObject
 {
-    [ObservableProperty] private Project? _currentProject;
-    [ObservableProperty] private Document? _activeDocument;
-    [ObservableProperty] private bool _showBinder = true;
-    [ObservableProperty] private bool _showInspector = true;
-    [ObservableProperty] private bool _showRevisions = false;
-    [ObservableProperty] private ViewMode _currentView = ViewMode.Editor;
-    [ObservableProperty] private string? _statusMessage;
-    [ObservableProperty] private bool _isBusy;
+    [ObservableProperty] public partial Project? CurrentProject { get; set; }
+    [ObservableProperty] public partial Document? ActiveDocument { get; set; }
+    [ObservableProperty] public partial bool ShowBinder { get; set; }
+    [ObservableProperty] public partial bool ShowInspector { get; set; }
+    [ObservableProperty] public partial bool ShowRevisions { get; set; }
+    [ObservableProperty] public partial ViewMode CurrentView { get; set; }
+    [ObservableProperty] public partial string? StatusMessage { get; set; }
+    [ObservableProperty] public partial bool IsBusy { get; set; }
 
-    public bool IsProjectOpen => _currentProject != null;
-    public string ProjectTitle => _currentProject?.Name ?? string.Empty;
+    public bool IsProjectOpen => CurrentProject != null;
+    public string ProjectTitle => CurrentProject?.Name ?? string.Empty;
 
     public Visibility WelcomeVisibility => IsProjectOpen ? Visibility.Collapsed : Visibility.Visible;
     public Visibility EditorVisibility  => IsProjectOpen ? Visibility.Visible  : Visibility.Collapsed;
@@ -28,6 +28,13 @@ public partial class AppViewModel : ObservableObject
     public BinderViewModel Binder { get; } = new();
     public EditorViewModel Editor { get; } = new();
     public InspectorViewModel Inspector { get; } = new();
+
+    public AppViewModel()
+    {
+        ShowBinder = true;
+        ShowInspector = true;
+        Binder.ProjectChanged += p => CurrentProject = p;
+    }
 
     partial void OnCurrentProjectChanged(Project? value)
     {

@@ -27,7 +27,7 @@
                        Text="{x:Bind ViewModel.ProjectTitle, Mode=OneWay}"
                        Opacity="0.9" />
 
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+            <StackPanel x:Name="TitleBarRightButtons" Grid.Column="2" Orientation="Horizontal" Spacing="4"
                         VerticalAlignment="Center" Margin="0,0,8,0">
                 <Button Click="ToggleBinder_Click"
                         ToolTipService.ToolTip="Toggle Binder"

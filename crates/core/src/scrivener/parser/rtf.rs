@@ -1,19 +1,26 @@
 //! # RTF Converter
 //!
-//! Converts between Scrivener RTF content and HTML.
+//! Converts between Scrivener RTF content and Markdown.
 //!
 //! Uses Pandoc as external tool for robust RTF parsing.
 
 use crate::utils::error::ChiknError;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-/// Converts RTF file to HTML using Pandoc.
-pub fn rtf_to_html(rtf_path: &Path) -> Result<String, ChiknError> {
-    check_pandoc_available()?;
+fn pandoc_cmd(pandoc_path: Option<&Path>) -> &OsStr {
+    pandoc_path
+        .map(|p| p.as_os_str())
+        .unwrap_or(OsStr::new("pandoc"))
+}
 
-    let output = Command::new("pandoc")
+/// Converts RTF file to Markdown using Pandoc.
+pub fn rtf_to_html(rtf_path: &Path, pandoc_path: Option<&Path>) -> Result<String, ChiknError> {
+    check_pandoc_available(pandoc_path)?;
+
+    let output = Command::new(pandoc_cmd(pandoc_path))
         .arg("-f")
         .arg("rtf")
         .arg("-t")
@@ -37,23 +44,30 @@ pub fn rtf_to_html(rtf_path: &Path) -> Result<String, ChiknError> {
     Ok(html)
 }
 
-/// Converts RTF string to HTML using Pandoc.
-pub fn rtf_string_to_html(rtf_content: &str) -> Result<String, ChiknError> {
+/// Converts RTF string to Markdown using Pandoc.
+pub fn rtf_string_to_html(
+    rtf_content: &str,
+    pandoc_path: Option<&Path>,
+) -> Result<String, ChiknError> {
     let temp_dir = std::env::temp_dir();
     let temp_file = temp_dir.join(format!("temp_{}.rtf", uuid::Uuid::new_v4()));
 
     fs::write(&temp_file, rtf_content)?;
-    let result = rtf_to_html(&temp_file);
+    let result = rtf_to_html(&temp_file, pandoc_path);
     let _ = fs::remove_file(&temp_file);
 
     result
 }
 
-/// Converts HTML file to RTF using Pandoc.
-pub fn html_to_rtf(html_path: &Path, rtf_path: &Path) -> Result<(), ChiknError> {
-    check_pandoc_available()?;
+/// Converts Markdown file to RTF using Pandoc.
+pub fn html_to_rtf(
+    html_path: &Path,
+    rtf_path: &Path,
+    pandoc_path: Option<&Path>,
+) -> Result<(), ChiknError> {
+    check_pandoc_available(pandoc_path)?;
 
-    let output = Command::new("pandoc")
+    let output = Command::new(pandoc_cmd(pandoc_path))
         .arg("-f")
         .arg("markdown")
         .arg("-t")
@@ -75,14 +89,17 @@ pub fn html_to_rtf(html_path: &Path, rtf_path: &Path) -> Result<(), ChiknError> 
     Ok(())
 }
 
-/// Converts HTML string to RTF string using Pandoc.
-pub fn html_string_to_rtf(html_content: &str) -> Result<String, ChiknError> {
+/// Converts Markdown string to RTF string using Pandoc.
+pub fn html_string_to_rtf(
+    html_content: &str,
+    pandoc_path: Option<&Path>,
+) -> Result<String, ChiknError> {
     let temp_dir = std::env::temp_dir();
     let temp_html = temp_dir.join(format!("temp_{}.md", uuid::Uuid::new_v4()));
     let temp_rtf = temp_dir.join(format!("temp_{}.rtf", uuid::Uuid::new_v4()));
 
     fs::write(&temp_html, html_content)?;
-    let result = html_to_rtf(&temp_html, &temp_rtf);
+    let result = html_to_rtf(&temp_html, &temp_rtf, pandoc_path);
 
     let output = if result.is_ok() {
         let rtf_content = fs::read_to_string(&temp_rtf)?;
@@ -97,9 +114,8 @@ pub fn html_string_to_rtf(html_content: &str) -> Result<String, ChiknError> {
     output
 }
 
-/// Checks if Pandoc is installed and available
-fn check_pandoc_available() -> Result<(), ChiknError> {
-    let output = Command::new("pandoc")
+fn check_pandoc_available(pandoc_path: Option<&Path>) -> Result<(), ChiknError> {
+    let output = Command::new(pandoc_cmd(pandoc_path))
         .arg("--version")
         .output()
         .map_err(|_| {
@@ -124,16 +140,16 @@ mod tests {
 
     #[test]
     fn test_check_pandoc_available() {
-        if check_pandoc_available().is_err() {
+        if check_pandoc_available(None).is_err() {
             eprintln!("Skipping test: Pandoc not installed");
             return;
         }
-        assert!(check_pandoc_available().is_ok());
+        assert!(check_pandoc_available(None).is_ok());
     }
 
     #[test]
     fn test_rtf_to_html() {
-        if check_pandoc_available().is_err() {
+        if check_pandoc_available(None).is_err() {
             eprintln!("Skipping test: Pandoc not installed");
             return;
         }
@@ -147,21 +163,21 @@ mod tests {
 }";
         fs::write(&rtf_file, rtf_content).unwrap();
 
-        if let Ok(html) = rtf_to_html(&rtf_file) {
+        if let Ok(html) = rtf_to_html(&rtf_file, None) {
             assert!(html.contains("Hello world") || html.contains("Hello"));
         }
     }
 
     #[test]
     fn test_rtf_string_to_html() {
-        if check_pandoc_available().is_err() {
+        if check_pandoc_available(None).is_err() {
             eprintln!("Skipping test: Pandoc not installed");
             return;
         }
 
         let rtf = r"{\rtf1\ansi Simple text}";
 
-        if let Ok(html) = rtf_string_to_html(rtf) {
+        if let Ok(html) = rtf_string_to_html(rtf, None) {
             assert!(html.contains("Simple") || !html.is_empty());
         }
     }
