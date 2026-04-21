@@ -23,6 +23,9 @@
                                 <ComboBoxItem Content="Dark" Tag="dark" />
                                 <ComboBoxItem Content="Light" Tag="light" />
                                 <ComboBoxItem Content="Sepia" Tag="sepia" />
+                                <ComboBoxItem Content="Solarized Dark" Tag="solarized-dark" />
+                                <ComboBoxItem Content="Solarized Light" Tag="solarized-light" />
+                                <ComboBoxItem Content="Dracula" Tag="dracula" />
                             </ComboBox>
                         </StackPanel>
                         <StackPanel Spacing="4">
@@ -33,11 +36,17 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="Pandoc Path (leave empty for auto-detect)"
                                        Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
-                            <TextBox x:Name="PandocPathBox"
-                                     PlaceholderText="e.g. C:\Program Files\Pandoc\pandoc.exe" />
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <TextBox Grid.Column="0" x:Name="PandocPathBox"
+                                         PlaceholderText="e.g. C:\Program Files\Pandoc\pandoc.exe" />
+                                <Button Grid.Column="1" Content="Browse" Click="BrowsePandoc_Click" />
+                            </Grid>
                             <TextBlock x:Name="PandocVersionText"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Opacity="0.5" Margin="0,2,0,0" />
+                            <HyperlinkButton Content="Download from pandoc.org"
+                                             NavigateUri="https://pandoc.org/installing.html"
+                                             Padding="0,2,0,0" />
                         </StackPanel>
                     </StackPanel>
                 </PivotItem>

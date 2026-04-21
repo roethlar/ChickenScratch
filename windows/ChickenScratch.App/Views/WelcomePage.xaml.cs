@@ -87,6 +87,8 @@ public sealed partial class WelcomePage : UserControl
         var file = await savePicker.PickSaveFileAsync();
         if (file == null) return;
 
+        // PickSaveFileAsync creates a placeholder file; remove it before we create the project directory
+        if (File.Exists(file.Path)) File.Delete(file.Path);
         var dir = Path.GetDirectoryName(file.Path)!;
         var projectPath = Path.Combine(dir, name + ".chikn");
         ProjectCreated?.Invoke(this, (name, projectPath));
@@ -116,7 +118,9 @@ public sealed partial class WelcomePage : UserControl
         var outFile = await savePicker.PickSaveFileAsync();
         if (outFile == null) return;
 
+        // PickSaveFileAsync creates a placeholder file; remove it before we create the project directory
         var outputPath = outFile.Path;
+        if (File.Exists(outputPath)) File.Delete(outputPath);
         ErrorBar.IsOpen = false;
 
         try
@@ -129,6 +133,12 @@ public sealed partial class WelcomePage : UserControl
             ErrorBar.Message = ex.Message;
             ErrorBar.IsOpen = true;
         }
+    }
+
+    private async void PandocWarning_OpenSettings(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SettingsDialog { XamlRoot = XamlRoot };
+        await dialog.ShowAsync();
     }
 
     private void RecentItem_Click(object sender, RoutedEventArgs e)

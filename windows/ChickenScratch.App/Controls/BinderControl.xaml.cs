@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -9,7 +10,7 @@ public sealed partial class BinderControl : UserControl
 {
     public static readonly DependencyProperty ViewModelProperty =
         DependencyProperty.Register(nameof(ViewModel), typeof(BinderViewModel),
-            typeof(BinderControl), new PropertyMetadata(null));
+            typeof(BinderControl), new PropertyMetadata(null, OnViewModelChanged));
 
     public BinderViewModel ViewModel
     {
@@ -21,21 +22,63 @@ public sealed partial class BinderControl : UserControl
 
     public BinderControl() => InitializeComponent();
 
+    private static void OnViewModelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var ctrl = (BinderControl)d;
+        if (e.OldValue is BinderViewModel old)
+            old.PropertyChanged -= ctrl.OnViewModelPropertyChanged;
+        if (e.NewValue is BinderViewModel nw)
+            nw.PropertyChanged += ctrl.OnViewModelPropertyChanged;
+        ctrl.RebuildTree();
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(BinderViewModel.Nodes))
+            RebuildTree();
+    }
+
+    private void RebuildTree()
+    {
+        BinderTree.RootNodes.Clear();
+        if (ViewModel?.Nodes == null) return;
+        foreach (var item in ViewModel.Nodes)
+            BinderTree.RootNodes.Add(BuildNode(item));
+    }
+
+    private static TreeViewNode BuildNode(BinderItemViewModel vm)
+    {
+        var node = new TreeViewNode { Content = vm, IsExpanded = true };
+        foreach (var child in vm.Children)
+            node.Children.Add(BuildNode(child));
+        return node;
+    }
+
+    private static BinderItemViewModel? ItemFromNode(object? item)
+        => (item as TreeViewNode)?.Content as BinderItemViewModel;
+
     private void Tree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
     {
-        if (args.InvokedItem is BinderItemViewModel item && item.IsDocument)
+        var item = ItemFromNode(args.InvokedItem);
+        if (item?.IsDocument == true)
             DocumentSelected?.Invoke(this, item.Id);
+    }
+
+    private void Tree_SelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args)
+    {
+        if (ViewModel != null)
+            ViewModel.SelectedItem = ItemFromNode(sender.SelectedItem);
     }
 
     private void NewDocument_Click(object sender, RoutedEventArgs e)
     {
-        var parentId = (BinderTree.SelectedItem as BinderItemViewModel)?.Id;
+        var parentId = ItemFromNode(BinderTree.SelectedItem)?.Id;
         ViewModel?.NewDocumentCommand.Execute(parentId);
     }
 
     private void NewFolder_Click(object sender, RoutedEventArgs e)
     {
-        var parentId = (BinderTree.SelectedItem as BinderItemViewModel)?.Id;
+        var parentId = ItemFromNode(BinderTree.SelectedItem)?.Id;
         ViewModel?.NewFolderCommand.Execute(parentId);
     }
 
