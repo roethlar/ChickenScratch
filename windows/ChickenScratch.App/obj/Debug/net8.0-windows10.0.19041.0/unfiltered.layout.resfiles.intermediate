@@ -1,9 +1,0 @@
-App.xbf
-Controls\BinderControl.xbf
-Controls\EditorControl.xbf
-Controls\InspectorControl.xbf
-Themes\AppTheme.xbf
-Views\MainWindow.xbf
-Views\SettingsDialog.xbf
-Views\WelcomePage.xbf
-Editor\editor.html

@@ -115,6 +115,18 @@ public sealed partial class SettingsDialog : ContentDialog
         await Task.Run(() => SettingsService.SaveSettings(settings));
     }
 
+    private async void BrowsePandoc_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new FileOpenPicker();
+        picker.SuggestedStartLocation = PickerLocationId.ComputerFolder;
+        picker.FileTypeFilter.Add(".exe");
+        picker.FileTypeFilter.Add("*");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker,
+            WindowNative.GetWindowHandle(App.MainWindow!));
+        var file = await picker.PickSingleFileAsync();
+        if (file != null) PandocPathBox.Text = file.Path;
+    }
+
     private async void BrowseBackup_Click(object sender, RoutedEventArgs e)
     {
         var picker = new FolderPicker();

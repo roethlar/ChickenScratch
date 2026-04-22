@@ -28,7 +28,9 @@ pub fn save_project(mut project: Project) -> Result<Project, ChiknError> {
 
 #[tauri::command]
 pub fn import_scrivener(scriv_path: String, output_path: String) -> Result<Project, ChiknError> {
-    converter::import_scriv(Path::new(&scriv_path), Path::new(&output_path))
+    let settings = crate::commands::settings::get_app_settings();
+    let pandoc = settings.general.pandoc_path.as_deref().map(Path::new);
+    converter::import_scriv(Path::new(&scriv_path), Path::new(&output_path), pandoc)
 }
 
 #[tauri::command]

@@ -18,8 +18,10 @@ public static class ScrivenerImporter
         var binder = xdoc.Root?.Element("Binder")
             ?? throw new InvalidOperationException("Invalid .scrivx: no Binder element.");
 
+        if (PandocService.FindPandoc() == null)
+            throw new InvalidOperationException("Pandoc is required for Scrivener import. Install from pandoc.org or configure the path in Settings.");
+
         Directory.CreateDirectory(outputPath);
-        Directory.CreateDirectory(Path.Combine(outputPath, "documents"));
         File.WriteAllText(Path.Combine(outputPath, ".gitignore"), ".project.yaml.tmp\n");
 
         var name = Path.GetFileNameWithoutExtension(scrivPath);
@@ -82,20 +84,18 @@ public static class ScrivenerImporter
             var html = string.Empty;
 
             if (File.Exists(rtfPath))
-            {
-                try { html = PandocService.ConvertToHtml(rtfPath, "rtf"); }
-                catch { html = string.Empty; }
-            }
+                html = PandocService.ConvertToHtml(rtfPath, "rtf");
 
             html = CleanHtml(html);
             var slug = slugMap.TryGetValue(uuid, out var s) ? s : Slugify.Slugs(title);
-            var relPath = $"documents/{slug}.html";
+            var relPath = $"manuscript/{slug}.md";
 
             var doc = new Document { Id = id, Name = title, Path = relPath, Content = html };
             project.Documents[id] = doc;
             ProjectWriter.WriteDocument(outputPath, doc);
 
             parent.Add(new DocumentNode { Id = id, Name = title, Path = relPath, Type = "document" });
+
         }
         else
         {

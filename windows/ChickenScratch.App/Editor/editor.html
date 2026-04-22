@@ -78,6 +78,7 @@ import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.10.4';
 import Underline from 'https://esm.sh/@tiptap/extension-underline@2.10.4';
 import Highlight from 'https://esm.sh/@tiptap/extension-highlight@2.10.4';
 import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2.10.4';
+import { Markdown } from 'https://esm.sh/tiptap-markdown@0.9.0';
 
 let debounceTimer = null;
 
@@ -88,15 +89,24 @@ const editor = new Editor({
     Underline,
     Highlight,
     Placeholder.configure({ placeholder: 'Start writing…' }),
+    Markdown.configure({
+      html: true,
+      tightLists: true,
+      bulletListMarker: '-',
+      linkify: false,
+      breaks: false,
+      transformPastedText: false,
+      transformCopiedText: false,
+    }),
   ],
   content: '',
   onUpdate({ editor }) {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      const html = editor.getHTML();
+      const markdown = editor.storage.markdown.getMarkdown();
       const text = editor.getText();
       const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-      postToHost({ type: 'contentChanged', content: html });
+      postToHost({ type: 'contentChanged', content: markdown });
       postToHost({ type: 'wordCount', count: words });
     }, 300);
   },
@@ -121,8 +131,8 @@ function postToHost(msg) {
 
 // Public API called by C# host
 window.editorApi = {
-  setContent(html) { editor.commands.setContent(html, false); },
-  getContent() { return editor.getHTML(); },
+  setContent(markdown) { editor.commands.setContent(markdown, false); },
+  getContent() { return editor.storage.markdown.getMarkdown(); },
   setEditable(val) { editor.setEditable(val); },
   setTheme(theme) {
     document.body.className = document.body.className.replace(/theme-\S+/, '').trim();

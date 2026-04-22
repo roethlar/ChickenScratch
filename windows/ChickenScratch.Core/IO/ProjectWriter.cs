@@ -61,7 +61,7 @@ public static class ProjectWriter
             Modified = doc.Modified,
         };
 
-        var metaPath = Path.ChangeExtension(htmlPath, ".meta");
+        var metaPath = Path.ChangeExtension(contentPath, ".meta");
         File.WriteAllText(metaPath, YamlHelper.Serialize(meta));
     }
 

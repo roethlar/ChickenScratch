@@ -14,14 +14,18 @@ struct Cli {
     input: PathBuf,
     /// Output path (default: same directory as input, opposite format)
     output: Option<PathBuf>,
+    /// Path to pandoc executable (for portable or non-system installs)
+    #[arg(long, value_name = "PATH")]
+    pandoc: Option<PathBuf>,
 }
 
 fn main() {
     let cli = Cli::parse();
 
+    let pandoc = cli.pandoc.as_deref();
     let result = match detect_format(&cli.input) {
-        Some(Format::Scriv) => scriv_to_chikn(&cli.input, cli.output.as_deref()),
-        Some(Format::Chikn) => chikn_to_scriv(&cli.input, cli.output.as_deref()),
+        Some(Format::Scriv) => scriv_to_chikn(&cli.input, cli.output.as_deref(), pandoc),
+        Some(Format::Chikn) => chikn_to_scriv(&cli.input, cli.output.as_deref(), pandoc),
         None => {
             eprintln!(
                 "Cannot determine format of '{}'. Expected a .scriv or .chikn directory.",
@@ -54,6 +58,7 @@ fn detect_format(path: &Path) -> Option<Format> {
 fn scriv_to_chikn(
     scriv_path: &Path,
     output: Option<&Path>,
+    pandoc_path: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !scriv_path.exists() {
         return Err(format!("Path does not exist: {}", scriv_path.display()).into());
@@ -72,7 +77,7 @@ fn scriv_to_chikn(
 
     println!("{} -> {}", scriv_path.display(), output_path.display());
 
-    let project = import_scriv(scriv_path, &output_path)?;
+    let project = import_scriv(scriv_path, &output_path, pandoc_path)?;
 
     println!(
         "\"{}\" — {} documents, {} top-level items",
@@ -87,6 +92,7 @@ fn scriv_to_chikn(
 fn chikn_to_scriv(
     chikn_path: &Path,
     output: Option<&Path>,
+    pandoc_path: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !chikn_path.exists() {
         return Err(format!("Path does not exist: {}", chikn_path.display()).into());
@@ -104,7 +110,7 @@ fn chikn_to_scriv(
 
     println!("{} -> {}", chikn_path.display(), output_path.display());
 
-    export_to_scriv(&project, &output_path)?;
+    export_to_scriv(&project, &output_path, pandoc_path)?;
 
     println!(
         "\"{}\" — {} documents",

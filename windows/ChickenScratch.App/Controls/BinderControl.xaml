@@ -33,20 +33,26 @@
             </Button>
         </Grid>
 
-        <!-- Tree -->
+        <!-- Tree — populated via RootNodes in code-behind (ItemsSource + {Binding Children}
+             style binding is unreliable in WinUI 3; TreeViewNode is the safe path) -->
         <TreeView Grid.Row="1" x:Name="BinderTree"
-                  ItemsSource="{x:Bind ViewModel.Nodes, Mode=OneWay}"
                   SelectionMode="Single"
                   CanDragItems="True" CanReorderItems="True" AllowDrop="True"
                   ItemInvoked="Tree_ItemInvoked"
+                  SelectionChanged="Tree_SelectionChanged"
                   Padding="4,4">
+
+            <TreeView.ItemContainerStyle>
+                <Style TargetType="TreeViewItem">
+                    <Setter Property="Padding" Value="4,3" />
+                    <Setter Property="MinHeight" Value="28" />
+                </Style>
+            </TreeView.ItemContainerStyle>
 
             <TreeView.ItemTemplate>
                 <DataTemplate x:DataType="vm:BinderItemViewModel">
-                    <TreeViewItem ItemsSource="{x:Bind Children}"
-                                  IsExpanded="True"
-                                  Style="{StaticResource BinderTreeViewItemStyle}">
-                        <TreeViewItem.ContextFlyout>
+                    <Grid ColumnDefinitions="Auto,*" Margin="0,1">
+                        <Grid.ContextFlyout>
                             <MenuFlyout>
                                 <MenuFlyoutItem Text="New Document" Click="ContextNewDoc_Click"
                                                 Tag="{x:Bind Id}">
@@ -66,29 +72,27 @@
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                             </MenuFlyout>
-                        </TreeViewItem.ContextFlyout>
+                        </Grid.ContextFlyout>
 
-                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,1">
-                            <!-- Icon -->
-                            <FontIcon Grid.Column="0"
-                                      Glyph="{x:Bind IsDocument, Converter={StaticResource NodeIconConverter}}"
-                                      FontSize="13" Margin="0,0,6,0" Opacity="0.7" />
+                        <!-- Icon -->
+                        <FontIcon Grid.Column="0"
+                                  Glyph="{x:Bind IsDocument, Converter={StaticResource NodeIconConverter}}"
+                                  FontSize="13" Margin="0,0,6,0" Opacity="0.7" />
 
-                            <!-- Name (display) -->
-                            <TextBlock Grid.Column="1"
-                                       Text="{x:Bind Name, Mode=OneWay}"
-                                       TextTrimming="CharacterEllipsis"
-                                       Visibility="{x:Bind IsEditing, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                        <!-- Name (display) -->
+                        <TextBlock Grid.Column="1"
+                                   Text="{x:Bind Name, Mode=OneWay}"
+                                   TextTrimming="CharacterEllipsis"
+                                   Visibility="{x:Bind IsEditing, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
 
-                            <!-- Name (editing) -->
-                            <TextBox Grid.Column="1"
-                                     Text="{x:Bind EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     Visibility="{x:Bind IsEditing, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                     KeyDown="RenameBox_KeyDown"
-                                     LostFocus="RenameBox_LostFocus"
-                                     Tag="{x:Bind Id}" />
-                        </Grid>
-                    </TreeViewItem>
+                        <!-- Name (editing) -->
+                        <TextBox Grid.Column="1"
+                                 Text="{x:Bind EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Visibility="{x:Bind IsEditing, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                 KeyDown="RenameBox_KeyDown"
+                                 LostFocus="RenameBox_LostFocus"
+                                 Tag="{x:Bind Id}" />
+                    </Grid>
                 </DataTemplate>
             </TreeView.ItemTemplate>
         </TreeView>

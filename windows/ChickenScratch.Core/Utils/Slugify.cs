@@ -28,7 +28,7 @@ public static partial class Slugify
         int n = 2;
         var usedPaths = documents.Values.Select(d => System.IO.Path.GetFileNameWithoutExtension(d.Path)).ToHashSet();
 
-        while (usedPaths.Contains(candidate) || System.IO.File.Exists(System.IO.Path.Combine(folder, candidate + ".html")))
+        while (usedPaths.Contains(candidate) || System.IO.File.Exists(System.IO.Path.Combine(folder, candidate + ".md")))
         {
             candidate = $"{base_}-{n++}";
         }

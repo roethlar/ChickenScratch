@@ -23,7 +23,11 @@
                      IsOpen="False"
                      Severity="Warning"
                      Title="Pandoc not found"
-                     Message="Scrivener import and manuscript export require Pandoc. Install from pandoc.org or via: winget install pandoc" />
+                     Message="Scrivener import and manuscript export require Pandoc. Install via: winget install JohnMacFarlane.Pandoc">
+                <InfoBar.ActionButton>
+                    <Button Content="Open Settings" Click="PandocWarning_OpenSettings" />
+                </InfoBar.ActionButton>
+            </InfoBar>
 
             <!-- Error banner -->
             <InfoBar x:Name="ErrorBar"
