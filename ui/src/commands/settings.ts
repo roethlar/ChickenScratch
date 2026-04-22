@@ -18,6 +18,12 @@ export interface AppSettings {
     auto_backup_on_close: boolean;
     auto_backup_minutes: number;
   };
+  remote: {
+    url: string | null;
+    username: string | null;
+    token: string | null;
+    auto_push_on_revision: boolean;
+  };
   ai: {
     enabled: boolean;
     provider: string;

@@ -1293,6 +1293,51 @@
   color: var(--color-accent);
 }
 
+.revisions-sync {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.revisions-sync-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.revisions-sync-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.revisions-sync-actions button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.revisions-sync-actions button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.revisions-sync-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Manuscript Preview ────────────────────────────── */
 
 .preview {

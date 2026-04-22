@@ -14,6 +14,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub backup: BackupSettings,
     #[serde(default)]
+    pub remote: RemoteSettings,
+    #[serde(default)]
     pub ai: AiSettings,
     #[serde(default)]
     pub compile: CompileSettings,
@@ -27,6 +29,7 @@ impl Default for AppSettings {
             general: GeneralSettings::default(),
             writing: WritingSettings::default(),
             backup: BackupSettings::default(),
+            remote: RemoteSettings::default(),
             ai: AiSettings::default(),
             compile: CompileSettings::default(),
             shortcuts: default_shortcuts(),
@@ -113,6 +116,22 @@ impl Default for BackupSettings {
             auto_backup_minutes: 30,
         }
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RemoteSettings {
+    /// Git URL (https://…, git@host:…, or file://… for local testing).
+    #[serde(default)]
+    pub url: Option<String>,
+    /// HTTPS username. For GitHub PATs, any non-empty value works.
+    #[serde(default)]
+    pub username: Option<String>,
+    /// HTTPS personal access token. Stored in plaintext in settings.json.
+    #[serde(default)]
+    pub token: Option<String>,
+    /// Auto-push to the remote on named revision (like auto-backup).
+    #[serde(default)]
+    pub auto_push_on_revision: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

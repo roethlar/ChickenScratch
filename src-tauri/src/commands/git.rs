@@ -7,11 +7,20 @@ pub fn save_revision(project_path: String, message: String) -> Result<git::Revis
     let path = Path::new(&project_path);
     let rev = git::save_revision(path, &message)?;
 
-    // After named revision: push to backup remote if configured. Fire-and-forget:
-    // a failed push should not fail the revision.
+    // After named revision: push to backup remote and remote-sync if configured.
+    // Both are fire-and-forget — a failed push must not fail the revision.
     let settings = super::settings::get_app_settings();
     if let Some(ref backup_dir) = settings.backup.backup_directory {
         let _ = git::push_backup(path, Path::new(backup_dir));
+    }
+    if settings.remote.auto_push_on_revision {
+        if let Some(ref url) = settings.remote.url {
+            let auth = git::RemoteAuth {
+                username: settings.remote.username.clone(),
+                token: settings.remote.token.clone(),
+            };
+            let _ = git::push_remote(path, url, &auth);
+        }
     }
 
     Ok(rev)
@@ -53,6 +62,40 @@ pub fn merge_draft(project_path: String, name: String) -> Result<(), ChiknError>
 #[tauri::command]
 pub fn push_backup(project_path: String, backup_dir: String) -> Result<(), ChiknError> {
     git::push_backup(Path::new(&project_path), Path::new(&backup_dir))
+}
+
+/// Push the current branch to the remote URL configured in settings.
+#[tauri::command]
+pub fn sync_push(project_path: String) -> Result<(), ChiknError> {
+    let (url, auth) = remote_from_settings()?;
+    git::push_remote(Path::new(&project_path), &url, &auth)
+}
+
+/// Fetch the current branch from the configured remote. Does not merge.
+#[tauri::command]
+pub fn sync_fetch(project_path: String) -> Result<(), ChiknError> {
+    let (url, auth) = remote_from_settings()?;
+    git::fetch_remote(Path::new(&project_path), &url, &auth)
+}
+
+/// Ahead/behind counts relative to the last-fetched remote tracking ref.
+#[tauri::command]
+pub fn sync_status(project_path: String) -> Result<git::SyncStatus, ChiknError> {
+    git::sync_status(Path::new(&project_path))
+}
+
+fn remote_from_settings() -> Result<(String, git::RemoteAuth), ChiknError> {
+    let settings = super::settings::get_app_settings();
+    let url = settings.remote.url.clone().ok_or_else(|| {
+        ChiknError::Unknown(
+            "No remote URL configured. Set one in Settings > Remote.".to_string(),
+        )
+    })?;
+    let auth = git::RemoteAuth {
+        username: settings.remote.username.clone(),
+        token: settings.remote.token.clone(),
+    };
+    Ok((url, auth))
 }
 
 #[tauri::command]

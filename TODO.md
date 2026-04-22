@@ -70,6 +70,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [x] Auto-commit every 10 minutes if changes detected
 - [x] Auto-backup on close + periodic backup
 - [x] Push to backup on named revision (both apps)
+- [x] Remote sync: push/fetch to any git URL with HTTPS-token auth, ahead/behind status
 
 ### Statistics
 - [x] Per-document word counts with bar chart
@@ -81,6 +82,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [x] General: theme, Pandoc path, recent projects limit
 - [x] Writing: font, size, paragraph style, auto-save interval
 - [x] Backup: directory, auto-backup on close, interval
+- [x] Remote: URL, HTTPS username/token, auto-push on named revision
 - [x] AI: enable/disable (kill switch), provider, model, API key
 - [x] Compile: default format, font, size, spacing, margins
 - [x] Customizable keyboard shortcuts
@@ -103,7 +105,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 ### v1.1 — Feature work
 - [ ] AI streaming responses (word-by-word via Tauri events)
 - [ ] Side-by-side draft comparison mode
-- [ ] Remote sync (push/pull to GitHub/Gitea)
+- [ ] Remote sync — merge UX on conflicting pull (push/fetch/status shipped)
 
 ### Platform packaging
 - [ ] Windows testing and packaging (.msi)

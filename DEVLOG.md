@@ -4,6 +4,26 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-04-21 — Remote sync (push/fetch + status)
+
+**Change:** New `sync` git remote, push/fetch/status commands in core + Tauri, Remote settings tab, Revisions-panel footer widget that shows "N to push · M to pull" and exposes Push/Fetch buttons. Separate from the existing `backup` remote (directory mirror) — `sync` accepts any git URL (HTTPS, SSH, or `file://` for testing).
+
+**Why:** The biggest v1.1 gap. User writes on macOS + Linux + Windows; backup mirrors the project to a local directory but doesn't help you start a new session on a different machine. Remote sync closes that loop.
+
+**Design notes:**
+- Remote named `sync` so it doesn't collide with the user's own `origin` or our `backup`. `ensure_sync_remote` updates the URL in place if the setting changes.
+- Credential callback handles HTTPS username/PAT first, then SSH-agent fallback for `git@` URLs. No OS keychain yet — the token lives in plaintext in `settings.json`; scope the PAT to one repo.
+- `sync_status` returns `(ahead, behind)` from `graph_ahead_behind` against the last-fetched `refs/remotes/sync/<branch>`. Before the first fetch, ahead = total commit count and behind = 0, so the UI has a sensible "push everything" starting state.
+- Auto-push on named revision is opt-in (off by default) and fire-and-forget — a failed push never rolls back the revision.
+
+**Scope limits:** Push and fetch. **Not** included: merge of incoming commits, conflict UX, SSH key passphrases. If a fetch brings down commits that diverge from local, the status shows "N to pull" but there's no in-app merge yet — the user would need to pull/merge via CLI. That's the next pass.
+
+**Tested:** Round-trip integration test in `crates/core/tests/remote_sync.rs` — pushes a fresh project to a `file://` bare repo, fetches back, asserts ahead/behind = 0; then adds a revision, asserts ahead = 1, pushes, asserts ahead = 0 again.
+
+**Commit:** `<pending>`
+
+---
+
 ## 2026-04-18 — TUI anchored inline comments
 
 **Change:** F3 in the TUI wraps the currently-selected text with a comment span and prompts for a body. Adds the comment to the document's `.meta` with the same ID as the `data-comment-id` attribute in the span.

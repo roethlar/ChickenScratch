@@ -10,7 +10,7 @@ import {
 import { useSettingsStore } from "../../stores/settingsStore";
 import { toastSuccess, toastError } from "../shared/Toast";
 
-type Tab = "general" | "writing" | "backup" | "ai" | "compile" | "shortcuts";
+type Tab = "general" | "writing" | "backup" | "remote" | "ai" | "compile" | "shortcuts";
 
 const ACTION_LABELS: Record<string, string> = {
   save: "Save",
@@ -93,6 +93,7 @@ export function Settings({
                 ["general", "General"],
                 ["writing", "Writing"],
                 ["backup", "Backup"],
+                ["remote", "Remote"],
                 ["ai", "AI"],
                 ["compile", "Compile"],
                 ["shortcuts", "Shortcuts"],
@@ -245,6 +246,64 @@ export function Settings({
                       update("backup", "auto_backup_minutes", parseInt(e.target.value) || 30)
                     }
                   />
+                </Field>
+              </div>
+            )}
+
+            {tab === "remote" && (
+              <div className="settings-section">
+                <Field label="Remote URL">
+                  <input
+                    type="text"
+                    value={settings.remote.url || ""}
+                    onChange={(e) =>
+                      update("remote", "url", e.target.value || null)
+                    }
+                    placeholder="https://github.com/you/your-novel.git"
+                  />
+                  <p className="settings-hint">
+                    A git URL — GitHub, Gitea, or any host you own. Use this for
+                    syncing the same project across machines. For local testing
+                    you can point at <code>file:///path/to/bare-repo.git</code>.
+                  </p>
+                </Field>
+                <Field label="Username">
+                  <input
+                    type="text"
+                    value={settings.remote.username || ""}
+                    onChange={(e) =>
+                      update("remote", "username", e.target.value || null)
+                    }
+                    placeholder="your-github-username"
+                  />
+                </Field>
+                <Field label="Personal Access Token">
+                  <input
+                    type="password"
+                    value={settings.remote.token || ""}
+                    onChange={(e) =>
+                      update("remote", "token", e.target.value || null)
+                    }
+                    placeholder="ghp_… or equivalent"
+                  />
+                  <p className="settings-hint">
+                    Stored in plaintext in your settings file. Use a token
+                    scoped to just this repository. SSH URLs fall back to your
+                    ssh-agent if no token is set.
+                  </p>
+                </Field>
+                <Field label="Auto-Push on Save Revision">
+                  <input
+                    type="checkbox"
+                    checked={settings.remote.auto_push_on_revision}
+                    onChange={(e) =>
+                      update("remote", "auto_push_on_revision", e.target.checked)
+                    }
+                  />
+                  <p className="settings-hint">
+                    Push to the remote every time you save a named revision.
+                    Push failures don't block the revision.
+                  </p>
                 </Field>
               </div>
             )}

@@ -91,3 +91,24 @@ export async function hasChanges(
 ): Promise<boolean> {
   return invoke("has_changes", { projectPath });
 }
+
+// ── Remote sync ──────────────────────────────────────────
+
+export interface SyncStatus {
+  ahead: number;
+  behind: number;
+  branch: string;
+  has_remote: boolean;
+}
+
+export async function syncPush(projectPath: string): Promise<void> {
+  return invoke("sync_push", { projectPath });
+}
+
+export async function syncFetch(projectPath: string): Promise<void> {
+  return invoke("sync_fetch", { projectPath });
+}
+
+export async function syncStatus(projectPath: string): Promise<SyncStatus> {
+  return invoke("sync_status", { projectPath });
+}

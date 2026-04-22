@@ -4,9 +4,16 @@
 //! Writers see "Save Revision" / "Revision History" — never "git".
 
 use crate::utils::error::ChiknError;
-use git2::{BranchType, DiffOptions, IndexAddOption, Oid, Repository, Signature, StatusOptions};
+use git2::{
+    BranchType, Cred, DiffOptions, FetchOptions, IndexAddOption, Oid, PushOptions,
+    RemoteCallbacks, Repository, Signature, StatusOptions,
+};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+/// Name of the git remote used for remote-sync (distinct from `backup` which is
+/// the local-directory mirror remote).
+const SYNC_REMOTE: &str = "sync";
 
 /// A single revision (commit) in writer-friendly form
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -290,6 +297,175 @@ pub fn push_backup(project_path: &Path, backup_dir: &Path) -> Result<(), ChiknEr
         .map_err(|e| ChiknError::Unknown(format!("Backup push failed: {}", e)))?;
 
     Ok(())
+}
+
+// ── Remote sync ──────────────────────────────────────────────────────────────
+//
+// Push/fetch against an arbitrary git URL (GitHub, Gitea, self-hosted, or a
+// `file://` path for local testing). Separate from `push_backup`, which mirrors
+// the repo into a local directory. The remote is named `sync` so it coexists
+// with `backup` and any user-managed `origin`.
+
+#[derive(Debug, Clone, Default)]
+pub struct RemoteAuth {
+    pub username: Option<String>,
+    pub token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncStatus {
+    pub ahead: usize,
+    pub behind: usize,
+    pub branch: String,
+    pub has_remote: bool,
+}
+
+fn ensure_sync_remote<'a>(repo: &'a Repository, url: &str) -> Result<git2::Remote<'a>, ChiknError> {
+    match repo.find_remote(SYNC_REMOTE) {
+        Ok(existing) => {
+            if existing.url() != Some(url) {
+                repo.remote_set_url(SYNC_REMOTE, url).map_err(|e| {
+                    ChiknError::Unknown(format!("Failed to update sync remote URL: {}", e))
+                })?;
+            }
+            repo.find_remote(SYNC_REMOTE)
+                .map_err(|e| ChiknError::Unknown(format!("Failed to load sync remote: {}", e)))
+        }
+        Err(_) => repo
+            .remote(SYNC_REMOTE, url)
+            .map_err(|e| ChiknError::Unknown(format!("Failed to add sync remote: {}", e))),
+    }
+}
+
+fn build_callbacks(auth: &RemoteAuth) -> RemoteCallbacks<'_> {
+    let mut cb = RemoteCallbacks::new();
+    cb.credentials(move |url, username_from_url, allowed| {
+        // HTTPS personal access token — most common case for GitHub/Gitea.
+        if allowed.is_user_pass_plaintext() {
+            if let (Some(user), Some(token)) = (auth.username.as_deref(), auth.token.as_deref()) {
+                return Cred::userpass_plaintext(user, token);
+            }
+            if let Some(token) = auth.token.as_deref() {
+                // GitHub accepts any non-empty username with a PAT; fall back to "git".
+                let user = username_from_url.unwrap_or("git");
+                return Cred::userpass_plaintext(user, token);
+            }
+        }
+        // SSH (git@host:...) — try the agent first if auth is allowed.
+        if allowed.is_ssh_key() {
+            let user = username_from_url.unwrap_or("git");
+            return Cred::ssh_key_from_agent(user);
+        }
+        // Anonymous / file:// — fall through with an error git2 will translate.
+        Cred::default().map_err(|_| {
+            git2::Error::from_str(&format!(
+                "No credentials available for {} (allowed: {:?})",
+                url, allowed
+            ))
+        })
+    });
+    cb
+}
+
+fn current_branch_name(repo: &Repository) -> Result<String, ChiknError> {
+    let head = repo
+        .head()
+        .map_err(|e| ChiknError::Unknown(format!("No HEAD: {}", e)))?;
+    head.shorthand()
+        .map(str::to_owned)
+        .ok_or_else(|| ChiknError::Unknown("HEAD is detached".to_string()))
+}
+
+/// Push the current branch to the configured remote.
+pub fn push_remote(project_path: &Path, url: &str, auth: &RemoteAuth) -> Result<(), ChiknError> {
+    let repo = Repository::open(project_path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    let mut remote = ensure_sync_remote(&repo, url)?;
+
+    let branch = current_branch_name(&repo)?;
+    let refspec = format!("refs/heads/{branch}:refs/heads/{branch}");
+
+    let mut opts = PushOptions::new();
+    opts.remote_callbacks(build_callbacks(auth));
+
+    remote
+        .push(&[&refspec], Some(&mut opts))
+        .map_err(|e| ChiknError::Unknown(format!("Push failed: {}", e)))?;
+    Ok(())
+}
+
+/// Fetch the current branch from the configured remote. Does not merge.
+pub fn fetch_remote(project_path: &Path, url: &str, auth: &RemoteAuth) -> Result<(), ChiknError> {
+    let repo = Repository::open(project_path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    let mut remote = ensure_sync_remote(&repo, url)?;
+
+    let branch = current_branch_name(&repo)?;
+    let refspec = format!("+refs/heads/{branch}:refs/remotes/{SYNC_REMOTE}/{branch}");
+
+    let mut opts = FetchOptions::new();
+    opts.remote_callbacks(build_callbacks(auth));
+
+    remote
+        .fetch(&[&refspec], Some(&mut opts), None)
+        .map_err(|e| ChiknError::Unknown(format!("Fetch failed: {}", e)))?;
+    Ok(())
+}
+
+/// Compare local HEAD against the last fetched remote tracking ref.
+/// Call `fetch_remote` first for the numbers to be current.
+pub fn sync_status(project_path: &Path) -> Result<SyncStatus, ChiknError> {
+    let repo = Repository::open(project_path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    let branch = current_branch_name(&repo)?;
+
+    let has_remote = repo.find_remote(SYNC_REMOTE).is_ok();
+    if !has_remote {
+        return Ok(SyncStatus {
+            ahead: 0,
+            behind: 0,
+            branch,
+            has_remote: false,
+        });
+    }
+
+    let local_oid = match repo
+        .refname_to_id(&format!("refs/heads/{branch}"))
+        .or_else(|_| repo.refname_to_id("HEAD"))
+    {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(SyncStatus {
+                ahead: 0,
+                behind: 0,
+                branch,
+                has_remote: true,
+            })
+        }
+    };
+
+    let remote_ref = format!("refs/remotes/{SYNC_REMOTE}/{branch}");
+    let (ahead, behind) = match repo.refname_to_id(&remote_ref) {
+        Ok(remote_oid) => repo.graph_ahead_behind(local_oid, remote_oid).map_err(|e| {
+            ChiknError::Unknown(format!("Failed to compute ahead/behind: {}", e))
+        })?,
+        // No fetch has ever happened — every commit is "ahead", nothing "behind".
+        Err(_) => {
+            let mut walk = repo
+                .revwalk()
+                .map_err(|e| ChiknError::Unknown(format!("revwalk failed: {}", e)))?;
+            walk.push(local_oid)
+                .map_err(|e| ChiknError::Unknown(format!("revwalk push failed: {}", e)))?;
+            (walk.count(), 0)
+        }
+    };
+
+    Ok(SyncStatus {
+        ahead,
+        behind,
+        branch,
+        has_remote: true,
+    })
 }
 
 /// Get files changed in a specific revision compared to its parent.

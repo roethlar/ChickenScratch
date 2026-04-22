@@ -7,11 +7,14 @@ import {
   GitBranch,
   GitMerge,
   HardDrive,
+  Cloud,
+  Upload,
+  Download,
 } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
 import { toastSuccess, toastError } from "../shared/Toast";
 import * as gitCmd from "../../commands/git";
-import type { Revision, DraftVersion, FileDiff } from "../../commands/git";
+import type { Revision, DraftVersion, FileDiff, SyncStatus } from "../../commands/git";
 
 export function Revisions() {
   const project = useProjectStore((s) => s.project);
@@ -24,15 +27,19 @@ export function Revisions() {
   const [diffFiles, setDiffFiles] = useState<FileDiff[]>([]);
   const [wordDiffData, setWordDiffData] = useState<[string, string][] | null>(null);
   const [wordDiffFile, setWordDiffFile] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!project) return;
-    const [revs, drs] = await Promise.all([
+    const [revs, drs, st] = await Promise.all([
       gitCmd.listRevisions(project.path),
       gitCmd.listDrafts(project.path),
+      gitCmd.syncStatus(project.path).catch(() => null),
     ]);
     setRevisions(revs);
     setDrafts(drs);
+    setSyncStatus(st);
   }, [project]);
 
   // Loading revisions and drafts from an external system (git) — an effect is
@@ -104,6 +111,32 @@ export function Revisions() {
     } catch (e) {
       toastError(`Backup failed: ${e}`);
     }
+  };
+
+  const handlePush = async () => {
+    if (!project) return;
+    setSyncBusy(true);
+    try {
+      await gitCmd.syncPush(project.path);
+      toastSuccess("Pushed to remote.");
+      await refresh();
+    } catch (e) {
+      toastError(`Push failed: ${e}`);
+    }
+    setSyncBusy(false);
+  };
+
+  const handleFetch = async () => {
+    if (!project) return;
+    setSyncBusy(true);
+    try {
+      await gitCmd.syncFetch(project.path);
+      toastSuccess("Fetched from remote.");
+      await refresh();
+    } catch (e) {
+      toastError(`Fetch failed: ${e}`);
+    }
+    setSyncBusy(false);
   };
 
   if (!project) return null;
@@ -261,6 +294,51 @@ export function Revisions() {
       <div className="revisions-footer">
         <button className="revisions-backup-btn" onClick={handleBackup}>
           <HardDrive size={14} /> Backup
+        </button>
+        <SyncControls
+          status={syncStatus}
+          busy={syncBusy}
+          onPush={handlePush}
+          onFetch={handleFetch}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SyncControls({
+  status,
+  busy,
+  onPush,
+  onFetch,
+}: {
+  status: SyncStatus | null;
+  busy: boolean;
+  onPush: () => void;
+  onFetch: () => void;
+}) {
+  const enabled = !!status?.has_remote;
+  const summary = (() => {
+    if (!enabled) return "Configure a remote in Settings › Remote";
+    if (status!.ahead === 0 && status!.behind === 0) return "Up to date with remote";
+    const parts: string[] = [];
+    if (status!.ahead) parts.push(`${status!.ahead} to push`);
+    if (status!.behind) parts.push(`${status!.behind} to pull`);
+    return parts.join(" · ");
+  })();
+
+  return (
+    <div className="revisions-sync">
+      <div className="revisions-sync-summary">
+        <Cloud size={12} />
+        <span>{summary}</span>
+      </div>
+      <div className="revisions-sync-actions">
+        <button onClick={onFetch} disabled={!enabled || busy} title="Fetch from remote">
+          <Download size={12} /> Fetch
+        </button>
+        <button onClick={onPush} disabled={!enabled || busy} title="Push to remote">
+          <Upload size={12} /> Push
         </button>
       </div>
     </div>
