@@ -1,7 +1,7 @@
 # ChickenScratch Editor — Design Document
 
-**Status:** Active
-**Date:** 2026-04-02
+**Status:** Shipped (v0.1.0-alpha). Historical record of the design the editor was built to. Phases 1–6 are all delivered; this document is preserved to explain the *why* behind current structure rather than to plan future work.
+**Date:** 2026-04-02 (original); last major update 2026-04-21
 **Scope:** Cross-platform Tauri editor for .chikn writing projects
 
 ---
@@ -25,7 +25,7 @@ Build a single cross-platform editor (Windows, macOS, Linux) that writers would 
 | Git | git2-rs | Embedded git — no system git dependency for users |
 | Icons | Lucide React | Clean, consistent icon set |
 
-**External dependency:** Pandoc (for Scrivener RTF conversion only — not needed for normal editing).
+**External dependency:** Pandoc is required only for import (Scrivener RTF, DOCX, ODT, etc.) and compile/export. The edit path uses `tiptap-markdown` in-process for markdown ↔ HTML — no pandoc subprocess fires on load or save, so routine writing works with pandoc missing. See DEVLOG 2026-04-18 for the migration rationale.
 
 ---
 
@@ -147,7 +147,7 @@ Make typing feel great.
 - TipTap editor with proper Markdown round-trip:
   - Serialize TipTap JSON -> Markdown on save
   - Parse Markdown -> TipTap JSON on load
-  - Use `tiptap-markdown` or custom ProseMirror serializer
+  - Uses `tiptap-markdown` (in-process, `html: true` so custom inline HTML — comment spans, footnotes — round-trips untouched)
 - Supported formatting:
   - Headings (H1-H4)
   - Bold, italic, strikethrough
@@ -434,29 +434,36 @@ Font loading: Bundle Literata (Google Fonts, OFL) with the app so it works offli
 
 ---
 
-## File Structure (new crates)
+## File Structure (as shipped)
 
 ```
 ChickenScratch/
 ├── Cargo.toml                   # Workspace
 ├── crates/
-│   ├── core/                    # chickenscratch-core (existing)
-│   ├── cli/                     # CLI converter (existing)
-│   └── tauri/                   # Tauri app backend (new)
-│       ├── Cargo.toml
-│       ├── tauri.conf.json
-│       ├── icons/
-│       ├── src/
-│       │   ├── main.rs          # Tauri entry point
-│       │   └── commands/        # Tauri command handlers
-│       │       ├── mod.rs
-│       │       ├── project.rs
-│       │       ├── document.rs
-│       │       ├── import.rs
-│       │       ├── git.rs
-│       │       └── settings.rs
-│       └── capabilities/
-├── ui/                          # React frontend (new)
+│   ├── core/                    # chickenscratch-core library
+│   ├── cli/                     # chikn-converter CLI
+│   └── tui/                     # chikn terminal UI (ratatui)
+├── src-tauri/                   # Tauri app backend
+│   ├── Cargo.toml
+│   ├── tauri.conf.json
+│   ├── icons/
+│   ├── src/
+│   │   ├── main.rs              # Tauri entry point
+│   │   └── commands/            # Tauri command handlers
+│   │       ├── mod.rs
+│   │       ├── project.rs
+│   │       ├── document.rs
+│   │       ├── io.rs
+│   │       ├── git.rs
+│   │       ├── ai.rs
+│   │       ├── search.rs
+│   │       ├── templates.rs
+│   │       └── settings.rs
+│   └── capabilities/
+├── windows/                     # WinUI 3 (Windows App SDK, C#) frontend
+│   ├── ChickenScratch.Core/     # C# library: .chikn I/O, git, compile
+│   └── ChickenScratch.App/      # App shell
+├── ui/                          # React frontend (Tauri webview)
 │   ├── package.json
 │   ├── index.html
 │   ├── vite.config.ts
@@ -557,10 +564,10 @@ ChickenScratch/
 
 ## Non-Goals (explicitly out of scope for v1)
 
-- AI writing assistance (future, not v1)
 - Mobile/tablet support
-- Cloud sync (git remote is the mechanism, but no hosted service)
+- Cloud sync as a hosted service (git remote push-to-backup is the mechanism)
 - Collaboration/multi-author (future)
-- Spell check (rely on OS-level or browser spell check in webview)
 - Plugin/extension system
 - Screenplay/script formatting
+
+Originally listed here, now shipped: AI writing assistance (text operations and summaries) and spell check (browser-native in the Tauri webview).

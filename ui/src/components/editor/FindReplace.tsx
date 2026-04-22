@@ -70,7 +70,6 @@ export function FindReplace({ editor, open, showReplace, onClose }: FindReplaceP
   // Syncing with external editor doc state — the editor's doc is not React state,
   // so an effect is the right boundary for observing it.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     searchDoc();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [find, editor?.state.doc]);

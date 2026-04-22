@@ -11,8 +11,8 @@ For usage instructions, see the [User Guide](docs/USER_GUIDE.md).
 | Platform | Implementation | Status |
 |----------|---------------|--------|
 | macOS / Linux | Tauri + Rust + React | Alpha |
-| Windows | WinUI 3 (Windows App SDK) + C# | In development |
-| TUI | Ratatui + Rust | In development |
+| Windows | WinUI 3 (Windows App SDK) + C# | Alpha — packaging (.msi) pending |
+| TUI (any OS) | Ratatui + Rust (`chikn` binary) | Alpha |
 
 ## Build
 
@@ -49,7 +49,7 @@ Requires: .NET 8 SDK, Windows App SDK, Pandoc
 
 ```bash
 cd windows
-dotnet build ChickenScratch.sln /p:Platform=x64 /p:Configuration=Release
+dotnet build ChickenScratch.slnx /p:Platform=x64 /p:Configuration=Release
 ```
 
 Output is in `windows/ChickenScratch.App/bin/x64/Release/`.

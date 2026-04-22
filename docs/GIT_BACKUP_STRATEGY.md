@@ -1,88 +1,83 @@
-# Git + Snapshot Strategy for .chikn Projects
+# Revision & Backup Strategy for .chikn Projects
+
+**Status:** Describes the shipping implementation in v0.1.0-alpha. An earlier draft of this document proposed pairing git with `revs/` tarball snapshots; the implementation went git-only, and this rewrite reflects what the code actually does.
 
 ## Goals
 
 - Keep every `.chikn` project as a first-class folder that users can move, copy, or zip without tooling.
-- Give low-tech authors Scrivener-like safety nets: automatic snapshots, easy rollbacks, no Git jargon.
-- Unlock rich history features (milestones, draft sandboxes, diffs, collaboration) without exposing Git directly.
-- Support both standalone projects and “one repo that tracks all my stories” workflows.
+- Give low-tech authors Scrivener-like safety nets: automatic checkpoints, easy rollbacks, no git jargon.
+- Enable rich history features (named revisions, draft versions, diffs) without exposing git directly.
+- Support off-site backup via any directory — local, cloud-synced folder, or a git remote.
 
-## Layers of Protection
+## How it Works
 
-1. **Working tree** – `project.yaml`, `manuscript/`, `research/`, etc. remain the canonical files. Writers always interact with these directly.
-2. **Snapshots (`revs/`)** – automatic tarball archives of the working tree (excluding Git internals). Quick, no-thinking restore points for “oops” moments. Retention policy keeps storage small.
-3. **Git-backed history** – invisible to the author but available for fine-grained Milestones, sandbox drafts, diffing, and future collaboration/sync features.
+Each `.chikn` project is a regular folder containing markdown documents and YAML metadata. Revision history lives in `.git/` inside the project. `git2-rs` is linked into the app, so writers never need a system git install.
 
-## Snapshot Mechanics (`revs/`)
+The UI speaks in writer terms — "Save Revision", "Draft Version", "Restore", "Backup" — and never exposes commits, branches, remotes, or refs.
 
-```
-MyStory.chikn/
-├── project.yaml
-├── manuscript/
-└── revs/
-    ├── 2025-04-10T14-00-00_auto.tar.gz
-    ├── 2025-04-03T09-30-00_before-compile.tar.gz
-    └── manifest.json
-```
+### Save Revision
 
-- Tarballs capture the entire project folder (minus `.git/`) so a manual extract yields a ready-to-open `.chikn`.
-- `manifest.json` tracks timestamps, trigger reason, and user notes.
-- Default retention (e.g., last 10 snapshots) keeps disk usage tiny for prose projects.
-- `revs/` is ignored by Git (`.gitignore`) so it doesn’t clutter parent repositories.
-- In-app restore unpacks the tarball and rebuilds the Git view; advanced users can also extract manually elsewhere.
+Manual checkpoint. Writer types a short description; the app commits everything with that message. Triggers:
+- **Manual:** writer clicks Save Revision / Ctrl+R.
+- **Auto-commit:** every 10 minutes of active work, if anything changed, the app records an automatic revision (`Auto: {timestamp}`) so no more than ten minutes of work can be lost.
 
-## Git Integration
+Auto-commits are distinct from named revisions in the history view so writers can scan for meaningful milestones.
 
-### Internal Git as Plumbing
+### Restore
 
-- Every project has a hidden Git repository—either inside the `.chikn` folder or in a parent “umbrella” repo—initialized automatically.
-- The app commits after meaningful events (autosave interval, manual Milestone, snapshot, compile) with writer-friendly messages.
-- Git remains invisible in the UI; writers see “Revision History,” “Sandbox Draft,” “Merge Sandbox,” etc.
-- Branches underpin “sandbox drafts”: creating a sandbox spins up a branch; merging applies Git’s diff/merge engine.
+"Restore to this revision" is non-destructive: the target state is written back into the working tree and recorded as a *new* revision. The prior state is still in history. There is no destructive rewind.
 
-### Handling External Repos
+### Draft Versions
 
-- On project open, walk up the directory tree:
-  - If a parent `.git/` exists, use that repo and register the project as a Git worktree or dedicated branch (e.g., `refs/chikn/ProjectName`).
-  - If none exists, create/use an internal `.git/` inside the project folder.
-- This avoids nested-repo warnings and keeps external workflows intact (one repo for multiple stories).
-- The app’s background service schedules and manages Git operations; if the repo corrupts, it self-heals using the latest snapshot.
+Draft versions are git branches behind the scenes. Writers see a name ("alternate ending") and a button to switch between them. "Merge Draft Version" collapses a draft into the main manuscript using git's merge engine; conflicts are surfaced as a writer-facing dialog, not a three-way merge tool.
 
-### Why Pair Git with Snapshots?
+### Word-level Diff
 
-- **Snapshots** are fast recoveries (“rewind to 10 minutes ago”) and work even if Git is absent or broken.
-- **Git** provides rich history (line-level diffs, metadata), branching, merges, and integration with future cloud sync or collaboration.
-- Together they deliver trust: writers get simple restore points, and advanced features tap into Git without exposing it.
+The revision diff viewer shows word-level tracked changes (insertions in green, deletions in red) per document. This is generated from `git diff` output but post-processed so it reads like Word's Track Changes rather than a source-code diff — no `+`/`-` gutters, no unified-diff hunks, no line numbers.
 
-## Storage Footprint Examples
+### Backup
 
-For a 2,500-word story with three months of work:
-- Working files: ~20 KB.
-- Git repo (auto-commits every milestone): a single packfile, typically <500 KB.
-- Ten snapshots: each tarball compresses to a few KB, totaling <100 KB.
-- Snapshot count and Git garbage collection keep total projects well below a megabyte.
+Backup is a second directory (local, cloud-synced, or a git remote URL) that the project is mirrored to. Triggers:
+- **On named revision** — every manual Save Revision also pushes to the backup destination.
+- **On project close** — configurable in Settings > Backup (default on).
+- **Periodic** — configurable interval.
 
-## Implementation Notes
+Backup failures are non-fatal; they surface as a toast and are retried next trigger. The backup itself is a plain git push when the destination is a remote URL, or a mirrored `.git/` clone when the destination is a directory — either way, full revision history is preserved.
 
-- **Initialize Git silently** when a project opens. If the repository is missing or invalid, recreate it from the working tree.
-- **Snapshot service** runs on an interval and on triggers (before compile, manual snapshot). Stores tarballs and updates `manifest.json`.
-- **History service** queues commits with friendly messages (e.g., `"Milestone: Draft 1 Complete"`).
-- **Sandbox drafts** map to Git branches and detached worktrees. Writers see terms like “Experimental Draft” and “Promote Sandbox,” never “branch.”
-- **Restore flow**: Choose snapshot → tarball unpacks → Git reset or rebase to match → snapshot logged.
-- **Parent repo integration**: use Git worktrees so each `.chikn` behaves independently while sharing `.git` storage higher up.
-- **Corruption fallback**: if Git operations fail, alert the user and offer a one-click restore from the latest snapshot.
+**Recommended:** point the backup directory at a cloud-synced folder (Dropbox, iCloud Drive, Google Drive) for automatic off-site backup with full history. Advanced users can use a self-hosted Gitea or a GitHub repository instead.
 
-## Future Extensions
+## Self-Healing
 
-- Stored history enables comparisons across projects (e.g., build a collection from selected story drafts).
-- Git remotes let advanced users sync to GitHub/Gitea; the UI can expose “Publish Revision” later without changing the core design.
-- Snapshot retention could adapt to disk space or project size.
+On open, the project reader reconciles the hierarchy in `project.yaml` against what's on disk:
+- Documents present on disk but missing from hierarchy → added.
+- Documents in hierarchy but missing from disk → removed from hierarchy.
+- Required top-level folders (`Manuscript`, `Research`, `Trash`) missing → created.
+
+This handles the case where a writer restores a single file from the git CLI, or where a sync tool dropped or duplicated files. The project always opens into a consistent state.
+
+## Storage Footprint
+
+For a 50,000-word novel with six months of daily work:
+- Working tree: ~300 KB (markdown is tiny).
+- `.git/` with auto-commit every ~10 min: typically 2–5 MB after `git gc`.
+- Backup mirror: same order of magnitude.
+
+Total well under 10 MB for a full novel's revision history. No snapshot retention policy is needed.
+
+## Why No Tarball Snapshots
+
+An earlier design paired git with periodic `revs/*.tar.gz` snapshots for redundancy. We dropped it:
+- Git already gives us content-addressed, compressed, deduplicated history. Tarballs duplicate that work.
+- A separate restore path ("try git; if that fails, unpack a tarball") doubles the surface area for bugs in the most sensitive code in the app.
+- Cloud-synced backup plus git's own integrity checks cover the failure mode tarballs were meant to address.
+
+If git ever corrupts, the app rebuilds `.git/` from the working tree and pulls history back from the backup mirror. That's the recovery path, not tarballs.
 
 ## Summary
 
-Users keep working with `.chikn` folders like ordinary files. Under the hood, the application layers:
-- Automatic snapshots for simple, resilient recovery.
-- Invisible Git history for rich revision features when available.
-- Flexible repo detection so the same project works standalone, inside a larger Git workspace, or shared through a zip/USB drive.
-
-This hybrid approach preserves the file-first UX writers expect while giving the product room to grow into full version control and collaboration without sacrificing trust.
+Writers keep working with `.chikn` folders like ordinary files. Under the hood:
+- Embedded git (`git2-rs`) gives rich history without requiring a system git install.
+- Auto-commit every 10 minutes is the "oops" safety net.
+- Named revisions are meaningful milestones with writer-friendly messages.
+- Backup is git push (or directory mirror) on named revision, close, and interval.
+- Self-healing keeps the project consistent through direct-filesystem edits and sync-tool hiccups.

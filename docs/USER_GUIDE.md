@@ -51,6 +51,12 @@ Click a document in the binder to open it in the editor. The toolbar above the e
 
 **Find & Replace:** Press **Ctrl/Cmd+F** to find within the current document. Press **Ctrl/Cmd+H** to find and replace.
 
+**Comments:** Select text and click the **speech-bubble** icon in the toolbar (or use the toolbar) to attach a comment to that span. Comments appear in a right-gutter panel — click one to scroll to its anchor, double-click the body to edit, or mark it resolved. Comments are stored in each document's `.meta` sidecar and round-trip through the markdown file via inline span attributes.
+
+**Footnotes:** Click the **asterisk** icon in the toolbar to insert a footnote at the cursor. Footnotes render inline during editing and export as proper footnotes in DOCX/PDF/EPUB.
+
+**AI Text Operations:** Select text and right-click (or use the AI menu) to run **Polish**, **Expand**, **Simplify**, or **Brainstorm** on the selection. Requires AI enabled in Settings.
+
 ### Inspector (Right Sidebar)
 
 Click the **panel icon** in the toolbar to open the inspector. For the selected document, you can edit:
@@ -108,6 +114,12 @@ Type a description (e.g., "Finished Chapter 3 rewrite") and press Enter. This cr
 
 The History tab shows all your saved revisions with timestamps. Click the restore icon on any revision to go back to that state. **Restoring is non-destructive** — it creates a new revision with the old content, so you can always undo a restore.
 
+**Auto-commit:** Every 10 minutes of work, if anything changed, ChickenScratch saves an automatic revision so you never lose more than a few minutes of work.
+
+### Revision Diff
+
+Click the **diff** icon next to any revision to see what changed since the previous one. The viewer shows word-level tracked changes (insertions in green, deletions in red) per document — designed to read like a Word track-changes view rather than a code diff.
+
 ### Draft Versions
 
 The Drafts tab lets you create alternate versions of your manuscript. Click **New Draft Version**, give it a name (e.g., "alternate ending"), and work on it separately. Switch between drafts to compare approaches. **Merge Draft** combines a draft back into your main version.
@@ -117,6 +129,28 @@ The Drafts tab lets you create alternate versions of your manuscript. Click **Ne
 Click the **Backup** button at the bottom of the Revisions panel to push your project to a backup directory. Configure the backup directory in **Settings > Backup** for automatic backup every time you close the app.
 
 **Tip:** Set the backup directory to a cloud-synced folder (Dropbox, iCloud Drive, Google Drive) for automatic offsite backup with full version history.
+
+---
+
+## Writing Statistics
+
+Click the **chart icon** in the toolbar to open the statistics panel.
+
+- **Per-document word counts** — Bar chart of every manuscript document with a progress bar against its target (set the target in Inspector).
+- **Project totals** — Running word count, page estimate (at 250 words/page), and reading time estimate.
+- **Daily writing history** — 14-day bar chart showing how many words you wrote each day. A day's total is recorded automatically when you save.
+
+---
+
+## Command Palette
+
+Press **Ctrl/Cmd+K** to open the command palette. Type to filter actions (new document, toggle focus, compile, open settings, etc.) and press Enter to run. Every menu item is reachable from here without leaving the keyboard.
+
+---
+
+## Project Search
+
+Press **Ctrl/Cmd+Shift+P** to search across every document in the project. Results are grouped by document. Click a result to jump to the editor with that match highlighted.
 
 ---
 
@@ -131,13 +165,17 @@ Press **Ctrl/Cmd+Shift+F** or click the **maximize icon** in the toolbar. Everyt
 
 ## Exporting Your Manuscript
 
-Click the **export icon** (file with arrow) in the toolbar.
+Click the **export icon** (file with arrow) in the toolbar to open the Compile dialog.
 
-1. Choose a filename and location
-2. Select the format (Word, PDF, EPUB, HTML, OpenDocument)
-3. Click Save
+**Fields:**
+- **Title** and **Author** — Prefilled from project metadata; edit for this export only.
+- **Section Separator** — The string placed between documents in the compiled output. Default `# # #`; leave blank for no separator.
+- **Include title page** — Adds a first page with title and author, centered.
+- **Standard manuscript format (Shunn)** — Courier 12pt, double-spaced, 1" margins — the format most fiction markets accept for submissions.
 
-Only documents in the Manuscript folder with "Include in Compile" checked will be included. Configure export formatting (font, spacing, margins) in **Settings > Compile**.
+Click **Export** and choose a filename/location. Formats: Word (.docx), PDF, EPUB, HTML, OpenDocument (.odt). Documents with "Include in Compile" unchecked in the Inspector are skipped. Per-document compile order (set in Inspector) overrides binder order.
+
+Default font/spacing/margins (when Shunn format is off) come from **Settings > Compile**.
 
 ---
 
@@ -204,9 +242,9 @@ MyNovel.chikn/
 ├── .gitignore
 ├── project.yaml       ← Project structure and metadata
 ├── manuscript/        ← Your writing
-│   ├── chapter-1.html
+│   ├── chapter-1.md
 │   ├── chapter-1.meta
-│   ├── chapter-2.html
+│   ├── chapter-2.md
 │   └── chapter-2.meta
 ├── research/          ← Reference material
 ├── templates/
@@ -214,11 +252,42 @@ MyNovel.chikn/
 ```
 
 - **project.yaml** — Your document hierarchy, project name, and metadata
-- **.html files** — Document content (rich text as HTML)
+- **.md files** — Document content (Pandoc Markdown, editable in any text editor)
 - **.meta files** — Document metadata (synopsis, label, status, keywords)
 - **.git/** — Full version history of every revision you've saved
 
 You can edit these files in any text editor if needed. The format is designed to be human-readable and git-friendly.
+
+---
+
+## Terminal UI (`chikn`)
+
+ChickenScratch ships with a terminal frontend for writing in an SSH session, a tmux pane, or any environment where a full GUI isn't practical. It reads and writes the same `.chikn` projects as the desktop app.
+
+```bash
+chikn ~/Writing/MyNovel.chikn
+```
+
+**Layout:** binder on the left, editor on the right, status bar at the bottom.
+
+**Keys:**
+
+| Action | Keys |
+|--------|------|
+| Quit | `q` / `Esc` (from binder) |
+| Navigate binder | `↑`/`↓` or `j`/`k` |
+| Open document | `Enter` on a binder item |
+| Focus editor / binder | `Tab` |
+| Save | `Ctrl+S` |
+| Save named revision | `Ctrl+R` |
+| Cycle view (edit/preview) | `Ctrl+T` |
+| Toggle soft word-wrap | `Ctrl+W` |
+| Comments overlay | `F2` |
+| Anchor comment to selection | `F3` (with text selected via `Shift+arrows`) |
+| Command prompt | `;` |
+| Show key help | `?` |
+
+The TUI edits markdown directly (no HTML conversion), so files written here are identical to files written by the desktop app. It shares the same settings file (`~/.config/chickenscratch/settings.json`) and will push to backup on named revision when a backup directory is configured.
 
 ---
 

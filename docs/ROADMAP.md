@@ -27,7 +27,8 @@ Pandoc is a runtime dependency but only for compile/export and import — not fo
 - Native soft word-wrap (toggle via Ctrl+W)
 - Edit / Preview view modes (Ctrl+T)
 - Comments overlay (F2) with add/edit/resolve/delete
-- Save (Ctrl+S), Save Revision (Ctrl+R)
+- Anchored inline comments (F3 wraps the current selection with a comment span)
+- Save (Ctrl+S), Save Revision (Ctrl+R) with push-to-backup
 
 **Organization**
 - Binder: drag-and-drop, context menus, folder management, width-resizable
@@ -98,9 +99,6 @@ Push/pull to GitHub, Gitea, or any git remote.
 - **git2-rs:** push/pull with credential handling
 - **Conflict resolution:** Show conflicts, let writer choose
 - **UI:** Sync button in Revisions panel
-
-### TUI inline-anchored comments
-Currently the TUI can only add document-level (orphan) comments. Adding anchored comments requires text selection in ratatui-textarea plus a way to wrap the selected range with a comment span in the stored markdown. Doable; not yet built.
 
 ---
 

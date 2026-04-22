@@ -38,11 +38,11 @@ MyNovel.chikn/
 ├── templates/               # Character/setting templates
 │   ├── character-template.md
 │   └── setting-template.md
-├── settings/                # Compile settings, preferences
-│   └── compile-formats.yaml
-└── revs/                    # Automatic snapshots (gitignored)
-    └── snapshot-20251014-120000.tar.gz
+└── settings/                # Compile settings, preferences
+    └── compile-formats.yaml
 ```
+
+Revision history lives entirely in `.git/`. The `revs/` tarball scheme in older drafts is not implemented and not required by this spec.
 
 ---
 
@@ -408,15 +408,6 @@ revs/
 - `settings/editor-preferences.yaml`
 - `settings/themes.yaml`
 
-#### revs/ (OPTIONAL, gitignored)
-**Purpose**: Automatic snapshots (legacy, pre-dates git integration)
-**Organization**: Timestamped tar.gz archives
-**Examples**:
-- `revs/snapshot-20251014-120000.tar.gz`
-- `revs/snapshot-20251014-150000.tar.gz`
-
-**Note**: With git integration, `revs/` is redundant. Kept for backwards compatibility.
-
 ---
 
 ## Format Versioning
@@ -436,13 +427,8 @@ revs/
 
 ### Future Versions (Planned)
 
-**Version 1.2** (AI Integration):
-- AI provider configurations
-- Prompt templates
-- AI interaction history (optional)
-
-**Version 1.3** (Collaboration):
-- Multi-author metadata
+**Version 1.2** (Collaboration):
+- Multi-author metadata on comments
 - Threaded comment replies
 - Review/approval workflows
 
@@ -814,51 +800,16 @@ Any editor supporting .chikn format must:
 
 ---
 
-## Format Extensions (Future)
+## Reference Implementations
 
-### Version 1.1 Additions
-```yaml
-# In project.yaml
-compile_settings:
-  default_format: manuscript-standard
-  custom_formats: []
+Two in-tree implementations of this spec, both backed by the same Rust library (`chickenscratch-core`):
 
-ai_settings:
-  provider: openai | anthropic | ollama
-  model: string
-  prompts:
-    - name: string
-      template: string
-```
+- **`src-tauri/`** — Tauri desktop app (Rust backend, React/TipTap frontend). Canonical reference for read/write, hierarchy, comments, footnotes, compile.
+- **`crates/tui/`** — `chikn` terminal UI (Rust, ratatui). Exercises the same core library against a markdown-native editor.
 
-### Version 1.2 Additions
-```yaml
-# In .meta files
-comments:
-  - id: string
-    author: string
-    text: string
-    timestamp: string
-    resolved: boolean
+A third C# implementation at `windows/` (WinUI 3) is in active development and targets byte-for-byte compatibility with the Rust implementations.
 
-track_changes:
-  enabled: boolean
-  author: string
-  changes: Change[]
-```
-
----
-
-## Reference Implementation
-
-The ChickenScratch VS Code extension (`vscode-extension/`) provides a reference implementation:
-- Reads/writes project.yaml correctly
-- Handles document CRUD operations
-- Initializes git on project creation
-- Validates file paths
-- Maintains hierarchy integrity
-
-See `vscode-extension/src/extension.ts` for complete implementation.
+See also `crates/cli/` (`chikn-converter`) for the standalone Scrivener ↔ .chikn converter.
 
 ---
 

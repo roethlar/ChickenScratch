@@ -1,6 +1,6 @@
 [package]
 name = "chikn-converter"
-version = "0.1.0"
+version = "0.1.0-alpha"
 edition = "2021"
 description = "Convert between Scrivener (.scriv) and ChickenScratch (.chikn) formats"
 license = "MIT"
