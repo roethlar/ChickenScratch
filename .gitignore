@@ -15,6 +15,15 @@ windows/**/BundleArtifacts/
 node_modules/
 ui/dist/
 
+# Swift / Xcode
+macos/.build/
+macos/.swiftpm/
+macos/DerivedData/
+macos/Package.resolved
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+xcuserdata/
+
 # IDE
 .vscode/
 .idea/

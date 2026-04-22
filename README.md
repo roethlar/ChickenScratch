@@ -11,6 +11,7 @@ For usage instructions, see the [User Guide](docs/USER_GUIDE.md).
 | Platform | Implementation | Status |
 |----------|---------------|--------|
 | macOS / Linux | Tauri + Rust + React | Alpha |
+| macOS (native) | SwiftUI + Liquid Glass (macOS 26+) | Early scaffold |
 | Windows | WinUI 3 (Windows App SDK) + C# | Alpha — packaging (.msi) pending |
 | TUI (any OS) | Ratatui + Rust (`chikn` binary) | Alpha |
 
@@ -54,6 +55,18 @@ dotnet build ChickenScratch.slnx /p:Platform=x64 /p:Configuration=Release
 
 Output is in `windows/ChickenScratch.App/bin/x64/Release/`.
 
+### macOS (SwiftUI, Liquid Glass)
+
+Requires: macOS 26 (Tahoe), Swift 6.1+ (Xcode 26 or the matching CLT).
+
+```bash
+cd macos
+swift build
+swift run ChickenScratch
+```
+
+Or open `macos/Package.swift` in Xcode 26.
+
 ### Converter CLI
 
 Standalone Scrivener converter, no GUI needed:
@@ -75,6 +88,9 @@ ChickenScratch/
 ├── windows/            # WinUI 3 app (C# / Windows App SDK)
 │   ├── ChickenScratch.Core/   # C# library: .chikn I/O, git, compile
 │   └── ChickenScratch.App/    # WinUI 3 app shell
+├── macos/              # Native SwiftUI app (Liquid Glass, macOS 26+)
+│   ├── Sources/ChiknKit/          # Swift library: .chikn reader/models
+│   └── Sources/ChickenScratchApp/ # SwiftUI app shell
 ├── pkg/arch/           # Arch Linux PKGBUILD
 └── docs/               # Format spec, design docs, user guide
 ```
