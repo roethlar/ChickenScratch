@@ -25,7 +25,7 @@ function flattenManuscript(nodes: TreeNode[]): string[] {
 
 function flattenAll(nodes: TreeNode[], ids: string[]) {
   for (const node of nodes) {
-    if (node.type === "Document" && node.path.endsWith(".html")) {
+    if (node.type === "Document" && node.path.endsWith(".md")) {
       ids.push(node.id);
     } else if (node.type === "Folder") {
       flattenAll(node.children, ids);

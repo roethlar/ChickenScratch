@@ -67,6 +67,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [x] Save revision (Ctrl+R), view history, restore
 - [x] Word-level diff viewer (tracked-changes style)
 - [x] Draft versions (branches): create, switch, merge
+- [x] Side-by-side draft comparison (Compare Drafts dialog)
 - [x] Auto-commit every 10 minutes if changes detected
 - [x] Auto-backup on close + periodic backup
 - [x] Push to backup on named revision (both apps)
@@ -104,7 +105,6 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 
 ### v1.1 — Feature work
 - [ ] AI streaming responses (word-by-word via Tauri events)
-- [ ] Side-by-side draft comparison mode
 - [ ] Remote sync — merge UX on conflicting pull (push/fetch/status shipped)
 
 ### Platform packaging

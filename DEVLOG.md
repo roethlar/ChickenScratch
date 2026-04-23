@@ -4,6 +4,24 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-04-22 — macOS SwiftUI app — writing, auto-commit, new doc, rename
+
+**Change:** The macOS SwiftUI scaffold becomes a usable editor. Typing in `TextEditor` now persists to disk (debounced 1.2s); the Binder can create new documents and rename existing ones via context menu; ⌘R opens a Save Revision prompt; auto-commit fires at most every 10 minutes with `Auto: <ts>`.
+
+**Why:** The scaffold was read-only — useful for showing Liquid Glass but not for writing. Writing + save + revisions is the bar for "actually usable alternative frontend."
+
+**Design notes:**
+- `ChiknKit.Writer` rewrites `.md` content, touches the `.meta` modified timestamp, and rewrites `project.yaml` through Codable structs with explicit `CodingKeys` so the top-level key order (id, name, created, modified, metadata, hierarchy) stays stable across saves — clean diffs against the Rust/C# writers.
+- `ChiknKit.Git` shells out to `/usr/bin/git` because SwiftPM doesn't have a zero-friction libgit2 wrapper; every recent macOS has git through Command Line Tools (xcrun). Author is hard-coded to "ChickenScratch <writer@chickenscratch.local>" so commits attribute to the app, not whatever the user last set globally.
+- `ProjectStore.saveDocument` is the one write path. After each save it asks "is it time to auto-commit?" (10-min threshold). Named revisions come through a separate explicit path (`saveRevision(message:)`).
+- `TextEditor` drives via `.onChange(draft)`, scheduling a debounced Task and flushing on disappear so doc switches don't drop the last keystroke.
+
+**Scope cut:** delete/move/reorder in the binder, inspector editing, comments, footnotes, compile, AI, drafts. Remote sync from this frontend is also still open — the other frontends push via libgit2's credential callback, and shelling out to `git push` on the Swift side would need a different credential story (no in-process callback).
+
+**Commit:** `<pending>`
+
+---
+
 ## 2026-04-21 — Remote sync (push/fetch + status)
 
 **Change:** New `sync` git remote, push/fetch/status commands in core + Tauri, Remote settings tab, Revisions-panel footer widget that shows "N to push · M to pull" and exposes Push/Fetch buttons. Separate from the existing `backup` remote (directory mirror) — `sync` accepts any git URL (HTTPS, SSH, or `file://` for testing).
@@ -19,6 +37,21 @@ Running log of architectural decisions and significant changes.
 **Scope limits:** Push and fetch. **Not** included: merge of incoming commits, conflict UX, SSH key passphrases. If a fetch brings down commits that diverge from local, the status shows "N to pull" but there's no in-app merge yet — the user would need to pull/merge via CLI. That's the next pass.
 
 **Tested:** Round-trip integration test in `crates/core/tests/remote_sync.rs` — pushes a fresh project to a `file://` bare repo, fetches back, asserts ahead/behind = 0; then adds a revision, asserts ahead = 1, pushes, asserts ahead = 0 again.
+
+---
+
+## 2026-04-18 — Side-by-side draft comparison
+
+**Change:** New "Compare Drafts" dialog accessible from the Revisions panel when a project has ≥ 2 draft versions.
+
+**Why:** Writers who experiment on branches ("what if this chapter started differently?") want to see what actually changed without committing to a merge.
+
+**After:**
+- Backend: `compare_drafts(project_path, draft_a, draft_b)` returns `Vec<FileDiff>` — files that differ between branch tips, skipping `.meta` / `project.yaml` / `.git`
+- Backend: `word_diff_drafts(project_path, draft_a, draft_b, doc_path)` — tracked-changes style word diff for a single doc
+- Frontend: `DraftCompare` dialog with two dropdowns (pick left / right draft), swap button, file list on left pane, word-level diff view on right pane
+- Uses the same green/red strikethrough visual as the per-revision diff viewer
+- Non-destructive (read-only comparison)
 
 **Commit:** `<pending>`
 

@@ -1,3 +1,8 @@
 [workspace]
-members = ["crates/core", "crates/cli", "crates/tui", "src-tauri"]
+members = ["crates/core", "crates/cli", "crates/tui", "linux", "src-tauri"]
+# `linux` needs Qt6 at build time; exclude from default-members so running
+# `cargo build` / `cargo test` from the workspace root doesn't require Qt on
+# non-Linux devs' machines. Build the Linux frontend explicitly with
+# `cargo build -p chickenscratch-linux` or from inside `linux/`.
+default-members = ["crates/core", "crates/cli", "crates/tui", "src-tauri"]
 resolver = "2"
