@@ -97,6 +97,12 @@ cargo build --release -p chikn-converter
 ./target/release/chikn-converter MyNovel.scriv
 ```
 
+## Format
+
+Projects are stored in the open [`.chikn`](docs/CHIKN_FORMAT_SPEC.md) format: a folder of Markdown plus YAML manifests plus embedded git history. Fully human-readable, diff-clean, and editable in any text editor.
+
+The underlying design — "a project is a folder, content is Markdown, metadata is in sidecars, history is embedded git, schemas evolve by rule" — is documented as a reusable pattern in [**Folder-First Documents**](docs/FOLDER_FIRST_DOCUMENTS.md). `.chikn` is the reference implementation; the pattern itself applies well beyond prose fiction (lab notebooks, knowledge bases, case files, course material, TTRPG campaigns, anywhere a project is more than one file and history matters).
+
 ## Architecture
 
 ```
