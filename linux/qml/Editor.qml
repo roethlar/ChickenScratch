@@ -7,6 +7,15 @@ Rectangle {
     color: "#1a1a1a"
     property var controller
 
+    Shortcut {
+        sequence: "Ctrl+F"
+        onActivated: findBar.open(false)
+    }
+    Shortcut {
+        sequence: "Ctrl+H"
+        onActivated: findBar.open(true)
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -28,6 +37,13 @@ Rectangle {
                     Layout.fillWidth: true
                 }
             }
+        }
+
+        FindReplace {
+            id: findBar
+            Layout.fillWidth: true
+            target: textArea
+            visible: false
         }
 
         Flickable {
@@ -68,7 +84,7 @@ Rectangle {
 
                 Keys.onPressed: (event) => {
                     if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_S) {
-                        var err = controller.save()
+                        controller.save()
                         event.accepted = true
                     }
                 }

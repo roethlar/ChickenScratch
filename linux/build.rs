@@ -11,6 +11,7 @@ fn main() {
                 "qml/Main.qml",
                 "qml/Binder.qml",
                 "qml/Editor.qml",
+                "qml/FindReplace.qml",
                 "qml/Inspector.qml",
             ],
             ..Default::default()
