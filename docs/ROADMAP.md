@@ -108,6 +108,32 @@ Bring the newer native frontends up to Tauri's feature set. Highest-leverage gap
 
 ---
 
+## v1.2 — Novelist features
+
+Comparative survey across Scrivener, Manuskript, bibisco, oStorybook, and yWriter identified features that genuinely change novelist workflows and are missing from ChickenScratch. Three plan docs capture the design:
+
+**Tier 1 — [Novel Structure](plans/TIER1_novel_structure.md)** (highest leverage):
+- Scene-level structured metadata (POV, location, story time, duration, threads)
+- Characters and locations as first-class entities (new `characters/` and `locations/` folders)
+- Plot threads (`threads.yaml` + scene membership, colored lanes)
+
+**Tier 2 — [Writer Workflow](plans/TIER2_writer_workflow.md)**:
+- Scrivenings mode (edit multiple documents as continuous prose)
+- Session targets with deadlines (floating progress badge + welcome-card)
+- Per-document snapshots (git log scoped to one file + one-doc restore)
+- Timeline view (chronological scene view using Tier 1 `story_time`)
+
+**Tier 3 — [Polish](plans/TIER3_polish.md)**:
+- Collections (saved structured queries)
+- Rich research (inline PDF/image/audio preview)
+- Split editor (two panes, independent editors)
+
+Deliberately **not** planned: name generators, deep character-psychology forms, Snowflake-method spreadsheets. See [plans/README.md](plans/README.md).
+
+Tier 1 is load-bearing for the rest (Timeline reads `story_time`; Collections filter over typed fields) and extends the `.chikn` format spec with new optional schema. Ships in a new v1.2 format-spec section; v1.1 readers ignore the new fields.
+
+---
+
 ## Platform Packaging
 
 ### Windows (.msi)

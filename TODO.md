@@ -122,9 +122,32 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [ ] AI streaming responses (word-by-word via Tauri events)
 - [ ] Remote sync — merge UX on conflicting pull (push/fetch/status shipped)
 
+### v1.2 — Novelist features
+See [docs/plans/](docs/plans/) for design specs.
+
+**Tier 1 — Novel structure** ([plan](docs/plans/TIER1_novel_structure.md)):
+- [ ] Scene-level metadata in `.meta` (pov_character, location, story_time, duration_minutes, threads, characters_in_scene)
+- [ ] Characters + locations as first-class entities (new top-level folders, `ChiknKit` + Rust readers, binder sections, entity editor, self-healing)
+- [ ] Plot threads (`threads.yaml`, scene tagging, Threads tab in Revisions panel, binder color-dots)
+- [ ] Cross-reference validation (dangling-ref warnings, non-fatal)
+- [ ] Format spec v1.2 section documenting the new schema
+
+**Tier 2 — Writer workflow** ([plan](docs/plans/TIER2_writer_workflow.md)):
+- [ ] Scrivenings mode (multi-doc continuous-edit with boundary markers)
+- [ ] Session targets: words/session, deadline, total — in `project.yaml`; badge + welcome-card + stats section
+- [ ] Per-document snapshots (`document_history`, `restore_document`, DocumentHistory modal)
+- [ ] Timeline view (story-time ordered, POV/thread lanes)
+
+**Tier 3 — Polish** ([plan](docs/plans/TIER3_polish.md)):
+- [ ] Collections (saved structured queries with a menu-driven builder, binder section)
+- [ ] Rich research (inline PDF / image / audio preview; external-open fallback; drag-drop import)
+- [ ] Split editor (two independent TipTap panes with orientation toggle)
+
 ### Native-frontend parity
 - [ ] SwiftUI: delete/move/reorder in binder, inspector editing, comments, footnotes, drafts, compile, AI, remote sync
+- [ ] SwiftUI v1.2 read-only: display new scene metadata, characters, locations, threads
 - [ ] Linux (Qt6): revisions UI, comments, footnotes, compile, AI, settings, templates, drafts, remote sync
+- [ ] Linux v1.2 read-only: display new scene metadata, characters, locations, threads
 - [ ] Windows (WinUI): tracked separately in `windows/` — bring to full parity
 
 ### Platform packaging
