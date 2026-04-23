@@ -36,6 +36,21 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [x] Comments overlay (F2) with navigate/edit/resolve/delete + new orphan comment
 - [x] Anchored inline comments (F3 on a text selection wraps with comment span)
 
+### Editor (macOS SwiftUI, Liquid Glass)
+- [x] Three-pane Liquid Glass shell (NavigationSplitView, inspector, toolbar)
+- [x] Read project.yaml + .meta + .md via `ChiknKit`
+- [x] Writing saves (debounced 1.2s) + auto-commit every 10 min
+- [x] New document (⌘N + binder toolbar) and rename (context menu)
+- [x] Save Revision (⌘R) via `/usr/bin/git`
+
+### Editor (Linux Qt6, cxx-qt)
+- [x] QML three-pane shell (binder, editor, inspector) with Material Dark
+- [x] Open project via native folder dialog, load documents on click
+- [x] Ctrl+S save, live word count
+- [x] Collapsible binder tree with chevrons
+- [x] Inspector editing: title, synopsis, label, status, keywords, compile, word target
+- [x] Find/replace overlay (Ctrl+F / Ctrl+H) with match count + nav + replace all
+
 ### Organization
 - [x] Binder with mouse-based drag-and-drop, context menus, ... menu button
 - [x] Rename, Move Up/Down, Move to... (folder picker), Delete (to Trash)
@@ -62,7 +77,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [x] All Pandoc-supported formats → markdown (DOCX, ODT, RTF, EPUB, MD, LaTeX, etc.)
 - [x] Markdown folder import
 
-### Revisions
+### Revisions (Tauri)
 - [x] Embedded git (git2-rs, no system git required)
 - [x] Save revision (Ctrl+R), view history, restore
 - [x] Word-level diff viewer (tracked-changes style)
@@ -70,7 +85,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [x] Side-by-side draft comparison (Compare Drafts dialog)
 - [x] Auto-commit every 10 minutes if changes detected
 - [x] Auto-backup on close + periodic backup
-- [x] Push to backup on named revision (both apps)
+- [x] Push to backup on named revision (Tauri + TUI)
 - [x] Remote sync: push/fetch to any git URL with HTTPS-token auth, ahead/behind status
 
 ### Statistics
@@ -103,9 +118,14 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 
 ## Remaining
 
-### v1.1 — Feature work
+### v1.1 — Feature work (Tauri)
 - [ ] AI streaming responses (word-by-word via Tauri events)
 - [ ] Remote sync — merge UX on conflicting pull (push/fetch/status shipped)
+
+### Native-frontend parity
+- [ ] SwiftUI: delete/move/reorder in binder, inspector editing, comments, footnotes, drafts, compile, AI, remote sync
+- [ ] Linux (Qt6): revisions UI, comments, footnotes, compile, AI, settings, templates, drafts, remote sync
+- [ ] Windows (WinUI): tracked separately in `windows/` — bring to full parity
 
 ### Platform packaging
 - [ ] Windows testing and packaging (.msi)

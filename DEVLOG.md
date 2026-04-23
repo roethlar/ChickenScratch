@@ -18,7 +18,7 @@ Running log of architectural decisions and significant changes.
 
 **Scope cut:** delete/move/reorder in the binder, inspector editing, comments, footnotes, compile, AI, drafts. Remote sync from this frontend is also still open — the other frontends push via libgit2's credential callback, and shelling out to `git push` on the Swift side would need a different credential story (no in-process callback).
 
-**Commit:** `<pending>`
+**Commit:** `6d999a1`
 
 ---
 
@@ -38,6 +38,10 @@ Running log of architectural decisions and significant changes.
 
 **Tested:** Round-trip integration test in `crates/core/tests/remote_sync.rs` — pushes a fresh project to a `file://` bare repo, fetches back, asserts ahead/behind = 0; then adds a revision, asserts ahead = 1, pushes, asserts ahead = 0 again.
 
+**Scope note:** Tauri-only. TUI, SwiftUI, and Linux Qt6 frontends do not push to the sync remote yet (TUI pushes to the `backup` directory mirror on named revision; SwiftUI shells out to `git`, which would need a separate credential story; Qt6 frontend has no git wiring yet).
+
+**Commit:** `ceb3815`
+
 ---
 
 ## 2026-04-18 — Side-by-side draft comparison
@@ -53,7 +57,7 @@ Running log of architectural decisions and significant changes.
 - Uses the same green/red strikethrough visual as the per-revision diff viewer
 - Non-destructive (read-only comparison)
 
-**Commit:** `<pending>`
+**Commit:** `e3d31a8`
 
 ---
 
@@ -68,7 +72,7 @@ Running log of architectural decisions and significant changes.
 - F2 (any focus): opens comments overlay (unchanged)
 - Normalizes selection direction; handles single-line and multi-line selections; char-boundary-safe string slicing
 
-**Commit:** `<pending>`
+**Commit:** `7762508`
 
 ---
 

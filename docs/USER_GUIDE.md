@@ -124,11 +124,21 @@ Click the **diff** icon next to any revision to see what changed since the previ
 
 The Drafts tab lets you create alternate versions of your manuscript. Click **New Draft Version**, give it a name (e.g., "alternate ending"), and work on it separately. Switch between drafts to compare approaches. **Merge Draft** combines a draft back into your main version.
 
+### Compare Drafts
+
+When your project has two or more draft versions, a **Compare Drafts** button appears on the Drafts tab. It opens a dialog where you pick a left and right draft, see the list of changed files between them, and view a word-level tracked-changes diff for any file. The comparison is read-only — picking drafts doesn't check anything out.
+
 ### Backup
 
 Click the **Backup** button at the bottom of the Revisions panel to push your project to a backup directory. Configure the backup directory in **Settings > Backup** for automatic backup every time you close the app.
 
 **Tip:** Set the backup directory to a cloud-synced folder (Dropbox, iCloud Drive, Google Drive) for automatic offsite backup with full version history.
+
+### Remote Sync
+
+For working across machines (Mac + Linux + Windows), configure a real git remote in **Settings > Remote**: set the URL (GitHub, Gitea, self-hosted, or `file:///path/to/bare.git` for local testing), your username, and a personal access token. Push-only for now — the token lives in plaintext in the settings file, so scope the PAT to one repository.
+
+The Revisions-panel footer then shows a "N to push · M to pull" summary with **Push** and **Fetch** buttons. Enable **Auto-Push on Save Revision** to have every named revision also push, fire-and-forget. When a fetch brings down commits that diverge from your local work, the app shows "N to pull" but doesn't merge yet — drop to a terminal and `git pull` / resolve, then re-open the project.
 
 ---
 
@@ -288,6 +298,28 @@ chikn ~/Writing/MyNovel.chikn
 | Show key help | `?` |
 
 The TUI edits markdown directly (no HTML conversion), so files written here are identical to files written by the desktop app. It shares the same settings file (`~/.config/chickenscratch/settings.json`) and will push to backup on named revision when a backup directory is configured.
+
+---
+
+## Native macOS (SwiftUI, Liquid Glass)
+
+A native macOS app in `macos/` using SwiftUI with Apple's Liquid Glass design language. Requires macOS 26 (Tahoe). Build via `cd macos && swift build && swift run ChickenScratch` or open `Package.swift` in Xcode 26.
+
+**What works today:** Open `.chikn` projects, three-pane window with binder / editor / inspector, writing with debounced save, auto-commit every 10 minutes, ⌘N for new document, rename via context menu, ⌘R to save a named revision.
+
+**Not yet:** delete/move/reorder in the binder, inspector editing, comments, footnotes, compile, AI, drafts, remote sync. Use the Tauri or TUI app for anything beyond basic writing.
+
+## Native Linux (Qt6, Wayland)
+
+A native Qt6 app in `linux/` using `cxx-qt` — Rust backend, QML frontend, Wayland-native. Requires Qt 6.x. Build via `cargo build --release -p chickenscratch-linux`.
+
+**What works today:** Three-pane layout (Material Dark), open project, click-to-load, Ctrl+S save, live word count, collapsible binder, inspector editing (title, synopsis, label, status, keywords, compile, word target), find/replace overlay (Ctrl+F / Ctrl+H).
+
+**Not yet:** revisions UI, comments, footnotes, compile, AI, settings, templates, drafts, remote sync.
+
+## Native Windows (WinUI 3)
+
+A native Windows app in `windows/` using WinUI 3 + C# with `LibGit2Sharp` for embedded git. Build via `cd windows && dotnet build ChickenScratch.slnx`. See the `windows/` directory for platform-specific notes; feature parity with Tauri is tracked there.
 
 ---
 

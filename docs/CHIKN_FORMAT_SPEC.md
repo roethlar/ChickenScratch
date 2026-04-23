@@ -802,12 +802,13 @@ Any editor supporting .chikn format must:
 
 ## Reference Implementations
 
-Two in-tree implementations of this spec, both backed by the same Rust library (`chickenscratch-core`):
+Five in-tree implementations of this spec share the same on-disk format. Three are Rust-backed by `chickenscratch-core`; two are standalone ports that target byte-for-byte compatibility:
 
-- **`src-tauri/`** — Tauri desktop app (Rust backend, React/TipTap frontend). Canonical reference for read/write, hierarchy, comments, footnotes, compile.
+- **`src-tauri/`** + **`ui/`** — Tauri desktop app (Rust backend, React/TipTap frontend). Canonical reference for read/write, hierarchy, comments, footnotes, compile.
 - **`crates/tui/`** — `chikn` terminal UI (Rust, ratatui). Exercises the same core library against a markdown-native editor.
-
-A third C# implementation at `windows/` (WinUI 3) is in active development and targets byte-for-byte compatibility with the Rust implementations.
+- **`linux/`** — Qt6 Wayland-native frontend (Rust via `cxx-qt`, QML UI). Shares `chickenscratch-core`.
+- **`macos/`** — SwiftUI + Liquid Glass frontend (Swift, macOS 26+). Ships its own `ChiknKit` Swift library that parses and writes YAML via Yams and shells out to `/usr/bin/git`. Maintains byte-for-byte compatibility with the Rust writer through Codable structs with explicit key order.
+- **`windows/`** — WinUI 3 + C# frontend with `LibGit2Sharp`. Own `ChickenScratch.Core` library.
 
 See also `crates/cli/` (`chikn-converter`) for the standalone Scrivener ↔ .chikn converter.
 

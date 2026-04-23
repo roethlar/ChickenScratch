@@ -37,14 +37,27 @@ The revision diff viewer shows word-level tracked changes (insertions in green, 
 
 ### Backup
 
-Backup is a second directory (local, cloud-synced, or a git remote URL) that the project is mirrored to. Triggers:
+Backup is a **directory** the project is mirrored to as a bare `.git/` clone. Triggers:
 - **On named revision** — every manual Save Revision also pushes to the backup destination.
 - **On project close** — configurable in Settings > Backup (default on).
 - **Periodic** — configurable interval.
 
-Backup failures are non-fatal; they surface as a toast and are retried next trigger. The backup itself is a plain git push when the destination is a remote URL, or a mirrored `.git/` clone when the destination is a directory — either way, full revision history is preserved.
+Backup failures are non-fatal; they surface as a toast and are retried next trigger. Full revision history is preserved.
 
-**Recommended:** point the backup directory at a cloud-synced folder (Dropbox, iCloud Drive, Google Drive) for automatic off-site backup with full history. Advanced users can use a self-hosted Gitea or a GitHub repository instead.
+**Recommended:** point the backup directory at a cloud-synced folder (Dropbox, iCloud Drive, Google Drive) for automatic off-site backup with full history.
+
+### Remote Sync
+
+The `sync` git remote is a separate, URL-based destination for working across machines. Configured in Settings > Remote with a URL (GitHub, Gitea, self-hosted, or `file://`) plus an HTTPS username and personal access token; SSH URLs fall back to the ssh-agent.
+
+- `sync_push` — `git push refs/heads/<branch>:refs/heads/<branch>` through a libgit2 credential callback.
+- `sync_fetch` — `git fetch` into `refs/remotes/sync/<branch>`, no merge.
+- `sync_status` — `graph_ahead_behind` local HEAD vs. `refs/remotes/sync/<branch>`, giving the UI a "N to push · M to pull" summary.
+- Auto-push on named revision is opt-in, fire-and-forget.
+
+Push and fetch are implemented; merging divergent remote work is not yet — the writer resolves conflicts via CLI `git pull` and reopens the project.
+
+Scope note: remote sync is Tauri-only today. The TUI pushes to the directory backup only; the SwiftUI frontend shells out to `git` and hasn't wired its own credential story; the Qt6 Linux frontend has no git wiring yet.
 
 ## Self-Healing
 

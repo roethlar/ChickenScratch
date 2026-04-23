@@ -4,12 +4,17 @@
 
 ChickenScratch is a functional cross-platform writing app in alpha testing. Core features implemented. Seeking feedback from writers to identify issues, missing functionality, and UX problems before stable release.
 
-**Two frontends, one canonical storage format:**
-- **Tauri + React + TipTap** — desktop GUI with WYSIWYG rich-text editing
-- **Rust + ratatui + ratatui-textarea** — terminal UI (`chikn` binary)
+**Five frontends, one canonical storage format:**
+- **Tauri + React + TipTap** — fullest feature set; daily-driver on macOS + Linux
+- **WinUI 3 + C#** (`windows/`) — native Windows app, alpha
+- **SwiftUI + Liquid Glass** (`macos/`, macOS 26+) — early scaffold with writing + revisions
+- **Qt6 + cxx-qt** (`linux/`, Wayland-native) — early scaffold with binder/editor/inspector/find-replace
+- **Ratatui TUI** (`chikn` binary, any OS) — keyboard-first terminal editor
 - **Canonical storage** — Pandoc Markdown (`.md` files on disk)
 
-Pandoc is a runtime dependency but only for compile/export and import — not for core editing. The Tauri editor uses `tiptap-markdown` for in-process markdown ↔ HTML. The TUI edits markdown directly, no conversion at all.
+Pandoc is a runtime dependency but only for compile/export and import — not for core editing. The Tauri editor uses `tiptap-markdown` for in-process markdown ↔ HTML. The TUI and SwiftUI edit markdown directly, no conversion at all.
+
+Not every frontend is at feature parity with Tauri — the SwiftUI, Qt6, and WinUI apps are catching up. Where a feature below says just "Editor" it's shipped on all editor frontends; feature sections named "(Tauri)" are Tauri-only until ported.
 
 ### What's Built
 
@@ -52,13 +57,15 @@ Pandoc is a runtime dependency but only for compile/export and import — not fo
 - All Pandoc-supported formats → markdown
 - Markdown folder import
 
-**Revisions**
+**Revisions (Tauri)**
 - Embedded git2-rs (no system git required)
 - Save revision, history, restore
 - Word-level diff viewer (tracked-changes style)
 - Draft versions (branches): create, switch, merge
+- Side-by-side draft comparison (Compare Drafts dialog)
 - Auto-commit every 10 minutes
 - Auto-backup on close + periodic + on-named-revision
+- Remote sync: push/fetch to any git URL with HTTPS-token auth, ahead/behind status
 
 **Statistics**
 - Per-document word counts with bar chart
@@ -67,7 +74,7 @@ Pandoc is a runtime dependency but only for compile/export and import — not fo
 - Daily writing history chart (14-day view)
 
 **Settings**
-- General, Writing, Backup, AI (with kill switch), Compile, Shortcuts
+- General, Writing, Backup, Remote, AI (with kill switch), Compile, Shortcuts
 - All keyboard shortcuts customizable
 
 **Infrastructure**
@@ -87,18 +94,17 @@ Stream AI output word-by-word instead of waiting for full response.
 - **Providers:** Ollama (newline-delimited JSON), Anthropic/OpenAI (SSE)
 - **UX:** Text appears progressively in editor/corkboard
 
-### Side-by-Side Draft Comparison
-Compare two draft versions (branches) visually.
-- Two-pane view: old draft left, current right
-- Synced scrolling
-- Word-level highlighting of differences
+### Remote Sync — merge UX for conflicting pulls
+Push, fetch, and ahead/behind status shipped in v0.1.0-alpha. Missing: when a fetch brings down commits that conflict with local work, there's no in-app resolution — writer falls back to CLI `git merge`. Plan:
+- Detect divergent state in `sync_status` (ahead > 0 && behind > 0)
+- Offer "Pull & merge" with a conflict summary
+- For conflicts in markdown files, surface a three-way view in the revision diff UI
 
-### Remote Sync
-Push/pull to GitHub, Gitea, or any git remote.
-- **Settings:** Remote URL, auth (SSH key or token)
-- **git2-rs:** push/pull with credential handling
-- **Conflict resolution:** Show conflicts, let writer choose
-- **UI:** Sync button in Revisions panel
+### Frontend parity (SwiftUI + Qt6 + WinUI)
+Bring the newer native frontends up to Tauri's feature set. Highest-leverage gaps:
+- SwiftUI: delete/move/reorder binder, inspector editing, comments, footnotes, compile, AI, drafts, remote sync
+- Qt6/Linux: comments, footnotes, revisions UI, compile, AI, settings, templates
+- WinUI: ongoing — tracked in `windows/` commit history
 
 ---
 

@@ -1,8 +1,8 @@
 # ChickenScratch Editor — Design Document
 
-**Status:** Shipped (v0.1.0-alpha). Historical record of the design the editor was built to. Phases 1–6 are all delivered; this document is preserved to explain the *why* behind current structure rather than to plan future work.
-**Date:** 2026-04-02 (original); last major update 2026-04-21
-**Scope:** Cross-platform Tauri editor for .chikn writing projects
+**Status:** Shipped (v0.1.0-alpha). Historical record of the design the Tauri editor was built to. Phases 1–6 are all delivered; this document is preserved to explain the *why* behind current structure rather than to plan future work.
+**Date:** 2026-04-02 (original); last updated 2026-04-23
+**Scope:** Cross-platform Tauri editor for .chikn writing projects. Four additional frontends (WinUI 3 at `windows/`, SwiftUI at `macos/`, Qt6 at `linux/`, ratatui at `crates/tui/`) share the same `.chikn` storage format but have their own design documents or are scaffold-only. See [ROADMAP.md](ROADMAP.md) for the current frontend matrix.
 
 ---
 
@@ -463,6 +463,15 @@ ChickenScratch/
 ├── windows/                     # WinUI 3 (Windows App SDK, C#) frontend
 │   ├── ChickenScratch.Core/     # C# library: .chikn I/O, git, compile
 │   └── ChickenScratch.App/      # App shell
+├── macos/                       # SwiftUI + Liquid Glass (macOS 26+) frontend
+│   ├── Package.swift            # SwiftPM manifest
+│   └── Sources/
+│       ├── ChiknKit/            # Swift library: .chikn reader/writer/git
+│       └── ChickenScratchApp/   # SwiftUI app shell
+├── linux/                       # Qt6 Wayland (cxx-qt) frontend
+│   ├── Cargo.toml               # Not in workspace default-members
+│   ├── src/                     # Rust bridge + entry
+│   └── qml/                     # QML UI (Binder, Editor, Inspector, FindReplace)
 ├── ui/                          # React frontend (Tauri webview)
 │   ├── package.json
 │   ├── index.html
