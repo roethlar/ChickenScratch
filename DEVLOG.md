@@ -4,6 +4,29 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-04-23 — v1.2 scene-level metadata (first slice of Tier 1)
+
+**Change:** `.chikn` format gains six optional scene-level fields: `pov_character`, `location`, `story_time`, `duration_minutes`, `threads`, `characters_in_scene`. Tauri inspector gets a collapsible **Scene** section exposing all six as free-form text inputs (entity dropdowns come with Tier 1.2/1.3 when the `characters/` and `locations/` folders land).
+
+**Why:** First concrete deliverable against the v1.2 novelist-features plan. Peer tools (bibisco, yWriter, oStorybook) ship POV/location/duration as first-class fields; `.chikn` stored everything as free-form keywords which don't validate. Schema additions land first so later features (timeline view, entity cross-refs, collection queries) have the fields they'll read.
+
+**Design notes:**
+- All six fields are optional. v1.1 readers ignore them; v1.1 writers preserve them on round-trip (Rust `DocumentMetadata` already `#[serde(default, skip_serializing_if)]` for unknowns we don't explicitly own). A scene with none of the new fields writes an identical `.meta` to what v1.1 produced — zero diff noise for projects that don't use them.
+- Free-form strings for POV/location. Eventually they'll be slug/id refs into `characters/` and `locations/` entities; for now writers type names or slugs and the inspector doesn't validate. When entities ship, the input becomes a dropdown and existing strings upgrade to resolved refs.
+- Threads as comma-separated ids. A proper multi-select with live thread picker arrives alongside `threads.yaml`.
+- Inspector Section is collapsible with a chevron toggle; auto-expands for documents that already have any of the fields set (so writers returning to a scene notice their work is there).
+- Tauri command `update_document_metadata` takes a new optional `scene: SceneMetadata` sub-payload rather than six more positional args. Frontend wraps it in a typed `SceneMetadata` interface in `commands/document.ts`.
+
+**Tested:** Two new round-trip tests in `crates/core/src/core/project/writer.rs`:
+- `test_scene_metadata_round_trip` — set all six fields, write → read, assert preservation.
+- `test_scene_metadata_absent_is_clean` — write a scene with no v1.2 fields, read back the `.meta` text, assert the new keys don't appear.
+
+All 52 lib tests pass; Tauri typecheck clean; UI tsc/eslint clean.
+
+**Commit:** `<pending>`
+
+---
+
 ## 2026-04-22 — macOS SwiftUI app — writing, auto-commit, new doc, rename
 
 **Change:** The macOS SwiftUI scaffold becomes a usable editor. Typing in `TextEditor` now persists to disk (debounced 1.2s); the Binder can create new documents and rename existing ones via context menu; ⌘R opens a Save Revision prompt; auto-commit fires at most every 10 minutes with `Auto: <ts>`.

@@ -271,6 +271,12 @@ fn write_document(
         word_count_target: document.word_count_target,
         compile_order: document.compile_order,
         comments: document.comments.clone(),
+        pov_character: document.pov_character.clone(),
+        location: document.location.clone(),
+        story_time: document.story_time.clone(),
+        duration_minutes: document.duration_minutes,
+        threads: document.threads.clone(),
+        characters_in_scene: document.characters_in_scene.clone(),
     };
 
     let meta_content = serde_yaml::to_string(&metadata)?;
@@ -440,6 +446,84 @@ mod tests {
         let loaded_doc = loaded_project.documents.get("doc1").unwrap();
         assert_eq!(loaded_doc.name, "test-document");
         assert_eq!(loaded_doc.content, "Test content for round trip");
+    }
+
+    #[test]
+    fn test_scene_metadata_round_trip() {
+        // v1.2 scene-level fields must survive write → read → write unchanged.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("SceneMeta.chikn");
+        let mut project = create_project(&project_path, "Scene Meta Test").unwrap();
+
+        let doc = Document {
+            id: "scene-1".to_string(),
+            name: "opening".to_string(),
+            path: "manuscript/opening.md".to_string(),
+            content: "The motel was quiet.".to_string(),
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            pov_character: Some("sarah-bennett".to_string()),
+            location: Some("motel-room-12".to_string()),
+            story_time: Some("Day 3, 22:30".to_string()),
+            duration_minutes: Some(45),
+            threads: vec!["main-plot".to_string(), "romance".to_string()],
+            characters_in_scene: vec!["marcus-rivera".to_string()],
+            ..Default::default()
+        };
+
+        project.documents.insert(doc.id.clone(), doc.clone());
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
+        write_project(&mut project).unwrap();
+
+        let loaded = read_project(&project_path).unwrap();
+        let scene = loaded.documents.get("scene-1").expect("scene loaded");
+
+        assert_eq!(scene.pov_character.as_deref(), Some("sarah-bennett"));
+        assert_eq!(scene.location.as_deref(), Some("motel-room-12"));
+        assert_eq!(scene.story_time.as_deref(), Some("Day 3, 22:30"));
+        assert_eq!(scene.duration_minutes, Some(45));
+        assert_eq!(scene.threads, vec!["main-plot", "romance"]);
+        assert_eq!(scene.characters_in_scene, vec!["marcus-rivera"]);
+    }
+
+    #[test]
+    fn test_scene_metadata_absent_is_clean() {
+        // A scene with no v1.2 metadata should write a .meta file that doesn't
+        // contain the new keys at all — no empty lists, no nulls. Clean diff
+        // for projects that don't use these fields.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("Clean.chikn");
+        let mut project = create_project(&project_path, "Clean").unwrap();
+
+        let doc = Document {
+            id: "basic".to_string(),
+            name: "basic".to_string(),
+            path: "manuscript/basic.md".to_string(),
+            content: "Plain.".to_string(),
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        project.documents.insert(doc.id.clone(), doc.clone());
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
+        write_project(&mut project).unwrap();
+
+        let meta_path = project_path.join("manuscript/basic.meta");
+        let meta_text = std::fs::read_to_string(&meta_path).unwrap();
+        assert!(!meta_text.contains("pov_character"));
+        assert!(!meta_text.contains("location:"));
+        assert!(!meta_text.contains("story_time"));
+        assert!(!meta_text.contains("duration_minutes"));
+        assert!(!meta_text.contains("threads"));
+        assert!(!meta_text.contains("characters_in_scene"));
     }
 
     #[test]

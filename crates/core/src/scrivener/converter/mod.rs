@@ -345,15 +345,7 @@ fn convert_binder_items_inner(
                             parent_id: Some(folder_id.clone()),
                             created,
                             modified,
-                            synopsis: None,
-                            label: None,
-                            status: None,
-                            keywords: None,
-                            links: None,
-                            include_in_compile: true,
-                            word_count_target: 0,
-                            compile_order: 0,
-                            comments: Vec::new(),
+                            ..Document::default()
                         };
                         documents.insert(doc_id.clone(), document);
 
@@ -423,11 +415,7 @@ fn convert_binder_items_inner(
                     label: meta.and_then(|m| m.label.clone()),
                     status: meta.and_then(|m| m.status.clone()),
                     keywords: meta.and_then(|m| m.keywords.clone()),
-                    links: None,
-                    include_in_compile: true,
-                    word_count_target: 0,
-                    compile_order: 0,
-                    comments: Vec::new(),
+                    ..Document::default()
                 };
 
                 documents.insert(doc_id.clone(), document);
@@ -484,15 +472,7 @@ fn convert_binder_items_inner(
                             parent_id: parent_id.clone(),
                             created,
                             modified,
-                            synopsis: None,
-                            label: None,
-                            status: None,
-                            keywords: None,
-                            links: None,
-                            include_in_compile: true,
-                            word_count_target: 0,
-                            compile_order: 0,
-                            comments: Vec::new(),
+                            ..Document::default()
                         };
 
                         documents.insert(doc_id.clone(), document);

@@ -16,6 +16,15 @@ export async function updateDocumentContent(
   return invoke("update_document_content", { projectPath, docId, content });
 }
 
+export interface SceneMetadata {
+  pov_character?: string | null;
+  location?: string | null;
+  story_time?: string | null;
+  duration_minutes?: number | null;
+  threads?: string[] | null;
+  characters_in_scene?: string[] | null;
+}
+
 export async function updateDocumentMetadata(
   projectPath: string,
   docId: string,
@@ -27,6 +36,7 @@ export async function updateDocumentMetadata(
     include_in_compile?: boolean | null;
     word_count_target?: number | null;
     compile_order?: number | null;
+    scene?: SceneMetadata | null;
   }
 ): Promise<Project> {
   return invoke("update_document_metadata", {

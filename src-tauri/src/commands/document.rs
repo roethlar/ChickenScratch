@@ -132,6 +132,7 @@ pub fn update_document_metadata(
     include_in_compile: Option<bool>,
     word_count_target: Option<u32>,
     compile_order: Option<i32>,
+    scene: Option<SceneMetadata>,
 ) -> Result<Project, ChiknError> {
     let mut project = reader::read_project(Path::new(&project_path))?;
     if let Some(doc) = project.documents.get_mut(&doc_id) {
@@ -148,6 +149,14 @@ pub fn update_document_metadata(
         if let Some(order) = compile_order {
             doc.compile_order = order;
         }
+        if let Some(scene) = scene {
+            doc.pov_character = scene.pov_character.filter(|s| !s.is_empty());
+            doc.location = scene.location.filter(|s| !s.is_empty());
+            doc.story_time = scene.story_time.filter(|s| !s.is_empty());
+            doc.duration_minutes = scene.duration_minutes;
+            doc.threads = scene.threads.unwrap_or_default();
+            doc.characters_in_scene = scene.characters_in_scene.unwrap_or_default();
+        }
         doc.modified = chrono::Utc::now().to_rfc3339();
         writer::write_project(&mut project)?;
         Ok(project)
@@ -157,6 +166,23 @@ pub fn update_document_metadata(
             doc_id
         )))
     }
+}
+
+/// v1.2 scene-level metadata, submitted from the Inspector as a single payload.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct SceneMetadata {
+    #[serde(default)]
+    pub pov_character: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
+    #[serde(default)]
+    pub story_time: Option<String>,
+    #[serde(default)]
+    pub duration_minutes: Option<u32>,
+    #[serde(default)]
+    pub threads: Option<Vec<String>>,
+    #[serde(default)]
+    pub characters_in_scene: Option<Vec<String>>,
 }
 
 #[tauri::command]

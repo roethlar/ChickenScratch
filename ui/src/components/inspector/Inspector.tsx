@@ -72,6 +72,15 @@ export function Inspector() {
   const [keywords, setKeywords] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
 
+  // v1.2 scene-level metadata — free-form inputs (entity-picker comes with Tier 1.2/1.3)
+  const [povCharacter, setPovCharacter] = useState("");
+  const [location, setLocation] = useState("");
+  const [storyTime, setStoryTime] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState("");
+  const [threads, setThreads] = useState("");
+  const [charactersInScene, setCharactersInScene] = useState("");
+  const [showScene, setShowScene] = useState(false);
+
   // Load metadata when active doc changes (React's "adjust state on prop change" pattern)
   const [lastDocId, setLastDocId] = useState<string | undefined>(activeDoc?.id);
   if (activeDoc && activeDoc.id !== lastDocId) {
@@ -81,8 +90,40 @@ export function Inspector() {
     setLabel(activeDoc.label || "");
     setStatus(activeDoc.status || "");
     setKeywords((activeDoc.keywords || []).join(", "));
+    setPovCharacter(activeDoc.pov_character || "");
+    setLocation(activeDoc.location || "");
+    setStoryTime(activeDoc.story_time || "");
+    setDurationMinutes(
+      activeDoc.duration_minutes != null ? String(activeDoc.duration_minutes) : ""
+    );
+    setThreads((activeDoc.threads || []).join(", "));
+    setCharactersInScene((activeDoc.characters_in_scene || []).join(", "));
+    setShowScene(
+      !!(
+        activeDoc.pov_character ||
+        activeDoc.location ||
+        activeDoc.story_time ||
+        activeDoc.duration_minutes ||
+        (activeDoc.threads && activeDoc.threads.length) ||
+        (activeDoc.characters_in_scene && activeDoc.characters_in_scene.length)
+      )
+    );
     setEditingTitle(false);
   }
+
+  const scenePayload = useCallback((): docCmd.SceneMetadata => {
+    const csv = (s: string) =>
+      s.split(",").map((t) => t.trim()).filter(Boolean);
+    const dur = parseInt(durationMinutes, 10);
+    return {
+      pov_character: povCharacter || null,
+      location: location || null,
+      story_time: storyTime || null,
+      duration_minutes: Number.isFinite(dur) && dur > 0 ? dur : null,
+      threads: csv(threads),
+      characters_in_scene: csv(charactersInScene),
+    };
+  }, [povCharacter, location, storyTime, durationMinutes, threads, charactersInScene]);
 
   const save = useCallback(async () => {
     if (!project || !activeDoc) return;
@@ -98,10 +139,11 @@ export function Inspector() {
         label: label || null,
         status: status || null,
         keywords: kw.length ? kw : null,
+        scene: scenePayload(),
       }
     );
     setProject(updated);
-  }, [project, activeDoc, synopsis, label, status, keywords, setProject]);
+  }, [project, activeDoc, synopsis, label, status, keywords, scenePayload, setProject]);
 
   const handleTitleSave = useCallback(async () => {
     if (!project || !activeDoc) return;
@@ -125,7 +167,7 @@ export function Inspector() {
     // which would restart the debounce on every keystroke instead of every
     // 1.5s idle window.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [synopsis, label, status, keywords]);
+  }, [synopsis, label, status, keywords, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene]);
 
   if (!activeDoc) {
     return (
@@ -213,6 +255,86 @@ export function Inspector() {
           />
         </div>
 
+        <div className="inspector-section">
+          <button
+            className="inspector-section-toggle"
+            onClick={() => setShowScene((v) => !v)}
+            aria-expanded={showScene}
+          >
+            <span className={`inspector-section-chevron ${showScene ? "open" : ""}`}>▸</span>
+            Scene
+          </button>
+
+          {showScene && (
+            <div className="inspector-section-body">
+              <div className="inspector-field">
+                <label>POV Character</label>
+                <input
+                  type="text"
+                  value={povCharacter}
+                  onChange={(e) => setPovCharacter(e.target.value)}
+                  placeholder="sarah-bennett"
+                />
+              </div>
+
+              <div className="inspector-field">
+                <label>Location</label>
+                <input
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="motel-room-12"
+                />
+              </div>
+
+              <div className="inspector-field">
+                <label>Story Time</label>
+                <input
+                  type="text"
+                  value={storyTime}
+                  onChange={(e) => setStoryTime(e.target.value)}
+                  placeholder="Day 3, 22:30 — or ISO"
+                />
+              </div>
+
+              <div className="inspector-field">
+                <label>Duration (minutes)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={5}
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(e.target.value)}
+                  placeholder="45"
+                />
+              </div>
+
+              <div className="inspector-field">
+                <label>Threads</label>
+                <input
+                  type="text"
+                  value={threads}
+                  onChange={(e) => setThreads(e.target.value)}
+                  placeholder="main-plot, romance"
+                />
+                <span className="compile-order-hint">
+                  Comma-separated thread ids. Threads will have a dedicated editor in a later pass.
+                </span>
+              </div>
+
+              <div className="inspector-field">
+                <label>Other characters</label>
+                <input
+                  type="text"
+                  value={charactersInScene}
+                  onChange={(e) => setCharactersInScene(e.target.value)}
+                  placeholder="marcus-rivera, kelly-chen"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="inspector-field inspector-toggle-field">
           <label>Include in Compile</label>
           <input
@@ -231,6 +353,7 @@ export function Inspector() {
                     ? keywords.split(",").map(s => s.trim()).filter(Boolean)
                     : null,
                   include_in_compile: !activeDoc.include_in_compile,
+                  scene: scenePayload(),
                 }
               );
               setProject(updated);
@@ -255,6 +378,7 @@ export function Inspector() {
                   keywords: keywords.split(",").map(s => s.trim()).filter(Boolean).length
                     ? keywords.split(",").map(s => s.trim()).filter(Boolean) : null,
                   compile_order: order,
+                  scene: scenePayload(),
                 }
               );
               setProject(updated);
@@ -297,6 +421,7 @@ export function Inspector() {
                   keywords: keywords.split(",").map(s => s.trim()).filter(Boolean).length
                     ? keywords.split(",").map(s => s.trim()).filter(Boolean) : null,
                   word_count_target: target,
+                  scene: scenePayload(),
                 }
               );
               setProject(updated);

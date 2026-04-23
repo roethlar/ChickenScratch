@@ -63,6 +63,31 @@ pub struct Document {
     /// Comments on spans in this document (keyed by comment id)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub comments: Vec<Comment>,
+
+    // ── v1.2 scene-level metadata (optional; all fields safe to omit) ────
+    /// POV character — slug/id into `characters/` (free-form until entities ship)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pov_character: Option<String>,
+
+    /// Location — slug/id into `locations/` (free-form until entities ship)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+
+    /// In-story time, free-form ("Day 3, 22:30") or parseable ISO
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub story_time: Option<String>,
+
+    /// Scene duration in minutes of story-time
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_minutes: Option<u32>,
+
+    /// Plot thread ids from `threads.yaml`
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub threads: Vec<String>,
+
+    /// Additional character ids/slugs appearing in this scene beyond POV
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub characters_in_scene: Vec<String>,
 }
 
 /// A comment anchored to a span in the document.
@@ -105,6 +130,12 @@ impl Default for Document {
             word_count_target: 0,
             compile_order: 0,
             comments: Vec::new(),
+            pov_character: None,
+            location: None,
+            story_time: None,
+            duration_minutes: None,
+            threads: Vec::new(),
+            characters_in_scene: Vec::new(),
         }
     }
 }

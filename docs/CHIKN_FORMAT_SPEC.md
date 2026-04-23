@@ -1,6 +1,6 @@
-# .chikn Format Specification v1.1
+# .chikn Format Specification v1.2
 **Status**: Living Specification
-**Last Updated**: 2026-04-18
+**Last Updated**: 2026-04-23
 **Purpose**: Define the .chikn project format for creative writing with git integration
 
 ---
@@ -418,16 +418,46 @@ revs/
 - Git integration required
 - Simple metadata schema
 
-### Version 1.1 (Current)
+### Version 1.1
 - Comments anchored to spans via inline HTML + `.meta` sidecar
 - Inline and reference footnotes (pandoc-native)
 - `word_count_target`, `compile_order`, `include_in_compile` fields
 - Bracketed-span syntax documented for custom styles (`[text]{.class}`)
 - Scrivener import/export with full metadata round-trip
 
+### Version 1.2 (Current — novelist schema, in progress)
+
+Rolling set of optional schema additions that turn a `.chikn` project from "folder of markdown with a binder" into a proper novelist data model. All fields optional; v1.1 readers ignore them, v1.1 writers preserve unknown fields on round-trip.
+
+**Scene-level metadata** (in each scene's `.meta`, all optional):
+
+```yaml
+pov_character: sarah-bennett       # slug/id of a character entity
+location: motel-room-12            # slug/id of a location entity
+story_time: "Day 3, 22:30"         # free-form string or parseable ISO
+duration_minutes: 45               # integer minutes of story-time
+threads:                           # list of ids from threads.yaml
+  - main-plot
+  - romance
+characters_in_scene:               # additional characters beyond POV
+  - marcus-rivera
+  - kelly-chen
+```
+
+Readers must tolerate invalid references (pointing at deleted entities) by treating them as opaque strings — don't error on save. Validation is the UI's job, flagged non-fatally.
+
+**Planned for v1.2 (not yet landed):**
+
+- `characters/` and `locations/` top-level folders — first-class entities, same folder+sidecar pattern as `manuscript/` (`{slug}.md` freeform body + `{slug}.meta` with id/name/type/aliases).
+- `threads.yaml` at the project root — list of plot threads with id, name, color.
+- Saved `collections` in `project.yaml` — structured queries writers pin to the binder.
+- `session_target` in `project.yaml` — words/session, deadline, total target.
+
+See [plans/TIER1_novel_structure.md](plans/TIER1_novel_structure.md), [plans/TIER2_writer_workflow.md](plans/TIER2_writer_workflow.md), and [plans/TIER3_polish.md](plans/TIER3_polish.md) for the full design.
+
 ### Future Versions (Planned)
 
-**Version 1.2** (Collaboration):
+**Version 1.3** (Collaboration):
 - Multi-author metadata on comments
 - Threaded comment replies
 - Review/approval workflows

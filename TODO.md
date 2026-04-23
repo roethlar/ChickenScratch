@@ -126,11 +126,12 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 See [docs/plans/](docs/plans/) for design specs.
 
 **Tier 1 — Novel structure** ([plan](docs/plans/TIER1_novel_structure.md)):
-- [ ] Scene-level metadata in `.meta` (pov_character, location, story_time, duration_minutes, threads, characters_in_scene)
+- [x] Scene-level metadata in `.meta` (pov_character, location, story_time, duration_minutes, threads, characters_in_scene) — core + Tauri inspector (free-form inputs)
+- [x] Format spec v1.2 section documenting the new schema
 - [ ] Characters + locations as first-class entities (new top-level folders, `ChiknKit` + Rust readers, binder sections, entity editor, self-healing)
+- [ ] Upgrade scene inspector inputs to entity dropdowns once entities ship
 - [ ] Plot threads (`threads.yaml`, scene tagging, Threads tab in Revisions panel, binder color-dots)
 - [ ] Cross-reference validation (dangling-ref warnings, non-fatal)
-- [ ] Format spec v1.2 section documenting the new schema
 
 **Tier 2 — Writer workflow** ([plan](docs/plans/TIER2_writer_workflow.md)):
 - [ ] Scrivenings mode (multi-doc continuous-edit with boundary markers)

@@ -19,6 +19,13 @@ export interface Document {
   word_count_target: number;
   compile_order: number;
   comments?: Comment[];
+  // v1.2 scene-level metadata (all optional)
+  pov_character?: string | null;
+  location?: string | null;
+  story_time?: string | null;
+  duration_minutes?: number | null;
+  threads?: string[];
+  characters_in_scene?: string[];
 }
 
 export interface Comment {
