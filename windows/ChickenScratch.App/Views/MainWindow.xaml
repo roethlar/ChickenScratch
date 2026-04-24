@@ -49,6 +49,16 @@
                         Style="{StaticResource TransparentButtonStyle}">
                     <FontIcon Glyph="&#xE74E;" FontSize="14" />
                 </Button>
+                <Button Click="OpenCompile_Click"
+                        ToolTipService.ToolTip="Compile Manuscript"
+                        Style="{StaticResource TransparentButtonStyle}">
+                    <FontIcon Glyph="&#xE8DE;" FontSize="14" />
+                </Button>
+                <Button Click="OpenStats_Click"
+                        ToolTipService.ToolTip="Statistics"
+                        Style="{StaticResource TransparentButtonStyle}">
+                    <FontIcon Glyph="&#xE9D9;" FontSize="14" />
+                </Button>
                 <Button Click="OpenSettings_Click"
                         ToolTipService.ToolTip="Settings"
                         Style="{StaticResource TransparentButtonStyle}">

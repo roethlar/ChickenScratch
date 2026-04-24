@@ -125,6 +125,26 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void OpenCompile_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.CurrentProject == null) return;
+        var dialog = new CompileDialog(ViewModel.CurrentProject.Path, ViewModel.CurrentProject.Metadata)
+        {
+            XamlRoot = Content.XamlRoot,
+        };
+        await dialog.ShowAsync();
+    }
+
+    private async void OpenStats_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.CurrentProject == null) return;
+        var dialog = new StatsDialog(ViewModel.CurrentProject)
+        {
+            XamlRoot = Content.XamlRoot,
+        };
+        await dialog.ShowAsync();
+    }
+
     private async void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new SettingsDialog { XamlRoot = Content.XamlRoot };
