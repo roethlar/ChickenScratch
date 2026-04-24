@@ -28,6 +28,7 @@ public partial class AppViewModel : ObservableObject
     public BinderViewModel Binder { get; } = new();
     public EditorViewModel Editor { get; } = new();
     public InspectorViewModel Inspector { get; } = new();
+    public RevisionsViewModel Revisions { get; } = new();
 
     public AppViewModel()
     {
@@ -47,6 +48,7 @@ public partial class AppViewModel : ObservableObject
             Binder.LoadProject(value);
             SettingsService.AddRecentProject(value.Name, value.Path);
         }
+        Revisions.SetProjectPath(value?.Path);
     }
 
     partial void OnActiveDocumentChanged(Document? value)

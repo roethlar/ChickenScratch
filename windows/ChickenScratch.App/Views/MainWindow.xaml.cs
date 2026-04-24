@@ -94,6 +94,15 @@ public sealed partial class MainWindow : Window
         InspectorPanel.Visibility = ViewModel.ShowInspector ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    private void ToggleRevisions_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.ShowRevisions = !ViewModel.ShowRevisions;
+        RevisionsColumn.Width = ViewModel.ShowRevisions ? new GridLength(264) : GridLength.Auto;
+        RevisionsPanel.Visibility = ViewModel.ShowRevisions ? Visibility.Visible : Visibility.Collapsed;
+        RevisionsSeparator.Visibility = ViewModel.ShowRevisions ? Visibility.Visible : Visibility.Collapsed;
+        if (ViewModel.ShowRevisions) ViewModel.Revisions.Refresh();
+    }
+
     private async void SaveRevision_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel.CurrentProject == null) return;

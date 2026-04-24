@@ -1,0 +1,133 @@
+<UserControl
+    x:Class="ChickenScratch.App.Controls.RevisionsPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:ChickenScratch.App.ViewModels"
+    xmlns:models="using:ChickenScratch.Core.Models"
+    xmlns:conv="using:ChickenScratch.App.Converters">
+
+    <Pivot>
+        <!-- History Tab -->
+        <PivotItem Header="History">
+            <Grid RowDefinitions="*,Auto,Auto">
+
+                <ListView Grid.Row="0"
+                          x:Name="RevisionsList"
+                          SelectionMode="Single"
+                          ItemsSource="{x:Bind ViewModel.Revisions, Mode=OneWay}"
+                          SelectionChanged="Revisions_SelectionChanged">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Padding" Value="8,4" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="models:Revision">
+                            <StackPanel Spacing="2" Padding="0,4">
+                                <TextBlock Text="{x:Bind Message}"
+                                           TextWrapping="Wrap"
+                                           Style="{StaticResource BodyTextBlockStyle}" />
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="{x:Bind ShortId}"
+                                               FontFamily="Consolas" FontSize="11"
+                                               Opacity="0.55" />
+                                    <TextBlock Text="{x:Bind Timestamp, Converter={StaticResource TimestampConverter}}"
+                                               FontSize="11" Opacity="0.55" />
+                                </StackPanel>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <!-- Changed files (shown when a revision is selected) -->
+                <Border Grid.Row="1"
+                        BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                        BorderThickness="0,1,0,0"
+                        Visibility="{x:Bind ViewModel.SelectedRevision, Mode=OneWay, Converter={StaticResource NotNullToVisibilityConverter}}">
+                    <StackPanel>
+                        <TextBlock Text="Changed files"
+                                   Margin="12,6,0,2"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Opacity="0.6" />
+                        <ListView x:Name="DiffsList"
+                                  MaxHeight="130"
+                                  SelectionMode="None"
+                                  ItemsSource="{x:Bind ViewModel.SelectedDiffs, Mode=OneWay}">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="Padding" Value="8,1" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="models:FileDiff">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{x:Bind Status, Converter={StaticResource FileDiffStatusConverter}}"
+                                                   FontFamily="Consolas" FontSize="11"
+                                                   Opacity="0.65" MinWidth="16" />
+                                        <TextBlock Text="{x:Bind Path}"
+                                                   FontSize="11" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </Border>
+
+                <Button Grid.Row="2"
+                        Content="Restore this revision"
+                        HorizontalAlignment="Stretch"
+                        Margin="8,6,8,8"
+                        IsEnabled="{x:Bind ViewModel.SelectedRevision, Mode=OneWay, Converter={StaticResource NotNullToBoolConverter}}"
+                        Click="Restore_Click" />
+
+            </Grid>
+        </PivotItem>
+
+        <!-- Drafts Tab -->
+        <PivotItem Header="Drafts">
+            <Grid RowDefinitions="*,Auto">
+
+                <ListView Grid.Row="0"
+                          x:Name="DraftsList"
+                          SelectionMode="Single"
+                          ItemsSource="{x:Bind ViewModel.Drafts, Mode=OneWay}"
+                          SelectionChanged="Drafts_SelectionChanged">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Padding" Value="8,4" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="models:DraftVersion">
+                            <StackPanel Orientation="Horizontal" Spacing="8" Padding="0,4">
+                                <FontIcon Glyph="&#xE73E;" FontSize="12"
+                                          Visibility="{x:Bind IsActive, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                <TextBlock Text="{x:Bind Name}"
+                                           Style="{StaticResource BodyTextBlockStyle}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <StackPanel Grid.Row="1" Spacing="6" Margin="8,6,8,8">
+                    <Button Content="New Draft…"
+                            HorizontalAlignment="Stretch"
+                            Click="NewDraft_Click" />
+                    <Button Content="Switch to Selected"
+                            HorizontalAlignment="Stretch"
+                            IsEnabled="{x:Bind ViewModel.SelectedDraft, Mode=OneWay, Converter={StaticResource NotNullToBoolConverter}}"
+                            Click="SwitchDraft_Click" />
+                    <Button Content="Merge into Current"
+                            HorizontalAlignment="Stretch"
+                            IsEnabled="{x:Bind ViewModel.SelectedDraft, Mode=OneWay, Converter={StaticResource NotNullToBoolConverter}}"
+                            Click="MergeDraft_Click" />
+                </StackPanel>
+
+            </Grid>
+        </PivotItem>
+    </Pivot>
+
+</UserControl>

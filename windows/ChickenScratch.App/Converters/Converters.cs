@@ -76,3 +76,32 @@ public class SaveStatusConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => throw new NotImplementedException();
 }
+
+// not-null → true (for IsEnabled bindings)
+public class NotNullToBoolConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+        => value != null;
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => throw new NotImplementedException();
+}
+
+// DateTimeOffset → "Apr 24, 3:42 PM"
+public class TimestampConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+        => value is DateTimeOffset dt
+            ? dt.LocalDateTime.ToString("MMM d, h:mm tt")
+            : string.Empty;
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => throw new NotImplementedException();
+}
+
+// FileDiff status string → single uppercase letter (A/M/D/R)
+public class FileDiffStatusConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+        => value is string s && s.Length > 0 ? s[0].ToString().ToUpperInvariant() : "?";
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => throw new NotImplementedException();
+}

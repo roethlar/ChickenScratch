@@ -39,6 +39,11 @@
                         Style="{StaticResource TransparentButtonStyle}">
                     <FontIcon Glyph="&#xE946;" FontSize="14" />
                 </Button>
+                <Button Click="ToggleRevisions_Click"
+                        ToolTipService.ToolTip="Toggle Revisions"
+                        Style="{StaticResource TransparentButtonStyle}">
+                    <FontIcon Glyph="&#xE81C;" FontSize="14" />
+                </Button>
                 <Button Click="SaveRevision_Click"
                         ToolTipService.ToolTip="Save Revision"
                         Style="{StaticResource TransparentButtonStyle}">
@@ -60,6 +65,8 @@
                 <ColumnDefinition Width="*" MinWidth="320" />
                 <ColumnDefinition Width="5" />
                 <ColumnDefinition x:Name="InspectorColumn" Width="260" MinWidth="0" MaxWidth="420" />
+                <ColumnDefinition x:Name="RevisionsSeparatorColumn" Width="Auto" />
+                <ColumnDefinition x:Name="RevisionsColumn" Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <!-- Binder -->
@@ -90,6 +97,16 @@
             <controls:InspectorControl Grid.Column="4"
                 x:Name="InspectorPanel"
                 ViewModel="{x:Bind ViewModel.Inspector, Mode=OneWay}" />
+
+            <Border x:Name="RevisionsSeparator" Grid.Column="5" Width="1"
+                    Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    Visibility="Collapsed" />
+
+            <!-- Revisions -->
+            <controls:RevisionsPanel Grid.Column="6"
+                x:Name="RevisionsPanel"
+                ViewModel="{x:Bind ViewModel.Revisions, Mode=OneWay}"
+                Visibility="Collapsed" />
         </Grid>
 
         <!-- Status bar -->
