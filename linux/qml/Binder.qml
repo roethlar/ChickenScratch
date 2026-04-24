@@ -15,15 +15,90 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 34
             color: "#2b2b2b"
-            Label {
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: parent.left
+            RowLayout {
+                anchors.fill: parent
                 anchors.leftMargin: 12
-                text: "Binder"
-                color: "#b8b8b8"
-                font.pixelSize: 12
-                font.letterSpacing: 1.4
-                font.capitalization: Font.AllUppercase
+                anchors.rightMargin: 4
+                spacing: 0
+                Label {
+                    text: "Binder"
+                    color: "#b8b8b8"
+                    font.pixelSize: 12
+                    font.letterSpacing: 1.4
+                    font.capitalization: Font.AllUppercase
+                    Layout.fillWidth: true
+                }
+                ToolButton {
+                    text: "+"
+                    font.pixelSize: 16
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    ToolTip.text: "New Document"
+                    ToolTip.visible: hovered
+                    onClicked: newDocFromBinderDialog.open()
+                }
+                ToolButton {
+                    text: "▤"
+                    font.pixelSize: 13
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    ToolTip.text: "New Folder"
+                    ToolTip.visible: hovered
+                    onClicked: newFolderFromBinderDialog.open()
+                }
+            }
+        }
+
+        // Inline new-document dialog
+        Dialog {
+            id: newDocFromBinderDialog
+            title: "New Document"
+            standardButtons: Dialog.Ok | Dialog.Cancel
+            modal: true
+            anchors.centerIn: parent.Window.window
+            width: 340
+            ColumnLayout {
+                width: parent.width
+                spacing: 8
+                Label { text: "Document name:" }
+                TextField {
+                    id: binderDocName
+                    Layout.fillWidth: true
+                    placeholderText: "Chapter One"
+                    Keys.onReturnPressed: newDocFromBinderDialog.accept()
+                }
+            }
+            onOpened: { binderDocName.text = ""; binderDocName.forceActiveFocus() }
+            onAccepted: {
+                var n = binderDocName.text.trim()
+                if (n.length === 0) return
+                controller.new_document(n, "")
+            }
+        }
+
+        Dialog {
+            id: newFolderFromBinderDialog
+            title: "New Folder"
+            standardButtons: Dialog.Ok | Dialog.Cancel
+            modal: true
+            anchors.centerIn: parent.Window.window
+            width: 340
+            ColumnLayout {
+                width: parent.width
+                spacing: 8
+                Label { text: "Folder name:" }
+                TextField {
+                    id: binderFolderName
+                    Layout.fillWidth: true
+                    placeholderText: "Part One"
+                    Keys.onReturnPressed: newFolderFromBinderDialog.accept()
+                }
+            }
+            onOpened: { binderFolderName.text = ""; binderFolderName.forceActiveFocus() }
+            onAccepted: {
+                var n = binderFolderName.text.trim()
+                if (n.length === 0) return
+                controller.new_folder(n, "")
             }
         }
 

@@ -1,5 +1,6 @@
+use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::{reader, writer};
-use chickenscratch_core::models::{Project, TreeNode};
+use chickenscratch_core::models::{Document, Project, TreeNode};
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QList, QString, QStringList};
 use std::collections::HashSet;
@@ -38,6 +39,8 @@ mod ffi {
         #[qproperty(bool, doc_include_in_compile)]
         #[qproperty(i32, doc_word_count_target)]
         #[qproperty(QString, doc_modified)]
+        #[qproperty(QString, recent_projects_json)]
+        #[qproperty(bool, show_welcome)]
         type AppController = super::AppControllerRust;
 
         #[qinvokable]
@@ -71,10 +74,43 @@ mod ffi {
 
         #[qinvokable]
         fn home_dir(self: &AppController) -> QString;
+
+        // New invokables
+        #[qinvokable]
+        fn create_project(self: Pin<&mut AppController>, path: QString, name: QString) -> QString;
+
+        #[qinvokable]
+        fn new_document(self: Pin<&mut AppController>, name: QString, parent_id: QString) -> QString;
+
+        #[qinvokable]
+        fn new_folder(self: Pin<&mut AppController>, name: QString, parent_id: QString) -> QString;
+
+        #[qinvokable]
+        fn delete_node(self: Pin<&mut AppController>, id: QString) -> QString;
+
+        #[qinvokable]
+        fn list_revisions_json(self: Pin<&mut AppController>) -> QString;
+
+        #[qinvokable]
+        fn save_revision_from_msg(self: Pin<&mut AppController>, msg: QString) -> QString;
+
+        #[qinvokable]
+        fn restore_revision_by_id(self: Pin<&mut AppController>, commit_id: QString) -> QString;
+
+        #[qinvokable]
+        fn list_drafts_json(self: Pin<&mut AppController>) -> QString;
+
+        #[qinvokable]
+        fn create_draft_by_name(self: Pin<&mut AppController>, name: QString) -> QString;
+
+        #[qinvokable]
+        fn switch_draft_by_name(self: Pin<&mut AppController>, name: QString) -> QString;
+
+        #[qinvokable]
+        fn get_stats_json(self: Pin<&mut AppController>) -> QString;
     }
 }
 
-#[derive(Default)]
 pub struct AppControllerRust {
     project_title: QString,
     project_path: QString,
@@ -96,9 +132,44 @@ pub struct AppControllerRust {
     doc_include_in_compile: bool,
     doc_word_count_target: i32,
     doc_modified: QString,
+    recent_projects_json: QString,
+    show_welcome: bool,
 
     project: Option<Project>,
     collapsed: HashSet<String>,
+}
+
+impl Default for AppControllerRust {
+    fn default() -> Self {
+        let recents = load_recents();
+        let recent_json = serde_json::to_string(&recents).unwrap_or_else(|_| "[]".to_string());
+        Self {
+            project_title: QString::default(),
+            project_path: QString::default(),
+            active_doc_id: QString::default(),
+            active_doc_name: QString::default(),
+            active_doc_content: QString::default(),
+            save_label: QString::default(),
+            dirty: false,
+            binder_ids: QStringList::default(),
+            binder_names: QStringList::default(),
+            binder_kinds: QStringList::default(),
+            binder_depths: QStringList::default(),
+            binder_has_children: QStringList::default(),
+            binder_expanded: QStringList::default(),
+            doc_synopsis: QString::default(),
+            doc_label: QString::default(),
+            doc_status: QString::default(),
+            doc_keywords: QString::default(),
+            doc_include_in_compile: false,
+            doc_word_count_target: 0,
+            doc_modified: QString::default(),
+            recent_projects_json: QString::from(&recent_json),
+            show_welcome: true,
+            project: None,
+            collapsed: HashSet::new(),
+        }
+    }
 }
 
 impl ffi::AppController {
@@ -121,9 +192,18 @@ impl ffi::AppController {
                 self.as_mut().set_dirty(false);
                 self.as_mut().set_save_label(QString::from("Ready"));
                 self.as_mut().rust_mut().collapsed.clear();
-                self.as_mut().rust_mut().project = Some(project);
+                self.as_mut().rust_mut().project = Some(project.clone());
                 self.as_mut().refresh_binder();
                 self.as_mut().clear_doc_fields();
+                self.as_mut().set_show_welcome(false);
+
+                // Update recents
+                let name = project.name.clone();
+                update_recents(&name, &path_str);
+                let recents = load_recents();
+                let json = serde_json::to_string(&recents).unwrap_or_else(|_| "[]".to_string());
+                self.as_mut().set_recent_projects_json(QString::from(&json));
+
                 QString::default()
             }
             Err(e) => QString::from(&format!("{}", e)),
@@ -346,6 +426,373 @@ impl ffi::AppController {
         QString::from(&home)
     }
 
+    pub fn create_project(mut self: Pin<&mut Self>, path: QString, name: QString) -> QString {
+        let path_str = path.to_string();
+        let name_str = name.to_string();
+        let name_trimmed = name_str.trim();
+        let path_trimmed = path_str.trim();
+
+        if name_trimmed.is_empty() {
+            return QString::from("Project name cannot be empty");
+        }
+        if path_trimmed.is_empty() {
+            return QString::from("Project path cannot be empty");
+        }
+
+        let pb = PathBuf::from(path_trimmed);
+        match writer::create_project(&pb, name_trimmed) {
+            Ok(project) => {
+                let title = project
+                    .metadata
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| project.name.clone());
+
+                let project_path_str = path_trimmed.to_string();
+                self.as_mut().set_project_title(QString::from(&title));
+                self.as_mut().set_project_path(QString::from(&project_path_str));
+                self.as_mut().set_active_doc_id(QString::default());
+                self.as_mut().set_active_doc_name(QString::default());
+                self.as_mut().set_active_doc_content(QString::default());
+                self.as_mut().set_dirty(false);
+                self.as_mut().set_save_label(QString::from("Ready"));
+                self.as_mut().rust_mut().collapsed.clear();
+                self.as_mut().rust_mut().project = Some(project.clone());
+                self.as_mut().refresh_binder();
+                self.as_mut().clear_doc_fields();
+                self.as_mut().set_show_welcome(false);
+
+                // Update recents
+                let proj_name = project.name.clone();
+                update_recents(&proj_name, &project_path_str);
+                let recents = load_recents();
+                let json = serde_json::to_string(&recents).unwrap_or_else(|_| "[]".to_string());
+                self.as_mut().set_recent_projects_json(QString::from(&json));
+
+                QString::default()
+            }
+            Err(e) => QString::from(&format!("{}", e)),
+        }
+    }
+
+    pub fn new_document(mut self: Pin<&mut Self>, name: QString, parent_id: QString) -> QString {
+        let name_str = name.to_string();
+        let name_trimmed = name_str.trim();
+        if name_trimmed.is_empty() {
+            return QString::from("Document name cannot be empty");
+        }
+        let parent_id_str = parent_id.to_string();
+
+        let now = chrono_now();
+        let new_id = make_id();
+        let slug = make_slug(name_trimmed);
+        let rel_path = format!("manuscript/{}.md", slug);
+
+        let write_result = {
+            let mut rust_mut = self.as_mut().rust_mut();
+            let project = match rust_mut.project.as_mut() {
+                Some(p) => p,
+                None => return QString::from("No project loaded"),
+            };
+
+            let new_node = TreeNode::Document {
+                id: new_id.clone(),
+                name: name_trimmed.to_string(),
+                path: rel_path.clone(),
+            };
+
+            if parent_id_str.is_empty() {
+                project.hierarchy.push(new_node);
+            } else {
+                if !add_to_hierarchy(&mut project.hierarchy, &parent_id_str, new_node.clone()) {
+                    project.hierarchy.push(new_node);
+                }
+            }
+
+            let doc = Document {
+                id: new_id.clone(),
+                name: name_trimmed.to_string(),
+                path: rel_path.clone(),
+                content: String::new(),
+                parent_id: non_empty(parent_id_str.clone()),
+                created: now.clone(),
+                modified: now.clone(),
+                include_in_compile: true,
+                ..Default::default()
+            };
+            project.documents.insert(new_id.clone(), doc);
+
+            writer::write_project(project)
+        };
+
+        match write_result {
+            Ok(()) => {
+                self.as_mut().refresh_binder();
+                QString::default()
+            }
+            Err(e) => QString::from(&format!("{}", e)),
+        }
+    }
+
+    pub fn new_folder(mut self: Pin<&mut Self>, name: QString, parent_id: QString) -> QString {
+        let name_str = name.to_string();
+        let name_trimmed = name_str.trim();
+        if name_trimmed.is_empty() {
+            return QString::from("Folder name cannot be empty");
+        }
+        let parent_id_str = parent_id.to_string();
+
+        let new_id = make_id();
+
+        let write_result = {
+            let mut rust_mut = self.as_mut().rust_mut();
+            let project = match rust_mut.project.as_mut() {
+                Some(p) => p,
+                None => return QString::from("No project loaded"),
+            };
+
+            let new_node = TreeNode::Folder {
+                id: new_id.clone(),
+                name: name_trimmed.to_string(),
+                children: Vec::new(),
+            };
+
+            if parent_id_str.is_empty() {
+                project.hierarchy.push(new_node);
+            } else {
+                if !add_to_hierarchy(&mut project.hierarchy, &parent_id_str, new_node.clone()) {
+                    project.hierarchy.push(new_node);
+                }
+            }
+
+            writer::write_project(project)
+        };
+
+        match write_result {
+            Ok(()) => {
+                self.as_mut().refresh_binder();
+                QString::default()
+            }
+            Err(e) => QString::from(&format!("{}", e)),
+        }
+    }
+
+    pub fn delete_node(mut self: Pin<&mut Self>, id: QString) -> QString {
+        let id_str = id.to_string();
+        if id_str.is_empty() {
+            return QString::from("No node ID provided");
+        }
+
+        let write_result = {
+            let mut rust_mut = self.as_mut().rust_mut();
+            let project = match rust_mut.project.as_mut() {
+                Some(p) => p,
+                None => return QString::from("No project loaded"),
+            };
+
+            remove_from_hierarchy(&mut project.hierarchy, &id_str);
+            project.documents.remove(&id_str);
+
+            writer::write_project(project)
+        };
+
+        match write_result {
+            Ok(()) => {
+                let active = self.as_ref().active_doc_id().to_string();
+                if active == id_str {
+                    self.as_mut().set_active_doc_id(QString::default());
+                    self.as_mut().set_active_doc_name(QString::default());
+                    self.as_mut().set_active_doc_content(QString::default());
+                    self.as_mut().set_dirty(false);
+                    self.as_mut().clear_doc_fields();
+                }
+                self.as_mut().refresh_binder();
+                QString::default()
+            }
+            Err(e) => QString::from(&format!("{}", e)),
+        }
+    }
+
+    pub fn list_revisions_json(mut self: Pin<&mut Self>) -> QString {
+        let path_str = self.as_ref().project_path().to_string();
+        if path_str.is_empty() {
+            return QString::from("[]");
+        }
+        let pb = PathBuf::from(&path_str);
+        match git::list_revisions(&pb) {
+            Ok(revisions) => {
+                let json = serde_json::to_string(&revisions).unwrap_or_else(|_| "[]".to_string());
+                QString::from(&json)
+            }
+            Err(_) => QString::from("[]"),
+        }
+    }
+
+    pub fn save_revision_from_msg(mut self: Pin<&mut Self>, msg: QString) -> QString {
+        let path_str = self.as_ref().project_path().to_string();
+        if path_str.is_empty() {
+            return QString::from("No project loaded");
+        }
+        let message = msg.to_string();
+        let message_trimmed = if message.trim().is_empty() {
+            "Manual save".to_string()
+        } else {
+            message.trim().to_string()
+        };
+
+        let pb = PathBuf::from(&path_str);
+        match git::save_revision(&pb, &message_trimmed) {
+            Ok(_) => QString::default(),
+            Err(e) => QString::from(&format!("{}", e)),
+        }
+    }
+
+    pub fn restore_revision_by_id(mut self: Pin<&mut Self>, commit_id: QString) -> QString {
+        let path_str = self.as_ref().project_path().to_string();
+        if path_str.is_empty() {
+            return QString::from("No project loaded");
+        }
+        let id_str = commit_id.to_string();
+        let pb = PathBuf::from(&path_str);
+
+        match git::restore_revision(&pb, &id_str) {
+            Ok(_) => {
+                // Reload the project after restoring
+                match reader::read_project(&pb) {
+                    Ok(project) => {
+                        let title = project
+                            .metadata
+                            .title
+                            .clone()
+                            .unwrap_or_else(|| project.name.clone());
+                        self.as_mut().set_project_title(QString::from(&title));
+                        self.as_mut().set_active_doc_id(QString::default());
+                        self.as_mut().set_active_doc_name(QString::default());
+                        self.as_mut().set_active_doc_content(QString::default());
+                        self.as_mut().set_dirty(false);
+                        self.as_mut().set_save_label(QString::from("Restored"));
+                        self.as_mut().rust_mut().collapsed.clear();
+                        self.as_mut().rust_mut().project = Some(project);
+                        self.as_mut().refresh_binder();
+                        self.as_mut().clear_doc_fields();
+                        QString::default()
+                    }
+                    Err(e) => QString::from(&format!("Restored but reload failed: {}", e)),
+                }
+            }
+            Err(e) => QString::from(&format!("{}", e)),
+        }
+    }
+
+    pub fn list_drafts_json(mut self: Pin<&mut Self>) -> QString {
+        let path_str = self.as_ref().project_path().to_string();
+        if path_str.is_empty() {
+            return QString::from("[]");
+        }
+        let pb = PathBuf::from(&path_str);
+        match git::list_drafts(&pb) {
+            Ok(drafts) => {
+                let json = serde_json::to_string(&drafts).unwrap_or_else(|_| "[]".to_string());
+                QString::from(&json)
+            }
+            Err(_) => QString::from("[]"),
+        }
+    }
+
+    pub fn create_draft_by_name(mut self: Pin<&mut Self>, name: QString) -> QString {
+        let path_str = self.as_ref().project_path().to_string();
+        if path_str.is_empty() {
+            return QString::from("No project loaded");
+        }
+        let name_str = name.to_string();
+        let name_trimmed = name_str.trim();
+        if name_trimmed.is_empty() {
+            return QString::from("Draft name cannot be empty");
+        }
+        let pb = PathBuf::from(&path_str);
+        match git::create_draft(&pb, name_trimmed) {
+            Ok(()) => QString::default(),
+            Err(e) => QString::from(&format!("{}", e)),
+        }
+    }
+
+    pub fn switch_draft_by_name(mut self: Pin<&mut Self>, name: QString) -> QString {
+        let path_str = self.as_ref().project_path().to_string();
+        if path_str.is_empty() {
+            return QString::from("No project loaded");
+        }
+        let name_str = name.to_string();
+        let name_trimmed = name_str.trim();
+        if name_trimmed.is_empty() {
+            return QString::from("Draft name cannot be empty");
+        }
+        let pb = PathBuf::from(&path_str);
+
+        match git::switch_draft(&pb, name_trimmed) {
+            Ok(()) => {
+                // Reload project after switching draft
+                match reader::read_project(&pb) {
+                    Ok(project) => {
+                        let title = project
+                            .metadata
+                            .title
+                            .clone()
+                            .unwrap_or_else(|| project.name.clone());
+                        self.as_mut().set_project_title(QString::from(&title));
+                        self.as_mut().set_active_doc_id(QString::default());
+                        self.as_mut().set_active_doc_name(QString::default());
+                        self.as_mut().set_active_doc_content(QString::default());
+                        self.as_mut().set_dirty(false);
+                        self.as_mut().set_save_label(QString::from("Ready"));
+                        self.as_mut().rust_mut().collapsed.clear();
+                        self.as_mut().rust_mut().project = Some(project);
+                        self.as_mut().refresh_binder();
+                        self.as_mut().clear_doc_fields();
+                        QString::default()
+                    }
+                    Err(e) => QString::from(&format!("Switched but reload failed: {}", e)),
+                }
+            }
+            Err(e) => QString::from(&format!("{}", e)),
+        }
+    }
+
+    pub fn get_stats_json(mut self: Pin<&mut Self>) -> QString {
+        let rust = self.as_ref().rust();
+        let project = match rust.project.as_ref() {
+            Some(p) => p,
+            None => return QString::from("{}"),
+        };
+
+        let mut total_words: usize = 0;
+        let mut doc_entries: Vec<serde_json::Value> = Vec::new();
+
+        for doc in project.documents.values() {
+            let words = doc.content.split_whitespace().count();
+            total_words += words;
+            doc_entries.push(serde_json::json!({
+                "id": doc.id,
+                "name": doc.name,
+                "words": words,
+            }));
+        }
+
+        let doc_count = project.documents.len();
+        let page_count = (total_words as f64 / 250.0).ceil() as usize;
+        let reading_minutes = (total_words as f64 / 238.0).ceil() as usize;
+
+        let stats = serde_json::json!({
+            "total_words": total_words,
+            "doc_count": doc_count,
+            "page_count": page_count,
+            "reading_minutes": reading_minutes,
+            "docs": doc_entries,
+        });
+
+        let json = serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string());
+        QString::from(&json)
+    }
+
     fn refresh_binder(mut self: Pin<&mut Self>) {
         let (ids, names, kinds, depths, has_children, expanded) = {
             let pinned = self.as_ref();
@@ -382,6 +829,59 @@ impl ffi::AppController {
     }
 }
 
+// ── Recent projects ───────────────────────────────────────────────────────────
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+struct RecentProject {
+    name: String,
+    path: String,
+}
+
+fn recents_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home)
+        .join(".config")
+        .join("chickenscratch")
+        .join("recents.json")
+}
+
+fn load_recents() -> Vec<RecentProject> {
+    let path = recents_path();
+    if !path.exists() {
+        return Vec::new();
+    }
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Vec<RecentProject>>(&s).ok())
+        .unwrap_or_default()
+}
+
+fn update_recents(name: &str, path: &str) {
+    let mut recents = load_recents();
+    // Remove duplicates by path
+    recents.retain(|r| r.path != path);
+    // Insert at front
+    recents.insert(
+        0,
+        RecentProject {
+            name: name.to_string(),
+            path: path.to_string(),
+        },
+    );
+    // Keep at most 10
+    recents.truncate(10);
+
+    let recents_file = recents_path();
+    if let Some(parent) = recents_file.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(&recents) {
+        let _ = std::fs::write(&recents_file, json);
+    }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 fn non_empty(s: String) -> Option<String> {
     if s.trim().is_empty() {
         None
@@ -392,6 +892,57 @@ fn non_empty(s: String) -> Option<String> {
 
 fn chrono_now() -> String {
     chrono::Utc::now().to_rfc3339()
+}
+
+fn make_id() -> String {
+    format!(
+        "{:016x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    )
+}
+
+fn make_slug(name: &str) -> String {
+    name.to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+/// Recursively add `new_node` as a child of the folder with the given `parent_id`.
+/// Returns `true` if the parent was found and the node was added.
+fn add_to_hierarchy(nodes: &mut Vec<TreeNode>, parent_id: &str, new_node: TreeNode) -> bool {
+    for node in nodes.iter_mut() {
+        match node {
+            TreeNode::Folder { id, children, .. } => {
+                if id == parent_id {
+                    children.push(new_node);
+                    return true;
+                }
+                if add_to_hierarchy(children, parent_id, new_node.clone()) {
+                    return true;
+                }
+            }
+            TreeNode::Document { .. } => {}
+        }
+    }
+    false
+}
+
+/// Recursively remove the node with the given `node_id` from the hierarchy.
+fn remove_from_hierarchy(nodes: &mut Vec<TreeNode>, node_id: &str) {
+    nodes.retain(|n| n.id() != node_id);
+    for node in nodes.iter_mut() {
+        if let TreeNode::Folder { children, .. } = node {
+            remove_from_hierarchy(children, node_id);
+        }
+    }
 }
 
 fn rename_in_hierarchy(nodes: &mut Vec<TreeNode>, node_id: &str, new_name: &str) {
