@@ -1,5 +1,4 @@
 pub mod ai;
-pub mod convert;
 pub mod document;
 pub mod git;
 pub mod io;

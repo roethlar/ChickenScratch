@@ -48,44 +48,33 @@ public static class PandocService
 
         if (opts.IncludeTitlePage && (title != null || author != null))
         {
-            var tp = "<div class='title-page'>";
-            if (title != null) tp += $"<h1>{System.Net.WebUtility.HtmlEncode(title)}</h1>";
-            if (author != null) tp += $"<p class='author'>{System.Net.WebUtility.HtmlEncode(author)}</p>";
-            tp += "</div>";
+            var tp = "";
+            if (title != null) tp += $"# {title}\n\n";
+            if (author != null) tp += $"by {author}\n\n";
+            tp += "---";
             parts.Add(tp);
         }
 
+        var separator = string.IsNullOrEmpty(opts.SectionSeparator) ? "#" : opts.SectionSeparator;
         for (int i = 0; i < docs.Count; i++)
         {
-            if (i > 0) parts.Add($"<p class='separator'>{System.Net.WebUtility.HtmlEncode(opts.SectionSeparator)}</p>");
-            parts.Add(docs[i].Content);
+            if (i > 0) parts.Add(separator);
+            parts.Add(docs[i].Content ?? string.Empty);
         }
 
-        var font = opts.Font ?? "Times New Roman";
-        var fontSize = opts.FontSize ?? 12f;
-        var lineSpacing = opts.LineSpacing ?? 2f;
-        var margin = opts.MarginInches ?? 1f;
-
-        var css = $@"<style>
-body {{ font-family: '{font}'; font-size: {fontSize}pt; line-height: {lineSpacing}; margin: {margin}in; }}
-.title-page {{ text-align: center; margin-bottom: 2in; }}
-.separator {{ text-align: center; margin: 1em 0; }}
-</style>";
-
-        var html = $"<html><head>{css}</head><body>{string.Join("\n", parts)}</body></html>";
-        var tempHtml = Path.GetTempFileName() + ".html";
+        var tempMd = Path.GetTempFileName() + ".md";
 
         try
         {
-            File.WriteAllText(tempHtml, html);
+            File.WriteAllText(tempMd, string.Join("\n\n", parts));
             var metaArgs = "";
             if (title != null) metaArgs += $" --metadata title=\"{title}\"";
             if (author != null) metaArgs += $" --metadata author=\"{author}\"";
-            Run(pandoc, $"-f html -t {format} -o \"{outputPath}\"{metaArgs} \"{tempHtml}\"");
+            Run(pandoc, $"-f gfm -t {format} -o \"{outputPath}\"{metaArgs} \"{tempMd}\"");
         }
         finally
         {
-            if (File.Exists(tempHtml)) File.Delete(tempHtml);
+            if (File.Exists(tempMd)) File.Delete(tempMd);
         }
     }
 

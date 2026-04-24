@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use chickenscratch_core::core::git;
-use chickenscratch_core::core::project::{reader, writer};
-use chickenscratch_core::{Project, TreeNode};
+use chickenscratch_core::core::project::{hierarchy, reader, writer};
+use chickenscratch_core::utils::slug;
+use chickenscratch_core::{Document, Project, TreeNode};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{backend::Backend, Terminal};
 use ratatui_textarea::{TextArea, WrapMode};
@@ -21,6 +22,8 @@ pub enum Focus {
 pub enum Mode {
     Normal,
     RevisionPrompt,
+    NewDocPrompt,
+    NewFolderPrompt,
     Confirm,
     Comments,
     CommentEdit,
@@ -75,6 +78,7 @@ pub struct App<'a> {
     pub status: String,
     pub prompt_input: String,
     pub should_quit: bool,
+    pub new_item_parent_id: Option<String>,
 
     // Comments overlay state
     pub comments_selected: usize,
@@ -112,6 +116,7 @@ impl<'a> App<'a> {
             status: "Ready. ?=help  Tab=switch pane  q=quit".to_string(),
             prompt_input: String::new(),
             should_quit: false,
+            new_item_parent_id: None,
             comments_selected: 0,
             comment_edit_id: None,
             pending_selection: None,
@@ -186,6 +191,7 @@ impl<'a> App<'a> {
     fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
         match self.mode {
             Mode::RevisionPrompt => self.handle_prompt_key(key),
+            Mode::NewDocPrompt | Mode::NewFolderPrompt => self.handle_new_item_key(key),
             Mode::Confirm => self.handle_confirm_key(key),
             Mode::Normal => self.handle_normal_key(key),
             Mode::Comments => self.handle_comments_key(key),
@@ -565,7 +571,17 @@ impl<'a> App<'a> {
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => self.try_quit(),
             KeyCode::Char('?') => {
-                self.status = "Keys: ↑↓=nav Enter=open Tab=editor Ctrl+S=save Ctrl+R=rev Ctrl+T=view Ctrl+W=wrap F2=comments F3=anchor q=quit".to_string();
+                self.status = "Keys: ↑↓=nav Enter=open Tab=editor n=new doc N=new folder Ctrl+S=save Ctrl+R=rev Ctrl+T=view Ctrl+W=wrap F2=comments q=quit".to_string();
+            }
+            KeyCode::Char('n') => {
+                self.new_item_parent_id = self.selected_folder_id();
+                self.prompt_input.clear();
+                self.mode = Mode::NewDocPrompt;
+            }
+            KeyCode::Char('N') => {
+                self.new_item_parent_id = self.selected_folder_id();
+                self.prompt_input.clear();
+                self.mode = Mode::NewFolderPrompt;
             }
             KeyCode::Down | KeyCode::Char('j')
                 if self.binder_selected + 1 < self.binder_items.len() =>
@@ -671,6 +687,91 @@ impl<'a> App<'a> {
             }
             _ => {}
         }
+        Ok(())
+    }
+
+    fn handle_new_item_key(&mut self, key: KeyEvent) -> Result<()> {
+        let is_doc = self.mode == Mode::NewDocPrompt;
+        match key.code {
+            KeyCode::Esc => {
+                self.mode = Mode::Normal;
+                self.prompt_input.clear();
+                self.new_item_parent_id = None;
+            }
+            KeyCode::Enter => {
+                let name = self.prompt_input.trim().to_string();
+                self.mode = Mode::Normal;
+                self.prompt_input.clear();
+                if !name.is_empty() {
+                    let parent = self.new_item_parent_id.take();
+                    if is_doc {
+                        self.create_document_in_project(name, parent)?;
+                    } else {
+                        self.create_folder_in_project(name, parent)?;
+                    }
+                }
+            }
+            KeyCode::Backspace => {
+                self.prompt_input.pop();
+            }
+            KeyCode::Char(c) => {
+                self.prompt_input.push(c);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn selected_folder_id(&self) -> Option<String> {
+        self.binder_items
+            .get(self.binder_selected)
+            .filter(|item| item.is_folder)
+            .map(|item| item.id.clone())
+    }
+
+    fn create_document_in_project(&mut self, name: String, parent_id: Option<String>) -> Result<()> {
+        let s = slug::unique_slug(&name, "manuscript/", &self.project.documents);
+        let doc_path = format!("manuscript/{}.md", s);
+        let now = chrono::Utc::now().to_rfc3339();
+        let doc_id = uuid::Uuid::new_v4().to_string();
+
+        let document = Document {
+            id: doc_id.clone(),
+            name: name.clone(),
+            path: doc_path.clone(),
+            content: String::new(),
+            parent_id: parent_id.clone(),
+            created: now.clone(),
+            modified: now,
+            ..Default::default()
+        };
+        self.project.documents.insert(doc_id.clone(), document);
+
+        let node = TreeNode::Document { id: doc_id, name: name.clone(), path: doc_path };
+        match parent_id {
+            Some(pid) => hierarchy::add_child_to_folder(&mut self.project.hierarchy, &pid, node)
+                .map_err(|e| anyhow!("Add to folder failed: {:?}", e))?,
+            None => hierarchy::add_document_to_hierarchy(&mut self.project.hierarchy, node),
+        }
+
+        writer::write_project(&mut self.project).map_err(|e| anyhow!("Write failed: {:?}", e))?;
+        self.rebuild_binder();
+        self.status = format!("Created document: {}", name);
+        Ok(())
+    }
+
+    fn create_folder_in_project(&mut self, name: String, parent_id: Option<String>) -> Result<()> {
+        let folder_id = uuid::Uuid::new_v4().to_string();
+        let node = TreeNode::Folder { id: folder_id.clone(), name: name.clone(), children: Vec::new() };
+        match parent_id {
+            Some(pid) => hierarchy::add_child_to_folder(&mut self.project.hierarchy, &pid, node)
+                .map_err(|e| anyhow!("Add to folder failed: {:?}", e))?,
+            None => hierarchy::add_document_to_hierarchy(&mut self.project.hierarchy, node),
+        }
+        self.expanded.insert(folder_id);
+        writer::write_project(&mut self.project).map_err(|e| anyhow!("Write failed: {:?}", e))?;
+        self.rebuild_binder();
+        self.status = format!("Created folder: {}", name);
         Ok(())
     }
 

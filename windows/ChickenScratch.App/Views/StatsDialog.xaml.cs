@@ -28,11 +28,11 @@ public sealed partial class StatsDialog : ContentDialog
         DocList.ItemsSource = entries;
     }
 
-    private static int CountWords(string? html)
+    private static int CountWords(string? content)
     {
-        if (string.IsNullOrWhiteSpace(html)) return 0;
-        // Strip HTML tags before counting
-        var text = System.Text.RegularExpressions.Regex.Replace(html, "<[^>]*>", " ");
+        if (string.IsNullOrWhiteSpace(content)) return 0;
+        // Strip comment-anchor spans before counting
+        var text = System.Text.RegularExpressions.Regex.Replace(content, "<[^>]*>", " ");
         return text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
     }
 }

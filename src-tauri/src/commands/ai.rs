@@ -25,7 +25,7 @@ pub fn ai_summarize(content: String) -> Result<String, ChiknError> {
         ));
     }
 
-    let plain = strip_html(&content);
+    let plain = strip_comment_spans(&content);
     if plain.trim().is_empty() {
         return Ok(String::new());
     }
@@ -53,7 +53,7 @@ pub fn ai_transform(content: String, operation: String) -> Result<String, ChiknE
         ));
     }
 
-    let plain = strip_html(&content);
+    let plain = strip_comment_spans(&content);
     if plain.trim().is_empty() {
         return Ok(String::new());
     }
@@ -76,7 +76,7 @@ pub fn ai_transform(content: String, operation: String) -> Result<String, ChiknE
     call_ai(&settings.ai, &prompt, 2000)
 }
 
-fn strip_html(html: &str) -> String {
+fn strip_comment_spans(html: &str) -> String {
     regex::Regex::new(r"<[^>]*>")
         .unwrap()
         .replace_all(html, "")
