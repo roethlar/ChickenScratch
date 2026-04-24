@@ -4,6 +4,71 @@ import Yams
 public enum Writer {
     // MARK: - Public API
 
+    /// Create a new .chikn project folder at `path` with `name`.
+    /// Writes project.yaml, creates manuscript/research/trash folders,
+    /// inits git, and makes an initial commit. Returns the new Project.
+    public static func createProject(at projectURL: URL, name: String) throws -> Project {
+        let fm = FileManager.default
+        try fm.createDirectory(at: projectURL, withIntermediateDirectories: true)
+        for folder in ["manuscript", "research", "trash"] {
+            try fm.createDirectory(at: projectURL.appendingPathComponent(folder), withIntermediateDirectories: true)
+        }
+        let id = UUID().uuidString.lowercased()
+        let now = Date()
+        let project = Project(
+            id: id,
+            name: name,
+            path: projectURL,
+            created: now,
+            modified: now,
+            hierarchy: [
+                TreeNode(id: "manuscript", name: "Manuscript", kind: .folder),
+                TreeNode(id: "research",   name: "Research",   kind: .folder),
+                TreeNode(id: "trash",      name: "Trash",      kind: .folder),
+            ],
+            metadata: ProjectMetadata(),
+            documents: [:]
+        )
+        try writeProjectYaml(project)
+        try Git.initRepoIfNeeded(at: projectURL)
+        try? Git.saveRevision(message: "Initial commit", in: projectURL)
+        return project
+    }
+
+    /// Update the metadata fields in a document's .meta sidecar and project.yaml.
+    /// Returns the updated Project.
+    @discardableResult
+    public static func saveDocumentMeta(
+        id: String,
+        meta: DocumentMeta,
+        in project: Project
+    ) throws -> Project {
+        guard var doc = project.documents[id] else {
+            throw ChiknError.documentMissing(id)
+        }
+        doc.meta = meta
+        var project = project
+        project.documents[id] = doc
+        project.modified = Date()
+
+        let docURL = project.path.appendingPathComponent(doc.relativePath)
+        let metaURL = docURL.deletingPathExtension().appendingPathExtension("meta")
+
+        var metaMap: [String: Any] = [:]
+        if let existing = try? loadYaml(metaURL) { metaMap = existing ?? [:] }
+        if let v = meta.synopsis          { metaMap["synopsis"] = v }           else { metaMap.removeValue(forKey: "synopsis") }
+        if let v = meta.label             { metaMap["label"] = v }              else { metaMap.removeValue(forKey: "label") }
+        if let v = meta.status            { metaMap["status"] = v }             else { metaMap.removeValue(forKey: "status") }
+        if !meta.keywords.isEmpty         { metaMap["keywords"] = meta.keywords } else { metaMap.removeValue(forKey: "keywords") }
+        metaMap["include_in_compile"] = meta.includeInCompile
+        if let wt = meta.wordCountTarget  { metaMap["word_count_target"] = wt } else { metaMap.removeValue(forKey: "word_count_target") }
+        metaMap["modified"] = iso8601Now()
+        try writeYaml(metaMap, to: metaURL)
+
+        try writeProjectYaml(project)
+        return project
+    }
+
     /// Write a document's content back to disk. Updates the .meta modified
     /// timestamp and the project's modified timestamp.
     public static func saveDocument(_ document: Document, in project: Project) throws {
