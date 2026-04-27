@@ -17,7 +17,7 @@ pub struct Document {
     /// File path relative to .chikn/ directory
     pub path: String,
 
-    /// HTML content
+    /// Markdown content (may contain <span> anchors for inline comments)
     pub content: String,
 
     /// Parent ID (folder or root)

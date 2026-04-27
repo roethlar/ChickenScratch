@@ -11,6 +11,7 @@ final class ProjectStore {
     var showInspector: Bool = true
     var errorMessage: String?
     var saveState: SaveState = .saved
+    var recentProjects: [RecentProject] = []
 
     /// Auto-commit threshold. After this many seconds since the last commit,
     /// the next saveDocument triggers an "Auto: <timestamp>" revision.
@@ -22,6 +23,16 @@ final class ProjectStore {
         case dirty
         case saving
         case failed(String)
+    }
+
+    struct RecentProject: Identifiable, Codable, Sendable {
+        var id: String { path }
+        let name: String
+        let path: String
+    }
+
+    init() {
+        recentProjects = loadRecents()
     }
 
     // MARK: - Open / close
@@ -47,6 +58,7 @@ final class ProjectStore {
             saveState = .saved
             lastAutoCommit = nil
             try? Git.initRepoIfNeeded(at: loaded.path)
+            addToRecent(name: loaded.name, path: url.path)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -56,6 +68,39 @@ final class ProjectStore {
         project = nil
         selectedNodeID = nil
         saveState = .saved
+    }
+
+    func createProject(name: String, at url: URL) {
+        do {
+            let p = try Writer.createProject(at: url, name: name)
+            project = p
+            selectedNodeID = nil
+            saveState = .saved
+            errorMessage = nil
+            addToRecent(name: name, path: url.path)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Recent projects
+
+    func addToRecent(name: String, path: String) {
+        var recents = loadRecents()
+        recents.removeAll { $0.path == path }
+        recents.insert(RecentProject(name: name, path: path), at: 0)
+        if recents.count > 10 { recents = Array(recents.prefix(10)) }
+        if let data = try? JSONEncoder().encode(recents) {
+            UserDefaults.standard.set(data, forKey: "recentProjects")
+        }
+        recentProjects = recents
+    }
+
+    func loadRecents() -> [RecentProject] {
+        guard let data = UserDefaults.standard.data(forKey: "recentProjects"),
+              let list = try? JSONDecoder().decode([RecentProject].self, from: data)
+        else { return [] }
+        return list
     }
 
     // MARK: - Document I/O
@@ -85,6 +130,15 @@ final class ProjectStore {
         } catch {
             saveState = .failed(error.localizedDescription)
             errorMessage = "Couldn't save: \(error.localizedDescription)"
+        }
+    }
+
+    func saveDocumentMeta(id: String, meta: DocumentMeta) {
+        guard let p = project else { return }
+        do {
+            project = try Writer.saveDocumentMeta(id: id, meta: meta, in: p)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

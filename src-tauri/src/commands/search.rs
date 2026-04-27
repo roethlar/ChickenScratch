@@ -21,7 +21,7 @@ pub fn search_project(
     let mut results = Vec::new();
 
     for doc in project.documents.values() {
-        let plain = strip_html(&doc.content).to_lowercase();
+        let plain = strip_comment_spans(&doc.content).to_lowercase();
         if plain.contains(&q) {
             let match_count = plain.matches(&q).count();
 
@@ -58,7 +58,7 @@ pub fn search_project(
     Ok(results)
 }
 
-fn strip_html(html: &str) -> String {
+fn strip_comment_spans(html: &str) -> String {
     regex::Regex::new(r"<[^>]*>")
         .unwrap()
         .replace_all(html, "")

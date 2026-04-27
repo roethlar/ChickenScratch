@@ -16,6 +16,9 @@
             <conv:NodeIconConverter x:Key="NodeIconConverter" />
             <conv:WordCountConverter x:Key="WordCountConverter" />
             <conv:SaveStatusConverter x:Key="SaveStatusConverter" />
+            <conv:NotNullToBoolConverter x:Key="NotNullToBoolConverter" />
+            <conv:TimestampConverter x:Key="TimestampConverter" />
+            <conv:FileDiffStatusConverter x:Key="FileDiffStatusConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

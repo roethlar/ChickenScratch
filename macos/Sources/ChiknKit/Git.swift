@@ -11,6 +11,13 @@ public enum Git {
         public var errorDescription: String? { message }
     }
 
+    public struct RevisionEntry: Identifiable, Hashable, Sendable {
+        public let id: String        // full hash
+        public let shortId: String   // first 8 chars
+        public let message: String
+        public let date: Date
+    }
+
     /// Initialize a git repo if one doesn't already exist. Writes .gitignore
     /// on first init to match the format spec.
     public static func initRepoIfNeeded(at projectURL: URL) throws {
@@ -56,6 +63,33 @@ public enum Git {
 
         let short = try runCapturing(["rev-parse", "--short", "HEAD"], in: projectURL)
         return short.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Return up to 60 recent commits in reverse chronological order.
+    public static func listRevisions(in projectURL: URL) throws -> [RevisionEntry] {
+        // git log --format="%H|%s|%aI" -60
+        let raw = try runCapturing(["log", "--format=%H|%s|%aI", "-60"], in: projectURL)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return raw.split(separator: "\n", omittingEmptySubsequences: true).compactMap { line in
+            let parts = line.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false)
+            guard parts.count == 3 else { return nil }
+            let hash = String(parts[0])
+            let msg  = String(parts[1])
+            let date = formatter.date(from: String(parts[2])) ?? Date.distantPast
+            return RevisionEntry(id: hash, shortId: String(hash.prefix(8)), message: msg, date: date)
+        }
+    }
+
+    /// Restore to `commitHash` by checking out that tree and making a new commit.
+    public static func restoreRevision(commitHash: String, in projectURL: URL) throws {
+        try run(["checkout", commitHash, "--", "."], in: projectURL)
+        var env = ProcessInfo.processInfo.environment
+        env["GIT_AUTHOR_NAME"]    = "ChickenScratch"
+        env["GIT_AUTHOR_EMAIL"]   = "writer@chickenscratch.local"
+        env["GIT_COMMITTER_NAME"] = "ChickenScratch"
+        env["GIT_COMMITTER_EMAIL"] = "writer@chickenscratch.local"
+        try run(["commit", "-q", "-m", "Restored to \(commitHash.prefix(8))"], in: projectURL, env: env)
     }
 
     // MARK: - Internals

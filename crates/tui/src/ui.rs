@@ -28,6 +28,12 @@ pub fn render(f: &mut Frame, app: &mut App) {
     if app.mode == Mode::RevisionPrompt {
         render_prompt(f, area, "Save revision with message:", &app.prompt_input);
     }
+    if app.mode == Mode::NewDocPrompt {
+        render_prompt(f, area, "New document name (Enter to create, Esc to cancel):", &app.prompt_input);
+    }
+    if app.mode == Mode::NewFolderPrompt {
+        render_prompt(f, area, "New folder name (Enter to create, Esc to cancel):", &app.prompt_input);
+    }
     if app.mode == Mode::Confirm {
         render_prompt(f, area, "Unsaved changes. Quit anyway?", "[y/N]");
     }
@@ -218,6 +224,8 @@ fn render_editor(f: &mut Frame, area: Rect, app: &mut App) {
         let inner = Paragraph::new(
             "Select a document from the binder (←) and press Enter.\n\n\
              Keys:\n  ↑↓       navigate\n  Enter    open document / expand folder\n  \
+             n        new document (inside selected folder, or at root)\n  \
+             N        new folder\n  \
              Tab      switch focus\n  Ctrl+S   save\n  Ctrl+R   save revision\n  \
              Ctrl+T   toggle edit/preview\n  \
              Ctrl+W   toggle word wrap\n  \
