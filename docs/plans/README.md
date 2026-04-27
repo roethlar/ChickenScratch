@@ -4,12 +4,14 @@ Design documents for sizeable future work. Each plan covers motivation, format-s
 
 These sit alongside [ROADMAP.md](../ROADMAP.md) (forward-looking feature catalogue) and [DEVLOG.md](../../DEVLOG.md) (history of what shipped). When a plan ships, move its summary into ROADMAP "What's Built" and fold the plan doc into DEVLOG.
 
-## Active plans
+## Current phase
 
-**v1.2 — Novelist features.** Bring ChickenScratch up to parity with (and past) the best open-source Scrivener alternatives on the features that actually matter for long-form fiction. Sourced from a comparative survey of Scrivener, Manuskript, bibisco, oStorybook, and yWriter.
+**[PHASE_FORMAT_FINALIZATION.md](PHASE_FORMAT_FINALIZATION.md)** — lock the `.chikn` format as genre-agnostic, give UIs a single generic extensibility point (`fields` map per document), sync all five frontends to preserve unknown entries. This is the only active plan until it ships.
 
-- **[TIER1_novel_structure.md](TIER1_novel_structure.md)** — scene-level structured metadata, characters/locations as first-class entities, plot threads. Highest leverage; unlocks the other two tiers.
+**v1.2 — Novelist features** *(UI-layer, paused until format finalization ships).* Bring ChickenScratch up to parity with (and past) the best open-source Scrivener alternatives on the features that actually matter for long-form fiction. Sourced from a comparative survey of Scrivener, Manuskript, bibisco, oStorybook, and yWriter. These are **novelist-UI** plans — the format stays genre-agnostic; novelist UIs write their domain-specific data into the generic `fields` extensibility that format finalization introduces.
+
+- **[TIER1_novel_structure.md](TIER1_novel_structure.md)** — scene-level metadata, characters/locations as entities, plot threads.
 - **[TIER2_writer_workflow.md](TIER2_writer_workflow.md)** — scrivenings mode, session targets with deadlines, per-document snapshots, timeline view.
-- **[TIER3_polish.md](TIER3_polish.md)** — collections (saved structured queries), rich research (inline PDF/image preview), split editor.
+- **[TIER3_polish.md](TIER3_polish.md)** — collections, rich research (inline PDF/image preview), split editor.
 
 Deliberately **not** on the roadmap: name generators, deep character-psychology forms, snowflake-method spreadsheets. These bloat the UI with features that look good in a feature list and then nobody uses.

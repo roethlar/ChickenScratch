@@ -97,6 +97,7 @@ public static class ProjectReader
                     CompileOrder = meta.CompileOrder,
                     Created = meta.Created == default ? DateTime.UtcNow : meta.Created,
                     Modified = meta.Modified == default ? DateTime.UtcNow : meta.Modified,
+                    Fields = meta.Fields ?? [],
                 };
             }
             else if (node is FolderNode folder)

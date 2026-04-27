@@ -1,9 +1,9 @@
 # Tier 2 — Writer Workflow
 
 **Priority:** v1.2
-**Status:** Planned
-**Format impact:** Minimal — session targets go in `project.yaml`; everything else is UX
-**Depends on:** Timeline view depends on Tier 1 scene `story_time`; others are independent
+**Status:** Paused until [format finalization](PHASE_FORMAT_FINALIZATION.md) ships
+**Layer:** UI-only. Anything that looks like format schema below (e.g., `session_target` in `project.yaml`) lands as a convention the novelist UI owns and the format preserves through its generic-fields mechanism.
+**Depends on:** Tier 1 (same phase, sequential)
 
 Four quality-of-life features that peer tools have and writers ask about. None change how the format works at a deep level; they're frontend-heavy additions that reuse the data model you already have (plus Tier 1 for timeline).
 

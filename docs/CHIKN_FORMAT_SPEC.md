@@ -425,35 +425,43 @@ revs/
 - Bracketed-span syntax documented for custom styles (`[text]{.class}`)
 - Scrivener import/export with full metadata round-trip
 
-### Version 1.2 (Current — novelist schema, in progress)
+### Version 1.2 (Current) — Generic UI extensibility
 
-Rolling set of optional schema additions that turn a `.chikn` project from "folder of markdown with a binder" into a proper novelist data model. All fields optional; v1.1 readers ignore them, v1.1 writers preserve unknown fields on round-trip.
+The v1.2 schema change is a single addition: **one generic `fields` map per document**, in which UIs store domain-specific data the format itself does not interpret. The format is genre-agnostic; UI conventions are layered on top.
 
-**Scene-level metadata** (in each scene's `.meta`, all optional):
+**Schema addition** — in each `.meta` file, optional:
 
 ```yaml
-pov_character: sarah-bennett       # slug/id of a character entity
-location: motel-room-12            # slug/id of a location entity
-story_time: "Day 3, 22:30"         # free-form string or parseable ISO
-duration_minutes: 45               # integer minutes of story-time
-threads:                           # list of ids from threads.yaml
-  - main-plot
-  - romance
-characters_in_scene:               # additional characters beyond POV
-  - marcus-rivera
-  - kelly-chen
+# Existing format-level fields (id, name, created, modified, synopsis,
+# label, status, keywords, include_in_compile, word_count_target,
+# compile_order, comments, links) continue to work unchanged.
+fields:
+  # Arbitrary string -> YAML-value entries. The format preserves them
+  # on round-trip without interpretation. UIs agree on their own key
+  # names in separate convention documents.
+  pov_character: sarah-bennett
+  duration_minutes: 45
+  threads:
+    - main-plot
+    - romance
 ```
 
-Readers must tolerate invalid references (pointing at deleted entities) by treating them as opaque strings — don't error on save. Validation is the UI's job, flagged non-fatally.
+**Contract:**
 
-**Planned for v1.2 (not yet landed):**
+- Entirely optional; documents without it write no `fields:` key at all (clean diff for projects that ignore the mechanism).
+- **Reader tolerance:** any `.meta` file that contains a `fields:` mapping is valid regardless of the keys inside. Readers that don't understand a specific key load it as an opaque `serde_yaml::Value` (or equivalent in other languages) and preserve it.
+- **Writer preservation:** when a UI reads a document, modifies part of it, and writes it back, every entry in `fields` survives — including entries that UI does not understand. This is the "tolerant readers, preserving writers" rule from [`FOLDER_FIRST_DOCUMENTS.md`](FOLDER_FIRST_DOCUMENTS.md).
+- **No format-level vocabulary.** The format does not define `pov_character` or any other key name. Domain-specific key lists live in separate UI convention documents (for example, `docs/UI_CONVENTIONS_NOVELIST.md`).
 
-- `characters/` and `locations/` top-level folders — first-class entities, same folder+sidecar pattern as `manuscript/` (`{slug}.md` freeform body + `{slug}.meta` with id/name/type/aliases).
-- `threads.yaml` at the project root — list of plot threads with id, name, color.
-- Saved `collections` in `project.yaml` — structured queries writers pin to the binder.
-- `session_target` in `project.yaml` — words/session, deadline, total target.
+**What this replaces.** An earlier draft of v1.2 added typed domain fields (`pov_character`, `location`, `story_time`, `duration_minutes`, `threads`, `characters_in_scene`) directly to the schema. That was a design error — those are novelist-UI concepts, not format concepts. v1.2 ships the generic mechanism instead; novelist UIs write the same six keys into `fields` per their convention doc.
 
-See [plans/TIER1_novel_structure.md](plans/TIER1_novel_structure.md), [plans/TIER2_writer_workflow.md](plans/TIER2_writer_workflow.md), and [plans/TIER3_polish.md](plans/TIER3_polish.md) for the full design.
+**Out of the format, in the UIs:**
+
+- Scene-level metadata (POV, location, story time, thread membership) — novelist-UI convention, stored in `fields`.
+- Characters / locations as entities — novelist-UI convention: `characters/` and `locations/` folders are ordinary sub-folders the format treats like any other, with sidecar `.meta` files that carry id/name/aliases in the format core plus type-specific data in `fields`.
+- Plot threads, collections, session targets — novelist-UI conventions that live either in `fields` or in separate novelist-UI YAML files the format tracks but doesn't interpret.
+
+See [`plans/PHASE_FORMAT_FINALIZATION.md`](plans/PHASE_FORMAT_FINALIZATION.md) for the phased rollout, and the Tier 1/2/3 plans under `plans/` for the novelist-UI feature designs that build on this mechanism.
 
 ### Future Versions (Planned)
 

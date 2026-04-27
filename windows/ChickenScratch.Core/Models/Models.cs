@@ -53,6 +53,14 @@ public class Document
     public bool IncludeInCompile { get; set; } = true;
     public uint WordCountTarget { get; set; } = 0;
     public int CompileOrder { get; set; } = 0;
+
+    /// <summary>
+    /// Generic UI extensibility (CHIKN_FORMAT_SPEC.md v1.2). The format owns
+    /// nothing inside this map; UIs that recognize a key edit it, UIs that
+    /// don't preserve it on round-trip. Required for the format-level
+    /// "tolerant readers, preserving writers" guarantee.
+    /// </summary>
+    public Dictionary<string, object?> Fields { get; set; } = [];
 }
 
 public class DocumentMetaUpdate

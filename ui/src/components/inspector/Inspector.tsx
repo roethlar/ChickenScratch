@@ -5,6 +5,36 @@ import * as docCmd from "../../commands/document";
 const STATUS_PRESETS = ["Draft", "Revised", "Final", "To Do", "In Progress"];
 const LABEL_PRESETS = ["Scene", "Chapter", "Outline", "Notes", "Research"];
 
+/**
+ * Novelist-UI convention keys stored in `Document.fields`. See
+ * docs/UI_CONVENTIONS_NOVELIST.md. The format itself has no opinion about
+ * these; they're the names this repo's novelist UIs agree on.
+ */
+const NOVELIST_KEYS = {
+  pov: "pov_character",
+  location: "location",
+  storyTime: "story_time",
+  duration: "duration_minutes",
+  threads: "threads",
+  otherChars: "characters_in_scene",
+} as const;
+
+function readString(fields: Record<string, unknown> | undefined, key: string): string {
+  const v = fields?.[key];
+  return typeof v === "string" ? v : "";
+}
+
+function readNumber(fields: Record<string, unknown> | undefined, key: string): string {
+  const v = fields?.[key];
+  return typeof v === "number" && Number.isFinite(v) ? String(v) : "";
+}
+
+function readList(fields: Record<string, unknown> | undefined, key: string): string {
+  const v = fields?.[key];
+  if (Array.isArray(v)) return v.filter((s): s is string => typeof s === "string").join(", ");
+  return "";
+}
+
 function PresetSelect({
   value,
   onChange,
@@ -90,38 +120,43 @@ export function Inspector() {
     setLabel(activeDoc.label || "");
     setStatus(activeDoc.status || "");
     setKeywords((activeDoc.keywords || []).join(", "));
-    setPovCharacter(activeDoc.pov_character || "");
-    setLocation(activeDoc.location || "");
-    setStoryTime(activeDoc.story_time || "");
-    setDurationMinutes(
-      activeDoc.duration_minutes != null ? String(activeDoc.duration_minutes) : ""
-    );
-    setThreads((activeDoc.threads || []).join(", "));
-    setCharactersInScene((activeDoc.characters_in_scene || []).join(", "));
+    const f = activeDoc.fields;
+    setPovCharacter(readString(f, NOVELIST_KEYS.pov));
+    setLocation(readString(f, NOVELIST_KEYS.location));
+    setStoryTime(readString(f, NOVELIST_KEYS.storyTime));
+    setDurationMinutes(readNumber(f, NOVELIST_KEYS.duration));
+    setThreads(readList(f, NOVELIST_KEYS.threads));
+    setCharactersInScene(readList(f, NOVELIST_KEYS.otherChars));
     setShowScene(
       !!(
-        activeDoc.pov_character ||
-        activeDoc.location ||
-        activeDoc.story_time ||
-        activeDoc.duration_minutes ||
-        (activeDoc.threads && activeDoc.threads.length) ||
-        (activeDoc.characters_in_scene && activeDoc.characters_in_scene.length)
+        f &&
+        (NOVELIST_KEYS.pov in f ||
+          NOVELIST_KEYS.location in f ||
+          NOVELIST_KEYS.storyTime in f ||
+          NOVELIST_KEYS.duration in f ||
+          NOVELIST_KEYS.threads in f ||
+          NOVELIST_KEYS.otherChars in f)
       )
     );
     setEditingTitle(false);
   }
 
-  const scenePayload = useCallback((): docCmd.SceneMetadata => {
+  /**
+   * Build the per-key `fields` update for the Tauri command. The backend
+   * treats empty string / empty list / null as "remove this key," so typing
+   * something and then clearing it doesn't persist as an empty stored value.
+   */
+  const scenePayload = useCallback((): docCmd.FieldUpdates => {
     const csv = (s: string) =>
       s.split(",").map((t) => t.trim()).filter(Boolean);
     const dur = parseInt(durationMinutes, 10);
     return {
-      pov_character: povCharacter || null,
-      location: location || null,
-      story_time: storyTime || null,
-      duration_minutes: Number.isFinite(dur) && dur > 0 ? dur : null,
-      threads: csv(threads),
-      characters_in_scene: csv(charactersInScene),
+      [NOVELIST_KEYS.pov]: povCharacter || null,
+      [NOVELIST_KEYS.location]: location || null,
+      [NOVELIST_KEYS.storyTime]: storyTime || null,
+      [NOVELIST_KEYS.duration]: Number.isFinite(dur) && dur > 0 ? dur : null,
+      [NOVELIST_KEYS.threads]: csv(threads),
+      [NOVELIST_KEYS.otherChars]: csv(charactersInScene),
     };
   }, [povCharacter, location, storyTime, durationMinutes, threads, charactersInScene]);
 
@@ -139,7 +174,7 @@ export function Inspector() {
         label: label || null,
         status: status || null,
         keywords: kw.length ? kw : null,
-        scene: scenePayload(),
+        fields: scenePayload(),
       }
     );
     setProject(updated);
@@ -353,7 +388,7 @@ export function Inspector() {
                     ? keywords.split(",").map(s => s.trim()).filter(Boolean)
                     : null,
                   include_in_compile: !activeDoc.include_in_compile,
-                  scene: scenePayload(),
+                  fields: scenePayload(),
                 }
               );
               setProject(updated);
@@ -378,7 +413,7 @@ export function Inspector() {
                   keywords: keywords.split(",").map(s => s.trim()).filter(Boolean).length
                     ? keywords.split(",").map(s => s.trim()).filter(Boolean) : null,
                   compile_order: order,
-                  scene: scenePayload(),
+                  fields: scenePayload(),
                 }
               );
               setProject(updated);
@@ -421,7 +456,7 @@ export function Inspector() {
                   keywords: keywords.split(",").map(s => s.trim()).filter(Boolean).length
                     ? keywords.split(",").map(s => s.trim()).filter(Boolean) : null,
                   word_count_target: target,
-                  scene: scenePayload(),
+                  fields: scenePayload(),
                 }
               );
               setProject(updated);

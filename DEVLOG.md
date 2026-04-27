@@ -4,9 +4,41 @@ Running log of architectural decisions and significant changes.
 
 ---
 
-## 2026-04-23 — v1.2 scene-level metadata (first slice of Tier 1)
+## 2026-04-27 — Format finalization: genre-agnostic, generic `fields` extensibility
+
+**Change:** Reverted the design from the 04-23 entry below. The `.chikn` format is genre-agnostic; novelist concepts (POV, location, threads, etc.) are UI conventions, not format schema. The format gains exactly one extension point:
+
+```yaml
+fields:
+  any_string_key: <any YAML value>
+```
+
+A `HashMap<String, serde_yaml::Value>` on `Document` and `DocumentMetadata` in core; serialized into `.meta` files as the top-level `fields:` mapping; skipped when empty so projects that ignore the mechanism produce zero diff. Readers preserve unknown entries; writers round-trip them. This is the format-level "tolerant readers, preserving writers" rule from `FOLDER_FIRST_DOCUMENTS.md` made concrete.
+
+**Why:** The 04-23 commit baked `pov_character`, `location`, `story_time`, etc. directly into the format schema. That's a category error — the format core is one concept, the five UIs are separate things that interpret it. Novelist vocabulary belongs in a UI convention doc (`docs/UI_CONVENTIONS_NOVELIST.md`), not in the spec. A TTRPG UI, a lab notebook, or a case-files UI should be able to use `.chikn` without first understanding "POV character." The generic `fields` map is the format saying "UIs, here's where your data goes — I won't read it, and I won't lose it."
+
+**After:**
+- `.chikn` v1.2 schema = v1.1 + one optional `fields:` mapping per document. Period.
+- Tauri Inspector's Scene section unchanged in UX — it now writes the same six novelist keys into `doc.fields`. Same panel, different persistence layer.
+- New convention doc lists the agreed novelist key names so Tauri / SwiftUI / Qt6 / WinUI / TUI novelist modes interoperate. Other domain UIs publish their own.
+- All five frontends round-trip arbitrary `fields` entries:
+  - Tauri (Rust core) — full editing support for novelist keys
+  - TUI, Linux Qt6 — preserve via `chickenscratch-core` (no UI yet for editing)
+  - macOS SwiftUI — preserves via dict round-trip in Writer.swift; no editing UI yet
+  - Windows WinUI — patched (was the lone broken frontend: closed POCO dropped unknowns). Added `Fields` to `DocumentMetaYaml` + `Document`; reader/writer round-trip
+- Three new round-trip tests in core: arbitrary keys/types preserve; empty maps skip serialization; foreign keys hand-injected into a `.meta` survive a read/write/read cycle.
+
+**Phase plan:** [`docs/plans/PHASE_FORMAT_FINALIZATION.md`](docs/plans/PHASE_FORMAT_FINALIZATION.md) for the rationale and rollout. Tier 1/2/3 novelist plans paused — they resume as UI-layer work once this phase ships.
+
+**Commit:** `<pending>`
+
+---
+
+## 2026-04-23 — v1.2 scene-level metadata (first slice of Tier 1) — superseded
 
 **Change:** `.chikn` format gains six optional scene-level fields: `pov_character`, `location`, `story_time`, `duration_minutes`, `threads`, `characters_in_scene`. Tauri inspector gets a collapsible **Scene** section exposing all six as free-form text inputs (entity dropdowns come with Tier 1.2/1.3 when the `characters/` and `locations/` folders land).
+
+**Superseded** by the 04-27 entry above. The novelist-typed fields were the wrong scope — they put domain vocabulary into the format. Replaced with a generic `fields` map; same six keys land as a UI convention instead.
 
 **Why:** First concrete deliverable against the v1.2 novelist-features plan. Peer tools (bibisco, yWriter, oStorybook) ship POV/location/duration as first-class fields; `.chikn` stored everything as free-form keywords which don't validate. Schema additions land first so later features (timeline view, entity cross-refs, collection queries) have the fields they'll read.
 

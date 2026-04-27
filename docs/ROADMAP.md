@@ -108,29 +108,35 @@ Bring the newer native frontends up to Tauri's feature set. Highest-leverage gap
 
 ---
 
-## v1.2 — Novelist features
+## Current phase — Format finalization, then UI sync
 
-Comparative survey across Scrivener, Manuskript, bibisco, oStorybook, and yWriter identified features that genuinely change novelist workflows and are missing from ChickenScratch. Three plan docs capture the design:
+The `.chikn` format is one concept, genre-agnostic. The five frontends agree on it. This phase solidifies that split: lock the format schema, give UIs a single generic extensibility point (`fields` map per document), and bring every frontend into lockstep. See [plans/PHASE_FORMAT_FINALIZATION.md](plans/PHASE_FORMAT_FINALIZATION.md) for the full plan.
+
+Until this phase is done, feature work below (including the Tier 1/2/3 novelist plans and the v1.1 AI/remote-sync items) is paused. It resumes cleanly once the format is locked.
+
+---
+
+## v1.2 — Novelist features (UI-layer, resumes after format finalization)
+
+Comparative survey across Scrivener, Manuskript, bibisco, oStorybook, and yWriter identified features that genuinely change novelist workflows. These are **UI-layer** plans now — the format stays genre-agnostic; the novelist UIs interpret generic `fields` entries per the convention in `docs/UI_CONVENTIONS_NOVELIST.md`.
 
 **Tier 1 — [Novel Structure](plans/TIER1_novel_structure.md)** (highest leverage):
-- Scene-level structured metadata (POV, location, story time, duration, threads)
-- Characters and locations as first-class entities (new `characters/` and `locations/` folders)
-- Plot threads (`threads.yaml` + scene membership, colored lanes)
+- Scene-level metadata (POV, location, story time, duration, threads) — novelist UI reads/writes known keys in `doc.fields`
+- Characters and locations as first-class entities — convention: `characters/` and `locations/` folders, handled by novelist UIs that opt in
+- Plot threads — `threads.yaml` as a novelist-UI convention file, format preserves it like any other tracked file
 
 **Tier 2 — [Writer Workflow](plans/TIER2_writer_workflow.md)**:
 - Scrivenings mode (edit multiple documents as continuous prose)
 - Session targets with deadlines (floating progress badge + welcome-card)
 - Per-document snapshots (git log scoped to one file + one-doc restore)
-- Timeline view (chronological scene view using Tier 1 `story_time`)
+- Timeline view (chronological scene view using the novelist `story_time` convention)
 
 **Tier 3 — [Polish](plans/TIER3_polish.md)**:
-- Collections (saved structured queries)
+- Collections (saved structured queries — operate over `fields` keys too)
 - Rich research (inline PDF/image/audio preview)
 - Split editor (two panes, independent editors)
 
 Deliberately **not** planned: name generators, deep character-psychology forms, Snowflake-method spreadsheets. See [plans/README.md](plans/README.md).
-
-Tier 1 is load-bearing for the rest (Timeline reads `story_time`; Collections filter over typed fields) and extends the `.chikn` format spec with new optional schema. Ships in a new v1.2 format-spec section; v1.1 readers ignore the new fields.
 
 ---
 

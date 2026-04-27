@@ -59,6 +59,7 @@ public static class ProjectWriter
             CompileOrder = doc.CompileOrder,
             Created = doc.Created,
             Modified = doc.Modified,
+            Fields = doc.Fields.Count > 0 ? doc.Fields : null,
         };
 
         var metaPath = Path.ChangeExtension(contentPath, ".meta");

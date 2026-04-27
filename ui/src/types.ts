@@ -19,13 +19,12 @@ export interface Document {
   word_count_target: number;
   compile_order: number;
   comments?: Comment[];
-  // v1.2 scene-level metadata (all optional)
-  pov_character?: string | null;
-  location?: string | null;
-  story_time?: string | null;
-  duration_minutes?: number | null;
-  threads?: string[];
-  characters_in_scene?: string[];
+  /**
+   * v1.2 generic UI extensibility. Format-level field that preserves
+   * arbitrary UI-layer entries. Key conventions are defined per-domain
+   * (see docs/UI_CONVENTIONS_NOVELIST.md for novelist-mode keys).
+   */
+  fields?: Record<string, unknown>;
 }
 
 export interface Comment {

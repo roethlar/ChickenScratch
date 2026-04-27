@@ -123,24 +123,9 @@ pub struct DocumentMetadata {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub comments: Vec<crate::models::Comment>,
 
-    // ── v1.2 scene-level metadata (all optional) ────────────────────────
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pov_character: Option<String>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub location: Option<String>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub story_time: Option<String>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub duration_minutes: Option<u32>,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub threads: Vec<String>,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub characters_in_scene: Vec<String>,
+    /// Generic UI extensibility — see `Document::fields`.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub fields: std::collections::HashMap<String, serde_yaml::Value>,
 }
 
 /// Helper function to generate a new UUID
@@ -478,12 +463,7 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
             word_count_target: 0,
             compile_order: 0,
             comments: Vec::new(),
-            pov_character: None,
-            location: None,
-            story_time: None,
-            duration_minutes: None,
-            threads: Vec::new(),
-            characters_in_scene: Vec::new(),
+            fields: std::collections::HashMap::new(),
         }
     };
 
@@ -519,12 +499,7 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
         word_count_target: metadata.word_count_target,
         compile_order: metadata.compile_order,
         comments: metadata.comments,
-        pov_character: metadata.pov_character,
-        location: metadata.location,
-        story_time: metadata.story_time,
-        duration_minutes: metadata.duration_minutes,
-        threads: metadata.threads,
-        characters_in_scene: metadata.characters_in_scene,
+        fields: metadata.fields,
     })
 }
 

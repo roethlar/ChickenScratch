@@ -42,4 +42,11 @@ internal class DocumentMetaYaml
     public int CompileOrder { get; set; } = 0;
     public DateTime Created { get; set; }
     public DateTime Modified { get; set; }
+
+    /// <summary>
+    /// Generic UI extensibility — see CHIKN_FORMAT_SPEC.md v1.2.
+    /// The format does not interpret entries here; readers preserve them on
+    /// round-trip. Per-domain key conventions live in separate UI docs.
+    /// </summary>
+    public Dictionary<string, object?>? Fields { get; set; }
 }

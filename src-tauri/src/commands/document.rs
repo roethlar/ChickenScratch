@@ -120,6 +120,36 @@ pub fn delete_comment(
     }
 }
 
+/// Per-key update to a document's generic `fields` map.
+///
+/// The format has no opinion about keys — any novelist convention lives in the
+/// UI. The frontend hands us a set of field updates; for each entry, a value of
+/// `Some(Value::Null)` or an empty string/array removes the key, so absent UI
+/// input produces a clean .meta diff rather than a stored empty.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct FieldUpdates(pub std::collections::HashMap<String, serde_yaml::Value>);
+
+fn apply_field_updates(
+    doc: &mut chickenscratch_core::models::Document,
+    updates: FieldUpdates,
+) {
+    use serde_yaml::Value;
+    for (key, value) in updates.0 {
+        let remove = match &value {
+            Value::Null => true,
+            Value::String(s) => s.is_empty(),
+            Value::Sequence(seq) => seq.is_empty(),
+            Value::Mapping(map) => map.is_empty(),
+            _ => false,
+        };
+        if remove {
+            doc.fields.remove(&key);
+        } else {
+            doc.fields.insert(key, value);
+        }
+    }
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub fn update_document_metadata(
@@ -132,7 +162,7 @@ pub fn update_document_metadata(
     include_in_compile: Option<bool>,
     word_count_target: Option<u32>,
     compile_order: Option<i32>,
-    scene: Option<SceneMetadata>,
+    fields: Option<FieldUpdates>,
 ) -> Result<Project, ChiknError> {
     let mut project = reader::read_project(Path::new(&project_path))?;
     if let Some(doc) = project.documents.get_mut(&doc_id) {
@@ -149,13 +179,8 @@ pub fn update_document_metadata(
         if let Some(order) = compile_order {
             doc.compile_order = order;
         }
-        if let Some(scene) = scene {
-            doc.pov_character = scene.pov_character.filter(|s| !s.is_empty());
-            doc.location = scene.location.filter(|s| !s.is_empty());
-            doc.story_time = scene.story_time.filter(|s| !s.is_empty());
-            doc.duration_minutes = scene.duration_minutes;
-            doc.threads = scene.threads.unwrap_or_default();
-            doc.characters_in_scene = scene.characters_in_scene.unwrap_or_default();
+        if let Some(updates) = fields {
+            apply_field_updates(doc, updates);
         }
         doc.modified = chrono::Utc::now().to_rfc3339();
         writer::write_project(&mut project)?;
@@ -166,23 +191,6 @@ pub fn update_document_metadata(
             doc_id
         )))
     }
-}
-
-/// v1.2 scene-level metadata, submitted from the Inspector as a single payload.
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct SceneMetadata {
-    #[serde(default)]
-    pub pov_character: Option<String>,
-    #[serde(default)]
-    pub location: Option<String>,
-    #[serde(default)]
-    pub story_time: Option<String>,
-    #[serde(default)]
-    pub duration_minutes: Option<u32>,
-    #[serde(default)]
-    pub threads: Option<Vec<String>>,
-    #[serde(default)]
-    pub characters_in_scene: Option<Vec<String>>,
 }
 
 #[tauri::command]

@@ -1,9 +1,9 @@
 # Tier 3 — Polish
 
 **Priority:** v1.2, lower leverage
-**Status:** Planned
-**Format impact:** Collections add to `project.yaml`; the other two are pure UX
-**Depends on:** Collections are more useful once Tier 1 structured fields exist
+**Status:** Paused until [format finalization](PHASE_FORMAT_FINALIZATION.md) ships
+**Layer:** UI-only. Collections land as a novelist-UI convention written into `project.yaml` through the generic-fields extensibility; rich research and split editor are pure UX.
+**Depends on:** Collections are more useful once the novelist UI ships scene metadata (Tier 1)
 
 Three nice-to-have features that close obvious gaps against Scrivener. Each is small, independent, and ships whenever it gets done — don't let them block Tier 1 / Tier 2.
 

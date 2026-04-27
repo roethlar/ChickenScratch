@@ -1,9 +1,11 @@
 # Tier 1 — Novel Structure
 
 **Priority:** v1.2, highest leverage
-**Status:** Planned
-**Format impact:** Yes — `.chikn` schema extensions for scene metadata, new top-level `characters/` and `locations/` folders, new `threads.yaml`
-**Depends on:** Core + Tauri frontend first; other frontends follow
+**Status:** Paused until [format finalization](PHASE_FORMAT_FINALIZATION.md) ships
+**Layer:** UI-only — the `.chikn` format stays genre-agnostic; this plan writes through the generic `fields` map and filesystem conventions. Key names for the novelist UI are frozen in `docs/UI_CONVENTIONS_NOVELIST.md`, not in the format spec.
+**Depends on:** Format finalization (generic `fields` map landed in core)
+
+> **Reading note.** An earlier draft of this document proposed adding typed novelist fields (`pov_character`, `location`, etc.) directly to the `.chikn` schema. That was a design error — the format has no domain. The feature set below is the same; it lands as a novelist-UI concern that writes its values into the generic extensibility mechanism the format provides.
 
 Three interrelated features that turn `.chikn` from a "folder of markdown with a binder" into a proper novelist's data model. Scenes gain typed metadata, characters and locations become first-class referenceable entities, and plot threads let writers tag which scene advances which storyline. Every Tier 2 and Tier 3 feature (timeline, collections, cross-refs) becomes trivial once these three land.
 

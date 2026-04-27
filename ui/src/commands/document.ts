@@ -16,14 +16,13 @@ export async function updateDocumentContent(
   return invoke("update_document_content", { projectPath, docId, content });
 }
 
-export interface SceneMetadata {
-  pov_character?: string | null;
-  location?: string | null;
-  story_time?: string | null;
-  duration_minutes?: number | null;
-  threads?: string[] | null;
-  characters_in_scene?: string[] | null;
-}
+/**
+ * Values the Tauri backend accepts for a `fields` map update. Passing `null`,
+ * `""`, or `[]` for a key removes the entry from the document's fields map —
+ * empty user input doesn't persist as a stored empty.
+ */
+export type FieldValue = string | number | boolean | string[] | null;
+export type FieldUpdates = Record<string, FieldValue>;
 
 export async function updateDocumentMetadata(
   projectPath: string,
@@ -36,7 +35,8 @@ export async function updateDocumentMetadata(
     include_in_compile?: boolean | null;
     word_count_target?: number | null;
     compile_order?: number | null;
-    scene?: SceneMetadata | null;
+    /** Generic UI extensibility. Keys follow per-domain convention docs. */
+    fields?: FieldUpdates | null;
   }
 ): Promise<Project> {
   return invoke("update_document_metadata", {
