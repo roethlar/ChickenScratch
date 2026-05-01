@@ -7,8 +7,21 @@ Rectangle {
     id: root
     color: "#232323"
     property var controller
+    property var editor: null
 
     readonly property bool hasDoc: controller.active_doc_id.length > 0
+    readonly property var comments: {
+        try { return JSON.parse(controller.doc_comments_json || "[]") }
+        catch(e) { return [] }
+    }
+
+    function gotoComment(commentId) {
+        var range = controller.comment_anchor_range(commentId)
+        if (!range || range.length === 0) return
+        var parts = range.split(",")
+        if (parts.length !== 2 || !editor) return
+        editor.selectRange(parseInt(parts[0]), parseInt(parts[1]))
+    }
 
     // Local editable state — synced from controller on doc change, flushed back on idle.
     property string editTitle: ""
@@ -291,6 +304,118 @@ Rectangle {
                         font.pixelSize: 12
                         wrapMode: Label.WrapAnywhere
                         Layout.fillWidth: true
+                    }
+                }
+
+                // ── Comments section ──
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.hasDoc
+                    spacing: 8
+                    Layout.topMargin: 8
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label {
+                            text: "COMMENTS"
+                            color: "#808080"
+                            font.pixelSize: 11
+                            font.letterSpacing: 1.2
+                            Layout.fillWidth: true
+                        }
+                        Label {
+                            text: root.comments.length.toString()
+                            color: "#707070"
+                            font.pixelSize: 11
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: root.comments.length === 0
+                        text: "Select text in the editor and press Ctrl+; (or 💬) to add a comment."
+                        color: "#707070"
+                        font.pixelSize: 11
+                        wrapMode: Label.WordWrap
+                    }
+
+                    Repeater {
+                        model: root.comments
+                        delegate: Rectangle {
+                            required property var modelData
+                            required property int index
+
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: cardCol.implicitHeight + 16
+                            color: modelData.resolved ? "#1f221f" : "#1c1f25"
+                            radius: 4
+                            border.color: "#3a3a3a"
+                            border.width: 1
+                            opacity: modelData.resolved ? 0.65 : 1.0
+
+                            ColumnLayout {
+                                id: cardCol
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                spacing: 6
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: "“" + (modelData.snippet || "(orphan)") + "”"
+                                    color: "#9a9a9a"
+                                    font.pixelSize: 11
+                                    font.italic: true
+                                    wrapMode: Label.WordWrap
+                                }
+
+                                TextArea {
+                                    id: bodyEdit
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Math.max(40, contentHeight + 8)
+                                    text: modelData.body || ""
+                                    placeholderText: "Comment body..."
+                                    wrapMode: TextEdit.Wrap
+                                    color: "#e8e8e8"
+                                    font.pixelSize: 12
+                                    background: Rectangle {
+                                        color: "#15171b"
+                                        radius: 3
+                                        border.color: "#3a3a3a"
+                                        border.width: 1
+                                    }
+
+                                    property string committedBody: modelData.body || ""
+                                    onEditingFinished: {
+                                        if (text !== committedBody) {
+                                            controller.update_comment(modelData.id, text, modelData.resolved)
+                                            committedBody = text
+                                        }
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    CheckBox {
+                                        text: "Resolved"
+                                        font.pixelSize: 11
+                                        checked: modelData.resolved
+                                        onToggled: controller.update_comment(modelData.id, bodyEdit.text, checked)
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    ToolButton {
+                                        text: "Go to"
+                                        font.pixelSize: 11
+                                        onClicked: root.gotoComment(modelData.id)
+                                    }
+                                    ToolButton {
+                                        text: "Delete"
+                                        font.pixelSize: 11
+                                        onClicked: controller.delete_comment(modelData.id)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

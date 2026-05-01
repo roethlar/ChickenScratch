@@ -473,6 +473,7 @@ ApplicationWindow {
             Inspector {
                 id: inspector
                 controller: controller
+                editor: editor
                 SplitView.preferredWidth: 260
                 SplitView.minimumWidth: visible ? 180 : 0
             }

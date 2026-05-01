@@ -50,6 +50,8 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [x] Collapsible binder tree with chevrons
 - [x] Inspector editing: title, synopsis, label, status, keywords, compile, word target
 - [x] Find/replace overlay (Ctrl+F / Ctrl+H) with match count + nav + replace all
+- [x] Comments (Ctrl+; on selection) + Comments section in Inspector with Go-to / Resolve / Delete
+- [x] Footnotes (Ctrl+Shift+F) inserting `<sup class="footnote">` markers
 
 ### Organization
 - [x] Binder with mouse-based drag-and-drop, context menus, ... menu button
@@ -157,7 +159,7 @@ Reframed: these are UI-layer plans now. The format ships generic extensibility; 
 ### Native-frontend parity
 - [ ] SwiftUI: delete/move/reorder in binder, inspector editing, comments, footnotes, drafts, compile, AI, remote sync
 - [ ] SwiftUI v1.2 read-only: display new scene metadata, characters, locations, threads
-- [ ] Linux (Qt6): revisions UI, comments, footnotes, compile, AI, settings, templates, drafts, remote sync
+- [ ] Linux (Qt6): compile, AI, settings, templates, drafts, remote sync (revisions, comments, footnotes shipped)
 - [ ] Linux v1.2 read-only: display new scene metadata, characters, locations, threads
 - [ ] Windows (WinUI): tracked separately in `windows/` — bring to full parity
 

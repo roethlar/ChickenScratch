@@ -1,6 +1,6 @@
 use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::{reader, writer};
-use chickenscratch_core::models::{Document, Project, TreeNode};
+use chickenscratch_core::models::{Comment, Document, Project, TreeNode};
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QList, QString, QStringList};
 use std::collections::HashSet;
@@ -39,6 +39,7 @@ mod ffi {
         #[qproperty(bool, doc_include_in_compile)]
         #[qproperty(i32, doc_word_count_target)]
         #[qproperty(QString, doc_modified)]
+        #[qproperty(QString, doc_comments_json)]
         #[qproperty(QString, recent_projects_json)]
         #[qproperty(bool, show_welcome)]
         type AppController = super::AppControllerRust;
@@ -108,6 +109,35 @@ mod ffi {
 
         #[qinvokable]
         fn get_stats_json(self: Pin<&mut AppController>) -> QString;
+
+        #[qinvokable]
+        fn add_comment(
+            self: Pin<&mut AppController>,
+            body: QString,
+            sel_start: i32,
+            sel_end: i32,
+        ) -> QString;
+
+        #[qinvokable]
+        fn update_comment(
+            self: Pin<&mut AppController>,
+            comment_id: QString,
+            body: QString,
+            resolved: bool,
+        ) -> QString;
+
+        #[qinvokable]
+        fn delete_comment(self: Pin<&mut AppController>, comment_id: QString) -> QString;
+
+        #[qinvokable]
+        fn add_footnote(
+            self: Pin<&mut AppController>,
+            body: QString,
+            cursor_pos: i32,
+        ) -> QString;
+
+        #[qinvokable]
+        fn comment_anchor_range(self: &AppController, comment_id: QString) -> QString;
     }
 }
 
@@ -132,6 +162,7 @@ pub struct AppControllerRust {
     doc_include_in_compile: bool,
     doc_word_count_target: i32,
     doc_modified: QString,
+    doc_comments_json: QString,
     recent_projects_json: QString,
     show_welcome: bool,
 
@@ -164,6 +195,7 @@ impl Default for AppControllerRust {
             doc_include_in_compile: false,
             doc_word_count_target: 0,
             doc_modified: QString::default(),
+            doc_comments_json: QString::from("[]"),
             recent_projects_json: QString::from(&recent_json),
             show_welcome: true,
             project: None,
@@ -243,6 +275,9 @@ impl ffi::AppController {
         self.as_mut()
             .set_doc_word_count_target(doc.word_count_target as i32);
         self.as_mut().set_doc_modified(QString::from(&doc.modified));
+        let comments_json = build_comments_json(&doc.content, &doc.comments);
+        self.as_mut()
+            .set_doc_comments_json(QString::from(&comments_json));
         self.as_mut().set_dirty(false);
         self.as_mut().set_save_label(QString::from("Saved"));
     }
@@ -613,7 +648,7 @@ impl ffi::AppController {
         }
     }
 
-    pub fn list_revisions_json(mut self: Pin<&mut Self>) -> QString {
+    pub fn list_revisions_json(self: Pin<&mut Self>) -> QString {
         let path_str = self.as_ref().project_path().to_string();
         if path_str.is_empty() {
             return QString::from("[]");
@@ -628,7 +663,7 @@ impl ffi::AppController {
         }
     }
 
-    pub fn save_revision_from_msg(mut self: Pin<&mut Self>, msg: QString) -> QString {
+    pub fn save_revision_from_msg(self: Pin<&mut Self>, msg: QString) -> QString {
         let path_str = self.as_ref().project_path().to_string();
         if path_str.is_empty() {
             return QString::from("No project loaded");
@@ -684,7 +719,7 @@ impl ffi::AppController {
         }
     }
 
-    pub fn list_drafts_json(mut self: Pin<&mut Self>) -> QString {
+    pub fn list_drafts_json(self: Pin<&mut Self>) -> QString {
         let path_str = self.as_ref().project_path().to_string();
         if path_str.is_empty() {
             return QString::from("[]");
@@ -699,7 +734,7 @@ impl ffi::AppController {
         }
     }
 
-    pub fn create_draft_by_name(mut self: Pin<&mut Self>, name: QString) -> QString {
+    pub fn create_draft_by_name(self: Pin<&mut Self>, name: QString) -> QString {
         let path_str = self.as_ref().project_path().to_string();
         if path_str.is_empty() {
             return QString::from("No project loaded");
@@ -757,8 +792,9 @@ impl ffi::AppController {
         }
     }
 
-    pub fn get_stats_json(mut self: Pin<&mut Self>) -> QString {
-        let rust = self.as_ref().rust();
+    pub fn get_stats_json(self: Pin<&mut Self>) -> QString {
+        let pinned = self.as_ref();
+        let rust = pinned.rust();
         let project = match rust.project.as_ref() {
             Some(p) => p,
             None => return QString::from("{}"),
@@ -826,6 +862,245 @@ impl ffi::AppController {
         self.as_mut().set_doc_include_in_compile(true);
         self.as_mut().set_doc_word_count_target(0);
         self.as_mut().set_doc_modified(QString::default());
+        self.as_mut().set_doc_comments_json(QString::from("[]"));
+    }
+
+    pub fn add_comment(
+        mut self: Pin<&mut Self>,
+        body: QString,
+        sel_start: i32,
+        sel_end: i32,
+    ) -> QString {
+        let id = self.as_ref().active_doc_id().to_string();
+        if id.is_empty() {
+            return QString::from("No document selected");
+        }
+        let body_str = body.to_string();
+        if sel_end <= sel_start {
+            return QString::from("Selection is empty");
+        }
+        let now = chrono_now();
+        let comment_id = make_id();
+
+        // Use the live editor buffer (Q_PROPERTY) — it reflects unsaved edits
+        let content = self.as_ref().active_doc_content().to_string();
+        let new_content = wrap_selection_with_comment(
+            &content,
+            sel_start as usize,
+            sel_end as usize,
+            &comment_id,
+        );
+        let new_content = match new_content {
+            Some(c) => c,
+            None => return QString::from("Selection out of bounds"),
+        };
+
+        let new_comment = Comment {
+            id: comment_id,
+            body: body_str,
+            resolved: false,
+            created: now.clone(),
+            modified: now.clone(),
+        };
+
+        let write_result = {
+            let mut rust_mut = self.as_mut().rust_mut();
+            let project = match rust_mut.project.as_mut() {
+                Some(p) => p,
+                None => return QString::from("No project loaded"),
+            };
+            match project.documents.get_mut(&id) {
+                Some(doc) => {
+                    doc.content = new_content.clone();
+                    doc.comments.push(new_comment);
+                    doc.modified = now;
+                }
+                None => return QString::from("Document not found"),
+            }
+            writer::write_project(project)
+        };
+
+        match write_result {
+            Ok(()) => {
+                self.as_mut()
+                    .set_active_doc_content(QString::from(&new_content));
+                self.as_mut().refresh_active_comments();
+                self.as_mut().set_dirty(false);
+                self.as_mut().set_save_label(QString::from("Saved"));
+                QString::default()
+            }
+            Err(e) => QString::from(&format!("{}", e)),
+        }
+    }
+
+    pub fn update_comment(
+        mut self: Pin<&mut Self>,
+        comment_id: QString,
+        body: QString,
+        resolved: bool,
+    ) -> QString {
+        let id = self.as_ref().active_doc_id().to_string();
+        if id.is_empty() {
+            return QString::from("No document selected");
+        }
+        let cid = comment_id.to_string();
+        let body_str = body.to_string();
+        let now = chrono_now();
+
+        let write_result = {
+            let mut rust_mut = self.as_mut().rust_mut();
+            let project = match rust_mut.project.as_mut() {
+                Some(p) => p,
+                None => return QString::from("No project loaded"),
+            };
+            match project.documents.get_mut(&id) {
+                Some(doc) => {
+                    if let Some(c) = doc.comments.iter_mut().find(|c| c.id == cid) {
+                        c.body = body_str;
+                        c.resolved = resolved;
+                        c.modified = now.clone();
+                    } else {
+                        return QString::from("Comment not found");
+                    }
+                    doc.modified = now;
+                }
+                None => return QString::from("Document not found"),
+            }
+            writer::write_project(project)
+        };
+
+        match write_result {
+            Ok(()) => {
+                self.as_mut().refresh_active_comments();
+                QString::default()
+            }
+            Err(e) => QString::from(&format!("{}", e)),
+        }
+    }
+
+    pub fn delete_comment(
+        mut self: Pin<&mut Self>,
+        comment_id: QString,
+    ) -> QString {
+        let id = self.as_ref().active_doc_id().to_string();
+        if id.is_empty() {
+            return QString::from("No document selected");
+        }
+        let cid = comment_id.to_string();
+        let now = chrono_now();
+
+        // Strip the span from live buffer first
+        let content = self.as_ref().active_doc_content().to_string();
+        let new_content = strip_comment_span(&content, &cid);
+
+        let write_result = {
+            let mut rust_mut = self.as_mut().rust_mut();
+            let project = match rust_mut.project.as_mut() {
+                Some(p) => p,
+                None => return QString::from("No project loaded"),
+            };
+            match project.documents.get_mut(&id) {
+                Some(doc) => {
+                    doc.comments.retain(|c| c.id != cid);
+                    doc.content = new_content.clone();
+                    doc.modified = now;
+                }
+                None => return QString::from("Document not found"),
+            }
+            writer::write_project(project)
+        };
+
+        match write_result {
+            Ok(()) => {
+                self.as_mut()
+                    .set_active_doc_content(QString::from(&new_content));
+                self.as_mut().refresh_active_comments();
+                self.as_mut().set_dirty(false);
+                self.as_mut().set_save_label(QString::from("Saved"));
+                QString::default()
+            }
+            Err(e) => QString::from(&format!("{}", e)),
+        }
+    }
+
+    pub fn add_footnote(
+        mut self: Pin<&mut Self>,
+        body: QString,
+        cursor_pos: i32,
+    ) -> QString {
+        let id = self.as_ref().active_doc_id().to_string();
+        if id.is_empty() {
+            return QString::from("No document selected");
+        }
+        let body_str = body.to_string();
+        if body_str.trim().is_empty() {
+            return QString::from("Footnote cannot be empty");
+        }
+        let pos = cursor_pos.max(0) as usize;
+        let now = chrono_now();
+
+        let content = self.as_ref().active_doc_content().to_string();
+        let new_content = match insert_footnote_at(&content, pos, &body_str) {
+            Some(c) => c,
+            None => return QString::from("Cursor out of bounds"),
+        };
+
+        let write_result = {
+            let mut rust_mut = self.as_mut().rust_mut();
+            let project = match rust_mut.project.as_mut() {
+                Some(p) => p,
+                None => return QString::from("No project loaded"),
+            };
+            match project.documents.get_mut(&id) {
+                Some(doc) => {
+                    doc.content = new_content.clone();
+                    doc.modified = now;
+                }
+                None => return QString::from("Document not found"),
+            }
+            writer::write_project(project)
+        };
+
+        match write_result {
+            Ok(()) => {
+                self.as_mut()
+                    .set_active_doc_content(QString::from(&new_content));
+                self.as_mut().set_dirty(false);
+                self.as_mut().set_save_label(QString::from("Saved"));
+                QString::default()
+            }
+            Err(e) => QString::from(&format!("{}", e)),
+        }
+    }
+
+    pub fn comment_anchor_range(self: &Self, comment_id: QString) -> QString {
+        let cid = comment_id.to_string();
+        let content = self.active_doc_content().to_string();
+        match find_comment_inner(&content, &cid) {
+            Some((start, end)) => QString::from(&format!("{},{}", start, end)),
+            None => QString::default(),
+        }
+    }
+
+    fn refresh_active_comments(mut self: Pin<&mut Self>) {
+        let id = self.as_ref().active_doc_id().to_string();
+        if id.is_empty() {
+            self.as_mut().set_doc_comments_json(QString::from("[]"));
+            return;
+        }
+        let json = {
+            let pinned = self.as_ref();
+            let rust_ref = pinned.rust();
+            match rust_ref
+                .project
+                .as_ref()
+                .and_then(|p| p.documents.get(&id))
+            {
+                Some(doc) => build_comments_json(&doc.content, &doc.comments),
+                None => "[]".to_string(),
+            }
+        };
+        self.as_mut().set_doc_comments_json(QString::from(&json));
     }
 }
 
@@ -1052,4 +1327,239 @@ fn to_qstring_list(v: &[String]) -> QStringList {
         list.append(QString::from(s));
     }
     QStringList::from(&list)
+}
+
+// ── Comment / footnote helpers ────────────────────────────────────────────────
+//
+// QML TextArea positions are UTF-16 code unit offsets (JavaScript convention).
+// For BMP content this matches Rust char counts. Supplementary-plane characters
+// (rare in prose) will be off by one per occurrence — acceptable for the MVP.
+//
+// Span format (matches Tauri & TUI canonical):
+//   <span class="comment" data-comment-id="ID">inner text</span>
+// Footnote format:
+//   <sup class="footnote" data-body="escaped body">●</sup>
+
+fn char_to_byte(s: &str, char_pos: usize) -> usize {
+    let mut count = 0;
+    for (b, _) in s.char_indices() {
+        if count == char_pos {
+            return b;
+        }
+        count += 1;
+    }
+    s.len()
+}
+
+fn html_attr_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn html_attr_unescape(s: &str) -> String {
+    s.replace("&quot;", "\"")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
+
+fn wrap_selection_with_comment(
+    content: &str,
+    char_start: usize,
+    char_end: usize,
+    comment_id: &str,
+) -> Option<String> {
+    let total_chars = content.chars().count();
+    if char_start > char_end || char_end > total_chars {
+        return None;
+    }
+    let byte_start = char_to_byte(content, char_start);
+    let byte_end = char_to_byte(content, char_end);
+    let opening = format!(r#"<span class="comment" data-comment-id="{}">"#, comment_id);
+    let closing = "</span>";
+    let mut out = String::with_capacity(content.len() + opening.len() + closing.len());
+    out.push_str(&content[..byte_start]);
+    out.push_str(&opening);
+    out.push_str(&content[byte_start..byte_end]);
+    out.push_str(closing);
+    out.push_str(&content[byte_end..]);
+    Some(out)
+}
+
+fn strip_comment_span(content: &str, comment_id: &str) -> String {
+    let opening = format!(r#"<span class="comment" data-comment-id="{}">"#, comment_id);
+    let closing = "</span>";
+    if let Some(start) = content.find(&opening) {
+        let after_open = start + opening.len();
+        if let Some(rel_end) = content[after_open..].find(closing) {
+            let inner_end = after_open + rel_end;
+            let mut out = String::with_capacity(content.len());
+            out.push_str(&content[..start]);
+            out.push_str(&content[after_open..inner_end]);
+            out.push_str(&content[inner_end + closing.len()..]);
+            return out;
+        }
+    }
+    content.to_string()
+}
+
+fn find_comment_inner(content: &str, comment_id: &str) -> Option<(usize, usize)> {
+    // Returns CHAR positions of inner text (start, end), suitable for QML TextArea.select()
+    let opening = format!(r#"<span class="comment" data-comment-id="{}">"#, comment_id);
+    let closing = "</span>";
+    let byte_start = content.find(&opening)?;
+    let inner_byte_start = byte_start + opening.len();
+    let rel_end = content[inner_byte_start..].find(closing)?;
+    let inner_byte_end = inner_byte_start + rel_end;
+
+    // Tags themselves disappear from the rendered text in QML PlainText mode? No —
+    // we're showing raw markdown including spans. So char positions are over the
+    // full source. Compute char positions for both ends.
+    let pre_chars = content[..inner_byte_start].chars().count();
+    let inner_chars = content[inner_byte_start..inner_byte_end].chars().count();
+    Some((pre_chars, pre_chars + inner_chars))
+}
+
+fn build_comments_json(content: &str, comments: &[Comment]) -> String {
+    let entries: Vec<serde_json::Value> = comments
+        .iter()
+        .map(|c| {
+            let opening = format!(r#"<span class="comment" data-comment-id="{}">"#, c.id);
+            let snippet = if let Some(start) = content.find(&opening) {
+                let after = start + opening.len();
+                if let Some(rel_end) = content[after..].find("</span>") {
+                    let inner = &content[after..after + rel_end];
+                    let trimmed: String = inner.chars().take(80).collect();
+                    if inner.chars().count() > 80 {
+                        format!("{}…", trimmed)
+                    } else {
+                        trimmed
+                    }
+                } else {
+                    "(orphan)".to_string()
+                }
+            } else {
+                "(orphan)".to_string()
+            };
+            serde_json::json!({
+                "id": c.id,
+                "body": c.body,
+                "resolved": c.resolved,
+                "snippet": snippet,
+                "modified": c.modified,
+            })
+        })
+        .collect();
+    serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string())
+}
+
+fn insert_footnote_at(content: &str, char_pos: usize, body: &str) -> Option<String> {
+    let total_chars = content.chars().count();
+    if char_pos > total_chars {
+        return None;
+    }
+    let byte_pos = char_to_byte(content, char_pos);
+    let escaped = html_attr_escape(body.trim());
+    let marker = format!(
+        r#"<sup class="footnote" data-body="{}">●</sup>"#,
+        escaped
+    );
+    let mut out = String::with_capacity(content.len() + marker.len());
+    out.push_str(&content[..byte_pos]);
+    out.push_str(&marker);
+    out.push_str(&content[byte_pos..]);
+    Some(out)
+}
+
+#[allow(dead_code)]
+fn footnote_body_from_marker(marker: &str) -> Option<String> {
+    let needle = r#"data-body=""#;
+    let start = marker.find(needle)? + needle.len();
+    let end = marker[start..].find('"')? + start;
+    Some(html_attr_unescape(&marker[start..end]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrap_selection_basic() {
+        let out = wrap_selection_with_comment("hello world", 6, 11, "abc").unwrap();
+        assert_eq!(
+            out,
+            r#"hello <span class="comment" data-comment-id="abc">world</span>"#
+        );
+    }
+
+    #[test]
+    fn wrap_selection_full() {
+        let out = wrap_selection_with_comment("foo", 0, 3, "x").unwrap();
+        assert_eq!(out, r#"<span class="comment" data-comment-id="x">foo</span>"#);
+    }
+
+    #[test]
+    fn wrap_selection_out_of_bounds() {
+        assert!(wrap_selection_with_comment("foo", 0, 99, "x").is_none());
+    }
+
+    #[test]
+    fn strip_round_trip() {
+        let original = "before [target] after";
+        let wrapped = wrap_selection_with_comment(original, 7, 15, "id1").unwrap();
+        let stripped = strip_comment_span(&wrapped, "id1");
+        assert_eq!(stripped, original);
+    }
+
+    #[test]
+    fn find_comment_inner_returns_inner_chars() {
+        let s = r#"abc <span class="comment" data-comment-id="X">word</span> def"#;
+        let (start, end) = find_comment_inner(s, "X").unwrap();
+        // Inner "word" begins after `abc ` + opening tag chars
+        let pre = "abc ".len() + r#"<span class="comment" data-comment-id="X">"#.len();
+        assert_eq!(start, pre);
+        assert_eq!(end - start, 4);
+    }
+
+    #[test]
+    fn footnote_insert_and_recover_body() {
+        let body = "He said \"hi\" & <waved>.";
+        let out = insert_footnote_at("Some prose.", 4, body).unwrap();
+        assert!(out.contains(r#"<sup class="footnote""#));
+        // Pull body back out via the helper
+        let marker_start = out.find("<sup").unwrap();
+        let marker_end = out[marker_start..].find("</sup>").unwrap() + "</sup>".len() + marker_start;
+        let recovered = footnote_body_from_marker(&out[marker_start..marker_end]).unwrap();
+        assert_eq!(recovered, body);
+    }
+
+    #[test]
+    fn build_comments_json_finds_snippet() {
+        let content = r#"a <span class="comment" data-comment-id="cid1">snippet</span> b"#;
+        let comments = vec![Comment {
+            id: "cid1".to_string(),
+            body: "note".to_string(),
+            resolved: false,
+            created: "t".to_string(),
+            modified: "t".to_string(),
+        }];
+        let json = build_comments_json(content, &comments);
+        assert!(json.contains("\"snippet\":\"snippet\""));
+        assert!(json.contains("\"body\":\"note\""));
+    }
+
+    #[test]
+    fn build_comments_json_marks_orphan_when_span_missing() {
+        let comments = vec![Comment {
+            id: "missing".to_string(),
+            body: "b".to_string(),
+            resolved: false,
+            created: "t".to_string(),
+            modified: "t".to_string(),
+        }];
+        let json = build_comments_json("plain text", &comments);
+        assert!(json.contains("(orphan)"));
+    }
 }
