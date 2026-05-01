@@ -13,10 +13,11 @@ import {
   BookText,
   FlaskConical,
   History,
+  Layers,
 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { TreeNode, Project } from "../../types";
-import { useProjectStore } from "../../stores/projectStore";
+import { useProjectStore, type FlowDoc } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
 import { importFile } from "../../commands/io";
 import { dialogPrompt, dialogConfirm } from "../shared/Dialog";
@@ -349,6 +350,74 @@ function BinderInner() {
     [project, setProject, closeMenu]
   );
 
+  const enterFlow = useProjectStore((s) => s.enterFlow);
+
+  /** Recursively collect all .md documents under a folder node, in tree order. */
+  const collectFlowDocs = useCallback(
+    (folderId: string): FlowDoc[] => {
+      if (!project) return [];
+      const result: FlowDoc[] = [];
+      const walk = (nodes: TreeNode[]) => {
+        for (const n of nodes) {
+          if (n.type === "Document" && n.path.endsWith(".md")) {
+            const doc = project.documents[n.id];
+            if (doc) result.push({ docId: n.id, name: n.name, path: n.path });
+          } else if (n.type === "Folder") {
+            walk(n.children);
+          }
+        }
+      };
+      const findAndWalk = (nodes: TreeNode[]) => {
+        for (const n of nodes) {
+          if (n.type === "Folder" && n.id === folderId) {
+            walk(n.children);
+            return;
+          }
+          if (n.type === "Folder") findAndWalk(n.children);
+        }
+      };
+      findAndWalk(project.hierarchy);
+      return result;
+    },
+    [project]
+  );
+
+  const handleFolderFlow = useCallback(
+    (folderId: string) => {
+      const docs = collectFlowDocs(folderId);
+      if (docs.length > 0) {
+        enterFlow(docs);
+        closeMenu();
+      }
+    },
+    [collectFlowDocs, enterFlow, closeMenu]
+  );
+
+  const [flowSelected, setFlowSelected] = useState<Set<string>>(new Set());
+
+  const handleFlowToggle = useCallback(
+    (docId: string) => {
+      const next = new Set(flowSelected);
+      if (next.has(docId)) next.delete(docId);
+      else next.add(docId);
+      setFlowSelected(next);
+    },
+    [flowSelected]
+  );
+
+  const handleFlowStart = useCallback(() => {
+    if (!project || flowSelected.size < 2) return;
+    const docs: FlowDoc[] = [];
+    for (const id of flowSelected) {
+      const doc = project.documents[id];
+      if (doc) docs.push({ docId: id, name: doc.name, path: doc.path });
+    }
+    if (docs.length > 1) {
+      enterFlow(docs);
+      setFlowSelected(new Set());
+    }
+  }, [project, flowSelected, enterFlow]);
+
   // Wire drag-and-drop handler
   const drag = useDrag();
   useEffect(() => {
@@ -396,6 +465,15 @@ function BinderInner() {
       <div className="binder-header">
         <span className="binder-title">{project.name}</span>
         <div className="binder-header-actions">
+          {flowSelected.size > 1 && (
+            <button
+              className="binder-action-btn flow-start-btn"
+              onClick={handleFlowStart}
+              title={`Flow mode with ${flowSelected.size} documents`}
+            >
+              <Layers size={14} /> {flowSelected.size}
+            </button>
+          )}
           <button
             className="binder-action-btn"
             onClick={() => handleNewDoc()}
@@ -424,6 +502,9 @@ function BinderInner() {
             onSelect={selectDocument}
             onSelectNode={setSelectedId}
             onContextMenu={handleContextMenu}
+            flowSelected={flowSelected}
+            onFlowToggle={handleFlowToggle}
+            onFlowFolder={handleFolderFlow}
           />
         ))}
 
@@ -488,6 +569,7 @@ function BinderInner() {
             setHistoryDocId(nodeId);
             closeMenu();
           }}
+          onFlowFolder={handleFolderFlow}
           onClose={closeMenu}
         />
       )}
@@ -642,6 +724,9 @@ function TreeItem({
   onSelect,
   onSelectNode,
   onContextMenu,
+  flowSelected,
+  onFlowToggle,
+  onFlowFolder,
 }: {
   node: TreeNode;
   depth: number;
@@ -651,6 +736,9 @@ function TreeItem({
   onSelect: (id: string) => void;
   onSelectNode: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, nodeId: string, nodeType: "Document" | "Folder") => void;
+  flowSelected?: Set<string>;
+  onFlowToggle?: (docId: string) => void;
+  onFlowFolder?: (folderId: string) => void;
 }) {
   const savedState = node.type === "Folder" ? getFolderState(projectId)[node.id] : undefined;
   const [open, setOpen] = useState(savedState !== undefined ? savedState : true);
@@ -738,7 +826,15 @@ function TreeItem({
         ref={itemRef}
         className={`binder-item ${isActive ? "active" : ""} ${isSelected && !isActive ? "selected" : ""} ${dropClass} ${isDragging ? "dragging" : ""}`}
         style={{ paddingLeft: `${12 + depth * 24}px` }}
-        onClick={() => { if (!drag.draggingId) { onSelectNode(node.id); onSelect(node.id); } }}
+        onClick={(e) => {
+          if (drag.draggingId) return;
+          if (e.ctrlKey || e.metaKey) {
+            onFlowToggle?.(node.id);
+          } else {
+            onSelectNode(node.id);
+            onSelect(node.id);
+          }
+        }}
         onContextMenu={(e) => onContextMenu(e, node.id, "Document")}
         onMouseDown={handleMouseDown}
         onMouseEnter={handleMouseEnter}
@@ -763,7 +859,15 @@ function TreeItem({
         ref={itemRef}
         className={`binder-item folder ${node.id === selectedId ? "selected" : ""} ${dropClass} ${isDragging ? "dragging" : ""}`}
         style={{ paddingLeft: `${12 + depth * 24}px` }}
-        onClick={() => { if (!drag.draggingId) { toggleFolder(); onSelectNode(node.id); } }}
+        onClick={(e) => {
+          if (drag.draggingId) return;
+          if (e.ctrlKey || e.metaKey) {
+            onFlowFolder?.(node.id);
+          } else {
+            toggleFolder();
+            onSelectNode(node.id);
+          }
+        }}
         onContextMenu={(e) => onContextMenu(e, node.id, "Folder")}
         onMouseDown={handleMouseDown}
         onMouseEnter={handleMouseEnter}
@@ -803,6 +907,9 @@ function TreeItem({
               onSelect={onSelect}
               onSelectNode={onSelectNode}
               onContextMenu={onContextMenu}
+              flowSelected={flowSelected}
+              onFlowToggle={onFlowToggle}
+              onFlowFolder={onFlowFolder}
             />
           ))}
         </div>
@@ -829,6 +936,7 @@ function ContextMenu({
   onMoveTo,
   onEmptyTrash,
   onFileHistory,
+  onFlowFolder,
   onClose,
 }: {
   x: number;
@@ -848,6 +956,7 @@ function ContextMenu({
   onMoveTo: (nodeId: string) => void;
   onEmptyTrash: () => void;
   onFileHistory?: (nodeId: string) => void;
+  onFlowFolder?: (folderId: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -930,6 +1039,11 @@ function ContextMenu({
           <button onClick={() => onMoveTo(nodeId)}>
             <Folder size={14} /> Move to...
           </button>
+          {nodeType === "Folder" && onFlowFolder && (
+            <button onClick={() => onFlowFolder(nodeId)}>
+              <Layers size={14} /> Open in Flow
+            </button>
+          )}
           {nodeType === "Document" && onFileHistory && (
             <button onClick={() => onFileHistory(nodeId)}>
               <History size={14} /> File History…

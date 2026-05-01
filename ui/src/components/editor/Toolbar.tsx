@@ -21,6 +21,7 @@ import {
   Sparkles,
   MessageSquare,
   Asterisk,
+  X,
 } from "lucide-react";
 import { useCallback } from "react";
 import { dialogPrompt } from "../shared/Dialog";
@@ -275,6 +276,8 @@ export function Toolbar({ editor }: ToolbarProps) {
         <Asterisk size={s} />
       </ToolbarButton>
 
+      <FlowButton editor={editor} />
+
       {aiEnabled && (
         <>
           <ToolbarSep />
@@ -282,6 +285,27 @@ export function Toolbar({ editor }: ToolbarProps) {
         </>
       )}
     </div>
+  );
+}
+
+function FlowButton(_props: { editor: Editor | null }) {
+  const flowDocs = useProjectStore((s) => s.flowDocs);
+  const exitFlow = useProjectStore((s) => s.exitFlow);
+
+  if (!flowDocs) return null;
+
+  return (
+    <>
+      <ToolbarSep />
+      <ToolbarButton
+        onClick={exitFlow}
+        active={true}
+        title="Exit Flow mode"
+      >
+        <X size={14} />
+      </ToolbarButton>
+      <span className="toolbar-flow-label">{flowDocs.length} docs</span>
+    </>
   );
 }
 

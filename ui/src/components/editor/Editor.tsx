@@ -17,12 +17,15 @@ import { setCurrentEditor, getEditorMarkdown } from "./editorRef";
 import { Markdown } from "tiptap-markdown";
 import * as docCmd from "../../commands/document";
 import { toastError } from "../shared/Toast";
+import { FlowBoundary, buildFlowBoundary, splitFlowSections } from "./FlowBoundary";
 
 export function Editor() {
   const activeDoc = useProjectStore((s) => s.activeDoc);
+  const flowDocs = useProjectStore((s) => s.flowDocs);
   const saving = useProjectStore((s) => s.saving);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const docIdRef = useRef<string | null>(null);
+  const flowIdsRef = useRef<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [findReplace, setFindReplace] = useState(false);
@@ -31,16 +34,35 @@ export function Editor() {
   const saveCurrent = useCallback(async () => {
     const editor = editorRef.current;
     const p = useProjectStore.getState().project;
-    const d = useProjectStore.getState().activeDoc;
-    if (!editor || !p || !d) return;
+    const flow = useProjectStore.getState().flowDocs;
+    if (!editor || !p) return;
+
     useProjectStore.setState({ saving: true });
     try {
-      // tiptap-markdown serializes in-process; no subprocess
       const markdown = getEditorMarkdown(editor);
-      await docCmd.updateDocumentContent(p.path, d.id, markdown);
-      useProjectStore.setState({
-        activeDoc: { ...d, content: markdown },
-      });
+      if (flow) {
+        // Flow mode: split at boundary markers, save each section back.
+        const sections = splitFlowSections(markdown);
+        for (const sec of sections) {
+          try {
+            await docCmd.updateDocumentContent(p.path, sec.docId, sec.content);
+          } catch {
+            toastError(`Failed to save document in flow mode`);
+          }
+        }
+        // Reload project so docs pick up updated content
+        const Project = await import("../../commands/project");
+        const reloaded = await Project.loadProject(p.path);
+        useProjectStore.setState({ project: reloaded });
+      } else {
+        // Single-doc mode
+        const d = useProjectStore.getState().activeDoc;
+        if (!d) return;
+        await docCmd.updateDocumentContent(p.path, d.id, markdown);
+        useProjectStore.setState({
+          activeDoc: { ...d, content: markdown },
+        });
+      }
       setDirty(false);
     } catch (e) {
       toastError(`Save failed: ${e}`);
@@ -77,6 +99,7 @@ export function Editor() {
       }),
       CommentMark,
       FootnoteNode,
+      FlowBoundary,
       Markdown.configure({
         html: true,            // allow inline HTML to pass through untouched
         tightLists: true,
@@ -120,9 +143,36 @@ export function Editor() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Load document content when active doc changes — markdown → HTML via pandoc.
+  // Load document content when active doc changes, or enter flow mode.
   useEffect(() => {
     if (!editor) return;
+    const flow = useProjectStore.getState().flowDocs;
+
+    if (flow) {
+      // Flow mode: concatenate documents with boundary markers.
+      const flowKey = flow.map((d) => d.docId).join("|");
+      if (flowIdsRef.current === flowKey) return;
+      flowIdsRef.current = flowKey;
+      docIdRef.current = null;
+
+      const project = useProjectStore.getState().project;
+      if (!project) return;
+      const parts: string[] = [];
+      for (const fd of flow) {
+        const doc = project.documents[fd.docId];
+        if (!doc) continue;
+        if (parts.length > 0) {
+          parts.push(buildFlowBoundary(fd.docId, fd.name));
+        }
+        parts.push(doc.content || "");
+      }
+      editor.commands.setContent(parts.join(""));
+      setDirty(false);
+      return;
+    }
+
+    // Single-doc mode
+    flowIdsRef.current = null;
     if (!activeDoc) {
       editor.commands.clearContent();
       docIdRef.current = null;
@@ -131,13 +181,11 @@ export function Editor() {
     if (docIdRef.current !== activeDoc.id) {
       docIdRef.current = activeDoc.id;
       const md = activeDoc.content || "";
-      // tiptap-markdown parses markdown directly when setContent is given markdown string
       editor.commands.setContent(md);
       setDirty(false);
     }
-    // Only want to reload content on id change; content changes flow through the editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDoc?.id, editor]);
+  }, [activeDoc?.id, editor, flowDocs]);
 
   // Search highlight: find and select first match when navigating from search
   const searchHighlight = useProjectStore((s) => s.searchHighlight);
@@ -178,7 +226,8 @@ export function Editor() {
   const project = useProjectStore((s) => s.project);
   const sessionStartWords = useProjectStore((s) => s.sessionStartWords);
 
-  if (!activeDoc) {
+  // Flow mode: render even without activeDoc
+  if (!activeDoc && !flowDocs) {
     return (
       <div className="editor-empty">
         <p>Select a document to start writing</p>
@@ -210,6 +259,8 @@ export function Editor() {
       </div>
       <div className="editor-status">
         <span>
+          {flowDocs ? `Editing ${flowDocs.length} documents` : ""}
+          {flowDocs && ` · `}
           {words.toLocaleString()} words
           {sessionWords > 0 && ` · +${sessionWords.toLocaleString()} this session`}
         </span>

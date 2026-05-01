@@ -242,7 +242,11 @@
       "Bash(Start-Process *)",
       "Bash(\"ChickenScratch.App.exe\")",
       "Bash(git pull *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git *)",
+      "Bash(pandoc --version)",
+      "Bash(npx --prefix /home/michael/dev/ChickenScratch/ui tsc --noEmit -p /home/michael/dev/ChickenScratch/ui)",
+      "Bash(NODE_ENV=development npm --prefix /home/michael/dev/ChickenScratch/ui run build)"
     ],
     "deny": [],
     "ask": []

@@ -4,6 +4,12 @@ import * as projectCmd from "../commands/project";
 import * as docCmd from "../commands/document";
 import { addRecentProject } from "../commands/settings";
 
+export interface FlowDoc {
+  docId: string;
+  name: string;
+  path: string;
+}
+
 interface ProjectState {
   project: Project | null;
   activeDocId: string | null;
@@ -12,6 +18,8 @@ interface ProjectState {
   error: string | null;
   sessionStartWords: number;
   searchHighlight: string | null;
+  /** Flow mode — multi-doc continuous editing. Null when off. */
+  flowDocs: FlowDoc[] | null;
 
   openProject: (path: string) => Promise<void>;
   createProject: (name: string, path: string) => Promise<void>;
@@ -20,6 +28,10 @@ interface ProjectState {
   selectDocument: (docId: string) => void;
   updateContent: (content: string) => void;
   saveActiveDoc: () => Promise<void>;
+  /** Enter flow mode over the given manuscript documents. */
+  enterFlow: (docs: FlowDoc[]) => void;
+  /** Exit flow mode, returning to single-doc editing. */
+  exitFlow: () => void;
   clearError: () => void;
 }
 
@@ -31,6 +43,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   error: null,
   sessionStartWords: 0,
   searchHighlight: null,
+  flowDocs: null,
 
   openProject: async (path: string) => {
     try {
@@ -72,7 +85,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const { project } = get();
     if (!project) return;
     const doc = project.documents[docId] ?? null;
-    set({ activeDocId: docId, activeDoc: doc });
+    set({ activeDocId: docId, activeDoc: doc, flowDocs: null });
   },
 
   updateContent: (content: string) => {
@@ -94,6 +107,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     } finally {
       set({ saving: false });
     }
+  },
+
+  enterFlow: (docs: FlowDoc[]) => {
+    set({ flowDocs: docs, activeDocId: null, activeDoc: null });
+  },
+
+  exitFlow: () => {
+    set({ flowDocs: null });
   },
 
   clearError: () => set({ error: null }),

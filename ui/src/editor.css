@@ -3411,3 +3411,44 @@
   border-left: 1px solid var(--color-border);
   margin-left: 24px;
 }
+
+/* ── Flow mode ─────────────────────────────────────────── */
+
+.flow-divider {
+  margin: 18px 0 8px;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
+  text-align: center;
+}
+
+.flow-divider span {
+  position: relative;
+  top: -9px;
+  background: var(--color-bg);
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.flow-boundary {
+  display: none;
+}
+
+.toolbar-flow-label {
+  font-size: 0.72rem;
+  color: var(--color-accent);
+  font-weight: 500;
+  white-space: nowrap;
+  margin-left: 2px;
+}
+
+.flow-start-btn {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 600;
+  font-size: 0.72rem;
+  gap: 3px;
+}
