@@ -28,16 +28,18 @@ import {
   BookOpen,
   Settings2,
   HelpCircle,
+  Clock,
 } from "lucide-react";
 import { CommandPalette } from "./components/command-palette/CommandPalette";
 import { Revisions } from "./components/revisions/Revisions";
 import { Preview } from "./components/preview/Preview";
+import { TimelineView } from "./components/timeline/TimelineView";
 import { CompileDialog } from "./components/compile/CompileDialog";
 import { toastError } from "./components/shared/Toast";
 import { dialogPrompt } from "./components/shared/Dialog";
 import * as docCmd from "./commands/document";
 
-type View = "editor" | "corkboard" | "preview";
+type View = "editor" | "corkboard" | "preview" | "timeline";
 
 export default function App() {
   const project = useProjectStore((s) => s.project);
@@ -263,6 +265,13 @@ export default function App() {
           >
             <BookOpenIcon size={16} />
           </button>
+          <button
+            className={`view-btn ${view === "timeline" ? "active" : ""}`}
+            onClick={() => setView("timeline")}
+            title="Timeline"
+          >
+            <Clock size={16} />
+          </button>
           <div style={{ flex: 1 }} />
           <button
             className={`view-btn ${showStats ? "active" : ""}`}
@@ -336,7 +345,7 @@ export default function App() {
             <HelpCircle size={16} />
           </button>
         </div>
-        {view === "editor" ? <Editor /> : view === "corkboard" ? <Corkboard /> : <Preview />}
+        {view === "editor" ? <Editor /> : view === "corkboard" ? <Corkboard /> : view === "preview" ? <Preview /> : <TimelineView />}
       </div>
       {showRevisions && <Revisions />}
       {showInspector && <Inspector />}
