@@ -149,10 +149,10 @@ Reframed: these are UI-layer plans now. The format ships generic extensibility; 
 - [x] Cross-reference validation (`validate_references` command, soft warning banner in Threads tab listing dangling pov/location/threads/characters_in_scene refs)
 
 **Tier 2 — Writer workflow** ([plan](docs/plans/TIER2_writer_workflow.md)):
-- [ ] Scrivenings mode (multi-doc continuous-edit with boundary markers)
+- [x] Flow mode (renamed from Scrivenings) — multi-doc continuous editing with boundary markers, Ctrl+click in binder to multi-select or open folder in flow
 - [x] Session targets — `SessionTarget` on `ProjectMeta`; `get_session_progress` (today_words / days_remaining / needed_per_day); editable in Stats panel; floating SessionBadge auto-hides while writing
-- [ ] Per-document snapshots (`document_history`, `restore_document`, DocumentHistory modal)
-- [ ] Timeline view (story-time ordered, POV/thread lanes)
+- [x] Per-document snapshots — `document_history`, `restore_document`, DocumentHistory modal accessible from binder context menu
+- [x] Timeline view — story-time ordered scenes, POV/thread lanes, click chip to open scene
 
 **Tier 3 — Polish** ([plan](docs/plans/TIER3_polish.md)):
 - [ ] Collections (saved structured queries with a menu-driven builder, binder section)
