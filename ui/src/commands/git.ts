@@ -129,3 +129,21 @@ export async function syncFetch(projectPath: string): Promise<void> {
 export async function syncStatus(projectPath: string): Promise<SyncStatus> {
   return invoke("sync_status", { projectPath });
 }
+
+export type PullResult =
+  | { kind: "up_to_date" }
+  | { kind: "fast_forward" }
+  | { kind: "merged" }
+  | { kind: "conflicts"; files: string[] };
+
+export async function syncPull(projectPath: string): Promise<PullResult> {
+  return invoke("sync_pull", { projectPath });
+}
+
+export async function syncAbortPull(projectPath: string): Promise<void> {
+  return invoke("sync_abort_pull", { projectPath });
+}
+
+export async function syncPullForce(projectPath: string): Promise<void> {
+  return invoke("sync_pull_force", { projectPath });
+}

@@ -412,6 +412,168 @@ pub fn fetch_remote(project_path: &Path, url: &str, auth: &RemoteAuth) -> Result
     Ok(())
 }
 
+/// Result of a `sync_pull` operation. UI surfaces each kind distinctly.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PullResult {
+    /// Local already contains the remote head — nothing to do.
+    UpToDate,
+    /// Local was strictly behind; we moved HEAD forward to remote.
+    FastForward,
+    /// Branches diverged but the auto-merge succeeded; a merge commit was created.
+    Merged,
+    /// Branches diverged and merging produced conflicts. Working tree carries
+    /// conflict markers; caller should call `sync_abort_pull` or have the user
+    /// resolve manually before committing.
+    Conflicts { files: Vec<String> },
+}
+
+/// Fetch remote, then merge into the current branch. Handles fast-forward,
+/// successful three-way merge, and conflict cases. Conflicts are NOT
+/// auto-resolved — the working tree is left with conflict markers and the
+/// caller decides what to do (resolve, abort, or overwrite).
+pub fn sync_pull(
+    project_path: &Path,
+    url: &str,
+    auth: &RemoteAuth,
+) -> Result<PullResult, ChiknError> {
+    fetch_remote(project_path, url, auth)?;
+
+    let repo = Repository::open(project_path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    let branch = current_branch_name(&repo)?;
+    let remote_ref = format!("refs/remotes/{SYNC_REMOTE}/{branch}");
+    let remote_oid = repo
+        .refname_to_id(&remote_ref)
+        .map_err(|e| ChiknError::Unknown(format!("No remote tracking ref ({}): {}", remote_ref, e)))?;
+    let remote_commit = repo
+        .find_annotated_commit(remote_oid)
+        .map_err(|e| ChiknError::Unknown(format!("Annotated commit failed: {}", e)))?;
+
+    let (analysis, _) = repo
+        .merge_analysis(&[&remote_commit])
+        .map_err(|e| ChiknError::Unknown(format!("Merge analysis: {}", e)))?;
+
+    if analysis.is_up_to_date() {
+        return Ok(PullResult::UpToDate);
+    }
+
+    if analysis.is_fast_forward() {
+        // Move local branch to remote OID and check out
+        let mut reference = repo
+            .find_reference(&format!("refs/heads/{branch}"))
+            .map_err(|e| ChiknError::Unknown(format!("Branch ref: {}", e)))?;
+        reference
+            .set_target(remote_oid, "fast-forward via sync_pull")
+            .map_err(|e| ChiknError::Unknown(format!("Set ref: {}", e)))?;
+        repo.set_head(&format!("refs/heads/{branch}"))
+            .map_err(|e| ChiknError::Unknown(format!("Set HEAD: {}", e)))?;
+        let mut co = git2::build::CheckoutBuilder::new();
+        co.force();
+        repo.checkout_head(Some(&mut co))
+            .map_err(|e| ChiknError::Unknown(format!("Checkout: {}", e)))?;
+        return Ok(PullResult::FastForward);
+    }
+
+    // Normal merge — attempt three-way
+    repo.merge(&[&remote_commit], None, None)
+        .map_err(|e| ChiknError::Unknown(format!("Merge failed: {}", e)))?;
+
+    let index = repo
+        .index()
+        .map_err(|e| ChiknError::Unknown(format!("Index: {}", e)))?;
+    if index.has_conflicts() {
+        let files: Vec<String> = index
+            .conflicts()
+            .map_err(|e| ChiknError::Unknown(format!("Conflicts iter: {}", e)))?
+            .filter_map(|c| {
+                c.ok()
+                    .and_then(|c| c.our.or(c.their).or(c.ancestor))
+                    .and_then(|e| String::from_utf8(e.path).ok())
+            })
+            .collect();
+        return Ok(PullResult::Conflicts { files });
+    }
+
+    // Clean merge — write a merge commit
+    let signature = repo
+        .signature()
+        .or_else(|_| git2::Signature::now("ChickenScratch", "sync@chickenscratch.local"))
+        .map_err(|e| ChiknError::Unknown(format!("Signature: {}", e)))?;
+    let local_commit = repo
+        .head()
+        .and_then(|h| h.peel_to_commit())
+        .map_err(|e| ChiknError::Unknown(format!("Head commit: {}", e)))?;
+    let remote_commit_obj = repo
+        .find_commit(remote_oid)
+        .map_err(|e| ChiknError::Unknown(format!("Remote commit: {}", e)))?;
+    let mut idx = repo
+        .index()
+        .map_err(|e| ChiknError::Unknown(format!("Index: {}", e)))?;
+    let tree_oid = idx
+        .write_tree()
+        .map_err(|e| ChiknError::Unknown(format!("Write tree: {}", e)))?;
+    let tree = repo
+        .find_tree(tree_oid)
+        .map_err(|e| ChiknError::Unknown(format!("Tree: {}", e)))?;
+    repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        &format!("Merge remote-tracking '{SYNC_REMOTE}/{branch}'"),
+        &tree,
+        &[&local_commit, &remote_commit_obj],
+    )
+    .map_err(|e| ChiknError::Unknown(format!("Merge commit: {}", e)))?;
+    repo.cleanup_state()
+        .map_err(|e| ChiknError::Unknown(format!("Cleanup: {}", e)))?;
+    Ok(PullResult::Merged)
+}
+
+/// Abort an in-progress merge (e.g. after `sync_pull` reported conflicts).
+/// Restores the working tree to the pre-merge state.
+pub fn sync_abort_pull(project_path: &Path) -> Result<(), ChiknError> {
+    let repo = Repository::open(project_path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    let head = repo
+        .head()
+        .and_then(|h| h.peel_to_commit())
+        .map_err(|e| ChiknError::Unknown(format!("Head: {}", e)))?;
+    let mut co = git2::build::CheckoutBuilder::new();
+    co.force().remove_untracked(false);
+    repo.reset(head.as_object(), git2::ResetType::Hard, Some(&mut co))
+        .map_err(|e| ChiknError::Unknown(format!("Reset: {}", e)))?;
+    repo.cleanup_state()
+        .map_err(|e| ChiknError::Unknown(format!("Cleanup: {}", e)))?;
+    Ok(())
+}
+
+/// Overwrite local with remote — discards every local change since the last
+/// shared commit. Used as the "their wins" escape hatch.
+pub fn sync_pull_force(
+    project_path: &Path,
+    url: &str,
+    auth: &RemoteAuth,
+) -> Result<(), ChiknError> {
+    fetch_remote(project_path, url, auth)?;
+    let repo = Repository::open(project_path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    let branch = current_branch_name(&repo)?;
+    let remote_oid = repo
+        .refname_to_id(&format!("refs/remotes/{SYNC_REMOTE}/{branch}"))
+        .map_err(|e| ChiknError::Unknown(format!("No remote tracking ref: {}", e)))?;
+    let remote_obj = repo
+        .find_object(remote_oid, None)
+        .map_err(|e| ChiknError::Unknown(format!("Find object: {}", e)))?;
+    let mut co = git2::build::CheckoutBuilder::new();
+    co.force();
+    repo.reset(&remote_obj, git2::ResetType::Hard, Some(&mut co))
+        .map_err(|e| ChiknError::Unknown(format!("Reset: {}", e)))?;
+    repo.cleanup_state()
+        .map_err(|e| ChiknError::Unknown(format!("Cleanup: {}", e)))?;
+    Ok(())
+}
+
 /// Compare local HEAD against the last fetched remote tracking ref.
 /// Call `fetch_remote` first for the numbers to be current.
 pub fn sync_status(project_path: &Path) -> Result<SyncStatus, ChiknError> {

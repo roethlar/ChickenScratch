@@ -84,6 +84,27 @@ pub fn sync_status(project_path: String) -> Result<git::SyncStatus, ChiknError> 
     git::sync_status(Path::new(&project_path))
 }
 
+/// Pull (fetch + merge). Returns one of: up_to_date, fast_forward, merged,
+/// conflicts (with file list). Conflicts leave the working tree with merge
+/// markers; call `sync_abort_pull` to revert or `sync_pull_force` to discard
+/// local changes.
+#[tauri::command]
+pub fn sync_pull(project_path: String) -> Result<git::PullResult, ChiknError> {
+    let (url, auth) = remote_from_settings()?;
+    git::sync_pull(Path::new(&project_path), &url, &auth)
+}
+
+#[tauri::command]
+pub fn sync_abort_pull(project_path: String) -> Result<(), ChiknError> {
+    git::sync_abort_pull(Path::new(&project_path))
+}
+
+#[tauri::command]
+pub fn sync_pull_force(project_path: String) -> Result<(), ChiknError> {
+    let (url, auth) = remote_from_settings()?;
+    git::sync_pull_force(Path::new(&project_path), &url, &auth)
+}
+
 fn remote_from_settings() -> Result<(String, git::RemoteAuth), ChiknError> {
     let settings = super::settings::get_app_settings();
     let url = settings.remote.url.clone().ok_or_else(|| {

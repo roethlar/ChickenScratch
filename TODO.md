@@ -124,8 +124,8 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 ## Remaining
 
 ### v1.1 — Feature work (Tauri)
-- [ ] AI streaming responses (word-by-word via Tauri events)
-- [ ] Remote sync — merge UX on conflicting pull (push/fetch/status shipped)
+- [x] AI streaming responses — `ai_transform_stream` emits `ai:chunk`/`ai:done`/`ai:error` events; AiMenu replaces selection incrementally as tokens arrive (Ollama, Anthropic, OpenAI)
+- [x] Remote sync pull + merge UX — `sync_pull` returns up_to_date / fast_forward / merged / conflicts; conflict dialog offers Resolve manually / Abort / Overwrite local with remote
 
 ### Current phase — Format finalization
 See [docs/plans/PHASE_FORMAT_FINALIZATION.md](docs/plans/PHASE_FORMAT_FINALIZATION.md).

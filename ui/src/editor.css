@@ -388,6 +388,72 @@
   background: color-mix(in srgb, var(--color-text) 8%, transparent);
 }
 
+/* ── Pull conflict dialog ────────────────────────────────────────────────── */
+.conflict-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.conflict-dialog {
+  background: var(--color-bg);
+  border: 1px solid color-mix(in srgb, var(--color-text) 20%, transparent);
+  border-radius: 6px;
+  padding: 18px 22px;
+  max-width: 480px;
+  width: 92%;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+.conflict-dialog h3 {
+  margin: 0 0 8px 0;
+  color: var(--color-accent, #d2691e);
+  font-size: 1rem;
+}
+.conflict-dialog p {
+  margin: 0 0 10px 0;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+.conflict-files {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  border-radius: 4px;
+  padding: 8px 14px;
+  margin: 0 0 14px 0;
+  max-height: 180px;
+  overflow-y: auto;
+  font-size: 0.78rem;
+}
+.conflict-files li { margin: 2px 0; }
+.conflict-files code {
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+.conflict-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.conflict-actions button {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-text) 25%, transparent);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.conflict-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+.conflict-actions .conflict-danger {
+  background: color-mix(in srgb, #c0392b 80%, transparent);
+  border-color: #c0392b;
+  color: white;
+}
+
 /* Dangling-reference banner */
 .dangling-refs {
   background: color-mix(in srgb, var(--color-accent, #d2691e) 18%, transparent);

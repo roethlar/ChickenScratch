@@ -43,6 +43,280 @@ pub fn ai_summarize(content: String) -> Result<String, ChiknError> {
     call_ai(&settings.ai, &prompt, 100)
 }
 
+/// Streaming variant — emits `ai:chunk` events with `{ id, delta }` and a
+/// final `ai:done` event with `{ id }` (or `ai:error` `{ id, message }`).
+/// The frontend subscribes by `request_id` so multiple in-flight calls don't
+/// collide.
+#[tauri::command]
+pub fn ai_transform_stream(
+    app: tauri::AppHandle,
+    content: String,
+    operation: String,
+    request_id: String,
+) -> Result<(), ChiknError> {
+    let settings = get_app_settings();
+    if !settings.ai.enabled {
+        return Err(ChiknError::Unknown(
+            "AI features are disabled. Enable in Settings.".to_string(),
+        ));
+    }
+
+    let plain = strip_comment_spans(&content);
+    if plain.trim().is_empty() {
+        let _ = emit_done(&app, &request_id);
+        return Ok(());
+    }
+
+    let excerpt = if plain.len() > 4000 {
+        plain[..4000].to_string()
+    } else {
+        plain
+    };
+    let instruction = instruction_for(&operation);
+    let prompt = format!("{}\n\n{}", instruction, excerpt);
+    let max_tokens: u32 = 2000;
+
+    // Run the streaming request on a worker thread so the command returns
+    // immediately and the event loop stays responsive.
+    let app_clone = app.clone();
+    let ai = settings.ai.clone();
+    let req_id = request_id.clone();
+    std::thread::spawn(move || {
+        let result = match ai.provider.as_str() {
+            "ollama" => stream_ollama(&app_clone, &ai, &prompt, &req_id),
+            "anthropic" => stream_anthropic(&app_clone, &ai, &prompt, max_tokens, &req_id),
+            "openai" => stream_openai(&app_clone, &ai, &prompt, max_tokens, &req_id),
+            other => Err(format!("Unknown AI provider: {}", other)),
+        };
+        match result {
+            Ok(()) => {
+                let _ = emit_done(&app_clone, &req_id);
+            }
+            Err(msg) => {
+                let _ = emit_error(&app_clone, &req_id, &msg);
+            }
+        }
+    });
+
+    Ok(())
+}
+
+fn instruction_for(op: &str) -> &'static str {
+    match op {
+        "polish" => "Improve the writing quality of this text. Fix grammar, improve word choice, and enhance clarity. Keep the same meaning and tone. Return only the improved text, no commentary.",
+        "expand" => "Expand this text with more detail, description, and depth. Keep the same style and voice. Return only the expanded text, no commentary.",
+        "simplify" => "Simplify this text. Use shorter sentences, clearer language, and remove unnecessary complexity. Keep the meaning. Return only the simplified text, no commentary.",
+        "brainstorm" => "Generate 3-5 alternative ways to express or continue this passage. Number each option. Be creative but stay in the same genre/style.",
+        _ => "Improve this text. Return only the improved version.",
+    }
+}
+
+fn emit_chunk(app: &tauri::AppHandle, id: &str, delta: &str) {
+    use tauri::Emitter;
+    let _ = app.emit(
+        "ai:chunk",
+        serde_json::json!({ "id": id, "delta": delta }),
+    );
+}
+fn emit_done(app: &tauri::AppHandle, id: &str) -> Result<(), tauri::Error> {
+    use tauri::Emitter;
+    app.emit("ai:done", serde_json::json!({ "id": id }))
+}
+fn emit_error(app: &tauri::AppHandle, id: &str, msg: &str) -> Result<(), tauri::Error> {
+    use tauri::Emitter;
+    app.emit(
+        "ai:error",
+        serde_json::json!({ "id": id, "message": msg }),
+    )
+}
+
+fn stream_ollama(
+    app: &tauri::AppHandle,
+    settings: &AiSettings,
+    prompt: &str,
+    req_id: &str,
+) -> Result<(), String> {
+    use std::io::{BufRead, BufReader};
+    let endpoint = settings
+        .endpoint
+        .as_deref()
+        .unwrap_or("http://localhost:11434");
+    let url = format!("{}/api/generate", endpoint);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("HTTP client: {}", e))?;
+    let body = serde_json::json!({
+        "model": settings.model,
+        "prompt": prompt,
+        "stream": true
+    });
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .map_err(|e| format!("Ollama request failed: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(format!("Ollama HTTP {}", resp.status()));
+    }
+    let reader = BufReader::new(resp);
+    for line in reader.lines() {
+        let line = line.map_err(|e| format!("Stream read: {}", e))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let json: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if let Some(s) = json.get("response").and_then(|v| v.as_str()) {
+            if !s.is_empty() {
+                emit_chunk(app, req_id, s);
+            }
+        }
+        if json.get("done").and_then(|v| v.as_bool()).unwrap_or(false) {
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn stream_anthropic(
+    app: &tauri::AppHandle,
+    settings: &AiSettings,
+    prompt: &str,
+    max_tokens: u32,
+    req_id: &str,
+) -> Result<(), String> {
+    use std::io::{BufRead, BufReader};
+    let api_key = settings
+        .api_key
+        .as_deref()
+        .ok_or_else(|| "Anthropic API key not configured.".to_string())?;
+    let body = serde_json::json!({
+        "model": settings.model,
+        "max_tokens": max_tokens,
+        "stream": true,
+        "messages": [{"role": "user", "content": prompt}]
+    });
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(180))
+        .build()
+        .map_err(|e| format!("HTTP client: {}", e))?;
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("Content-Type", "application/json")
+        .header("Accept", "text/event-stream")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .json(&body)
+        .send()
+        .map_err(|e| format!("Anthropic request failed: {}", e))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().unwrap_or_default();
+        return Err(format!("Anthropic HTTP {}: {}", status, body));
+    }
+    let reader = BufReader::new(resp);
+    for line in reader.lines() {
+        let line = line.map_err(|e| format!("Stream read: {}", e))?;
+        // SSE lines look like: `data: {...}` or `event: foo`. Skip non-data.
+        let payload = match line.strip_prefix("data: ") {
+            Some(p) => p,
+            None => continue,
+        };
+        let json: serde_json::Value = match serde_json::from_str(payload) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let kind = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        if kind == "content_block_delta" {
+            if let Some(text) = json
+                .pointer("/delta/text")
+                .and_then(|v| v.as_str())
+            {
+                if !text.is_empty() {
+                    emit_chunk(app, req_id, text);
+                }
+            }
+        } else if kind == "message_stop" {
+            break;
+        } else if kind == "error" {
+            let msg = json
+                .pointer("/error/message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Anthropic error")
+                .to_string();
+            return Err(msg);
+        }
+    }
+    Ok(())
+}
+
+fn stream_openai(
+    app: &tauri::AppHandle,
+    settings: &AiSettings,
+    prompt: &str,
+    max_tokens: u32,
+    req_id: &str,
+) -> Result<(), String> {
+    use std::io::{BufRead, BufReader};
+    let api_key = settings
+        .api_key
+        .as_deref()
+        .ok_or_else(|| "OpenAI API key not configured.".to_string())?;
+    let endpoint = settings
+        .endpoint
+        .as_deref()
+        .unwrap_or("https://api.openai.com");
+    let body = serde_json::json!({
+        "model": settings.model,
+        "max_tokens": max_tokens,
+        "stream": true,
+        "messages": [{"role": "user", "content": prompt}]
+    });
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(180))
+        .build()
+        .map_err(|e| format!("HTTP client: {}", e))?;
+    let resp = client
+        .post(format!("{}/v1/chat/completions", endpoint))
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&body)
+        .send()
+        .map_err(|e| format!("OpenAI request failed: {}", e))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().unwrap_or_default();
+        return Err(format!("OpenAI HTTP {}: {}", status, body));
+    }
+    let reader = BufReader::new(resp);
+    for line in reader.lines() {
+        let line = line.map_err(|e| format!("Stream read: {}", e))?;
+        let payload = match line.strip_prefix("data: ") {
+            Some(p) => p,
+            None => continue,
+        };
+        if payload.trim() == "[DONE]" {
+            break;
+        }
+        let json: serde_json::Value = match serde_json::from_str(payload) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if let Some(text) = json
+            .pointer("/choices/0/delta/content")
+            .and_then(|v| v.as_str())
+        {
+            if !text.is_empty() {
+                emit_chunk(app, req_id, text);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Transform selected text with AI (polish, expand, simplify, brainstorm)
 #[tauri::command]
 pub fn ai_transform(content: String, operation: String) -> Result<String, ChiknError> {

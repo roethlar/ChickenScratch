@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { useCallback } from "react";
 import { dialogPrompt } from "../shared/Dialog";
-import { aiTransform, type AiOperation } from "../../commands/ai";
+import { aiTransformStream, type AiOperation } from "../../commands/ai";
 import { toastError, toastSuccess } from "../shared/Toast";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useProjectStore } from "../../stores/projectStore";
@@ -299,18 +299,49 @@ function AiMenu({ editor }: { editor: Editor }) {
     const selectedText = editor.state.doc.textBetween(from, to, " ");
     setWorking(true);
     setOpen(false);
+
+    let buffer = "";
     try {
-      const result = await aiTransform(selectedText, op);
-      if (result) {
-        if (op === "brainstorm") {
-          // Insert brainstorm results after selection
-          editor.chain().focus().setTextSelection(to).insertContent(
-            `<p></p><blockquote><p>${result.replace(/\n/g, "</p><p>")}</p></blockquote>`
-          ).run();
-        } else {
-          // Replace selection
-          editor.chain().focus().setTextSelection({ from, to }).deleteSelection().insertContent(result).run();
-        }
+      if (op === "brainstorm") {
+        // Brainstorm: stream results into a blockquote AFTER the selection
+        // so the user keeps their original passage.
+        editor
+          .chain()
+          .focus()
+          .setTextSelection(to)
+          .insertContent("\n\n> ")
+          .run();
+        const insertPos = editor.state.selection.from;
+        await aiTransformStream(selectedText, op, (delta) => {
+          buffer += delta;
+          // Replace from insertPos to end of buffer with current text
+          editor
+            .chain()
+            .focus()
+            .setTextSelection({ from: insertPos, to: insertPos + buffer.length - delta.length })
+            .insertContent(buffer.replace(/\n/g, "\n> "))
+            .run();
+        });
+      } else {
+        // Polish/expand/simplify: stream replacement into the original range.
+        // We delete the selection first, then keep replacing the inserted
+        // span as more chunks arrive.
+        editor
+          .chain()
+          .focus()
+          .setTextSelection({ from, to })
+          .deleteSelection()
+          .run();
+        const insertPos = editor.state.selection.from;
+        await aiTransformStream(selectedText, op, (delta) => {
+          buffer += delta;
+          editor
+            .chain()
+            .focus()
+            .setTextSelection({ from: insertPos, to: insertPos + buffer.length - delta.length })
+            .insertContent(buffer)
+            .run();
+        });
       }
     } catch (e) {
       toastError(`AI failed: ${e}`);

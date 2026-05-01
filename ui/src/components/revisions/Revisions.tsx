@@ -143,6 +143,64 @@ export function Revisions() {
     setSyncBusy(false);
   };
 
+  const [conflictFiles, setConflictFiles] = useState<string[] | null>(null);
+  const handlePull = async () => {
+    if (!project) return;
+    setSyncBusy(true);
+    try {
+      const result = await gitCmd.syncPull(project.path);
+      switch (result.kind) {
+        case "up_to_date":
+          toastSuccess("Already up to date.");
+          break;
+        case "fast_forward":
+          toastSuccess("Pulled (fast-forward).");
+          break;
+        case "merged":
+          toastSuccess("Pulled and merged.");
+          break;
+        case "conflicts":
+          setConflictFiles(result.files);
+          break;
+      }
+      await refresh();
+    } catch (e) {
+      toastError(`Pull failed: ${e}`);
+    }
+    setSyncBusy(false);
+  };
+
+  const handleAbortPull = async () => {
+    if (!project) return;
+    setSyncBusy(true);
+    try {
+      await gitCmd.syncAbortPull(project.path);
+      toastSuccess("Merge aborted; local restored.");
+      setConflictFiles(null);
+      await refresh();
+    } catch (e) {
+      toastError(`Abort failed: ${e}`);
+    }
+    setSyncBusy(false);
+  };
+
+  const handleForcePull = async () => {
+    if (!project) return;
+    if (!(await dialogConfirm(
+      "Discard ALL local changes and overwrite with the remote? This cannot be undone."
+    ))) return;
+    setSyncBusy(true);
+    try {
+      await gitCmd.syncPullForce(project.path);
+      toastSuccess("Local overwritten with remote.");
+      setConflictFiles(null);
+      await refresh();
+    } catch (e) {
+      toastError(`Overwrite failed: ${e}`);
+    }
+    setSyncBusy(false);
+  };
+
   if (!project) return null;
 
   const activeDraft = drafts.find((d) => d.is_active)?.name || "main";
@@ -324,7 +382,59 @@ export function Revisions() {
           busy={syncBusy}
           onPush={handlePush}
           onFetch={handleFetch}
+          onPull={handlePull}
         />
+      </div>
+
+      {conflictFiles && (
+        <ConflictDialog
+          files={conflictFiles}
+          busy={syncBusy}
+          onAbort={handleAbortPull}
+          onForce={handleForcePull}
+          onResolveManually={() => setConflictFiles(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConflictDialog({
+  files,
+  busy,
+  onAbort,
+  onForce,
+  onResolveManually,
+}: {
+  files: string[];
+  busy: boolean;
+  onAbort: () => void;
+  onForce: () => void;
+  onResolveManually: () => void;
+}) {
+  return (
+    <div className="conflict-overlay">
+      <div className="conflict-dialog">
+        <h3>Merge conflicts</h3>
+        <p>
+          The remote changed the same files you did. The working tree now has
+          conflict markers. Pick one:
+        </p>
+        <ul className="conflict-files">
+          {files.slice(0, 10).map((f) => <li key={f}><code>{f}</code></li>)}
+          {files.length > 10 && <li>…and {files.length - 10} more</li>}
+        </ul>
+        <div className="conflict-actions">
+          <button onClick={onResolveManually} disabled={busy}>
+            Resolve manually
+          </button>
+          <button onClick={onAbort} disabled={busy}>
+            Abort merge (keep local)
+          </button>
+          <button onClick={onForce} disabled={busy} className="conflict-danger">
+            Overwrite local with remote
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -335,11 +445,13 @@ function SyncControls({
   busy,
   onPush,
   onFetch,
+  onPull,
 }: {
   status: SyncStatus | null;
   busy: boolean;
   onPush: () => void;
   onFetch: () => void;
+  onPull: () => void;
 }) {
   const enabled = !!status?.has_remote;
   const summary = (() => {
@@ -358,8 +470,15 @@ function SyncControls({
         <span>{summary}</span>
       </div>
       <div className="revisions-sync-actions">
-        <button onClick={onFetch} disabled={!enabled || busy} title="Fetch from remote">
+        <button onClick={onFetch} disabled={!enabled || busy} title="Fetch from remote (no merge)">
           <Download size={12} /> Fetch
+        </button>
+        <button
+          onClick={onPull}
+          disabled={!enabled || busy}
+          title="Pull from remote (fetch + merge)"
+        >
+          <Download size={12} /> Pull
         </button>
         <button onClick={onPush} disabled={!enabled || busy} title="Push to remote">
           <Upload size={12} /> Push
