@@ -25,6 +25,28 @@ pub struct Thread {
     pub description: Option<String>,
 }
 
+/// Writer session targets — words/session goal, optional deadline, total target.
+/// All optional; all-None means the feature is off for this project.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SessionTarget {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub words_per_session: Option<u32>,
+    /// ISO date (YYYY-MM-DD); free-form on the wire so we don't drag chrono
+    /// into the model layer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_target: Option<u32>,
+}
+
+impl SessionTarget {
+    pub fn is_empty(&self) -> bool {
+        self.words_per_session.is_none()
+            && self.deadline.is_none()
+            && self.total_target.is_none()
+    }
+}
+
 /// Project-level metadata
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProjectMeta {
@@ -40,6 +62,16 @@ pub struct ProjectMeta {
     pub theme: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+    /// Writer session targets (Tier 2 v1.2 novelist convention).
+    #[serde(default, skip_serializing_if = "skip_empty_session_target")]
+    pub session_target: Option<SessionTarget>,
+}
+
+fn skip_empty_session_target(t: &Option<SessionTarget>) -> bool {
+    match t {
+        None => true,
+        Some(s) => s.is_empty(),
+    }
 }
 
 /// Project model

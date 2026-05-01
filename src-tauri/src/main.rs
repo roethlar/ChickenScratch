@@ -80,6 +80,7 @@ fn main() {
             git::compare_drafts,
             git::word_diff_drafts,
             io::get_project_stats,
+            io::get_session_progress,
             io::get_writing_history,
             io::record_daily_words,
         ])

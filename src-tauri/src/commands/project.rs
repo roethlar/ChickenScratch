@@ -34,6 +34,7 @@ pub fn import_scrivener(scriv_path: String, output_path: String) -> Result<Proje
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn update_project_metadata(
     project_path: String,
     title: Option<String>,
@@ -42,6 +43,7 @@ pub fn update_project_metadata(
     genre: Option<String>,
     theme: Option<String>,
     summary: Option<String>,
+    session_target: Option<chickenscratch_core::SessionTarget>,
 ) -> Result<Project, ChiknError> {
     let mut project = reader::read_project(Path::new(&project_path))?;
     project.metadata.title = title;
@@ -50,6 +52,7 @@ pub fn update_project_metadata(
     project.metadata.genre = genre;
     project.metadata.theme = theme;
     project.metadata.summary = summary;
+    project.metadata.session_target = session_target.filter(|t| !t.is_empty());
     writer::write_project(&mut project)?;
     Ok(project)
 }

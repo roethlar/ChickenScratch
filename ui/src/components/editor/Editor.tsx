@@ -8,6 +8,7 @@ import { Color } from "@tiptap/extension-color";
 import { Link } from "@tiptap/extension-link";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
+import * as sessionCmd from "../../commands/session";
 import { Toolbar } from "./Toolbar";
 import { FindReplace } from "./FindReplace";
 import { CommentMark } from "../comments/CommentMark";
@@ -205,6 +206,7 @@ export function Editor() {
       />
       <div className="editor-scroll">
         <EditorContent editor={editor} />
+        <SessionBadge />
       </div>
       <div className="editor-status">
         <span>
@@ -213,6 +215,75 @@ export function Editor() {
         </span>
         <span>{saveLabel}</span>
       </div>
+    </div>
+  );
+}
+
+function SessionBadge() {
+  const project = useProjectStore((s) => s.project);
+  const [progress, setProgress] = useState<sessionCmd.SessionProgress | null>(null);
+  const [hidden, setHidden] = useState(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!project) return;
+    let cancelled = false;
+    const refresh = () => {
+      sessionCmd
+        .getSessionProgress(project.path)
+        .then((p) => { if (!cancelled) setProgress(p); })
+        .catch(() => { if (!cancelled) setProgress(null); });
+    };
+    refresh();
+    const interval = setInterval(refresh, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [project]);
+
+  // Auto-hide on idle, reappear on any keypress in the editor
+  useEffect(() => {
+    const reveal = () => {
+      setHidden(false);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+      hideTimer.current = setTimeout(() => setHidden(true), 4000);
+    };
+    reveal();
+    window.addEventListener("keydown", reveal);
+    return () => {
+      window.removeEventListener("keydown", reveal);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    };
+  }, [project?.path]);
+
+  if (!progress) return null;
+  const hasTarget =
+    progress.words_per_session != null ||
+    progress.total_target != null ||
+    progress.deadline != null;
+  if (!hasTarget) return null;
+
+  const goal = progress.words_per_session ?? 0;
+  const pct = goal > 0 ? Math.min(100, Math.round((progress.today_words / goal) * 100)) : 0;
+  const reached = goal > 0 && progress.today_words >= goal;
+
+  const parts: string[] = [];
+  if (goal > 0) parts.push(`Today ${progress.today_words.toLocaleString()}/${goal.toLocaleString()}`);
+  if (progress.days_remaining != null) {
+    if (progress.days_remaining > 0) parts.push(`${progress.days_remaining}d left`);
+    else if (progress.days_remaining === 0) parts.push("deadline today");
+    else parts.push("deadline passed");
+  }
+  if (progress.needed_per_day != null) {
+    parts.push(`${progress.needed_per_day.toLocaleString()}/day needed`);
+  }
+
+  return (
+    <div className={`session-badge ${hidden ? "hidden" : ""} ${reached ? "reached" : ""}`}>
+      <div className="session-badge-text">{parts.join(" · ")}</div>
+      {goal > 0 && (
+        <div className="session-badge-bar">
+          <div className="session-badge-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
     </div>
   );
 }

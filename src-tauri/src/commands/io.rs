@@ -351,6 +351,12 @@ pub struct WritingHistory {
 pub struct DayEntry {
     pub date: String, // YYYY-MM-DD
     pub words: usize,
+    /// Total project word count at the *first* record_daily_words call today.
+    /// Net words written today = words - start_words. Older entries from
+    /// before the field existed deserialize as None and the session badge
+    /// falls back to "0 today" for that day.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_words: Option<usize>,
 }
 
 #[tauri::command]
@@ -382,9 +388,16 @@ pub fn record_daily_words(project_path: String, words: usize) -> Result<(), Chik
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
     if let Some(entry) = history.entries.iter_mut().find(|e| e.date == today) {
+        if entry.start_words.is_none() {
+            entry.start_words = Some(entry.words);
+        }
         entry.words = words;
     } else {
-        history.entries.push(DayEntry { date: today, words });
+        history.entries.push(DayEntry {
+            date: today,
+            words,
+            start_words: Some(words),
+        });
     }
 
     // Keep last 90 days
@@ -396,6 +409,78 @@ pub fn record_daily_words(project_path: String, words: usize) -> Result<(), Chik
         .map_err(|e| ChiknError::Unknown(format!("Failed to serialize history: {}", e)))?;
     fs::write(&path, json)?;
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionProgress {
+    pub today_words: i64,
+    pub words_per_session: Option<u32>,
+    pub total_target: Option<u32>,
+    pub deadline: Option<String>,
+    pub days_remaining: Option<i64>,
+    pub current_total: usize,
+    /// `(total_target - current_total) / days_remaining`, rounded up.
+    /// None when no target/deadline configured or deadline already passed.
+    pub needed_per_day: Option<u32>,
+}
+
+#[tauri::command]
+pub fn get_session_progress(project_path: String) -> Result<SessionProgress, ChiknError> {
+    let project = reader::read_project(Path::new(&project_path))?;
+    let target = project.metadata.session_target.clone().unwrap_or_default();
+
+    // Current manuscript word count (only documents under manuscript/, like the badge expects).
+    let current_total: usize = project
+        .documents
+        .values()
+        .filter(|d| d.path.starts_with("manuscript/") && d.path.ends_with(".md"))
+        .map(|d| count_words_md(&d.content))
+        .sum();
+
+    // Today's net words from writing-history.json
+    let history_path = Path::new(&project_path)
+        .join("settings")
+        .join("writing-history.json");
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let today_words: i64 = if history_path.exists() {
+        let history: WritingHistory = fs::read_to_string(&history_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+        history
+            .entries
+            .iter()
+            .find(|e| e.date == today)
+            .and_then(|e| e.start_words.map(|sw| current_total as i64 - sw as i64))
+            .unwrap_or(0)
+    } else {
+        0
+    };
+
+    let days_remaining = target.deadline.as_ref().and_then(|d| {
+        chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok().map(|deadline| {
+            let now = chrono::Utc::now().date_naive();
+            (deadline - now).num_days()
+        })
+    });
+
+    let needed_per_day = match (target.total_target, days_remaining) {
+        (Some(total), Some(days)) if days > 0 && (total as i64) > current_total as i64 => {
+            let remaining = total as i64 - current_total as i64;
+            Some(((remaining + days - 1) / days) as u32)
+        }
+        _ => None,
+    };
+
+    Ok(SessionProgress {
+        today_words,
+        words_per_session: target.words_per_session,
+        total_target: target.total_target,
+        deadline: target.deadline,
+        days_remaining,
+        current_total,
+        needed_per_day,
+    })
 }
 
 #[tauri::command]

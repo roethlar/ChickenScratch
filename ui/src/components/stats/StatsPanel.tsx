@@ -8,6 +8,8 @@ import {
   type ProjectStats,
   type DayEntry,
 } from "../../commands/io";
+import * as sessionCmd from "../../commands/session";
+import { toastError, toastSuccess } from "../shared/Toast";
 
 interface StatsPanelProps {
   open: boolean;
@@ -71,6 +73,8 @@ export function StatsPanel({ open, onClose }: StatsPanelProps) {
         </div>
       </div>
 
+      <SessionTargetSection />
+
       {recent.length > 1 && (
         <div className="stats-history">
           <div className="stats-docs-title">Daily Word Count</div>
@@ -117,6 +121,154 @@ export function StatsPanel({ open, onClose }: StatsPanelProps) {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function SessionTargetSection() {
+  const project = useProjectStore((s) => s.project);
+  const setProject = useProjectStore.setState;
+  const [progress, setProgress] = useState<sessionCmd.SessionProgress | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [wordsPerSession, setWordsPerSession] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [totalTarget, setTotalTarget] = useState("");
+
+  useEffect(() => {
+    if (!project) return;
+    sessionCmd
+      .getSessionProgress(project.path)
+      .then((p) => {
+        setProgress(p);
+        setWordsPerSession(p.words_per_session?.toString() ?? "");
+        setDeadline(p.deadline ?? "");
+        setTotalTarget(p.total_target?.toString() ?? "");
+      })
+      .catch(() => setProgress(null));
+  }, [project]);
+
+  const save = async () => {
+    if (!project) return;
+    const target = {
+      words_per_session: wordsPerSession ? parseInt(wordsPerSession, 10) || null : null,
+      deadline: deadline || null,
+      total_target: totalTarget ? parseInt(totalTarget, 10) || null : null,
+    };
+    try {
+      const updated = await sessionCmd.updateSessionTarget(project, target);
+      setProject({ project: updated });
+      const fresh = await sessionCmd.getSessionProgress(updated.path);
+      setProgress(fresh);
+      setEditing(false);
+      toastSuccess("Targets saved");
+    } catch (e) {
+      toastError(`Failed: ${e}`);
+    }
+  };
+
+  if (!progress) return null;
+  const hasTarget =
+    progress.words_per_session != null ||
+    progress.total_target != null ||
+    progress.deadline != null;
+
+  return (
+    <div className="stats-session">
+      <div className="stats-docs-title">
+        Session Target
+        <button
+          className="stats-session-edit"
+          onClick={() => setEditing((v) => !v)}
+        >
+          {editing ? "Cancel" : hasTarget ? "Edit" : "Configure"}
+        </button>
+      </div>
+
+      {!editing && hasTarget && (
+        <div className="stats-session-display">
+          {progress.words_per_session != null && (
+            <div className="stats-session-row">
+              <span>Today</span>
+              <strong>
+                {progress.today_words.toLocaleString()} /{" "}
+                {progress.words_per_session.toLocaleString()}
+              </strong>
+            </div>
+          )}
+          {progress.deadline && (
+            <div className="stats-session-row">
+              <span>Deadline</span>
+              <strong>
+                {progress.deadline}
+                {progress.days_remaining != null && (
+                  <span className="stats-session-meta">
+                    {" "}
+                    ({progress.days_remaining}d)
+                  </span>
+                )}
+              </strong>
+            </div>
+          )}
+          {progress.total_target != null && (
+            <div className="stats-session-row">
+              <span>Total</span>
+              <strong>
+                {progress.current_total.toLocaleString()} /{" "}
+                {progress.total_target.toLocaleString()}
+              </strong>
+            </div>
+          )}
+          {progress.needed_per_day != null && (
+            <div className="stats-session-row stats-session-needed">
+              <span>Needed/day to finish</span>
+              <strong>{progress.needed_per_day.toLocaleString()}</strong>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!editing && !hasTarget && (
+        <div className="stats-session-empty">
+          Set a daily word target, deadline, or total goal to enable the session
+          badge.
+        </div>
+      )}
+
+      {editing && (
+        <div className="stats-session-form">
+          <label>
+            Words per session
+            <input
+              type="number"
+              min={0}
+              value={wordsPerSession}
+              onChange={(e) => setWordsPerSession(e.target.value)}
+              placeholder="1000"
+            />
+          </label>
+          <label>
+            Deadline
+            <input
+              type="date"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+            />
+          </label>
+          <label>
+            Total target (words)
+            <input
+              type="number"
+              min={0}
+              value={totalTarget}
+              onChange={(e) => setTotalTarget(e.target.value)}
+              placeholder="90000"
+            />
+          </label>
+          <button className="stats-session-save" onClick={save}>
+            Save
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -35,6 +35,12 @@ export interface Comment {
   modified: string;
 }
 
+export interface SessionTarget {
+  words_per_session?: number | null;
+  deadline?: string | null;
+  total_target?: number | null;
+}
+
 export interface ProjectMeta {
   title?: string | null;
   author?: string | null;
@@ -42,6 +48,7 @@ export interface ProjectMeta {
   genre?: string | null;
   theme?: string | null;
   summary?: string | null;
+  session_target?: SessionTarget | null;
 }
 
 export interface Thread {

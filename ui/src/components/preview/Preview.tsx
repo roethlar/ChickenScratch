@@ -71,6 +71,7 @@ export function Preview() {
       genre: meta.genre || null,
       theme: meta.theme || null,
       summary: meta.summary || null,
+      sessionTarget: project.metadata?.session_target ?? null,
     });
     setProject(updated);
     setEditingMeta(false);

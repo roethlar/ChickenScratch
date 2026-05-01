@@ -150,7 +150,7 @@ Reframed: these are UI-layer plans now. The format ships generic extensibility; 
 
 **Tier 2 — Writer workflow** ([plan](docs/plans/TIER2_writer_workflow.md)):
 - [ ] Scrivenings mode (multi-doc continuous-edit with boundary markers)
-- [ ] Session targets: words/session, deadline, total — in `project.yaml`; badge + welcome-card + stats section
+- [x] Session targets — `SessionTarget` on `ProjectMeta`; `get_session_progress` (today_words / days_remaining / needed_per_day); editable in Stats panel; floating SessionBadge auto-hides while writing
 - [ ] Per-document snapshots (`document_history`, `restore_document`, DocumentHistory modal)
 - [ ] Timeline view (story-time ordered, POV/thread lanes)
 

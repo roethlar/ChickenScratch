@@ -388,6 +388,125 @@
   background: color-mix(in srgb, var(--color-text) 8%, transparent);
 }
 
+/* ── Session target badge (editor corner) ────────────────────────────────── */
+.session-badge {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  color: var(--color-text);
+  z-index: 50;
+  min-width: 200px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  transition: opacity 350ms ease, transform 350ms ease;
+}
+.session-badge.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+}
+.session-badge.reached {
+  border-color: var(--color-accent, #d2691e);
+}
+.session-badge-text {
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-badge-bar {
+  height: 3px;
+  background: color-mix(in srgb, var(--color-text) 12%, transparent);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.session-badge-fill {
+  height: 100%;
+  background: var(--color-accent, #d2691e);
+  transition: width 240ms ease;
+}
+.session-badge.reached .session-badge-fill {
+  background: #7a9a7a;
+}
+
+/* ── Session target section in Stats ─────────────────────────────────────── */
+.stats-session {
+  padding: 12px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+.stats-session .stats-docs-title {
+  display: flex;
+  align-items: center;
+}
+.stats-session-edit {
+  margin-left: auto;
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--color-text) 25%, transparent);
+  color: var(--color-text);
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.stats-session-edit:hover {
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+.stats-session-display {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.stats-session-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+}
+.stats-session-row strong { color: var(--color-text); }
+.stats-session-meta { opacity: 0.6; font-weight: normal; }
+.stats-session-needed strong { color: var(--color-accent, #d2691e); }
+.stats-session-empty {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+  margin-top: 6px;
+}
+.stats-session-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.stats-session-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+.stats-session-form input {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
+  color: var(--color-text);
+  padding: 5px 8px;
+  border-radius: 3px;
+  font-size: 0.85rem;
+}
+.stats-session-save {
+  align-self: flex-end;
+  background: var(--color-accent, #d2691e);
+  color: white;
+  border: none;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
 /* ── Pull conflict dialog ────────────────────────────────────────────────── */
 .conflict-overlay {
   position: fixed;
