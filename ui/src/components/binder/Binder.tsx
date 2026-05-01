@@ -13,8 +13,8 @@ import {
   BookText,
   FlaskConical,
 } from "lucide-react";
-import { useState, useCallback, useRef, useEffect } from "react";
-import type { TreeNode } from "../../types";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import type { TreeNode, Project } from "../../types";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
 import { importFile } from "../../commands/io";
@@ -423,6 +423,23 @@ function BinderInner() {
             onContextMenu={handleContextMenu}
           />
         ))}
+
+        <EntitySection
+          kind="character"
+          label="Characters"
+          project={project}
+          activeDocId={activeDocId}
+          onSelect={selectDocument}
+          onCreated={setProject}
+        />
+        <EntitySection
+          kind="location"
+          label="Locations"
+          project={project}
+          activeDocId={activeDocId}
+          onSelect={selectDocument}
+          onCreated={setProject}
+        />
       </div>
 
       {contextMenu && (
@@ -496,6 +513,84 @@ function BinderInner() {
         </div>
       )}
     </nav>
+  );
+}
+
+function EntitySection({
+  kind,
+  label,
+  project,
+  activeDocId,
+  onSelect,
+  onCreated,
+}: {
+  kind: "character" | "location";
+  label: string;
+  project: Project;
+  activeDocId: string | null;
+  onSelect: (id: string) => void;
+  onCreated: (project: Project) => void;
+}) {
+  const prefix = kind === "character" ? "characters/" : "locations/";
+  const entities = useMemo(
+    () =>
+      Object.values(project.documents)
+        .filter((d) => d.path.startsWith(prefix))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [project.documents, prefix]
+  );
+  const [open, setOpen] = useState(true);
+
+  const handleNew = useCallback(async () => {
+    const name = await dialogPrompt(`New ${kind} name:`);
+    if (!name?.trim()) return;
+    try {
+      const updated = await docCmd.createEntity(project.path, name.trim(), kind);
+      onCreated(updated);
+    } catch (e) {
+      toastError(`Failed to create ${kind}: ${e}`);
+    }
+  }, [project, kind, onCreated]);
+
+  return (
+    <div className="binder-entity-section">
+      <div className="binder-entity-header">
+        <button
+          className="binder-entity-toggle"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
+          <span className={`binder-entity-chevron ${open ? "open" : ""}`}>▸</span>
+          {label}
+          <span className="binder-entity-count">{entities.length}</span>
+        </button>
+        <button
+          className="binder-action-btn binder-entity-add"
+          onClick={handleNew}
+          title={`New ${kind}`}
+        >
+          <Plus size={12} />
+        </button>
+      </div>
+      {open && entities.length > 0 && (
+        <div className="binder-entity-list">
+          {entities.map((doc) => (
+            <button
+              key={doc.id}
+              className={`binder-entity-item ${activeDocId === doc.id ? "active" : ""}`}
+              onClick={() => onSelect(doc.id)}
+            >
+              {doc.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {open && entities.length === 0 && (
+        <div className="binder-entity-empty">
+          {kind === "character" ? "No characters yet." : "No locations yet."}
+        </div>
+      )}
+    </div>
   );
 }
 

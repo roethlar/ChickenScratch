@@ -30,8 +30,9 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 use super::format::{
-    get_document_meta_path, get_manuscript_path, get_project_file_path, get_research_path,
-    get_settings_path, get_templates_path, validate_project_structure, DOCUMENT_EXTENSION,
+    get_characters_path, get_document_meta_path, get_locations_path, get_manuscript_path,
+    get_project_file_path, get_research_path, get_settings_path, get_templates_path,
+    validate_project_structure, DOCUMENT_EXTENSION,
 };
 use crate::models::{Document, Project, TreeNode};
 use crate::utils::error::ChiknError;
@@ -385,6 +386,17 @@ fn read_all_documents(project_path: &Path) -> Result<HashMap<String, Document>, 
         read_documents_from_folder(&research_path, project_path, &mut documents)?;
     }
 
+    // Read from characters/locations folders if present (novelist convention).
+    // Optional — projects without these folders are still valid.
+    let characters_path = get_characters_path(project_path);
+    if characters_path.exists() {
+        read_documents_from_folder(&characters_path, project_path, &mut documents)?;
+    }
+    let locations_path = get_locations_path(project_path);
+    if locations_path.exists() {
+        read_documents_from_folder(&locations_path, project_path, &mut documents)?;
+    }
+
     Ok(documents)
 }
 
@@ -703,6 +715,47 @@ hierarchy: []
         // Hierarchy should be empty — the dangling reference was pruned
         assert_eq!(count_hierarchy_docs(&project.hierarchy), 0);
         assert_eq!(project.documents.len(), 0);
+    }
+
+    #[test]
+    fn test_read_characters_and_locations_folders() {
+        // Novelist convention: docs under characters/ and locations/ should be
+        // picked up as regular Documents alongside manuscript/research.
+        let (_temp, project_path) = create_test_project();
+
+        // Add an entity in characters/
+        let chars_dir = project_path.join("characters");
+        fs::create_dir(&chars_dir).unwrap();
+        fs::write(
+            chars_dir.join("sarah-bennett.md"),
+            "# Sarah Bennett\n\nProtagonist notes.",
+        )
+        .unwrap();
+        fs::write(
+            chars_dir.join("sarah-bennett.meta"),
+            "id: char-sarah\ncreated: 2026-04-30T00:00:00Z\nmodified: 2026-04-30T00:00:00Z\n",
+        )
+        .unwrap();
+
+        // Add a location
+        let locs_dir = project_path.join("locations");
+        fs::create_dir(&locs_dir).unwrap();
+        fs::write(locs_dir.join("motel.md"), "# Motel Room 12").unwrap();
+        fs::write(
+            locs_dir.join("motel.meta"),
+            "id: loc-motel\ncreated: 2026-04-30T00:00:00Z\nmodified: 2026-04-30T00:00:00Z\n",
+        )
+        .unwrap();
+
+        let project = read_project(&project_path).expect("read project");
+        assert!(project.documents.contains_key("char-sarah"));
+        assert!(project.documents.contains_key("loc-motel"));
+        assert!(project.documents["char-sarah"]
+            .path
+            .starts_with("characters/"));
+        assert!(project.documents["loc-motel"]
+            .path
+            .starts_with("locations/"));
     }
 
     #[test]

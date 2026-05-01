@@ -86,6 +86,14 @@ export async function createFolder(
   });
 }
 
+export async function createEntity(
+  projectPath: string,
+  name: string,
+  kind: "character" | "location"
+): Promise<Project> {
+  return invoke("create_entity", { projectPath, name, kind });
+}
+
 export async function deleteNode(
   projectPath: string,
   nodeId: string

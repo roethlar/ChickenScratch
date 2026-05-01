@@ -143,8 +143,8 @@ Reframed: these are UI-layer plans now. The format ships generic extensibility; 
 
 **Tier 1 — Novel structure** ([plan](docs/plans/TIER1_novel_structure.md)):
 - [x] Scene-level metadata via convention keys in `Document.fields` (Tauri Inspector ships free-form inputs today)
-- [ ] Characters + locations as first-class entities — convention: `characters/` and `locations/` folders, novelist UIs that opt in
-- [ ] Upgrade scene inspector inputs to entity dropdowns once entities ship
+- [x] Characters + locations as first-class entities — `characters/` + `locations/` folders read by core, Tauri Binder shows entity sections, `create_entity` command
+- [x] Upgrade scene inspector inputs to entity datalists with inline `+ Create character` / `+ Create location` shortcuts
 - [ ] Plot threads (`threads.yaml` as a novelist-UI convention file, scene tagging, Threads tab, binder color-dots)
 - [ ] Cross-reference validation (dangling-ref warnings, non-fatal)
 

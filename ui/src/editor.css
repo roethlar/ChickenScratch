@@ -160,6 +160,85 @@
   padding: 0.5rem 0;
 }
 
+/* ── Entity sections (Characters / Locations) ───────────────────────────── */
+.binder-entity-section {
+  margin-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+  padding-top: 0.5rem;
+}
+.binder-entity-header {
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 4px;
+  gap: 4px;
+}
+.binder-entity-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 4px 8px;
+  text-align: left;
+}
+.binder-entity-toggle:hover { color: var(--color-text); }
+.binder-entity-chevron {
+  display: inline-block;
+  transition: transform 120ms ease;
+  font-size: 0.7rem;
+}
+.binder-entity-chevron.open { transform: rotate(90deg); }
+.binder-entity-count {
+  margin-left: auto;
+  font-size: 0.65rem;
+  opacity: 0.7;
+}
+.binder-entity-add { width: 22px; height: 22px; }
+.binder-entity-list { display: flex; flex-direction: column; }
+.binder-entity-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--color-text);
+  padding: 4px 12px 4px 28px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-radius: 0;
+}
+.binder-entity-item:hover { background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.binder-entity-item.active {
+  background: color-mix(in srgb, var(--color-accent, #d2691e) 25%, transparent);
+}
+.binder-entity-empty {
+  padding: 4px 28px 4px 28px;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+/* Inspector "+ Create" inline button */
+.inspector-create-entity {
+  margin-top: 4px;
+  background: none;
+  border: 1px dashed color-mix(in srgb, var(--color-accent, #d2691e) 60%, transparent);
+  color: var(--color-accent, #d2691e);
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.inspector-create-entity:hover {
+  background: color-mix(in srgb, var(--color-accent, #d2691e) 12%, transparent);
+}
+
 .binder-item {
   display: flex;
   align-items: center;

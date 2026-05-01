@@ -296,6 +296,61 @@ pub fn create_document(
     Ok(project)
 }
 
+/// Create a character or location entity. Entities are regular Documents
+/// living under `characters/` or `locations/` (novelist convention) — the
+/// format itself stays genre-agnostic.
+#[tauri::command]
+pub fn create_entity(
+    project_path: String,
+    name: String,
+    kind: String, // "character" or "location"
+) -> Result<Project, ChiknError> {
+    let folder = match kind.as_str() {
+        "character" => "characters",
+        "location" => "locations",
+        other => {
+            return Err(ChiknError::InvalidFormat(format!(
+                "Unknown entity kind: {}",
+                other
+            )))
+        }
+    };
+
+    let mut project = reader::read_project(Path::new(&project_path))?;
+
+    // Ensure the entity folder exists on disk
+    let folder_path = Path::new(&project_path).join(folder);
+    if !folder_path.exists() {
+        std::fs::create_dir_all(&folder_path)?;
+    }
+
+    let doc_id = uuid::Uuid::new_v4().to_string();
+    let base_path = format!("{}/", folder);
+    let s = slug::unique_slug(&name, &base_path, &project.documents);
+    let doc_path = format!("{}/{}.md", folder, s);
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Tag the entity via the generic fields map so any UI can detect it
+    let mut fields = std::collections::HashMap::new();
+    fields.insert("entity_kind".to_string(), serde_yaml::Value::String(kind));
+
+    let document = Document {
+        id: doc_id.clone(),
+        name: name.clone(),
+        path: doc_path,
+        content: String::new(),
+        parent_id: None,
+        created: now.clone(),
+        modified: now,
+        fields,
+        ..Default::default()
+    };
+
+    project.documents.insert(doc_id, document);
+    writer::write_project(&mut project)?;
+    Ok(project)
+}
+
 #[tauri::command]
 pub fn create_folder(
     project_path: String,

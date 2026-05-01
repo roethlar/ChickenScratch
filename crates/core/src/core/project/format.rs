@@ -40,6 +40,12 @@ pub const TEMPLATES_FOLDER: &str = "templates";
 /// Settings folder
 pub const SETTINGS_FOLDER: &str = "settings";
 
+/// Characters folder (novelist convention; optional, not in REQUIRED_FOLDERS)
+pub const CHARACTERS_FOLDER: &str = "characters";
+
+/// Locations folder (novelist convention; optional, not in REQUIRED_FOLDERS)
+pub const LOCATIONS_FOLDER: &str = "locations";
+
 /// Document content file extension
 pub const DOCUMENT_EXTENSION: &str = "md";
 
@@ -176,6 +182,16 @@ pub fn get_templates_path(project_path: &Path) -> PathBuf {
 /// PathBuf to settings/ folder
 pub fn get_settings_path(project_path: &Path) -> PathBuf {
     project_path.join(SETTINGS_FOLDER)
+}
+
+/// Gets the path to characters folder (optional novelist convention)
+pub fn get_characters_path(project_path: &Path) -> PathBuf {
+    project_path.join(CHARACTERS_FOLDER)
+}
+
+/// Gets the path to locations folder (optional novelist convention)
+pub fn get_locations_path(project_path: &Path) -> PathBuf {
+    project_path.join(LOCATIONS_FOLDER)
 }
 
 /// Gets the document content file path (.md)

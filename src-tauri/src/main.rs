@@ -32,6 +32,7 @@ fn main() {
             document::rename_node,
             document::link_documents,
             document::create_document,
+            document::create_entity,
             document::create_folder,
             document::delete_node,
             document::move_node,

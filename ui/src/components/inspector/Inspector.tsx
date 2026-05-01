@@ -1,6 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
+import { toastError } from "../shared/Toast";
+
+/** Map a doc path like "characters/sarah-bennett.md" → "sarah-bennett". */
+function entitySlug(path: string): string {
+  const base = path.split("/").pop() || "";
+  return base.replace(/\.md$/i, "");
+}
 
 const STATUS_PRESETS = ["Draft", "Revised", "Final", "To Do", "In Progress"];
 const LABEL_PRESETS = ["Scene", "Chapter", "Outline", "Notes", "Research"];
@@ -110,6 +117,40 @@ export function Inspector() {
   const [threads, setThreads] = useState("");
   const [charactersInScene, setCharactersInScene] = useState("");
   const [showScene, setShowScene] = useState(false);
+
+  /** Existing characters/locations, derived from project.documents by path prefix. */
+  const characters = useMemo(() => {
+    if (!project) return [] as { slug: string; name: string }[];
+    return Object.values(project.documents)
+      .filter((d) => d.path.startsWith("characters/"))
+      .map((d) => ({ slug: entitySlug(d.path), name: d.name }));
+  }, [project]);
+  const locations = useMemo(() => {
+    if (!project) return [] as { slug: string; name: string }[];
+    return Object.values(project.documents)
+      .filter((d) => d.path.startsWith("locations/"))
+      .map((d) => ({ slug: entitySlug(d.path), name: d.name }));
+  }, [project]);
+
+  const createNewEntity = useCallback(
+    async (kind: "character" | "location", name: string) => {
+      if (!project) return null;
+      try {
+        const updated = await docCmd.createEntity(project.path, name, kind);
+        setProject(updated);
+        const created = Object.values(updated.documents).find(
+          (d) =>
+            d.name === name &&
+            d.path.startsWith(kind === "character" ? "characters/" : "locations/")
+        );
+        return created ? entitySlug(created.path) : null;
+      } catch (e) {
+        toastError(`Failed to create ${kind}: ${e}`);
+        return null;
+      }
+    },
+    [project, setProject]
+  );
 
   // Load metadata when active doc changes (React's "adjust state on prop change" pattern)
   const [lastDocId, setLastDocId] = useState<string | undefined>(activeDoc?.id);
@@ -306,20 +347,58 @@ export function Inspector() {
                 <label>POV Character</label>
                 <input
                   type="text"
+                  list="entity-characters"
                   value={povCharacter}
                   onChange={(e) => setPovCharacter(e.target.value)}
                   placeholder="sarah-bennett"
                 />
+                <datalist id="entity-characters">
+                  {characters.map((c) => (
+                    <option key={c.slug} value={c.slug}>{c.name}</option>
+                  ))}
+                </datalist>
+                {povCharacter &&
+                  !characters.some((c) => c.slug === povCharacter) && (
+                    <button
+                      type="button"
+                      className="inspector-create-entity"
+                      onClick={async () => {
+                        const slug = await createNewEntity("character", povCharacter);
+                        if (slug) setPovCharacter(slug);
+                      }}
+                    >
+                      + Create character "{povCharacter}"
+                    </button>
+                  )}
               </div>
 
               <div className="inspector-field">
                 <label>Location</label>
                 <input
                   type="text"
+                  list="entity-locations"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
                   placeholder="motel-room-12"
                 />
+                <datalist id="entity-locations">
+                  {locations.map((l) => (
+                    <option key={l.slug} value={l.slug}>{l.name}</option>
+                  ))}
+                </datalist>
+                {location &&
+                  !locations.some((l) => l.slug === location) && (
+                    <button
+                      type="button"
+                      className="inspector-create-entity"
+                      onClick={async () => {
+                        const slug = await createNewEntity("location", location);
+                        if (slug) setLocation(slug);
+                      }}
+                    >
+                      + Create location "{location}"
+                    </button>
+                  )}
               </div>
 
               <div className="inspector-field">
@@ -361,6 +440,7 @@ export function Inspector() {
                 <label>Other characters</label>
                 <input
                   type="text"
+                  list="entity-characters"
                   value={charactersInScene}
                   onChange={(e) => setCharactersInScene(e.target.value)}
                   placeholder="marcus-rivera, kelly-chen"
