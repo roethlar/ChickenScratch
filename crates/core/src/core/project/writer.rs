@@ -27,7 +27,7 @@ use std::path::Path;
 
 use super::format::{
     get_document_meta_path, get_manuscript_path, get_project_file_path, get_research_path,
-    get_settings_path, get_templates_path,
+    get_settings_path, get_templates_path, get_threads_path,
 };
 use super::reader::{DocumentMetadata, ProjectMetadata};
 use crate::models::{Project, TreeNode};
@@ -70,6 +70,30 @@ pub fn write_project(project: &mut Project) -> Result<(), ChiknError> {
     // Write all documents
     write_all_documents(project)?;
 
+    // Write threads.yaml — only when there are threads to persist; never deletes.
+    write_threads_if_any(project)?;
+
+    Ok(())
+}
+
+/// Writes `threads.yaml` if the project has any threads. Empty thread vec is a
+/// no-op so projects that never used threads don't get an empty sidecar.
+fn write_threads_if_any(project: &Project) -> Result<(), ChiknError> {
+    if project.threads.is_empty() {
+        return Ok(());
+    }
+    #[derive(serde::Serialize)]
+    struct ThreadsFile<'a> {
+        threads: &'a [crate::models::Thread],
+    }
+    let payload = ThreadsFile {
+        threads: &project.threads,
+    };
+    let yaml = serde_yaml::to_string(&payload)?;
+    let path = get_threads_path(Path::new(&project.path));
+    let temp = path.with_extension("yaml.tmp");
+    fs::write(&temp, yaml)?;
+    fs::rename(&temp, &path)?;
     Ok(())
 }
 
@@ -129,6 +153,7 @@ pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
         created: now.clone(),
         modified: now,
         metadata: Default::default(),
+        threads: Vec::new(),
     };
 
     // Write .gitignore

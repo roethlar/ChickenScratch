@@ -145,8 +145,8 @@ Reframed: these are UI-layer plans now. The format ships generic extensibility; 
 - [x] Scene-level metadata via convention keys in `Document.fields` (Tauri Inspector ships free-form inputs today)
 - [x] Characters + locations as first-class entities — `characters/` + `locations/` folders read by core, Tauri Binder shows entity sections, `create_entity` command
 - [x] Upgrade scene inspector inputs to entity datalists with inline `+ Create character` / `+ Create location` shortcuts
-- [ ] Plot threads (`threads.yaml` as a novelist-UI convention file, scene tagging, Threads tab, binder color-dots)
-- [ ] Cross-reference validation (dangling-ref warnings, non-fatal)
+- [x] Plot threads — `threads.yaml` at project root, Thread struct in core, Tauri commands (list/create/update/delete), Threads tab in Revisions, multi-select chip widget in Inspector, binder colour dots
+- [x] Cross-reference validation (`validate_references` command, soft warning banner in Threads tab listing dangling pov/location/threads/characters_in_scene refs)
 
 **Tier 2 — Writer workflow** ([plan](docs/plans/TIER2_writer_workflow.md)):
 - [ ] Scrivenings mode (multi-doc continuous-edit with boundary markers)

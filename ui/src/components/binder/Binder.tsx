@@ -516,6 +516,31 @@ function BinderInner() {
   );
 }
 
+function ThreadDots({ docId }: { docId: string }) {
+  const project = useProjectStore((s) => s.project);
+  if (!project) return null;
+  const doc = project.documents[docId];
+  const ids = doc?.fields?.threads;
+  if (!Array.isArray(ids) || ids.length === 0) return null;
+  const threads = (project.threads ?? []).reduce((map, t) => map.set(t.id, t), new Map<string, { color?: string | null }>());
+  return (
+    <span className="binder-thread-dots">
+      {ids.slice(0, 4).map((id, i) => {
+        if (typeof id !== "string") return null;
+        const t = threads.get(id);
+        return (
+          <span
+            key={`${id}-${i}`}
+            className="binder-thread-dot"
+            style={{ backgroundColor: t?.color || "#888" }}
+            title={id}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
 function EntitySection({
   kind,
   label,
@@ -709,6 +734,7 @@ function TreeItem({
       >
         <FileText size={14} className={`binder-icon ${isMedia ? "media" : ""}`} />
         <span className="binder-label">{node.name}</span>
+        <ThreadDots docId={node.id} />
         <span
           className="binder-more"
           onClick={(e) => { e.stopPropagation(); onContextMenu(e, node.id, "Document"); }}

@@ -16,6 +16,7 @@ import { DraftCompare } from "./DraftCompare";
 import { useProjectStore } from "../../stores/projectStore";
 import { toastSuccess, toastError } from "../shared/Toast";
 import * as gitCmd from "../../commands/git";
+import * as threadCmd from "../../commands/threads";
 import type { Revision, DraftVersion, FileDiff, SyncStatus } from "../../commands/git";
 
 export function Revisions() {
@@ -24,7 +25,7 @@ export function Revisions() {
   const [drafts, setDrafts] = useState<DraftVersion[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [tab, setTab] = useState<"history" | "drafts">("history");
+  const [tab, setTab] = useState<"history" | "drafts" | "threads">("history");
   const [diffId, setDiffId] = useState<string | null>(null);
   const [diffFiles, setDiffFiles] = useState<FileDiff[]>([]);
   const [wordDiffData, setWordDiffData] = useState<[string, string][] | null>(null);
@@ -178,6 +179,12 @@ export function Revisions() {
         >
           <GitBranch size={14} /> Drafts
         </button>
+        <button
+          className={tab === "threads" ? "active" : ""}
+          onClick={() => setTab("threads")}
+        >
+          <GitBranch size={14} /> Threads
+        </button>
       </div>
 
       <div className="revisions-body">
@@ -297,6 +304,13 @@ export function Revisions() {
             )}
           </div>
         )}
+
+        {tab === "threads" && project && (
+          <ThreadsList
+            project={project}
+            onChange={(p) => useProjectStore.setState({ project: p })}
+          />
+        )}
       </div>
 
       <DraftCompare open={showCompare} onClose={() => setShowCompare(false)} />
@@ -352,5 +366,218 @@ function SyncControls({
         </button>
       </div>
     </div>
+  );
+}
+
+/** ── Threads list (Tier 1 #3) ─────────────────────────────────────────── */
+import type { Project, Document, Thread } from "../../types";
+import { useMemo, useRef } from "react";
+
+const DEFAULT_THREAD_COLORS = [
+  "#3b82f6", "#ef4444", "#f59e0b", "#10b981",
+  "#a855f7", "#06b6d4", "#ec4899", "#84cc16",
+];
+
+function ThreadsList({
+  project,
+  onChange,
+}: {
+  project: Project;
+  onChange: (project: Project) => void;
+}) {
+  const threads = project.threads ?? [];
+  const [dangling, setDangling] = useState<threadCmd.DanglingRef[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    threadCmd
+      .validateReferences(project.path)
+      .then((refs) => { if (!cancelled) setDangling(refs); })
+      .catch(() => { if (!cancelled) setDangling([]); });
+    return () => { cancelled = true; };
+  }, [project]);
+
+  const scenesByThread = useMemo(() => {
+    const map = new Map<string, Document[]>();
+    for (const doc of Object.values(project.documents)) {
+      const list = doc.fields?.threads;
+      if (!Array.isArray(list)) continue;
+      for (const id of list) {
+        if (typeof id !== "string") continue;
+        if (!map.has(id)) map.set(id, []);
+        map.get(id)!.push(doc);
+      }
+    }
+    return map;
+  }, [project.documents]);
+
+  const handleNew = useCallback(async () => {
+    const name = await dialogPrompt("New thread name:");
+    if (!name?.trim()) return;
+    try {
+      const color = DEFAULT_THREAD_COLORS[threads.length % DEFAULT_THREAD_COLORS.length];
+      const updated = await threadCmd.createThread(project.path, name.trim(), color);
+      onChange(updated);
+    } catch (e) {
+      toastError(`Failed to create thread: ${e}`);
+    }
+  }, [project, threads.length, onChange]);
+
+  const handleColorChange = useCallback(
+    async (id: string, color: string) => {
+      try {
+        const updated = await threadCmd.updateThread(project.path, id, { color });
+        onChange(updated);
+      } catch (e) {
+        toastError(`Failed: ${e}`);
+      }
+    },
+    [project, onChange]
+  );
+
+  const handleRename = useCallback(
+    async (thread: Thread) => {
+      const name = await dialogPrompt("Rename thread:", thread.name);
+      if (!name?.trim() || name.trim() === thread.name) return;
+      try {
+        const updated = await threadCmd.updateThread(project.path, thread.id, {
+          name: name.trim(),
+        });
+        onChange(updated);
+      } catch (e) {
+        toastError(`Failed: ${e}`);
+      }
+    },
+    [project, onChange]
+  );
+
+  const handleDelete = useCallback(
+    async (thread: Thread) => {
+      const refCount = scenesByThread.get(thread.id)?.length ?? 0;
+      const confirmMsg =
+        refCount > 0
+          ? `Delete "${thread.name}"? It's used by ${refCount} scene${refCount === 1 ? "" : "s"} — references will be stripped.`
+          : `Delete thread "${thread.name}"?`;
+      if (!(await dialogConfirm(confirmMsg))) return;
+      try {
+        const updated = await threadCmd.deleteThread(project.path, thread.id);
+        onChange(updated);
+      } catch (e) {
+        toastError(`Failed: ${e}`);
+      }
+    },
+    [project, scenesByThread, onChange]
+  );
+
+  const selectDocument = useProjectStore((s) => s.selectDocument);
+
+  return (
+    <div className="threads-panel">
+      {dangling.length > 0 && (
+        <div className="dangling-refs">
+          <strong>{dangling.length}</strong> dangling reference
+          {dangling.length === 1 ? "" : "s"} — scenes pointing at deleted
+          characters/locations/threads. Open the scene's inspector to clear them.
+          <details>
+            <summary>Show</summary>
+            <ul>
+              {dangling.slice(0, 12).map((d, i) => (
+                <li key={i}>
+                  <em>{d.doc_name}</em> — {d.field}: <code>{d.missing_id}</code>
+                </li>
+              ))}
+              {dangling.length > 12 && <li>…and {dangling.length - 12} more</li>}
+            </ul>
+          </details>
+        </div>
+      )}
+      {threads.length === 0 ? (
+        <div className="threads-empty">
+          No plot threads yet. Tag scenes via the Inspector "Threads" field, or
+          create one here to start tracking storylines.
+        </div>
+      ) : (
+        threads.map((t) => {
+          const scenes = scenesByThread.get(t.id) ?? [];
+          const wordCount = scenes.reduce(
+            (sum, doc) =>
+              sum +
+              (doc.content || "").replace(/<[^>]*>/g, " ").split(/\s+/).filter(Boolean).length,
+            0
+          );
+          return (
+            <details key={t.id} className="thread-card">
+              <summary className="thread-card-summary">
+                <ThreadColorSwatch
+                  color={t.color ?? "#888"}
+                  onChange={(c) => handleColorChange(t.id, c)}
+                />
+                <span className="thread-card-name" onClick={(e) => { e.preventDefault(); handleRename(t); }}>
+                  {t.name}
+                </span>
+                <span className="thread-card-stats">
+                  {scenes.length} scene{scenes.length === 1 ? "" : "s"} ·{" "}
+                  {wordCount.toLocaleString()}w
+                </span>
+                <button
+                  className="thread-card-delete"
+                  onClick={(e) => { e.preventDefault(); handleDelete(t); }}
+                  title="Delete thread"
+                >
+                  ×
+                </button>
+              </summary>
+              <div className="thread-card-scenes">
+                {scenes.length === 0 ? (
+                  <div className="thread-card-empty">No scenes tagged.</div>
+                ) : (
+                  scenes.map((doc) => (
+                    <button
+                      key={doc.id}
+                      className="thread-card-scene"
+                      onClick={() => selectDocument(doc.id)}
+                      title={doc.synopsis ?? ""}
+                    >
+                      {doc.name}
+                    </button>
+                  ))
+                )}
+              </div>
+            </details>
+          );
+        })
+      )}
+      <button className="drafts-new-btn" onClick={handleNew}>
+        <GitBranch size={14} /> New Thread
+      </button>
+    </div>
+  );
+}
+
+function ThreadColorSwatch({
+  color,
+  onChange,
+}: {
+  color: string;
+  onChange: (c: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <button
+        type="button"
+        className="thread-card-swatch"
+        style={{ backgroundColor: color }}
+        onClick={(e) => { e.preventDefault(); inputRef.current?.click(); }}
+        title="Change colour"
+      />
+      <input
+        ref={inputRef}
+        type="color"
+        value={color}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ position: "absolute", width: 0, height: 0, opacity: 0 }}
+      />
+    </>
   );
 }

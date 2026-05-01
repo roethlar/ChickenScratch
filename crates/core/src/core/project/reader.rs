@@ -32,9 +32,9 @@ use uuid::Uuid;
 use super::format::{
     get_characters_path, get_document_meta_path, get_locations_path, get_manuscript_path,
     get_project_file_path, get_research_path, get_settings_path, get_templates_path,
-    validate_project_structure, DOCUMENT_EXTENSION,
+    get_threads_path, validate_project_structure, DOCUMENT_EXTENSION,
 };
-use crate::models::{Document, Project, TreeNode};
+use crate::models::{Document, Project, Thread, TreeNode};
 use crate::utils::error::ChiknError;
 
 /// Project metadata structure as stored in project.yaml
@@ -180,6 +180,7 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
         created: metadata.created,
         modified: metadata.modified,
         metadata: metadata.metadata,
+        threads: read_threads(path).unwrap_or_default(),
     };
 
     // Reconcile hierarchy with actual files on disk
@@ -398,6 +399,25 @@ fn read_all_documents(project_path: &Path) -> Result<HashMap<String, Document>, 
     }
 
     Ok(documents)
+}
+
+/// Reads `threads.yaml` if present. Missing file → empty vec (no error).
+fn read_threads(project_path: &Path) -> Result<Vec<Thread>, ChiknError> {
+    let path = get_threads_path(project_path);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let body = fs::read_to_string(&path)?;
+    if body.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    #[derive(serde::Deserialize)]
+    struct ThreadsFile {
+        #[serde(default)]
+        threads: Vec<Thread>,
+    }
+    let parsed: ThreadsFile = serde_yaml::from_str(&body)?;
+    Ok(parsed.threads)
 }
 
 /// Reads all documents from a folder recursively
@@ -756,6 +776,42 @@ hierarchy: []
         assert!(project.documents["loc-motel"]
             .path
             .starts_with("locations/"));
+    }
+
+    #[test]
+    fn test_threads_round_trip_via_yaml() {
+        // Write threads through the writer, read them back through the reader.
+        let (_temp, project_path) = create_test_project();
+        let mut project = read_project(&project_path).expect("read");
+        project.threads = vec![
+            crate::models::Thread {
+                id: "main-plot".into(),
+                name: "Main Plot".into(),
+                color: Some("#3b82f6".into()),
+                description: Some("Sarah uncovers the truth.".into()),
+            },
+            crate::models::Thread {
+                id: "romance".into(),
+                name: "Sarah & Marcus".into(),
+                color: Some("#ef4444".into()),
+                description: None,
+            },
+        ];
+        super::super::writer::write_project(&mut project).expect("write");
+
+        let reread = read_project(&project_path).expect("re-read");
+        assert_eq!(reread.threads.len(), 2);
+        assert_eq!(reread.threads[0].id, "main-plot");
+        assert_eq!(reread.threads[0].color.as_deref(), Some("#3b82f6"));
+        assert_eq!(reread.threads[1].name, "Sarah & Marcus");
+        assert!(reread.threads[1].description.is_none());
+    }
+
+    #[test]
+    fn test_threads_missing_file_yields_empty() {
+        let (_temp, project_path) = create_test_project();
+        let project = read_project(&project_path).expect("read");
+        assert!(project.threads.is_empty());
     }
 
     #[test]

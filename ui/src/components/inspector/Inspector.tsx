@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
+import * as threadCmd from "../../commands/threads";
+import type { Thread } from "../../types";
 import { toastError } from "../shared/Toast";
 
 /** Map a doc path like "characters/sarah-bennett.md" → "sarah-bennett". */
@@ -88,6 +90,126 @@ function PresetSelect({
                 {p}
               </button>
             ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThreadChips({
+  value,
+  onChange,
+  available,
+  onCreate,
+}: {
+  /** Comma-separated thread ids (matches the existing `threads` state shape). */
+  value: string;
+  onChange: (csv: string) => void;
+  available: Thread[];
+  onCreate: (name: string) => Promise<string | null>;
+}) {
+  const ids = value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const idSet = new Set(ids);
+  const byId = new Map(available.map((t) => [t.id, t] as const));
+  const [picker, setPicker] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const remove = (id: string) => onChange(ids.filter((x) => x !== id).join(", "));
+  const add = (id: string) => {
+    if (idSet.has(id)) return;
+    onChange([...ids, id].join(", "));
+    setPicker("");
+  };
+
+  const candidates = available.filter(
+    (t) =>
+      !idSet.has(t.id) &&
+      (picker.trim().length === 0 ||
+        t.name.toLowerCase().includes(picker.toLowerCase()) ||
+        t.id.toLowerCase().includes(picker.toLowerCase()))
+  );
+  const trimmed = picker.trim();
+  const exactMatch = available.some(
+    (t) => t.id === trimmed || t.name.toLowerCase() === trimmed.toLowerCase()
+  );
+
+  return (
+    <div className="thread-chips" ref={ref}>
+      <div className="thread-chip-list">
+        {ids.map((id) => {
+          const t = byId.get(id);
+          return (
+            <span
+              key={id}
+              className="thread-chip"
+              style={t?.color ? { borderColor: t.color, color: t.color } : undefined}
+            >
+              {t?.name ?? id}
+              <button
+                type="button"
+                className="thread-chip-remove"
+                onClick={() => remove(id)}
+                title="Remove"
+              >
+                ×
+              </button>
+            </span>
+          );
+        })}
+        <input
+          type="text"
+          className="thread-chip-input"
+          value={picker}
+          onChange={(e) => setPicker(e.target.value)}
+          onFocus={() => setOpen(true)}
+          placeholder={ids.length === 0 ? "Add thread..." : "+"}
+        />
+      </div>
+      {open && (candidates.length > 0 || (trimmed.length > 0 && !exactMatch)) && (
+        <div className="thread-chip-dropdown">
+          {candidates.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className="thread-chip-option"
+              onClick={() => add(t.id)}
+            >
+              {t.color && (
+                <span
+                  className="thread-chip-swatch"
+                  style={{ backgroundColor: t.color }}
+                />
+              )}
+              <span>{t.name}</span>
+              <span className="thread-chip-id">{t.id}</span>
+            </button>
+          ))}
+          {trimmed.length > 0 && !exactMatch && (
+            <button
+              type="button"
+              className="thread-chip-option thread-chip-create"
+              onClick={async () => {
+                const id = await onCreate(trimmed);
+                if (id) add(id);
+              }}
+            >
+              + Create thread "{trimmed}"
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -425,15 +547,28 @@ export function Inspector() {
 
               <div className="inspector-field">
                 <label>Threads</label>
-                <input
-                  type="text"
+                <ThreadChips
                   value={threads}
-                  onChange={(e) => setThreads(e.target.value)}
-                  placeholder="main-plot, romance"
+                  onChange={setThreads}
+                  available={project?.threads ?? []}
+                  onCreate={async (name) => {
+                    if (!project) return null;
+                    try {
+                      const updated = await threadCmd.createThread(
+                        project.path,
+                        name
+                      );
+                      setProject(updated);
+                      const made = (updated.threads ?? []).find(
+                        (t) => t.name === name
+                      );
+                      return made?.id ?? null;
+                    } catch (e) {
+                      toastError(`Failed to create thread: ${e}`);
+                      return null;
+                    }
+                  }}
                 />
-                <span className="compile-order-hint">
-                  Comma-separated thread ids. Threads will have a dedicated editor in a later pass.
-                </span>
               </div>
 
               <div className="inspector-field">

@@ -1,0 +1,208 @@
+//! Plot-thread commands. Threads are a novelist UI convention persisted as
+//! `threads.yaml` at the project root. The format itself stays genre-agnostic;
+//! these commands let any frontend manage them with a typed API.
+
+use chickenscratch_core::core::project::{reader, writer};
+use chickenscratch_core::{ChiknError, Project, Thread};
+use serde::Serialize;
+use std::path::Path;
+
+/// A dangling reference from a scene to an entity that no longer exists.
+#[derive(Debug, Clone, Serialize)]
+pub struct DanglingRef {
+    pub doc_id: String,
+    pub doc_name: String,
+    /// "pov_character" | "location" | "characters_in_scene" | "threads"
+    pub field: String,
+    pub missing_id: String,
+}
+
+/// Walk every document's `fields` map and report references to entities or
+/// threads that don't exist. Non-fatal — UIs surface this as a soft warning.
+#[tauri::command]
+pub fn validate_references(project_path: String) -> Result<Vec<DanglingRef>, ChiknError> {
+    let project = reader::read_project(Path::new(&project_path))?;
+
+    // Build slug → name lookups. Slug = filename stem under the entity folder.
+    let character_slugs: std::collections::HashSet<String> = project
+        .documents
+        .values()
+        .filter(|d| d.path.starts_with("characters/"))
+        .filter_map(|d| {
+            std::path::Path::new(&d.path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(String::from)
+        })
+        .collect();
+    let location_slugs: std::collections::HashSet<String> = project
+        .documents
+        .values()
+        .filter(|d| d.path.starts_with("locations/"))
+        .filter_map(|d| {
+            std::path::Path::new(&d.path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(String::from)
+        })
+        .collect();
+    let thread_ids: std::collections::HashSet<String> =
+        project.threads.iter().map(|t| t.id.clone()).collect();
+
+    let mut dangling = Vec::new();
+    for doc in project.documents.values() {
+        let check = |field: &str, value: &serde_yaml::Value, set: &std::collections::HashSet<String>, out: &mut Vec<DanglingRef>| {
+            if let Some(s) = value.as_str() {
+                if !s.is_empty() && !set.contains(s) {
+                    out.push(DanglingRef {
+                        doc_id: doc.id.clone(),
+                        doc_name: doc.name.clone(),
+                        field: field.to_string(),
+                        missing_id: s.to_string(),
+                    });
+                }
+            } else if let Some(seq) = value.as_sequence() {
+                for v in seq {
+                    if let Some(s) = v.as_str() {
+                        if !s.is_empty() && !set.contains(s) {
+                            out.push(DanglingRef {
+                                doc_id: doc.id.clone(),
+                                doc_name: doc.name.clone(),
+                                field: field.to_string(),
+                                missing_id: s.to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        };
+
+        if let Some(v) = doc.fields.get("pov_character") {
+            check("pov_character", v, &character_slugs, &mut dangling);
+        }
+        if let Some(v) = doc.fields.get("characters_in_scene") {
+            check("characters_in_scene", v, &character_slugs, &mut dangling);
+        }
+        if let Some(v) = doc.fields.get("location") {
+            check("location", v, &location_slugs, &mut dangling);
+        }
+        if let Some(v) = doc.fields.get("threads") {
+            check("threads", v, &thread_ids, &mut dangling);
+        }
+    }
+    Ok(dangling)
+}
+
+#[tauri::command]
+pub fn list_threads(project_path: String) -> Result<Vec<Thread>, ChiknError> {
+    let project = reader::read_project(Path::new(&project_path))?;
+    Ok(project.threads)
+}
+
+#[tauri::command]
+pub fn create_thread(
+    project_path: String,
+    name: String,
+    color: Option<String>,
+    description: Option<String>,
+) -> Result<Project, ChiknError> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(ChiknError::InvalidFormat(
+            "Thread name cannot be empty".to_string(),
+        ));
+    }
+    let mut project = reader::read_project(Path::new(&project_path))?;
+
+    let id = unique_thread_id(trimmed, &project.threads);
+    project.threads.push(Thread {
+        id,
+        name: trimmed.to_string(),
+        color: color.and_then(non_empty),
+        description: description.and_then(non_empty),
+    });
+    writer::write_project(&mut project)?;
+    Ok(project)
+}
+
+#[tauri::command]
+pub fn update_thread(
+    project_path: String,
+    id: String,
+    name: Option<String>,
+    color: Option<String>,
+    description: Option<String>,
+) -> Result<Project, ChiknError> {
+    let mut project = reader::read_project(Path::new(&project_path))?;
+    let thread = project
+        .threads
+        .iter_mut()
+        .find(|t| t.id == id)
+        .ok_or_else(|| ChiknError::NotFound(format!("Thread not found: {}", id)))?;
+
+    if let Some(n) = name.and_then(non_empty) {
+        thread.name = n;
+    }
+    if let Some(c) = color {
+        thread.color = non_empty(c);
+    }
+    if let Some(d) = description {
+        thread.description = non_empty(d);
+    }
+    writer::write_project(&mut project)?;
+    Ok(project)
+}
+
+/// Delete a thread. Strips the ref from every scene's `fields.threads` list
+/// so we don't leave dangling references.
+#[tauri::command]
+pub fn delete_thread(project_path: String, id: String) -> Result<Project, ChiknError> {
+    let mut project = reader::read_project(Path::new(&project_path))?;
+    project.threads.retain(|t| t.id != id);
+
+    for doc in project.documents.values_mut() {
+        if let Some(value) = doc.fields.get_mut("threads") {
+            if let Some(seq) = value.as_sequence_mut() {
+                seq.retain(|v| v.as_str().map(|s| s != id).unwrap_or(true));
+            }
+        }
+    }
+    writer::write_project(&mut project)?;
+    Ok(project)
+}
+
+fn non_empty(s: String) -> Option<String> {
+    if s.trim().is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+fn unique_thread_id(name: &str, existing: &[Thread]) -> String {
+    let base: String = name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    let base = if base.is_empty() {
+        "thread".to_string()
+    } else {
+        base
+    };
+    if !existing.iter().any(|t| t.id == base) {
+        return base;
+    }
+    let mut n = 2;
+    loop {
+        let candidate = format!("{}-{}", base, n);
+        if !existing.iter().any(|t| t.id == candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
+}

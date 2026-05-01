@@ -28,6 +28,9 @@ pub const PROJECT_EXTENSION: &str = "chikn";
 /// Project metadata file name
 pub const PROJECT_FILE: &str = "project.yaml";
 
+/// Plot-threads file (optional novelist convention)
+pub const THREADS_FILE: &str = "threads.yaml";
+
 /// Manuscript folder (main writing)
 pub const MANUSCRIPT_FOLDER: &str = "manuscript";
 
@@ -192,6 +195,11 @@ pub fn get_characters_path(project_path: &Path) -> PathBuf {
 /// Gets the path to locations folder (optional novelist convention)
 pub fn get_locations_path(project_path: &Path) -> PathBuf {
     project_path.join(LOCATIONS_FOLDER)
+}
+
+/// Gets the path to threads.yaml (optional novelist convention)
+pub fn get_threads_path(project_path: &Path) -> PathBuf {
+    project_path.join(THREADS_FILE)
 }
 
 /// Gets the document content file path (.md)

@@ -44,6 +44,13 @@ export interface ProjectMeta {
   summary?: string | null;
 }
 
+export interface Thread {
+  id: string;
+  name: string;
+  color?: string | null;
+  description?: string | null;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -53,4 +60,5 @@ export interface Project {
   created: string;
   modified: string;
   metadata: ProjectMeta;
+  threads?: Thread[];
 }
