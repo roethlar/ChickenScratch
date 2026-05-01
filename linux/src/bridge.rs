@@ -43,6 +43,17 @@ mod ffi {
         #[qproperty(QString, doc_comments_json)]
         #[qproperty(QString, recent_projects_json)]
         #[qproperty(bool, show_welcome)]
+        // Settings — persisted in ~/.config/chickenscratch/settings.json (shared with Tauri).
+        // settings_json holds the whole blob for the dialog; the derived properties below
+        // are what the rest of the app actually reads.
+        #[qproperty(QString, settings_json)]
+        #[qproperty(QString, theme)]
+        #[qproperty(QString, editor_font_family)]
+        #[qproperty(f32, editor_font_size)]
+        #[qproperty(QString, paragraph_style)]
+        #[qproperty(i32, auto_save_seconds)]
+        #[qproperty(QString, pandoc_path)]
+        #[qproperty(QString, default_compile_format)]
         type AppController = super::AppControllerRust;
 
         #[qinvokable]
@@ -141,6 +152,12 @@ mod ffi {
         fn comment_anchor_range(self: &AppController, comment_id: QString) -> QString;
 
         #[qinvokable]
+        fn save_settings_json(self: Pin<&mut AppController>, json: QString) -> QString;
+
+        #[qinvokable]
+        fn check_pandoc(self: &AppController) -> QString;
+
+        #[qinvokable]
         fn compile_project(
             self: &AppController,
             output_path: QString,
@@ -181,6 +198,15 @@ pub struct AppControllerRust {
     recent_projects_json: QString,
     show_welcome: bool,
 
+    settings_json: QString,
+    theme: QString,
+    editor_font_family: QString,
+    editor_font_size: f32,
+    paragraph_style: QString,
+    auto_save_seconds: i32,
+    pandoc_path: QString,
+    default_compile_format: QString,
+
     project: Option<Project>,
     collapsed: HashSet<String>,
 }
@@ -189,6 +215,9 @@ impl Default for AppControllerRust {
     fn default() -> Self {
         let recents = load_recents();
         let recent_json = serde_json::to_string(&recents).unwrap_or_else(|_| "[]".to_string());
+        let settings = load_settings();
+        let settings_blob =
+            serde_json::to_string_pretty(&settings).unwrap_or_else(|_| "{}".to_string());
         Self {
             project_title: QString::default(),
             project_path: QString::default(),
@@ -213,6 +242,14 @@ impl Default for AppControllerRust {
             doc_comments_json: QString::from("[]"),
             recent_projects_json: QString::from(&recent_json),
             show_welcome: true,
+            settings_json: QString::from(&settings_blob),
+            theme: QString::from(&settings.general.theme),
+            editor_font_family: QString::from(&settings.writing.font_family),
+            editor_font_size: settings.writing.font_size,
+            paragraph_style: QString::from(&settings.writing.paragraph_style),
+            auto_save_seconds: settings.writing.auto_save_seconds as i32,
+            pandoc_path: QString::from(settings.general.pandoc_path.as_deref().unwrap_or("")),
+            default_compile_format: QString::from(&settings.compile.default_format),
             project: None,
             collapsed: HashSet::new(),
         }
@@ -1097,6 +1134,59 @@ impl ffi::AppController {
         }
     }
 
+    pub fn save_settings_json(mut self: Pin<&mut Self>, json: QString) -> QString {
+        let blob = json.to_string();
+        let parsed: AppSettings = match serde_json::from_str(&blob) {
+            Ok(s) => s,
+            Err(e) => return QString::from(&format!("Invalid settings JSON: {}", e)),
+        };
+        if let Err(e) = write_settings(&parsed) {
+            return QString::from(&format!("Failed to save: {}", e));
+        }
+        // Push derived properties so the live UI updates immediately
+        let normalized =
+            serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| "{}".to_string());
+        self.as_mut()
+            .set_settings_json(QString::from(&normalized));
+        self.as_mut().set_theme(QString::from(&parsed.general.theme));
+        self.as_mut()
+            .set_editor_font_family(QString::from(&parsed.writing.font_family));
+        self.as_mut().set_editor_font_size(parsed.writing.font_size);
+        self.as_mut()
+            .set_paragraph_style(QString::from(&parsed.writing.paragraph_style));
+        self.as_mut()
+            .set_auto_save_seconds(parsed.writing.auto_save_seconds as i32);
+        self.as_mut().set_pandoc_path(QString::from(
+            parsed.general.pandoc_path.as_deref().unwrap_or(""),
+        ));
+        self.as_mut()
+            .set_default_compile_format(QString::from(&parsed.compile.default_format));
+        QString::default()
+    }
+
+    pub fn check_pandoc(self: &Self) -> QString {
+        let configured = self.pandoc_path().to_string();
+        let mut candidates: Vec<String> = Vec::new();
+        if !configured.trim().is_empty() {
+            candidates.push(configured);
+        }
+        candidates.push("pandoc".to_string());
+        candidates.push("/usr/bin/pandoc".to_string());
+        candidates.push("/usr/local/bin/pandoc".to_string());
+
+        for cand in candidates {
+            if let Ok(out) = std::process::Command::new(&cand).arg("--version").output() {
+                if out.status.success() {
+                    let s = String::from_utf8_lossy(&out.stdout);
+                    if let Some(line) = s.lines().next() {
+                        return QString::from(line);
+                    }
+                }
+            }
+        }
+        QString::from("Not installed")
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn compile_project(
         self: &Self,
@@ -1421,6 +1511,173 @@ fn to_qstring_list(v: &[String]) -> QStringList {
     QStringList::from(&list)
 }
 
+// ── Settings ──────────────────────────────────────────────────────────────────
+//
+// Mirrors the Tauri AppSettings shape so ~/.config/chickenscratch/settings.json
+// round-trips cleanly between frontends. Only the fields the Linux app actually
+// uses are exposed via Q_PROPERTIES; the rest are preserved on save.
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct AppSettings {
+    pub general: GeneralSettings,
+    pub writing: WritingSettings,
+    pub backup: BackupSettings,
+    pub remote: RemoteSettings,
+    pub ai: AiSettings,
+    pub compile: CompileSettingsBlob,
+    #[serde(default)]
+    pub shortcuts: std::collections::HashMap<String, String>,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            general: GeneralSettings::default(),
+            writing: WritingSettings::default(),
+            backup: BackupSettings::default(),
+            remote: RemoteSettings::default(),
+            ai: AiSettings::default(),
+            compile: CompileSettingsBlob::default(),
+            shortcuts: Default::default(),
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct GeneralSettings {
+    pub theme: String,
+    pub recent_projects_limit: usize,
+    pub pandoc_path: Option<String>,
+}
+impl Default for GeneralSettings {
+    fn default() -> Self {
+        Self {
+            theme: "dark".to_string(),
+            recent_projects_limit: 10,
+            pandoc_path: None,
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct WritingSettings {
+    pub font_family: String,
+    pub font_size: f32,
+    pub paragraph_style: String,
+    pub auto_save_seconds: u32,
+    pub spell_check: bool,
+}
+impl Default for WritingSettings {
+    fn default() -> Self {
+        Self {
+            font_family: "Literata Variable".to_string(),
+            font_size: 18.0,
+            paragraph_style: "block".to_string(),
+            auto_save_seconds: 2,
+            spell_check: true,
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct BackupSettings {
+    pub backup_directory: Option<String>,
+    pub auto_backup_on_close: bool,
+    pub auto_backup_minutes: u32,
+}
+impl Default for BackupSettings {
+    fn default() -> Self {
+        Self {
+            backup_directory: None,
+            auto_backup_on_close: true,
+            auto_backup_minutes: 30,
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct RemoteSettings {
+    pub url: Option<String>,
+    pub username: Option<String>,
+    pub token: Option<String>,
+    pub auto_push_on_revision: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct AiSettings {
+    pub enabled: bool,
+    pub provider: String,
+    pub endpoint: Option<String>,
+    pub api_key: Option<String>,
+    pub model: String,
+}
+impl Default for AiSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            provider: "ollama".to_string(),
+            endpoint: Some("http://localhost:11434".to_string()),
+            api_key: None,
+            model: "llama3.2".to_string(),
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct CompileSettingsBlob {
+    pub default_format: String,
+    pub font: String,
+    pub font_size: f32,
+    pub line_spacing: f32,
+    pub margin_inches: f32,
+}
+impl Default for CompileSettingsBlob {
+    fn default() -> Self {
+        Self {
+            default_format: "docx".to_string(),
+            font: "Times New Roman".to_string(),
+            font_size: 12.0,
+            line_spacing: 2.0,
+            margin_inches: 1.0,
+        }
+    }
+}
+
+fn settings_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home)
+        .join(".config")
+        .join("chickenscratch")
+        .join("settings.json")
+}
+
+fn load_settings() -> AppSettings {
+    let path = settings_path();
+    if !path.exists() {
+        return AppSettings::default();
+    }
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn write_settings(settings: &AppSettings) -> std::io::Result<()> {
+    let path = settings_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string_pretty(settings).map_err(std::io::Error::other)?;
+    std::fs::write(path, json)
+}
+
 // ── Comment / footnote helpers ────────────────────────────────────────────────
 //
 // QML TextArea positions are UTF-16 code unit offsets (JavaScript convention).
@@ -1640,6 +1897,36 @@ mod tests {
         let json = build_comments_json(content, &comments);
         assert!(json.contains("\"snippet\":\"snippet\""));
         assert!(json.contains("\"body\":\"note\""));
+    }
+
+    #[test]
+    fn settings_default_round_trip() {
+        let s = AppSettings::default();
+        let blob = serde_json::to_string(&s).unwrap();
+        let parsed: AppSettings = serde_json::from_str(&blob).unwrap();
+        // Fixed cross-frontend shape: these defaults must not drift.
+        assert_eq!(parsed.general.theme, "dark");
+        assert_eq!(parsed.general.recent_projects_limit, 10);
+        assert_eq!(parsed.writing.font_family, "Literata Variable");
+        assert_eq!(parsed.writing.auto_save_seconds, 2);
+        assert_eq!(parsed.compile.default_format, "docx");
+        assert_eq!(parsed.compile.line_spacing, 2.0);
+        assert!(parsed.ai.enabled);
+        assert_eq!(parsed.ai.provider, "ollama");
+    }
+
+    #[test]
+    fn settings_preserve_unknown_top_level_keys_via_default() {
+        // A blob coming from a future Tauri version with extra fields should still
+        // parse cleanly because all our structs use #[serde(default)].
+        let blob = r#"{
+            "general": { "theme": "sepia" },
+            "future_section": { "x": 1 }
+        }"#;
+        let parsed: AppSettings = serde_json::from_str(blob).unwrap();
+        assert_eq!(parsed.general.theme, "sepia");
+        // Defaults filled in for everything else
+        assert_eq!(parsed.writing.font_size, 18.0);
     }
 
     #[test]

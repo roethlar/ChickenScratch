@@ -43,6 +43,13 @@ Dialog {
     }
 
     onOpened: {
+        // Pick up default format from settings if available
+        var def = controller.default_compile_format
+        if (def && def.length > 0) {
+            for (var i = 0; i < formats.length; i++) {
+                if (formats[i].ext === def) { formatIndex = i; break }
+            }
+        }
         outputPath = defaultOutputPath()
         statusText = ""
         busy = false

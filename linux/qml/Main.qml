@@ -16,11 +16,15 @@ ApplicationWindow {
            ? "Chicken Scratch — " + controller.project_title
            : "Chicken Scratch"
 
-    Material.theme: Material.Dark
+    Material.theme: controller.theme === "light" ? Material.Light : Material.Dark
     Material.accent: "#d2691e"
-    Material.primary: "#2a2a2a"
-    Material.background: "#1a1a1a"
-    Material.foreground: "#e8e8e8"
+    Material.primary: controller.theme === "sepia" ? "#3a2e1f" : "#2a2a2a"
+    Material.background: controller.theme === "light"
+                         ? "#f5f1e8"
+                         : controller.theme === "sepia" ? "#1f1a14" : "#1a1a1a"
+    Material.foreground: controller.theme === "light"
+                         ? "#1a1a1a"
+                         : controller.theme === "sepia" ? "#e8d8b8" : "#e8e8e8"
 
     property bool showRevisions: false
     property var statsData: ({})
@@ -89,6 +93,12 @@ ApplicationWindow {
         onTriggered: compileDialog.open()
     }
     Action {
+        id: settingsAction
+        text: "Settings…"
+        shortcut: "Ctrl+,"
+        onTriggered: settingsDialog.open()
+    }
+    Action {
         id: quitAction
         text: "Quit"
         shortcut: "Ctrl+Q"
@@ -138,6 +148,8 @@ ApplicationWindow {
             MenuSeparator {}
             MenuItem { action: statsAction }
             MenuItem { action: compileAction }
+            MenuSeparator {}
+            MenuItem { action: settingsAction }
             MenuSeparator {}
             MenuItem { action: quitAction }
         }
@@ -427,6 +439,14 @@ ApplicationWindow {
 
     CompileDialog {
         id: compileDialog
+        controller: controller
+        anchors.centerIn: parent
+    }
+
+    // ── Settings dialog ──────────────────────────────────────────────────────
+
+    SettingsDialog {
+        id: settingsDialog
         controller: controller
         anchors.centerIn: parent
     }

@@ -15,6 +15,19 @@ Rectangle {
         textArea.forceActiveFocus()
     }
 
+    Timer {
+        id: autoSaveTimer
+        interval: Math.max(500, (controller.auto_save_seconds || 0) * 1000)
+        repeat: false
+        onTriggered: {
+            if (controller.auto_save_seconds > 0
+                && controller.dirty
+                && controller.active_doc_id.length > 0) {
+                controller.save()
+            }
+        }
+    }
+
     Shortcut {
         sequence: "Ctrl+F"
         onActivated: findBar.open(false)
@@ -183,8 +196,10 @@ Rectangle {
                 text: controller.active_doc_content
                 wrapMode: TextEdit.Wrap
                 selectByMouse: true
-                font.family: "Literata, Georgia, serif"
-                font.pixelSize: 17
+                font.family: controller.editor_font_family.length > 0
+                             ? controller.editor_font_family + ", Literata, Georgia, serif"
+                             : "Literata, Georgia, serif"
+                font.pixelSize: controller.editor_font_size > 0 ? controller.editor_font_size : 17
                 color: "#e8e8e8"
                 background: null
                 leftPadding: 80
@@ -198,6 +213,9 @@ Rectangle {
                 onTextChanged: {
                     if (!readOnly && text !== controller.active_doc_content) {
                         controller.update_content(text)
+                        if (controller.auto_save_seconds > 0) {
+                            autoSaveTimer.restart()
+                        }
                     }
                 }
 

@@ -14,6 +14,7 @@ fn main() {
                 "qml/Editor.qml",
                 "qml/FindReplace.qml",
                 "qml/Inspector.qml",
+                "qml/SettingsDialog.qml",
                 "qml/Welcome.qml",
                 "qml/RevisionsPanel.qml",
             ],
