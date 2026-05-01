@@ -1,3 +1,4 @@
+use chickenscratch_core::core::compile::{self, CompileOptions};
 use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::models::{Comment, Document, Project, TreeNode};
@@ -138,6 +139,20 @@ mod ffi {
 
         #[qinvokable]
         fn comment_anchor_range(self: &AppController, comment_id: QString) -> QString;
+
+        #[qinvokable]
+        fn compile_project(
+            self: &AppController,
+            output_path: QString,
+            format: QString,
+            manuscript_format: bool,
+            font: QString,
+            font_size: f32,
+            line_spacing: f32,
+            margin_inches: f32,
+            section_separator: QString,
+            include_title_page: bool,
+        ) -> QString;
     }
 }
 
@@ -1079,6 +1094,83 @@ impl ffi::AppController {
         match find_comment_inner(&content, &cid) {
             Some((start, end)) => QString::from(&format!("{},{}", start, end)),
             None => QString::default(),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn compile_project(
+        self: &Self,
+        output_path: QString,
+        format: QString,
+        manuscript_format: bool,
+        font: QString,
+        font_size: f32,
+        line_spacing: f32,
+        margin_inches: f32,
+        section_separator: QString,
+        include_title_page: bool,
+    ) -> QString {
+        let proj_path = self.project_path().to_string();
+        if proj_path.is_empty() {
+            return QString::from("No project loaded");
+        }
+        let out_str = output_path.to_string();
+        let out_trimmed = out_str.trim();
+        if out_trimmed.is_empty() {
+            return QString::from("Output path required");
+        }
+        let format_str = format.to_string();
+        let format_trimmed = format_str.trim();
+        if format_trimmed.is_empty() {
+            return QString::from("Format required");
+        }
+
+        let font_string = font.to_string();
+        let separator_string = section_separator.to_string();
+        let opts = CompileOptions {
+            font: non_empty(font_string),
+            font_size: if font_size > 0.0 { Some(font_size) } else { None },
+            line_spacing: if line_spacing > 0.0 {
+                Some(line_spacing)
+            } else {
+                None
+            },
+            margin_inches: if margin_inches > 0.0 {
+                Some(margin_inches)
+            } else {
+                None
+            },
+            section_separator: non_empty(separator_string),
+            include_title_page,
+            manuscript_format,
+        };
+
+        let project_pb = PathBuf::from(&proj_path);
+        let output_pb = PathBuf::from(out_trimmed);
+
+        // Pull title/author from the loaded project so we don't reread from disk
+        let pinned = self.rust();
+        let (title, author) = pinned
+            .project
+            .as_ref()
+            .map(|p| {
+                (
+                    p.metadata.title.clone().or(Some(p.name.clone())),
+                    p.metadata.author.clone(),
+                )
+            })
+            .unwrap_or((None, None));
+
+        match compile::compile(
+            &project_pb,
+            &output_pb,
+            format_trimmed,
+            title.as_deref(),
+            author.as_deref(),
+            Some(opts),
+        ) {
+            Ok(()) => QString::default(),
+            Err(e) => QString::from(&format!("{}", e)),
         }
     }
 

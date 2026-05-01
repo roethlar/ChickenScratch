@@ -82,6 +82,13 @@ ApplicationWindow {
         }
     }
     Action {
+        id: compileAction
+        text: "Compile…"
+        shortcut: "Ctrl+Shift+E"
+        enabled: !controller.show_welcome
+        onTriggered: compileDialog.open()
+    }
+    Action {
         id: quitAction
         text: "Quit"
         shortcut: "Ctrl+Q"
@@ -130,6 +137,7 @@ ApplicationWindow {
             MenuItem { action: saveRevisionAction }
             MenuSeparator {}
             MenuItem { action: statsAction }
+            MenuItem { action: compileAction }
             MenuSeparator {}
             MenuItem { action: quitAction }
         }
@@ -413,6 +421,14 @@ ApplicationWindow {
                 }
             }
         }
+    }
+
+    // ── Compile dialog ───────────────────────────────────────────────────────
+
+    CompileDialog {
+        id: compileDialog
+        controller: controller
+        anchors.centerIn: parent
     }
 
     // ── Error banner ─────────────────────────────────────────────────────────

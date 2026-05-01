@@ -10,6 +10,7 @@ fn main() {
             qml_files: &[
                 "qml/Main.qml",
                 "qml/Binder.qml",
+                "qml/CompileDialog.qml",
                 "qml/Editor.qml",
                 "qml/FindReplace.qml",
                 "qml/Inspector.qml",
