@@ -22,6 +22,7 @@ pub struct Revision {
     pub message: String,
     pub timestamp: String,
     pub short_id: String,
+    pub author: String,
 }
 
 /// A named draft version (branch)
@@ -126,6 +127,121 @@ pub fn list_revisions(path: &Path) -> Result<Vec<Revision>, ChiknError> {
     }
 
     Ok(revisions)
+}
+
+/// List revisions that touched a single document (paths relative to project root).
+/// `git log -- <doc_path>` semantics: a commit is included iff that path's
+/// blob differs from at least one parent.
+pub fn document_history(
+    project_path: &Path,
+    doc_path: &str,
+) -> Result<Vec<Revision>, ChiknError> {
+    let repo = Repository::open(project_path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let head_oid = match head.target() {
+        Some(o) => o,
+        None => return Ok(Vec::new()),
+    };
+
+    let mut revwalk = repo
+        .revwalk()
+        .map_err(|e| ChiknError::Unknown(format!("Revwalk: {}", e)))?;
+    revwalk
+        .push(head_oid)
+        .map_err(|e| ChiknError::Unknown(format!("Push head: {}", e)))?;
+    let target_path = std::path::Path::new(doc_path);
+
+    let mut revisions = Vec::new();
+    for oid_res in revwalk {
+        let oid = oid_res.map_err(|e| ChiknError::Unknown(format!("Walk: {}", e)))?;
+        let commit = match repo.find_commit(oid) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let this_blob = commit
+            .tree()
+            .ok()
+            .and_then(|t| t.get_path(target_path).ok())
+            .map(|e| e.id());
+
+        // Compare against parents — include if differs from any (or root commit with the file present).
+        let parent_count = commit.parent_count();
+        let differs = if parent_count == 0 {
+            this_blob.is_some()
+        } else {
+            (0..parent_count).any(|i| {
+                let parent_blob = commit
+                    .parent(i)
+                    .ok()
+                    .and_then(|p| p.tree().ok())
+                    .and_then(|t| t.get_path(target_path).ok())
+                    .map(|e| e.id());
+                this_blob != parent_blob
+            })
+        };
+        if differs {
+            revisions.push(oid_to_revision(&repo, oid));
+        }
+    }
+    Ok(revisions)
+}
+
+/// Restore a single document from a past commit. Writes that file's blob
+/// content to disk, then creates a new commit recording the restore.
+pub fn restore_document(
+    project_path: &Path,
+    doc_path: &str,
+    commit_id: &str,
+) -> Result<Revision, ChiknError> {
+    let repo = Repository::open(project_path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    let oid = Oid::from_str(commit_id)
+        .map_err(|e| ChiknError::Unknown(format!("Invalid commit id: {}", e)))?;
+    let commit = repo
+        .find_commit(oid)
+        .map_err(|e| ChiknError::Unknown(format!("Commit not found: {}", e)))?;
+    let tree = commit
+        .tree()
+        .map_err(|e| ChiknError::Unknown(format!("Tree: {}", e)))?;
+    let entry = tree
+        .get_path(std::path::Path::new(doc_path))
+        .map_err(|e| {
+            ChiknError::Unknown(format!(
+                "File '{}' not in commit {}: {}",
+                doc_path,
+                &commit_id[..8.min(commit_id.len())],
+                e
+            ))
+        })?;
+    let blob = repo
+        .find_blob(entry.id())
+        .map_err(|e| ChiknError::Unknown(format!("Blob: {}", e)))?;
+
+    // Also try to restore the .meta sidecar from the same commit if present.
+    let meta_path = doc_path.strip_suffix(".md").map(|s| format!("{}.meta", s));
+
+    let abs_target = project_path.join(doc_path);
+    if let Some(parent) = abs_target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&abs_target, blob.content())?;
+
+    if let Some(meta_rel) = meta_path {
+        if let Ok(meta_entry) = tree.get_path(std::path::Path::new(&meta_rel)) {
+            if let Ok(meta_blob) = repo.find_blob(meta_entry.id()) {
+                let abs_meta = project_path.join(&meta_rel);
+                let _ = std::fs::write(&abs_meta, meta_blob.content());
+            }
+        }
+    }
+
+    let short = &commit_id[..8.min(commit_id.len())];
+    let msg = format!("Restore {} to {}", doc_path, short);
+    save_revision(project_path, &msg)
 }
 
 /// Restore a previous revision by creating a new commit with that state.
@@ -939,10 +1055,16 @@ fn oid_to_revision(repo: &Repository, oid: Oid) -> Revision {
         })
         .unwrap_or_default();
 
+    let author = commit
+        .as_ref()
+        .and_then(|c| c.author().name().map(|n| n.to_string()))
+        .unwrap_or_default();
+
     Revision {
         id: oid.to_string(),
         short_id: oid.to_string()[..8].to_string(),
         message,
         timestamp,
+        author,
     }
 }

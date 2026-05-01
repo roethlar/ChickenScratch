@@ -12,6 +12,7 @@ import {
   FileDown,
   BookText,
   FlaskConical,
+  History,
 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { TreeNode, Project } from "../../types";
@@ -22,6 +23,7 @@ import { dialogPrompt, dialogConfirm } from "../shared/Dialog";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { listTemplates, createFromTemplate, type Template } from "../../commands/templates";
+import { DocumentHistory } from "../revisions/DocumentHistory";
 import { DragProvider, useDrag } from "./DragContext";
 
 /** Find the index of a node within its parent's children list */
@@ -313,6 +315,7 @@ function BinderInner() {
 
   // State for "Move to..." folder picker
   const [movingNodeId, setMovingNodeId] = useState<string | null>(null);
+  const [historyDocId, setHistoryDocId] = useState<string | null>(null);
 
   /** Collect all folders in the hierarchy for the Move To picker */
   const allFolders = useCallback((): { id: string; name: string; depth: number }[] => {
@@ -481,9 +484,20 @@ function BinderInner() {
             }
             closeMenu();
           }}
+          onFileHistory={(nodeId: string) => {
+            setHistoryDocId(nodeId);
+            closeMenu();
+          }}
           onClose={closeMenu}
         />
       )}
+
+      <DocumentHistory
+        open={historyDocId !== null}
+        docId={historyDocId}
+        onClose={() => setHistoryDocId(null)}
+      />
+
 
       {movingNodeId && (
         <div className="dialog-overlay" onClick={() => setMovingNodeId(null)}>
@@ -814,6 +828,7 @@ function ContextMenu({
   onNewFromTemplate,
   onMoveTo,
   onEmptyTrash,
+  onFileHistory,
   onClose,
 }: {
   x: number;
@@ -832,6 +847,7 @@ function ContextMenu({
   onNewFromTemplate: (templateId: string, parentId?: string) => void;
   onMoveTo: (nodeId: string) => void;
   onEmptyTrash: () => void;
+  onFileHistory?: (nodeId: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -914,6 +930,11 @@ function ContextMenu({
           <button onClick={() => onMoveTo(nodeId)}>
             <Folder size={14} /> Move to...
           </button>
+          {nodeType === "Document" && onFileHistory && (
+            <button onClick={() => onFileHistory(nodeId)}>
+              <History size={14} /> File History…
+            </button>
+          )}
           <div className="context-menu-divider" />
           <button className="danger" onClick={() => onDelete(nodeId)}>
             <Trash2 size={14} /> Delete

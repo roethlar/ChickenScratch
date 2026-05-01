@@ -84,6 +84,23 @@ pub fn sync_status(project_path: String) -> Result<git::SyncStatus, ChiknError> 
     git::sync_status(Path::new(&project_path))
 }
 
+#[tauri::command]
+pub fn document_history(
+    project_path: String,
+    doc_path: String,
+) -> Result<Vec<git::Revision>, ChiknError> {
+    git::document_history(Path::new(&project_path), &doc_path)
+}
+
+#[tauri::command]
+pub fn restore_document(
+    project_path: String,
+    doc_path: String,
+    commit_id: String,
+) -> Result<git::Revision, ChiknError> {
+    git::restore_document(Path::new(&project_path), &doc_path, &commit_id)
+}
+
 /// Pull (fetch + merge). Returns one of: up_to_date, fast_forward, merged,
 /// conflicts (with file list). Conflicts leave the working tree with merge
 /// markers; call `sync_abort_pull` to revert or `sync_pull_force` to discard

@@ -1,0 +1,102 @@
+import { useState, useEffect, useCallback } from "react";
+import * as gitCmd from "../../commands/git";
+import type { Revision } from "../../commands/git";
+import { useProjectStore } from "../../stores/projectStore";
+import { dialogConfirm } from "../shared/Dialog";
+import { toastSuccess, toastError } from "../shared/Toast";
+import { X, RotateCcw } from "lucide-react";
+
+interface Props {
+  open: boolean;
+  docId: string | null;
+  onClose: () => void;
+}
+
+export function DocumentHistory({ open, docId, onClose }: Props) {
+  const project = useProjectStore((s) => s.project);
+  const setProject = useProjectStore.setState;
+  const doc = docId && project ? project.documents[docId] : null;
+  const [revisions, setRevisions] = useState<Revision[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open || !project || !doc) return;
+    let cancelled = false;
+    setRevisions([]);
+    gitCmd
+      .documentHistory(project.path, doc.path)
+      .then((r) => { if (!cancelled) setRevisions(r); })
+      .catch(() => { if (!cancelled) setRevisions([]); });
+    return () => { cancelled = true; };
+  }, [open, project, doc]);
+
+  const handleRestore = useCallback(
+    async (rev: Revision) => {
+      if (!project || !doc) return;
+      const short = rev.id.slice(0, 8);
+      if (!(await dialogConfirm(
+        `Restore "${doc.name}" to its state at ${short}? A new revision will record the restore.`
+      ))) return;
+      setBusy(true);
+      try {
+        await gitCmd.restoreDocument(project.path, doc.path, rev.id);
+        // Reload the project so the editor picks up the restored content
+        const Project = await import("../../commands/project");
+        const reloaded = await Project.loadProject(project.path);
+        setProject({ project: reloaded });
+        // Re-select the restored doc to refresh the editor buffer
+        useProjectStore.getState().selectDocument(doc.id);
+        toastSuccess("Document restored.");
+        onClose();
+      } catch (e) {
+        toastError(`Restore failed: ${e}`);
+      }
+      setBusy(false);
+    },
+    [project, doc, setProject, onClose]
+  );
+
+  if (!open || !doc) return null;
+
+  return (
+    <div className="doc-history-overlay" onClick={onClose}>
+      <div className="doc-history-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="doc-history-header">
+          <span className="doc-history-title">File History — {doc.name}</span>
+          <button className="doc-history-close" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
+        {revisions.length === 0 ? (
+          <div className="doc-history-empty">
+            No commits touch this file yet. Save a revision after editing to
+            create one.
+          </div>
+        ) : (
+          <div className="doc-history-list">
+            {revisions.map((rev) => (
+              <div key={rev.id} className="doc-history-item">
+                <div className="doc-history-info">
+                  <div className="doc-history-msg">{rev.message}</div>
+                  <div className="doc-history-meta">
+                    <code>{rev.id.slice(0, 8)}</code>
+                    <span>{new Date(rev.timestamp).toLocaleString()}</span>
+                    <span>{rev.author}</span>
+                  </div>
+                </div>
+                <button
+                  className="doc-history-restore"
+                  disabled={busy}
+                  onClick={() => handleRestore(rev)}
+                  title="Restore this version"
+                >
+                  <RotateCcw size={12} /> Restore
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

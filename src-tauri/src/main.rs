@@ -55,6 +55,8 @@ fn main() {
             git::sync_pull,
             git::sync_abort_pull,
             git::sync_pull_force,
+            git::document_history,
+            git::restore_document,
             git::has_changes,
             git::backup_on_close,
             io::compile_project,

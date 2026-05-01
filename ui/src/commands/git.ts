@@ -5,6 +5,7 @@ export interface Revision {
   message: string;
   timestamp: string;
   short_id: string;
+  author: string;
 }
 
 export interface DraftVersion {
@@ -146,4 +147,19 @@ export async function syncAbortPull(projectPath: string): Promise<void> {
 
 export async function syncPullForce(projectPath: string): Promise<void> {
   return invoke("sync_pull_force", { projectPath });
+}
+
+export async function documentHistory(
+  projectPath: string,
+  docPath: string
+): Promise<Revision[]> {
+  return invoke("document_history", { projectPath, docPath });
+}
+
+export async function restoreDocument(
+  projectPath: string,
+  docPath: string,
+  commitId: string
+): Promise<Revision> {
+  return invoke("restore_document", { projectPath, docPath, commitId });
 }
