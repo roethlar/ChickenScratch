@@ -55,7 +55,22 @@ export function Editor() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const docIdRef = useRef<string | null>(null);
   const flowIdsRef = useRef<string | null>(null);
+  // Snapshot of the FlowDocs we built the editor buffer from. Captured at
+  // load time and read by flushPendingSave; reading from the store at save
+  // time would race with `exitFlow` / `selectDocument`, which clear
+  // `flowDocs` *before* the editor's effect runs the flush.
+  const flowDocsRef = useRef<{ docId: string; name: string; path: string }[] | null>(null);
   const [dirty, setDirty] = useState(false);
+  // Mirror of the dirty state for synchronous reads. flushPendingSave needs
+  // to no-op when nothing has changed (otherwise idle calls from periodic
+  // backup / auto-commit re-stamp .meta files and create timestamp-only
+  // revisions). React state isn't readable synchronously inside the
+  // useCallback closure.
+  const dirtyRef = useRef(false);
+  const setDirtyTracked = useCallback((v: boolean) => {
+    dirtyRef.current = v;
+    setDirty(v);
+  }, []);
   const [findOpen, setFindOpen] = useState(false);
   const [findReplace, setFindReplace] = useState(false);
   const editorRef = useRef<TipTapEditor | null>(null);
@@ -102,20 +117,20 @@ export function Editor() {
         // silently reverting whatever the user just typed.
         applyContentToStore(d.id, markdown);
       }
-      if (!anyFailure) setDirty(false);
+      if (!anyFailure) setDirtyTracked(false);
     } catch (e) {
       toastError(`Save failed: ${e}`);
     } finally {
       useProjectStore.setState({ saving: false });
     }
-  }, []);
+  }, [setDirtyTracked]);
 
   const autoSaveSeconds = useSettingsStore(
     (s) => s.appSettings?.writing.auto_save_seconds
   );
 
   const debouncedSave = useCallback(() => {
-    setDirty(true);
+    setDirtyTracked(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     // Settings exposes the delay; fall back to 2s if settings haven't
     // hydrated yet. Convert seconds → ms.
@@ -123,7 +138,7 @@ export function Editor() {
     saveTimer.current = setTimeout(() => {
       saveCurrent();
     }, delayMs);
-  }, [saveCurrent, autoSaveSeconds]);
+  }, [saveCurrent, autoSaveSeconds, setDirtyTracked]);
 
   /**
    * Flush a pending debounced save synchronously, BEFORE the editor swaps
@@ -135,6 +150,12 @@ export function Editor() {
    * markdown and write that explicitly.
    */
   const flushPendingSave = useCallback(async (): Promise<void> => {
+    // No-op when the editor has nothing pending. Without this guard,
+    // periodic auto-commit / backup intervals (which call us before
+    // checking git status) would re-stamp `.meta` and create
+    // timestamp-only revisions on every idle tick.
+    if (!dirtyRef.current) return;
+
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
@@ -143,32 +164,54 @@ export function Editor() {
     const project = useProjectStore.getState().project;
     if (!ed || !project) return;
 
+    const markdown = getEditorMarkdown(ed);
     const flowKey = flowIdsRef.current;
-    if (flowKey) {
-      // Flow mode: defer to saveCurrent which handles multi-doc dispatch
-      // and the post-write project reload.
-      await saveCurrent();
+    const flowDocs = flowDocsRef.current;
+
+    if (flowKey && flowDocs) {
+      // Flow-mode flush. Splits the editor buffer at boundaries and
+      // saves each section. Reads `flowDocsRef` (captured at load time)
+      // instead of the store, because callers — `exitFlow` and
+      // `selectDocument` — clear `flowDocs` BEFORE the editor effect
+      // runs the flush, and reading the store here would either
+      // attribute the entire flow buffer to a single doc or skip the
+      // save altogether.
+      const sections = splitFlowSections(markdown);
+      // Memory first so a quick switch-back loads the just-typed text
+      // from `project.documents[id]` instead of stale content.
+      for (const sec of sections) {
+        applyContentToStore(sec.docId, sec.content);
+      }
+      let anyFailure = false;
+      for (const sec of sections) {
+        try {
+          await docCmd.updateDocumentContent(project.path, sec.docId, sec.content);
+        } catch (e) {
+          anyFailure = true;
+          toastError(`Failed to save ${sec.docId}: ${e}`);
+        }
+      }
+      if (!anyFailure) setDirtyTracked(false);
+      if (anyFailure) throw new Error("Flow save partially failed");
       return;
     }
+
     const oldDocId = docIdRef.current;
     if (!oldDocId) return;
-    const markdown = getEditorMarkdown(ed);
-    // Disk first, store second, error propagates. The earlier shape
-    // (memory before disk + try/catch swallow) made
-    // `flushPendingEditorSave()` resolve "successfully" even when the
-    // backend write failed — beforeunload's backup_on_close would then
-    // commit stale on-disk state while the in-memory store claimed it
-    // was saved. Now the store update only runs after the disk write
-    // confirms, and a failed write rejects the promise so callers
-    // (App.tsx beforeunload, periodic auto-commit) can surface or skip.
+    // Memory-first: the store update has to happen synchronously so a
+    // user who switches to another doc and back during the disk write
+    // doesn't reload stale content. The disk-write promise still
+    // resolves/rejects so beforeunload / auto-commit can wait on it
+    // and skip downstream steps on failure.
+    applyContentToStore(oldDocId, markdown);
     try {
       await docCmd.updateDocumentContent(project.path, oldDocId, markdown);
-      applyContentToStore(oldDocId, markdown);
+      setDirtyTracked(false);
     } catch (e) {
       toastError(`Save failed: ${e}`);
       throw e;
     }
-  }, [saveCurrent]);
+  }, [setDirtyTracked]);
 
   const editor = useEditor({
     extensions: [
@@ -247,6 +290,10 @@ export function Editor() {
       // a different flow set) before we replace the editor content.
       flushPendingSave();
       flowIdsRef.current = flowKey;
+      // Capture the flow set so flushPendingSave can save against it
+      // even after the store's `flowDocs` is cleared by exitFlow or by
+      // selectDocument.
+      flowDocsRef.current = flow.map((d) => ({ docId: d.docId, name: d.name, path: d.path }));
       docIdRef.current = null;
 
       const project = useProjectStore.getState().project;
@@ -262,23 +309,30 @@ export function Editor() {
         parts.push(buildFlowBoundary(fd.docId, fd.name));
         parts.push(doc.content || "");
       }
-      editor.commands.setContent(parts.join(""));
+      // emitUpdate=false: Tiptap 3 fires onUpdate by default on programmatic
+      // setContent, which would route through debouncedSave and immediately
+      // re-stamp every loaded doc's `modified` even though the user hasn't
+      // typed. Document loads must be inert.
+      editor.commands.setContent(parts.join(""), { emitUpdate: false });
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDirty(false);
+      setDirtyTracked(false);
       return;
     }
 
     // Single-doc mode
     if (flowIdsRef.current !== null) {
       // Coming back from flow mode — flush whatever the flow buffer holds.
+      // The flush still has the captured flow set in `flowDocsRef`, so
+      // each section gets saved to the right doc.
       flushPendingSave();
     }
     flowIdsRef.current = null;
+    flowDocsRef.current = null;
     if (!activeDoc) {
       // Switching to "no document" — flush so the previous doc's edits
       // don't sit on the timer until the next mount.
       if (docIdRef.current) flushPendingSave();
-      editor.commands.clearContent();
+      editor.commands.clearContent(false);
       docIdRef.current = null;
       return;
     }
@@ -289,8 +343,10 @@ export function Editor() {
       flushPendingSave();
       docIdRef.current = activeDoc.id;
       const md = activeDoc.content || "";
-      editor.commands.setContent(md);
-      setDirty(false);
+      // emitUpdate=false so loading a doc doesn't trigger autosave (Tiptap
+      // 3 emits update on setContent by default).
+      editor.commands.setContent(md, { emitUpdate: false });
+      setDirtyTracked(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDoc?.id, editor, flowDocs]);

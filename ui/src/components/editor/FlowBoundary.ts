@@ -128,10 +128,12 @@ export function splitFlowSections(markdown: string): DocSection[] {
  * `buildFlowBoundary`. A blanket `.trim()` would also eat whitespace the
  * writer put there on purpose — e.g. a doc that ends in a deliberate
  * blank line would silently lose it on every flow-mode save and the
- * file would drift down to no-blank-line over time. We only consume up
- * to two leading and two trailing newlines (and the spaces/tabs on
- * those lines) — anything beyond is treated as user content.
+ * file would drift down to no-blank-line over time.
+ *
+ * Match ONLY the literal newlines we added — never spaces. Two trailing
+ * spaces before a newline are markdown-significant (force a line break);
+ * a previous version's `[ \t]*` matchers were eating those.
  */
 function stripStructuralPadding(s: string): string {
-  return s.replace(/^[ \t]*\n[ \t]*\n?/, "").replace(/[ \t]*\n[ \t]*\n?[ \t]*$/, "");
+  return s.replace(/^\n\n?/, "").replace(/\n\n?$/, "");
 }

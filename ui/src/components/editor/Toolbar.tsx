@@ -30,7 +30,7 @@ import { toastError, toastSuccess } from "../shared/Toast";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
-import { getEditorMarkdown } from "./editorRef";
+import { flushPendingEditorSave, getEditorMarkdown } from "./editorRef";
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -296,11 +296,20 @@ function FlowButton() {
 
   if (!flowDocs) return null;
 
+  // Drain pending edits BEFORE clearing `flowDocs`. Without the await,
+  // the editor's load effect runs against a store where `flowDocs` is
+  // already null and the flow buffer's edits would be saved to the
+  // wrong target (or dropped entirely).
+  const handleExit = async () => {
+    try { await flushPendingEditorSave(); } catch { /* surfaced via toast inside the flush */ }
+    exitFlow();
+  };
+
   return (
     <>
       <ToolbarSep />
       <ToolbarButton
-        onClick={exitFlow}
+        onClick={handleExit}
         active={true}
         title="Exit Flow mode"
       >

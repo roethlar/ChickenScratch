@@ -104,7 +104,12 @@ export default function App() {
       commandPalette: () => setShowPalette((s) => !s),
       search: () => setShowSearch((s) => !s),
       focusMode: () => toggleFocusMode(),
-      save: () => useProjectStore.getState().saveActiveDoc(),
+      // Route Ctrl+S through the editor flush so it writes the live
+      // editor buffer, not `activeDoc.content` from the store (which
+      // lags by up to one debounce window). flushPendingEditorSave is
+      // a no-op when nothing's pending so Ctrl+S on a clean buffer
+      // costs nothing.
+      save: () => { flushPendingEditorSave().catch(() => {}); },
       newDocument: () => {
         (async () => {
           const p = useProjectStore.getState().project;
@@ -150,11 +155,17 @@ export default function App() {
       // chain — clearing the timer and calling the Tauri command —
       // still race to completion in practice and dramatically
       // shorten the data-loss window.
+      let flushed = true;
       try {
         await flushPendingEditorSave();
       } catch {
-        // Best-effort — don't block close on a flush hiccup.
+        flushed = false;
       }
+      // Skip the backup commit when the flush failed. backup_on_close
+      // auto-commits whatever's on disk; running it after a failed
+      // flush would freeze the pre-flush state into git history while
+      // the user thought their edits had landed.
+      if (!flushed) return;
       const store = useProjectStore.getState();
       if (store.project) {
         try {

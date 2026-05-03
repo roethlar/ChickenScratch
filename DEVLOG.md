@@ -4,6 +4,28 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-05-03 — Fourth review pass: Tiptap 3 emitUpdate, idle-flush noise, flow-exit corruption, races
+
+**Change:** Seven more findings. Most were caused by interactions between fixes from earlier passes — in particular the "memory before disk" → "disk before memory" → "memory before disk + tracked failure" oscillation around `flushPendingSave`. Settled the model.
+
+**Tiptap 3's `setContent` emits update by default.** Programmatic document loads (`editor.commands.setContent` on flow load and single-doc switch, `clearContent` on no-doc) routed through Tiptap 3's emit-update pipeline → `onUpdate` → `debouncedSave`. So just opening a doc scheduled an autosave 2s later, and that autosave bumped the doc's `modified` even though the user hadn't typed. Fixed by passing `{ emitUpdate: false }` (setContent — `SetContentOptions` object) and `false` (clearContent — boolean, different shape) on every programmatic load.
+
+**`flushPendingSave` ran on idle.** The function wrote to disk every time it was called, regardless of whether anything had changed. Periodic auto-commit and backup handlers call it before checking `git status`, so an idle 10-min interval re-stamped `.meta` (or before this review pass, every doc's `.meta`) and produced timestamp-only commits. Added a `dirtyRef` mirror of the `dirty` state — read synchronously inside the flush callback, set/cleared at the same points as `setDirty`. Flush now no-ops when clean.
+
+**Exiting flow lost or corrupted edits.** `exitFlow` cleared `flowDocs` synchronously in the store; the editor's load effect ran AFTER the clear and called `flushPendingSave`, which delegated to `saveCurrent`, which read `useProjectStore.getState().flowDocs` — null by then. So the save either dropped silently (no docs to dispatch to) or, when followed by `selectDocument(X)`, fell through to the single-doc branch and wrote the entire flow buffer (with its `<!-- CHIKN_FLOW -->` markers) to a single doc's content. Added a `flowDocsRef` populated when entering flow mode — captured copy of the flow set, not a store read. `flushPendingSave` now uses that ref directly and saves each section to its captured target doc, ignoring the cleared store state. Toolbar's Exit Flow button also `await`s `flushPendingEditorSave` before invoking `exitFlow`, closing the timing gap entirely.
+
+**Doc-switch race revisited.** Last review's "disk before memory" ordering meant a quick A→B→A switch could load `project.documents[A].content` (still the pre-save value, because the disk-then-store update hadn't reached the store yet) into the editor, then save THAT stale content over the user's real edits a moment later. Returned to "memory first, disk second" — `applyContentToStore` runs synchronously, so the store reflects the new content the instant the flush starts. Persistence-failure honesty (the reason for the previous flip) is preserved differently: the disk write still rejects on failure, `flushPendingSave` re-throws, and `flushPendingEditorSave` propagates to `beforeunload` / auto-commit.
+
+**Ctrl+S wrote stale `activeDoc.content`.** The save shortcut routed through `useProjectStore.saveActiveDoc()`, which serialized the value held in the store — a snapshot that lags the live editor buffer by up to one debounce window. Re-routed Ctrl+S through `flushPendingEditorSave()` so it writes the live Tiptap markdown.
+
+**`beforeunload` ran backup after a failed flush.** The catch block toasted the error and let the handler proceed — `backup_on_close` then auto-committed the pre-flush on-disk state into git, freezing the loss. Now sets `flushed = false` on catch and bails before the backup step.
+
+**`stripStructuralPadding` ate markdown line-breaks.** The previous regex `[ \t]*\n[ \t]*\n?` consumed trailing spaces before the structural newlines, but two trailing spaces before `\n` are markdown-significant (force a hard line break). Tightened to `\n\n?` only — match only the literal newlines `buildFlowBoundary` adds, never spaces.
+
+**Tests:** 77 Rust (58 lib + 2 integration + 17 doctest), `cargo clippy --all-targets -- -D warnings` clean, macOS `swift run ChiknKitChecks` 65/65, UI typecheck + production build clean, ESLint 0 errors (3 pre-existing `useCallback` `setProject` deps warnings).
+
+---
+
 ## 2026-05-03 — Third review pass: persistence-failure honesty, store helper, lint cleanup
 
 **Change:** Seven more review findings, all real correctness issues. Plus the four ESLint errors that have been hanging on for several review cycles.
