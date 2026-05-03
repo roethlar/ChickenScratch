@@ -4,6 +4,30 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-05-03 — Third review pass: persistence-failure honesty, store helper, lint cleanup
+
+**Change:** Seven more review findings, all real correctness issues. Plus the four ESLint errors that have been hanging on for several review cycles.
+
+**Save flush hid persistence failure.** `flushPendingSave` updated `project.documents[id]` and `activeDoc` *before* awaiting the disk write, then caught the disk error and resolved successfully. So `flushPendingEditorSave()` returned `Promise<void>` to its caller (`beforeunload`, the auto-commit interval, the periodic backup interval) even when nothing actually got persisted — the store and the on-disk state diverged silently. Now the order is disk → store, and the catch re-throws so callers can decide whether to skip backup/commit on a failed flush.
+
+**Flow save reported clean after partial failure.** The `for (const sec of sections)` loop swallowed per-section errors and `setDirty(false)` ran unconditionally afterward. A flow save where two of three sections persisted and one failed showed "Saved" in the status bar. Now tracks `anyFailure` and only clears dirty when the whole batch succeeded.
+
+**Periodic auto-commit and backup didn't drain editor edits first.** The 10-min auto-commit interval and the user-configured periodic backup ran `git status` / `backup_on_close` against on-disk state directly, so the snapshot they captured excluded any edits the user had typed in the last 2s of the debounce window. Both intervals now `await flushPendingEditorSave()` before kicking off their work.
+
+**Flow split's `.trim()` ate intentional whitespace.** A blanket `.trim()` on each section's slice was needed to strip the structural `\n\n` that `buildFlowBoundary` adds around markers, but it also ate any leading/trailing whitespace the writer put there on purpose — a doc that ended with a deliberate blank line silently lost it on every flow-mode save and the file drifted toward no-blank-line over time. Replaced with `stripStructuralPadding`, which only consumes up to two leading and two trailing newlines (matching what the writer adds) and preserves anything beyond.
+
+**Project mutations didn't re-derive `activeDoc`.** Several call sites (`CommentsPanel`, `Inspector`, `Binder`, `Corkboard`, `Preview`, `Toolbar`'s addComment, `Revisions` Threads tab, `App.tsx`'s ⌘N handler) called `useProjectStore.setState({ project: updated })` directly. `selectDocument` re-derives `activeDoc` from the project map, but a plain `setState` doesn't — so `activeDoc` continued to point at the pre-mutation document object. Side effects: comments panel showed pre-add state, inspector showed pre-edit metadata, etc. Added a `setProject(project)` helper to the store that updates `project` and re-derives `activeDoc` from `project.documents[activeDocId]`. Migrated all call sites.
+
+**Empty-threads.yaml deletion swallowed fs errors.** Same class of bug as the .md/.meta deletion in the prior review: `let _ = fs::remove_file(&path)` meant a failed unlink left the file on disk with the pre-deletion threads, and the next reader run resurrected every "deleted" thread. Now propagates the error so the writer reports the failure to the caller.
+
+**`move_node` swallowed reorder failure after a parent move.** When both `new_parent_id` and `new_index` were given, the move ran with `?` but the reorder ran with `let _ = ...`. An invalid index — e.g. UI passing a stale position from before another reorder — used to return `Ok(())` while the actual position was wrong. Now propagates.
+
+**Lint cleanup.** ESLint had been carrying four errors across `Editor.tsx`, `FindReplace.tsx`, `Toolbar.tsx`, and `DocumentHistory.tsx`. The setState-in-effect ones are intentional (syncing local state to external editor / git events) and now have targeted disables with justification comments. `Toolbar.FlowButton` had an unused `_props: { editor }` arg dating from a refactor — removed. Lint baseline: 0 errors (down from 4), 3 pre-existing warnings (`useCallback` missing-deps from the new `setProject` migration, pragmatic to leave).
+
+**Tests:** 77 Rust tests (58 lib + 2 integration + 17 doctest), `cargo clippy --all-targets -- -D warnings` clean, macOS `swift run ChiknKitChecks` 65/65, UI typecheck + production build clean, lint 0 errors.
+
+---
+
 ## 2026-05-03 — Second review pass: app-close flush, store coherence, more
 
 **Change:** Six findings from a second review cycle, all real. Patched together.

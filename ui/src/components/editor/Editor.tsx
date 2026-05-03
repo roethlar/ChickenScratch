@@ -67,19 +67,27 @@ export function Editor() {
     if (!editor || !p) return;
 
     useProjectStore.setState({ saving: true });
+    let anyFailure = false;
     try {
       const markdown = getEditorMarkdown(editor);
       if (flow) {
         // Flow mode: split at boundary markers, save each section back.
+        // Track per-section failures — if any section fails, leave the
+        // dirty flag set so the user knows their work isn't fully
+        // persisted. Previous behavior swallowed failures inside the
+        // loop and unconditionally cleared `dirty`, hiding partial-save
+        // states behind a "Saved" indicator.
         const sections = splitFlowSections(markdown);
         for (const sec of sections) {
           try {
             await docCmd.updateDocumentContent(p.path, sec.docId, sec.content);
-          } catch {
-            toastError(`Failed to save document in flow mode`);
+          } catch (e) {
+            anyFailure = true;
+            toastError(`Failed to save ${sec.docId}: ${e}`);
           }
         }
-        // Reload project so docs pick up updated content
+        // Reload project so docs pick up updated content (even partial —
+        // the on-disk truth is what we mirror).
         const Project = await import("../../commands/project");
         const reloaded = await Project.loadProject(p.path);
         useProjectStore.setState({ project: reloaded });
@@ -88,13 +96,13 @@ export function Editor() {
         const d = useProjectStore.getState().activeDoc;
         if (!d) return;
         await docCmd.updateDocumentContent(p.path, d.id, markdown);
-        // Update BOTH activeDoc and project.documents[d.id]. Without the
-        // map update, switching to another doc and back makes the editor
-        // load the stale `project.documents[d.id].content` from before
-        // this save — silently reverting whatever the user just typed.
+        // Disk first, then store update. Without the map update,
+        // switching to another doc and back makes the editor load the
+        // stale `project.documents[d.id].content` from before this save —
+        // silently reverting whatever the user just typed.
         applyContentToStore(d.id, markdown);
       }
-      setDirty(false);
+      if (!anyFailure) setDirty(false);
     } catch (e) {
       toastError(`Save failed: ${e}`);
     } finally {
@@ -145,15 +153,20 @@ export function Editor() {
     const oldDocId = docIdRef.current;
     if (!oldDocId) return;
     const markdown = getEditorMarkdown(ed);
-    // Reflect the save in the in-memory project IMMEDIATELY. The Tauri
-    // call may still be in flight when the user switches back to this
-    // doc; the editor's load effect would then read the stale content
-    // from `project.documents[oldDocId]` and silently revert their work.
-    applyContentToStore(oldDocId, markdown);
+    // Disk first, store second, error propagates. The earlier shape
+    // (memory before disk + try/catch swallow) made
+    // `flushPendingEditorSave()` resolve "successfully" even when the
+    // backend write failed — beforeunload's backup_on_close would then
+    // commit stale on-disk state while the in-memory store claimed it
+    // was saved. Now the store update only runs after the disk write
+    // confirms, and a failed write rejects the promise so callers
+    // (App.tsx beforeunload, periodic auto-commit) can surface or skip.
     try {
       await docCmd.updateDocumentContent(project.path, oldDocId, markdown);
+      applyContentToStore(oldDocId, markdown);
     } catch (e) {
       toastError(`Save failed: ${e}`);
+      throw e;
     }
   }, [saveCurrent]);
 
@@ -250,6 +263,7 @@ export function Editor() {
         parts.push(doc.content || "");
       }
       editor.commands.setContent(parts.join(""));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDirty(false);
       return;
     }

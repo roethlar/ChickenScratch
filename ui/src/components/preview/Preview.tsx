@@ -50,7 +50,11 @@ function flattenAll(nodes: TreeNode[], ids: string[]) {
 
 export function Preview() {
   const project = useProjectStore((s) => s.project);
-  const setProject = (p: Project | null) => useProjectStore.setState({ project: p });
+  const storeSetProject = useProjectStore((s) => s.setProject);
+  const setProject = (p: Project | null) => {
+    if (p) storeSetProject(p);
+    else useProjectStore.setState({ project: null, activeDoc: null });
+  };
 
   const [editingMeta, setEditingMeta] = useState(false);
   const [meta, setMeta] = useState({

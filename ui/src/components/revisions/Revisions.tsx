@@ -366,7 +366,7 @@ export function Revisions() {
         {tab === "threads" && project && (
           <ThreadsList
             project={project}
-            onChange={(p) => useProjectStore.setState({ project: p })}
+            onChange={(p) => useProjectStore.getState().setProject(p)}
           />
         )}
       </div>

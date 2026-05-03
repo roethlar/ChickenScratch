@@ -21,8 +21,13 @@ function flattenDocs(nodes: TreeNode[]): string[] {
 export function Corkboard() {
   const project = useProjectStore((s) => s.project);
   const selectDocument = useProjectStore((s) => s.selectDocument);
-  const setProject = (p: Project | null) =>
-    useProjectStore.setState({ project: p });
+  // Re-derive activeDoc on each project update so the inspector and
+  // other panels see the fresh metadata after AI summaries / linking.
+  const storeSetProject = useProjectStore((s) => s.setProject);
+  const setProject = (p: Project | null) => {
+    if (p) storeSetProject(p);
+    else useProjectStore.setState({ project: null, activeDoc: null });
+  };
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [summarizing, setSummarizing] = useState(false);
   const [summarizeProgress, setSummarizeProgress] = useState("");

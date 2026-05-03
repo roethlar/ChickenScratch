@@ -219,10 +219,12 @@ function ThreadChips({
 export function Inspector() {
   const project = useProjectStore((s) => s.project);
   const activeDoc = useProjectStore((s) => s.activeDoc);
-  const setProject = useCallback(
-    (p: typeof project) => useProjectStore.setState({ project: p }),
-    []
-  );
+  // Use the store's `setProject` so `activeDoc` re-derives from the new
+  // project map after every mutation. Naive `setState({ project })`
+  // leaves activeDoc pointing at the pre-mutation snapshot, which makes
+  // the inspector itself render stale metadata until the user re-selects
+  // the doc.
+  const setProject = useProjectStore((s) => s.setProject);
 
   const [title, setTitle] = useState("");
   const [synopsis, setSynopsis] = useState("");

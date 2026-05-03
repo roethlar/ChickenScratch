@@ -110,7 +110,9 @@ export function Toolbar({ editor }: ToolbarProps) {
       const updated = await docCmd.addComment(
         project.path, activeDoc.id, commentId, body, newContent
       );
-      useProjectStore.setState({ project: updated });
+      // Use setProject so activeDoc.comments updates — the comments
+      // panel reads it for its render.
+      useProjectStore.getState().setProject(updated);
       toastSuccess("Comment added");
     } catch (e) {
       toastError(`Failed: ${e}`);
@@ -276,7 +278,7 @@ export function Toolbar({ editor }: ToolbarProps) {
         <Asterisk size={s} />
       </ToolbarButton>
 
-      <FlowButton editor={editor} />
+      <FlowButton />
 
       {aiEnabled && (
         <>
@@ -288,7 +290,7 @@ export function Toolbar({ editor }: ToolbarProps) {
   );
 }
 
-function FlowButton(_props: { editor: Editor | null }) {
+function FlowButton() {
   const flowDocs = useProjectStore((s) => s.flowDocs);
   const exitFlow = useProjectStore((s) => s.exitFlow);
 

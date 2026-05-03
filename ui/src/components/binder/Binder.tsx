@@ -93,10 +93,10 @@ function BinderInner() {
   const project = useProjectStore((s) => s.project);
   const activeDocId = useProjectStore((s) => s.activeDocId);
   const selectDocument = useProjectStore((s) => s.selectDocument);
-  const setProject = useCallback(
-    (p: typeof project) => useProjectStore.setState({ project: p }),
-    []
-  );
+  // Use the store helper so `activeDoc` re-derives from the new project
+  // after rename/move/delete operations — keeps the inspector and other
+  // active-doc panels in sync.
+  const setProject = useProjectStore((s) => s.setProject);
 
   // Selected node — determines where + adds items. Separate from activeDocId (editing).
   const [selectedId, setSelectedId] = useState<string | null>(null);

@@ -441,7 +441,12 @@ pub fn move_node(
     if let Some(parent_id) = new_parent_id.as_deref() {
         hierarchy::move_node(&mut project.hierarchy, &node_id, Some(parent_id))?;
         if let Some(idx) = new_index {
-            let _ = hierarchy::reorder_node(&mut project.hierarchy, &node_id, idx);
+            // Propagate reorder errors instead of silently leaving the
+            // node at the parent's tail with `Ok(())`. An invalid index
+            // (e.g. UI passing a stale position from before another
+            // user reordered) used to return success here while the
+            // actual position was wrong.
+            hierarchy::reorder_node(&mut project.hierarchy, &node_id, idx)?;
         }
     } else if let Some(idx) = new_index {
         hierarchy::reorder_node(&mut project.hierarchy, &node_id, idx)?;

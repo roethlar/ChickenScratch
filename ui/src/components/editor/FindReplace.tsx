@@ -68,8 +68,11 @@ export function FindReplace({ editor, open, showReplace, onClose }: FindReplaceP
   }, [editor, find, currentMatch]);
 
   // Syncing with external editor doc state — the editor's doc is not React state,
-  // so an effect is the right boundary for observing it.
+  // so an effect is the right boundary for observing it. searchDoc() updates
+  // local match-position state; that state can only come from observing the
+  // editor, so the setState-in-effect pattern is intentional here.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     searchDoc();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [find, editor?.state.doc]);

@@ -28,6 +28,13 @@ interface ProjectState {
   selectDocument: (docId: string) => void;
   updateContent: (content: string) => void;
   saveActiveDoc: () => Promise<void>;
+  /** Replace `project` and re-derive `activeDoc` from the new map.
+   *  Use this from any caller that mutates the project (comments,
+   *  inspector, threads, etc.) so panels reading `activeDoc` see the
+   *  fresh metadata/comments instead of a snapshot from before the
+   *  command ran. Plain `setState({ project })` leaves `activeDoc`
+   *  pointing at the old document object. */
+  setProject: (project: Project) => void;
   /** Enter flow mode over the given manuscript documents. */
   enterFlow: (docs: FlowDoc[]) => void;
   /** Exit flow mode, returning to single-doc editing. */
@@ -86,6 +93,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (!project) return;
     const doc = project.documents[docId] ?? null;
     set({ activeDocId: docId, activeDoc: doc, flowDocs: null });
+  },
+
+  setProject: (project: Project) => {
+    const { activeDocId } = get();
+    const activeDoc = activeDocId ? (project.documents[activeDocId] ?? null) : null;
+    set({ project, activeDoc });
   },
 
   updateContent: (content: string) => {

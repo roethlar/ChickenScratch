@@ -106,13 +106,32 @@ export function splitFlowSections(markdown: string): DocSection[] {
   while ((match = re.exec(markdown)) !== null) {
     const id = match[1];
     if (prevId) {
-      sections.push({ docId: prevId, content: markdown.slice(lastEnd, match.index).trim() });
+      sections.push({
+        docId: prevId,
+        content: stripStructuralPadding(markdown.slice(lastEnd, match.index)),
+      });
     }
     prevId = id;
     lastEnd = match.index + match[0].length;
   }
   if (prevId) {
-    sections.push({ docId: prevId, content: markdown.slice(lastEnd).trim() });
+    sections.push({
+      docId: prevId,
+      content: stripStructuralPadding(markdown.slice(lastEnd)),
+    });
   }
   return sections;
+}
+
+/**
+ * Trim only the `\n\n` we add structurally around boundary markers in
+ * `buildFlowBoundary`. A blanket `.trim()` would also eat whitespace the
+ * writer put there on purpose — e.g. a doc that ends in a deliberate
+ * blank line would silently lose it on every flow-mode save and the
+ * file would drift down to no-blank-line over time. We only consume up
+ * to two leading and two trailing newlines (and the spaces/tabs on
+ * those lines) — anything beyond is treated as user content.
+ */
+function stripStructuralPadding(s: string): string {
+  return s.replace(/^[ \t]*\n[ \t]*\n?/, "").replace(/[ \t]*\n[ \t]*\n?[ \t]*$/, "");
 }

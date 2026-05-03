@@ -112,7 +112,7 @@ export default function App() {
           const name = await dialogPrompt("Document name:");
           if (!name || !name.trim()) return;
           const updated = await docCmd.createDocument(p.path, name.trim());
-          useProjectStore.setState({ project: updated });
+          useProjectStore.getState().setProject(updated);
         })();
       },
       print: () => window.print(),
@@ -176,6 +176,11 @@ export default function App() {
     if (!project) return;
     const interval = setInterval(async () => {
       try {
+        // Drain pending editor edits BEFORE asking git for working-tree
+        // status. Otherwise hasChanges() reflects only what's already on
+        // disk and the auto-commit captures a snapshot that's missing the
+        // last 2s of typing.
+        await flushPendingEditorSave();
         const changed = await gitCmd.hasChanges(project.path);
         if (changed) {
           const now = new Date().toLocaleString(undefined, {
@@ -201,6 +206,10 @@ export default function App() {
       const store = useProjectStore.getState();
       if (store.project) {
         try {
+          // Same rationale as the auto-commit timer: flush in-flight
+          // editor edits before backing up so the snapshot reflects
+          // what the writer just typed, not what was on disk 2s ago.
+          await flushPendingEditorSave();
           await invoke("backup_on_close", { projectPath: store.project.path });
         } catch {
           // Silent — periodic backup shouldn't interrupt writing

@@ -84,9 +84,12 @@ fn write_threads_if_any(project: &Project) -> Result<(), ChiknError> {
     let path = get_threads_path(Path::new(&project.path));
     if project.threads.is_empty() {
         if path.exists() {
-            // Best-effort: a failure here would only mean a stale file on
-            // disk, not data loss; the user can delete it manually.
-            let _ = fs::remove_file(&path);
+            // Surface remove errors. Silently swallowing means a failed
+            // unlink (perms, lock, etc.) leaves the OLD threads.yaml on
+            // disk; the next reader run resurrects every "deleted"
+            // thread. Better to fail the operation so the user knows
+            // the delete didn't take.
+            fs::remove_file(&path)?;
         }
         return Ok(());
     }

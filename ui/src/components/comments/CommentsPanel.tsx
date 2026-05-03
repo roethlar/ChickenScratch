@@ -14,8 +14,11 @@ interface CommentsPanelProps {
 export function CommentsPanel({ editor, onClose }: CommentsPanelProps) {
   const project = useProjectStore((s) => s.project);
   const activeDoc = useProjectStore((s) => s.activeDoc);
-  const setProject = (p: typeof project) =>
-    useProjectStore.setState({ project: p });
+  // setProject re-derives `activeDoc` from the new project map. The
+  // panel reads `activeDoc.comments` for its render — without the
+  // re-derive, posting/resolving a comment leaves the panel showing
+  // the pre-mutation list until the user clicks away and back.
+  const setProject = useProjectStore((s) => s.setProject);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftBody, setDraftBody] = useState("");

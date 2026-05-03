@@ -19,9 +19,13 @@ export function DocumentHistory({ open, docId, onClose }: Props) {
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [busy, setBusy] = useState(false);
 
+  // Loading revisions from git is an external-system query — an effect is
+  // the right boundary, and the synchronous setRevisions([]) clears stale
+  // results from the previous doc before the async fetch lands.
   useEffect(() => {
     if (!open || !project || !doc) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRevisions([]);
     gitCmd
       .documentHistory(project.path, doc.path)
