@@ -42,6 +42,12 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [x] Writing saves (debounced 1.2s) + auto-commit every 10 min
 - [x] New document (⌘N + binder toolbar) and rename (context menu)
 - [x] Save Revision (⌘R) via `/usr/bin/git`
+- [x] **Format parity (Slice A):** `fields` map round-trip, threads.yaml, session_target, characters/locations folders, foreign-key preservation through writer
+- [x] **Inspector Scene section:** POV / location / story_time / duration / threads / other-characters with novelist convention keys; entity menu + create-on-the-fly; thread chips
+- [x] **Binder entity sections:** Characters and Locations rendered from disk (not hierarchy); thread color dots beside docs
+- [x] **Revisions parity (Slice B):** Drafts tab (create/switch/merge), per-doc history modal accessible from binder context menu (`Git.documentHistory` + `Git.restoreDocument`), Threads tab with dangling refs banner
+- [x] **Stats + Timeline + binder polish (Slice C):** Stats panel (manuscript words, pages, read time, 14-day daily chart, per-doc bars), Timeline view (POV/Thread/Single lanes, story_time parsing), session badge in editor (auto-hides), binder Move to Trash / Delete Permanently / Empty Trash / Move Up/Down, auto-commit before destructive git ops (switch/merge/restore)
+- [x] Round-trip checks (`swift run ChiknKitChecks`) covering all of the above — 18 cases / 65 checks
 
 ### Editor (Linux Qt6, cxx-qt)
 - [x] QML three-pane shell (binder, editor, inspector) with Material Dark
@@ -160,8 +166,13 @@ Reframed: these are UI-layer plans now. The format ships generic extensibility; 
 - [ ] Split editor (two independent TipTap panes with orientation toggle)
 
 ### Native-frontend parity
-- [ ] SwiftUI: delete/move/reorder in binder, inspector editing, comments, footnotes, drafts, compile, AI, remote sync
-- [ ] SwiftUI v1.2 read-only: display new scene metadata, characters, locations, threads
+- [x] SwiftUI v1.2: scene metadata, characters, locations, threads (full editing, not read-only)
+- [x] SwiftUI: delete (Trash + permanent), move up/down, drafts, per-doc history
+- [ ] SwiftUI: drag-drop reorder in binder (keyboard-only via Move Up/Down today)
+- [ ] SwiftUI: rich-text editor with markdown round-trip (currently plain `TextEditor`)
+- [ ] SwiftUI: comments, footnotes, find/replace, flow mode
+- [ ] SwiftUI: compile/export UI, settings panel, project search, templates CRUD
+- [ ] SwiftUI: AI streaming, remote sync UI (push/fetch/pull + conflict dialog)
 - [ ] Linux (Qt6): AI, templates, drafts, remote sync (revisions, comments, footnotes, compile, settings shipped)
 - [ ] Linux v1.2 read-only: display new scene metadata, characters, locations, threads
 - [ ] Windows (WinUI): tracked separately in `windows/` — bring to full parity

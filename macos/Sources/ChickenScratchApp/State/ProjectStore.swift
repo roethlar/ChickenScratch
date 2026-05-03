@@ -142,6 +142,309 @@ final class ProjectStore {
         }
     }
 
+    // MARK: - Entities (characters, locations)
+
+    /// Create a character or location entity. Entities live as plain Documents
+    /// under `characters/` or `locations/` and are tagged via `entity_kind` in
+    /// their fields map. Returns the new document so the caller can select it.
+    @discardableResult
+    func createEntity(kind: EntityKind, name: String) -> Document? {
+        guard let p = project else { return nil }
+        do {
+            let (updated, doc) = try Writer.createEntity(kind: kind, name: name, in: p)
+            project = updated
+            return doc
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// All loaded documents whose path lives under the entity folder for `kind`,
+    /// sorted by name. The Binder's entity section uses this directly because
+    /// entities aren't in `project.yaml.hierarchy`.
+    func entities(of kind: EntityKind) -> [Document] {
+        guard let p = project else { return [] }
+        let prefix = kind.folderName + "/"
+        return p.documents.values
+            .filter { $0.relativePath.hasPrefix(prefix) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    // MARK: - Threads
+
+    func createThread(name: String, color: String? = nil) {
+        guard let p = project else { return }
+        do {
+            project = try Writer.createThread(name: name, color: color, in: p)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func updateThread(id: String, name: String? = nil, color: String?? = nil, description: String?? = nil) {
+        guard let p = project else { return }
+        do {
+            project = try Writer.updateThread(id: id, name: name, color: color, description: description, in: p)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func deleteThread(id: String) {
+        guard let p = project else { return }
+        do {
+            project = try Writer.deleteThread(id: id, in: p)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Drafts (branches)
+
+    /// Create a new draft branched off HEAD and switch to it. The current
+    /// working tree is committed first if dirty so the user doesn't lose
+    /// in-flight edits across the branch boundary.
+    func createDraft(name: String) async {
+        guard let p = project else { return }
+        await commitIfDirty(message: "Auto: pre-draft snapshot", in: p)
+        do {
+            try Git.createDraft(name: name, in: p.path)
+            await reloadAfterGit(p.path)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// All drafts, with the active one marked. UI-side cache; refresh by
+    /// calling this whenever the Revisions panel becomes visible or after a
+    /// switch/merge/create.
+    func listDrafts() -> [Git.DraftVersion] {
+        guard let url = project?.path else { return [] }
+        return (try? Git.listDrafts(in: url)) ?? []
+    }
+
+    /// Switch to `name`. Auto-commits dirty state first. `git checkout` is
+    /// force-style so any uncommitted edits we don't preserve would be lost
+    /// — the pre-switch commit is the safety net.
+    func switchDraft(name: String) async {
+        guard let p = project else { return }
+        await commitIfDirty(message: "Auto: pre-switch snapshot", in: p)
+        do {
+            try Git.switchDraft(name: name, in: p.path)
+            await reloadAfterGit(p.path)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func mergeDraft(name: String) async {
+        guard let p = project else { return }
+        await commitIfDirty(message: "Auto: pre-merge snapshot", in: p)
+        do {
+            try Git.mergeDraft(name: name, in: p.path)
+            await reloadAfterGit(p.path)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Per-document history
+
+    func documentHistory(for documentPath: String) -> [Git.RevisionEntry] {
+        guard let url = project?.path else { return [] }
+        return (try? Git.documentHistory(documentPath: documentPath, in: url)) ?? []
+    }
+
+    func restoreDocument(documentPath: String, commit: String) async {
+        guard let p = project else { return }
+        await commitIfDirty(message: "Auto: pre-restore snapshot", in: p)
+        do {
+            try Git.restoreDocument(documentPath: documentPath, commitHash: commit, in: p.path)
+            await reloadAfterGit(p.path)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Dangling refs
+
+    func danglingReferences() -> [DanglingRef] {
+        guard let p = project else { return [] }
+        return References.validate(p)
+    }
+
+    // MARK: - Stats / writing history / session progress
+
+    func projectStats() -> ProjectStats? {
+        guard let p = project else { return nil }
+        return Stats.projectStats(p)
+    }
+
+    func sessionProgress() -> SessionProgress? {
+        guard let p = project else { return nil }
+        return Stats.sessionProgress(p)
+    }
+
+    func writingHistory() -> WritingHistory {
+        guard let p = project else { return WritingHistory() }
+        return Stats.loadWritingHistory(in: p.path)
+    }
+
+    /// Record the current manuscript word count for today. Best called
+    /// whenever the Stats panel becomes visible — that's when we can show
+    /// today's progress accurately.
+    func recordDailyWordsNow() {
+        guard let p = project else { return }
+        let stats = Stats.projectStats(p)
+        _ = try? Stats.recordDailyWords(stats.manuscriptWords, in: p.path)
+    }
+
+    /// Replace the project's session target. nil clears it; an empty target
+    /// is also normalized to nil so project.yaml stays clean.
+    func updateSessionTarget(_ target: SessionTarget?) {
+        guard var p = project else { return }
+        if let t = target, !t.isEmpty {
+            p.metadata.sessionTarget = t
+        } else {
+            p.metadata.sessionTarget = nil
+        }
+        do {
+            try Writer.touchProject(p)
+            project = p
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Binder operations (delete / move / trash)
+
+    /// Move a node to the project's Trash folder. If the node is already
+    /// inside Trash, calls `deleteNode` instead (permanent delete).
+    func deleteNode(id: String) {
+        guard let p = project else { return }
+        let trashID = p.hierarchy.first(where: { $0.kind == .folder && $0.name == "Trash" })?.id
+
+        do {
+            if let trashID, !isDescendant(of: trashID, id: id, in: p.hierarchy) {
+                project = try Writer.moveNode(id: id, newParentID: trashID, in: p)
+            } else {
+                project = try Writer.deleteNode(id: id, in: p)
+                if selectedNodeID == id {
+                    selectedNodeID = nil
+                }
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Permanent delete — used by "Empty Trash" and direct "Delete" calls
+    /// when the caller wants to skip the Trash step.
+    func deleteNodePermanently(id: String) {
+        guard let p = project else { return }
+        do {
+            project = try Writer.deleteNode(id: id, in: p)
+            if selectedNodeID == id {
+                selectedNodeID = nil
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func emptyTrash() {
+        guard let p = project else { return }
+        guard let trash = p.hierarchy.first(where: { $0.kind == .folder && $0.name == "Trash" }) else { return }
+        var current = p
+        for child in trash.children {
+            do {
+                current = try Writer.deleteNode(id: child.id, in: current)
+            } catch {
+                errorMessage = error.localizedDescription
+                return
+            }
+        }
+        project = current
+    }
+
+    func moveNodeUp(id: String) {
+        guard let p = project else { return }
+        guard let info = siblingIndex(of: id, in: p.hierarchy), info.index > 0 else { return }
+        do {
+            project = try Writer.reorderNode(id: id, newIndex: info.index - 1, in: p)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func moveNodeDown(id: String) {
+        guard let p = project else { return }
+        guard let info = siblingIndex(of: id, in: p.hierarchy),
+              info.index < info.siblingCount - 1 else { return }
+        do {
+            project = try Writer.reorderNode(id: id, newIndex: info.index + 1, in: p)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func siblingIndex(of id: String, in nodes: [TreeNode]) -> (index: Int, siblingCount: Int)? {
+        if let idx = nodes.firstIndex(where: { $0.id == id }) {
+            return (idx, nodes.count)
+        }
+        for node in nodes {
+            if let found = siblingIndex(of: id, in: node.children) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    private func isDescendant(of folderID: String, id: String, in nodes: [TreeNode]) -> Bool {
+        for node in nodes where node.kind == .folder {
+            if node.id == folderID {
+                return contains(id: id, in: node.children)
+            }
+            if isDescendant(of: folderID, id: id, in: node.children) { return true }
+        }
+        return false
+    }
+
+    private func contains(id: String, in nodes: [TreeNode]) -> Bool {
+        for node in nodes {
+            if node.id == id { return true }
+            if contains(id: id, in: node.children) { return true }
+        }
+        return false
+    }
+
+    // MARK: - Internals
+
+    /// Commit any uncommitted working-tree changes. Used as a safety net
+    /// before destructive git operations (switch/merge/restore) so the user
+    /// never loses unsaved edits.
+    private func commitIfDirty(message: String, in project: Project) async {
+        let url = project.path
+        await Task.detached(priority: .background) {
+            if (try? Git.hasChanges(in: url)) == true {
+                _ = try? Git.saveRevision(message: message, in: url)
+            }
+        }.value
+        lastAutoCommit = Date()
+    }
+
+    /// Reload the project from disk after a git operation so the editor /
+    /// binder / inspector pick up the new state.
+    private func reloadAfterGit(_ url: URL) async {
+        let loaded = try? Reader.readProject(at: url)
+        if let loaded {
+            project = loaded
+        } else {
+            errorMessage = "Reload failed after git operation"
+        }
+    }
+
     // MARK: - Tree operations
 
     func createDocumentAtRoot(name: String) {

@@ -7,7 +7,7 @@ ChickenScratch is a functional cross-platform writing app in alpha testing. Core
 **Five frontends, one canonical storage format:**
 - **Tauri + React + TipTap** — fullest feature set; daily-driver on macOS + Linux
 - **WinUI 3 + C#** (`windows/`) — native Windows app, alpha
-- **SwiftUI + Liquid Glass** (`macos/`, macOS 26+) — early scaffold with writing + revisions
+- **SwiftUI + Liquid Glass** (`macos/`, macOS 26+) — three-pane shell with format parity (fields/threads/session_target round-trip), Scene-section inspector, characters/locations binder sections, drafts & per-doc history, stats panel, timeline view; rich-text editor, AI, comments, compile, and remote-sync UIs not yet ported
 - **Qt6 + cxx-qt** (`linux/`, Wayland-native) — early scaffold with binder/editor/inspector/find-replace
 - **Ratatui TUI** (`chikn` binary, any OS) — keyboard-first terminal editor
 - **Canonical storage** — Pandoc Markdown (`.md` files on disk)
@@ -102,7 +102,7 @@ Push, fetch, and ahead/behind status shipped in v0.1.0-alpha. Missing: when a fe
 
 ### Frontend parity (SwiftUI + Qt6 + WinUI)
 Bring the newer native frontends up to Tauri's feature set. Highest-leverage gaps:
-- SwiftUI: delete/move/reorder binder, inspector editing, comments, footnotes, compile, AI, drafts, remote sync
+- SwiftUI: rich-text editor (currently plain TextEditor — no markdown rendering or formatting toolbar), drag-drop reorder, comments, footnotes, find/replace, flow mode, compile/export UI, settings panel, AI streaming, remote sync UI. Foundation parity (fields/threads/session_target), inspector scene metadata, binder entities + thread dots, drafts, per-doc history, stats, and timeline are shipped.
 - Qt6/Linux: comments, footnotes, revisions UI, compile, AI, settings, templates
 - WinUI: ongoing — tracked in `windows/` commit history
 

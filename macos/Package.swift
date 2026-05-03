@@ -26,5 +26,13 @@ let package = Package(
             ],
             path: "Sources/ChiknKit"
         ),
+        // Round-trip checks for the format contract. Runs as `swift run
+        // ChiknKitChecks` so it works with Command Line Tools (no XCTest
+        // module needed).
+        .executableTarget(
+            name: "ChiknKitChecks",
+            dependencies: ["ChiknKit"],
+            path: "Tests/ChiknKitChecks"
+        ),
     ]
 )

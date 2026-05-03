@@ -4,6 +4,35 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-05-02 — macOS SwiftUI brought to format + workflow parity (slices A/B/C)
+
+**Change:** The macOS SwiftUI frontend was a shell — open / read / edit / save revision, nothing else. Brought it to feature parity with Tauri for everything that doesn't require a rich-text editor port.
+
+**Slice A — Foundation + scene metadata (~600 LOC).** `ChiknKit` gains a `YAMLValue` Sendable enum so `DocumentMeta.fields: [String: YAMLValue]` can carry arbitrary user-defined entries while the rest of the model stays Sendable. Reader/writer round-trip the `fields:` block; empty maps drop the key entirely. `Project.threads: [Thread]` reads/writes `threads.yaml`; `ProjectMetadata.sessionTarget` reads/writes the nested `session_target` block via `encodeIfPresent` so projects without one carry no key. Reader walks `manuscript/`, `research/`, `templates/`, `characters/`, `locations/` directly from disk (instead of being driven by hierarchy), so entities under `characters/` and `locations/` actually load. Inspector grows a Scene section (POV / location / story_time / duration / threads / other-characters) with an entity menu that lists existing characters/locations and offers inline create. Binder grows Characters and Locations sections (filtered by path prefix from `project.documents`, since entities aren't in `project.yaml.hierarchy`) plus thread color dots beside docs.
+
+**Slice B — Drafts + per-doc history + dangling refs (~400 LOC).** `Git.swift` gains `createDraft` / `listDrafts` / `switchDraft` / `mergeDraft` (shells out to `/usr/bin/git`), and `documentHistory` / `restoreDocument` for per-file timeline. `References.validate(_:)` ports the Tauri `validate_references` command — walks every doc's fields map and reports references to missing characters / locations / threads. RevisionsView restructured into three tabs (History / Drafts / Threads) with a dangling-refs banner on Threads. New `DocumentHistoryView` sheet is wired into the binder context menu ("File History…") for both regular docs and entities.
+
+**Slice C — Stats + Timeline + binder polish (~500 LOC).** `Stats.swift` ports word counter, project stats, writing-history.json round-trip with `start_words` first-of-day capture, and session-progress computation (today_words, days_remaining, needed_per_day rounded up). New `StatsView` sheet shows manuscript words / pages / read time, 14-day daily-word chart, per-doc bars sorted descending, and a session-target editor. New `TimelineView` parses `story_time` (ISO 8601 → seconds, then leading-integer fallback for "Day 3" style) and renders POV / Thread / Single lanes with click-to-open chips. `Editor` gains an idle-hiding `SessionBadge` showing today/goal + days-left + needed/day. Binder context menu gets `Move Up` / `Move Down` / `Move to Trash` / `Delete Permanently` / `Empty Trash`, gated correctly for special folders. Writer gains `deleteNode` (recursive file removal), `moveNode` (with optional `newIndex`), `reorderNode` (within current parent).
+
+**Why not a single sweep:** Sliced because each layer's invariants compound. Slice A is "the format reads and writes everything"; without that, nothing UI-side works. Slice B is the destructive side (drafts, restore) and needs the format layer settled. Slice C is the polish that depends on both. Sliced delivery also kept each round of round-trip checks scoped to what just changed.
+
+**Bugs caught by the round-trip checks** that would have shipped to users:
+- `Yams` (libyaml) eagerly parses ISO-shaped scalars into `Date` per YAML 1.1. A foreign field like `story_time: 2026-04-23` would round-trip to a `Date` and disappear from the typed `String`-shaped path. Fixed in `YAMLValue.init?(any:)` by detecting `Date` and re-serializing it back to a string (date-only when midnight UTC, full ISO 8601 otherwise).
+- `URL.temporaryDirectory` returns `/var/folders/...` (a symlink to `/private/var/...`) but `FileManager.enumerator` returns URLs with the resolved path. The Reader's relative-path computation silently failed prefix-stripping, the document carried an absolute path forever, and the writer concatenated it onto the project root producing `chikn-test-XXX.chikn/private/var/folders/.../chikn-test-XXX.chikn/manuscript/file.meta`. Fixed by resolving symlinks on both sides before stripping.
+
+**Auto-commit safety net:** `switchDraft`, `mergeDraft`, and `restoreDocument` all auto-commit dirty working-tree state first as `Auto: pre-{op} snapshot`. The Tauri equivalent uses libgit2 with `force()` checkout, which silently discards uncommitted changes; matching that exactly would have been a sharp edge for writers, and the safety commit costs nothing.
+
+**Tests:** `Tests/ChiknKitChecks/main.swift` runs as `swift run ChiknKitChecks` (no XCTest module, since Command Line Tools toolchain doesn't ship one). 18 cases / 65 checks covering fields round-trip, foreign-key preservation, threads.yaml, session_target, entities, dangling refs, drafts (create/switch/merge with cross-branch document visibility), per-doc history + restore (with the new commit forward-only), word counter, project stats, writing-history start_words capture, sessionProgress, deleteNode (file removal), moveNode-into-Trash (file preservation), and reorderNode.
+
+**Still gap vs. Tauri** (each its own multi-day cut):
+- Rich-text editor with markdown round-trip — the macOS `TextEditor` is plain text; Tauri uses Tiptap with tiptap-markdown
+- AI streaming, comments anchored to text, footnotes, find/replace, flow mode
+- Compile/export UI, settings panel (theme/backup/remote/AI/compile), project search, templates CRUD
+- Remote sync UI (push/fetch/pull + conflict dialog)
+- Drag-drop reorder in binder (keyboard via context menu Move Up/Down today)
+
+---
+
 ## 2026-04-27 — Format finalization: genre-agnostic, generic `fields` extensibility
 
 **Change:** Reverted the design from the 04-23 entry below. The `.chikn` format is genre-agnostic; novelist concepts (POV, location, threads, etc.) are UI conventions, not format schema. The format gains exactly one extension point:

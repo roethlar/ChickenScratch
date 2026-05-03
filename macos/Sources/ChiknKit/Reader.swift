@@ -33,7 +33,13 @@ public enum Reader {
         let hierarchy = decodeNodes(map["hierarchy"])
         let metadata = decodeMetadata(map["metadata"] as? [String: Any])
 
-        let documents = try loadDocuments(for: hierarchy, in: url)
+        // Walk disk for all .md files under known roots — don't gate on
+        // hierarchy presence, otherwise entities under characters/ and
+        // locations/ (which Tauri doesn't list in project.yaml.hierarchy)
+        // would silently disappear.
+        let documents = try loadAllDocuments(in: url)
+
+        let threads = readThreads(at: url)
 
         return Project(
             id: id,
@@ -43,7 +49,8 @@ public enum Reader {
             modified: modified,
             hierarchy: hierarchy,
             metadata: metadata,
-            documents: documents
+            documents: documents,
+            threads: threads
         )
     }
 
@@ -74,89 +81,163 @@ public enum Reader {
             let v = map[key] as? String
             return v?.isEmpty == true ? nil : v
         }
+        let session = decodeSessionTarget(map["session_target"] as? [String: Any])
         return ProjectMetadata(
             title: s("title"),
             author: s("author"),
             projectType: s("project_type"),
             genre: s("genre"),
             theme: s("theme"),
-            summary: s("summary")
+            summary: s("summary"),
+            sessionTarget: session
         )
     }
 
-    // MARK: - Documents
+    private static func decodeSessionTarget(_ map: [String: Any]?) -> SessionTarget? {
+        guard let map else { return nil }
+        let target = SessionTarget(
+            wordsPerSession: map["words_per_session"] as? Int,
+            deadline: (map["deadline"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            totalTarget: map["total_target"] as? Int
+        )
+        return target.isEmpty ? nil : target
+    }
 
-    private static func loadDocuments(for nodes: [TreeNode], in projectURL: URL) throws -> [String: Document] {
-        var out: [String: Document] = [:]
-        for node in nodes {
-            try walk(node: node, projectURL: projectURL, into: &out)
+    // MARK: - Threads
+
+    private static func readThreads(at projectURL: URL) -> [Thread] {
+        let path = projectURL.appendingPathComponent("threads.yaml")
+        guard FileManager.default.fileExists(atPath: path.path) else { return [] }
+        guard let text = try? String(contentsOf: path, encoding: .utf8),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let parsed = (try? Yams.load(yaml: text)) as? [String: Any],
+              let list = parsed["threads"] as? [Any]
+        else { return [] }
+
+        var out: [Thread] = []
+        for raw in list {
+            guard let map = raw as? [String: Any],
+                  let id = map["id"] as? String,
+                  let name = map["name"] as? String
+            else { continue }
+            let color = (map["color"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let description = (map["description"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            out.append(Thread(id: id, name: name, color: color, description: description))
         }
         return out
     }
 
-    private static func walk(node: TreeNode, projectURL: URL, into out: inout [String: Document]) throws {
-        if node.kind == .document {
-            if let doc = try loadDocument(id: node.id, name: node.name, projectURL: projectURL) {
-                out[node.id] = doc
-            }
-        }
-        for child in node.children {
-            try walk(node: child, projectURL: projectURL, into: &out)
-        }
-    }
+    // MARK: - Documents
 
-    private static func loadDocument(id: String, name: String, projectURL: URL) throws -> Document? {
-        // Search manuscript/, research/, templates/ for a matching .md file by id or slug.
-        // The YAML's `path` field is authoritative when present; fall back to a filename search.
-        let roots = ["manuscript", "research", "templates"]
+    /// Roots scanned for .md documents. `manuscript`, `research`, `templates`
+    /// are the regular content folders; `characters` and `locations` are the
+    /// novelist-convention entity folders. Tauri's reader scans the same set.
+    private static let documentRoots = [
+        "manuscript", "research", "templates", "characters", "locations",
+    ]
+
+    private static func loadAllDocuments(in projectURL: URL) throws -> [String: Document] {
+        var out: [String: Document] = [:]
         let fm = FileManager.default
-
-        for root in roots {
+        for root in documentRoots {
             let rootURL = projectURL.appendingPathComponent(root)
+            guard fm.fileExists(atPath: rootURL.path) else { continue }
             guard let enumerator = fm.enumerator(at: rootURL, includingPropertiesForKeys: nil) else { continue }
             for case let fileURL as URL in enumerator where fileURL.pathExtension == "md" {
-                let metaURL = fileURL.deletingPathExtension().appendingPathExtension("meta")
-                guard let meta = try? readMeta(at: metaURL), meta.id == id else { continue }
-
-                let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-                let relative = fileURL.path.replacingOccurrences(of: projectURL.path + "/", with: "")
-                return Document(id: id, name: name, relativePath: relative, content: content, meta: meta.doc)
+                if let doc = readDocument(at: fileURL, projectURL: projectURL) {
+                    out[doc.id] = doc
+                }
             }
         }
-        return nil
+        return out
     }
 
-    private struct MetaRow {
-        let id: String
-        let doc: DocumentMeta
-    }
-
-    private static func readMeta(at url: URL) throws -> MetaRow? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        let text = try String(contentsOf: url, encoding: .utf8)
-        guard let parsed = try Yams.load(yaml: text) as? [String: Any],
-              let id = parsed["id"] as? String
+    private static func readDocument(at fileURL: URL, projectURL: URL) -> Document? {
+        let metaURL = fileURL.deletingPathExtension().appendingPathExtension("meta")
+        guard let metaMap = readMetaMap(at: metaURL),
+              let id = metaMap["id"] as? String
         else { return nil }
 
+        let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+        let relative = relativePath(of: fileURL, in: projectURL)
+        let name = (metaMap["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? fileURL.deletingPathExtension().lastPathComponent
+        let meta = decodeDocumentMeta(metaMap)
+        return Document(id: id, name: name, relativePath: relative, content: content, meta: meta)
+    }
+
+    private static func relativePath(of fileURL: URL, in projectURL: URL) -> String {
+        // Resolve symlinks on both sides before stripping. macOS's
+        // `temporaryDirectory` returns `/var/folders/...` (a symlink to
+        // `/private/var/folders/...`) while `FileManager.enumerator` gives
+        // back URLs with the resolved path — without normalizing, the prefix
+        // strip silently fails and the document carries an absolute path
+        // forever, which the writer then concatenates onto the project root.
+        let absFile = fileURL.standardizedFileURL.resolvingSymlinksInPath().path
+        let absProject = projectURL.standardizedFileURL.resolvingSymlinksInPath().path
+        let prefix = absProject.hasSuffix("/") ? absProject : absProject + "/"
+        if absFile.hasPrefix(prefix) {
+            return String(absFile.dropFirst(prefix.count))
+        }
+        return absFile
+    }
+
+    private static func readMetaMap(at url: URL) -> [String: Any]? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return (try? Yams.load(yaml: text)) as? [String: Any]
+    }
+
+    /// Top-level keys that map to typed columns on `DocumentMeta`. Anything
+    /// outside this set inside `fields:` is preserved through `meta.fields`;
+    /// foreign top-level keys are dropped on read (matches Tauri's behavior).
+    private static let typedMetaKeys: Set<String> = [
+        "id", "name", "created", "modified", "parent_id",
+        "label", "status", "keywords", "synopsis",
+        "section_type", "include_in_compile", "scrivener_uuid", "links",
+        "word_count_target", "compile_order", "comments",
+        "fields",
+    ]
+
+    private static func decodeDocumentMeta(_ map: [String: Any]) -> DocumentMeta {
         let keywords: [String]
-        if let arr = parsed["keywords"] as? [String] {
+        if let arr = map["keywords"] as? [String] {
             keywords = arr
-        } else if let joined = parsed["keywords"] as? String {
-            keywords = joined.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        } else if let joined = map["keywords"] as? String {
+            keywords = joined.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         } else {
             keywords = []
         }
 
-        let doc = DocumentMeta(
-            synopsis: parsed["synopsis"] as? String,
-            label: parsed["label"] as? String,
-            status: parsed["status"] as? String,
+        let includeInCompile: Bool
+        if let b = map["include_in_compile"] as? Bool {
+            includeInCompile = b
+        } else if let s = map["include_in_compile"] as? String {
+            // Scrivener-imported projects round-trip this as "Yes"/"No" strings.
+            includeInCompile = s.lowercased() != "no"
+        } else {
+            includeInCompile = true
+        }
+
+        var fields: [String: YAMLValue] = [:]
+        if let raw = map["fields"] as? [String: Any] {
+            for (k, v) in raw {
+                if let yv = YAMLValue(any: v) {
+                    fields[k] = yv
+                }
+            }
+        }
+
+        return DocumentMeta(
+            synopsis: (map["synopsis"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            label: (map["label"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            status: (map["status"] as? String).flatMap { $0.isEmpty ? nil : $0 },
             keywords: keywords,
-            includeInCompile: (parsed["include_in_compile"] as? Bool) ?? true,
-            wordCountTarget: parsed["word_count_target"] as? Int,
-            compileOrder: parsed["compile_order"] as? Int
+            includeInCompile: includeInCompile,
+            wordCountTarget: map["word_count_target"] as? Int,
+            compileOrder: map["compile_order"] as? Int,
+            fields: fields
         )
-        return MetaRow(id: id, doc: doc)
     }
 
     // MARK: - Dates
