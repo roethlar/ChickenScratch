@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
-import type { Document, TreeNode, Project } from "../../types";
+import type { Document, TreeNode } from "../../types";
 import { Sparkles, Link2 } from "lucide-react";
 import { aiSummarize } from "../../commands/ai";
 import * as docCmd from "../../commands/document";
@@ -23,11 +23,7 @@ export function Corkboard() {
   const selectDocument = useProjectStore((s) => s.selectDocument);
   // Re-derive activeDoc on each project update so the inspector and
   // other panels see the fresh metadata after AI summaries / linking.
-  const storeSetProject = useProjectStore((s) => s.setProject);
-  const setProject = (p: Project | null) => {
-    if (p) storeSetProject(p);
-    else useProjectStore.setState({ project: null, activeDoc: null });
-  };
+  const setProject = useProjectStore((s) => s.setProject);
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [summarizing, setSummarizing] = useState(false);
   const [summarizeProgress, setSummarizeProgress] = useState("");
@@ -96,7 +92,7 @@ export function Corkboard() {
     }
     setSummarizing(false);
     setSummarizeProgress("");
-  }, [project, docs]);
+  }, [project, docs, setProject]);
 
   const handleCardClick = useCallback((docId: string) => {
     if (linking) {
@@ -112,7 +108,7 @@ export function Corkboard() {
     } else {
       selectDocument(docId);
     }
-  }, [linking, project, selectDocument]);
+  }, [linking, project, selectDocument, setProject]);
 
   // Escape to cancel linking
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

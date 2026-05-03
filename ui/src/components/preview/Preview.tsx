@@ -50,11 +50,7 @@ function flattenAll(nodes: TreeNode[], ids: string[]) {
 
 export function Preview() {
   const project = useProjectStore((s) => s.project);
-  const storeSetProject = useProjectStore((s) => s.setProject);
-  const setProject = (p: Project | null) => {
-    if (p) storeSetProject(p);
-    else useProjectStore.setState({ project: null, activeDoc: null });
-  };
+  const setProject = useProjectStore((s) => s.setProject);
 
   const [editingMeta, setEditingMeta] = useState(false);
   const [meta, setMeta] = useState({
@@ -94,7 +90,7 @@ export function Preview() {
     });
     setProject(updated);
     setEditingMeta(false);
-  }, [project, meta]);
+  }, [project, meta, setProject]);
 
   const docs = useMemo(() => {
     if (!project) return [];
