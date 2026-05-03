@@ -32,6 +32,10 @@ pub struct CompileOptions {
     pub include_title_page: bool,
     /// Use Shunn standard manuscript format (Courier 12pt, double-spaced, 1" margins)
     pub manuscript_format: bool,
+    /// Override path to the pandoc binary. Falls back to `pandoc` on $PATH
+    /// when None. The settings UI lets users point at a custom install when
+    /// system pandoc isn't visible to the app sandbox.
+    pub pandoc_path: Option<String>,
 }
 
 /// Compile the manuscript into a single output file.
@@ -117,7 +121,12 @@ pub fn compile(
     let temp_md = temp_dir.join(format!("compile_{}.md", uuid::Uuid::new_v4()));
     fs::write(&temp_md, &md)?;
 
-    let mut cmd = Command::new("pandoc");
+    let pandoc_bin = opts
+        .pandoc_path
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("pandoc");
+    let mut cmd = Command::new(pandoc_bin);
     cmd.arg("-f").arg("markdown");
     cmd.arg("-t").arg(pandoc_format(format));
     cmd.arg("-o").arg(output_path);

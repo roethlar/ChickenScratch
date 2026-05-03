@@ -383,8 +383,10 @@ pub fn delete_node(project_path: String, node_id: String) -> Result<Project, Chi
     // Remove from hierarchy
     let removed = hierarchy::remove_node(&mut project.hierarchy, &node_id)?;
 
-    // Delete files for documents (and recursively for folders)
-    delete_node_files(&removed, &project, path)?;
+    // Delete files AND drop entries from `project.documents`. Without the
+    // map cleanup, `write_project` below would iterate the still-present
+    // documents and recreate the .md / .meta files we just deleted.
+    delete_node_files(&removed, &mut project, path)?;
 
     writer::write_project(&mut project)?;
     Ok(project)
@@ -392,7 +394,7 @@ pub fn delete_node(project_path: String, node_id: String) -> Result<Project, Chi
 
 fn delete_node_files(
     node: &TreeNode,
-    project: &Project,
+    project: &mut Project,
     project_path: &Path,
 ) -> Result<(), ChiknError> {
     match node {
@@ -400,6 +402,7 @@ fn delete_node_files(
             if let Some(doc) = project.documents.get(id) {
                 let _ = writer::delete_document(project_path, &doc.path);
             }
+            project.documents.remove(id);
         }
         TreeNode::Folder { children, .. } => {
             for child in children {
@@ -419,10 +422,19 @@ pub fn move_node(
 ) -> Result<Project, ChiknError> {
     let mut project = reader::read_project(Path::new(&project_path))?;
 
-    hierarchy::move_node(&mut project.hierarchy, &node_id, new_parent_id.as_deref())?;
-
-    if let Some(idx) = new_index {
-        let _ = hierarchy::reorder_node(&mut project.hierarchy, &node_id, idx);
+    // `None` from the UI means "keep current parent" — used for in-place
+    // reorder via Move Up / Move Down and drag-drop within the same
+    // sibling list. Without this guard the node would get pulled out of
+    // its folder onto the root every time the user nudges it. Use the
+    // dedicated reorder path in that case; only call the parent-changing
+    // move when a parent was specified.
+    if let Some(parent_id) = new_parent_id.as_deref() {
+        hierarchy::move_node(&mut project.hierarchy, &node_id, Some(parent_id))?;
+        if let Some(idx) = new_index {
+            let _ = hierarchy::reorder_node(&mut project.hierarchy, &node_id, idx);
+        }
+    } else if let Some(idx) = new_index {
+        hierarchy::reorder_node(&mut project.hierarchy, &node_id, idx)?;
     }
 
     writer::write_project(&mut project)?;

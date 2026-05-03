@@ -216,10 +216,17 @@ fn repair_project(project: &mut Project, project_path: &Path) -> bool {
         repaired = true;
     }
 
-    // Pass 2: Find documents on disk that aren't in the hierarchy
+    // Pass 2: Find documents on disk that aren't in the hierarchy.
+    // Entities under characters/ and locations/ live outside the hierarchy
+    // by design — UIs surface them in dedicated sections by walking
+    // `project.documents`. Adding them here would relocate them into the
+    // main binder tree on every reload.
     let referenced_paths = collect_hierarchy_paths(&project.hierarchy);
     let mut orphans: Vec<(String, String, String)> = Vec::new(); // (id, name, path)
     for doc in project.documents.values() {
+        if doc.path.starts_with("characters/") || doc.path.starts_with("locations/") {
+            continue;
+        }
         if !referenced_paths.contains(&doc.path) {
             orphans.push((doc.id.clone(), doc.name.clone(), doc.path.clone()));
         }

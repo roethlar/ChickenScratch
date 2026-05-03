@@ -42,7 +42,7 @@ use crate::utils::error::ChiknError;
 /// use chickenscratch_core::core::project::reader::read_project;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # let project = read_project(Path::new("MyNovel.chikn"))?;
-/// export_to_scriv(&project, Path::new("MyNovel.scriv"))?;
+/// export_to_scriv(&project, Path::new("MyNovel.scriv"), None)?;
 /// # Ok(()) }
 /// ```
 pub fn export_to_scriv(

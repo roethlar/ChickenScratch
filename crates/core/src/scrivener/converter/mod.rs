@@ -59,7 +59,8 @@ use crate::utils::error::ChiknError;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let project = import_scriv(
 ///     Path::new("MyNovel.scriv"),
-///     Path::new("MyNovel.chikn")
+///     Path::new("MyNovel.chikn"),
+///     None,  // optional override for the pandoc binary path
 /// )?;
 /// # Ok(()) }
 /// ```

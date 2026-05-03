@@ -148,6 +148,16 @@ pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
                 name: "Research".to_string(),
                 children: Vec::new(),
             },
+            // Trash is structural — without it the binder's "Move to Trash"
+            // path falls through to permanent delete on first use, which
+            // means new-project sessions lose work. The reader's repair
+            // step also adds it on reload, but that's too late for the
+            // first session.
+            TreeNode::Folder {
+                id: uuid::Uuid::new_v4().to_string(),
+                name: "Trash".to_string(),
+                children: Vec::new(),
+            },
         ],
         documents: std::collections::HashMap::new(),
         created: now.clone(),

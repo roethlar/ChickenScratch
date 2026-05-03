@@ -8,6 +8,7 @@ import { Color } from "@tiptap/extension-color";
 import { Link } from "@tiptap/extension-link";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import * as sessionCmd from "../../commands/session";
 import { Toolbar } from "./Toolbar";
 import { FindReplace } from "./FindReplace";
@@ -71,12 +72,53 @@ export function Editor() {
     }
   }, []);
 
+  const autoSaveSeconds = useSettingsStore(
+    (s) => s.appSettings?.writing.auto_save_seconds
+  );
+
   const debouncedSave = useCallback(() => {
     setDirty(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    // Settings exposes the delay; fall back to 2s if settings haven't
+    // hydrated yet. Convert seconds → ms.
+    const delayMs = Math.max(250, (autoSaveSeconds ?? 2) * 1000);
     saveTimer.current = setTimeout(() => {
       saveCurrent();
-    }, 2000);
+    }, delayMs);
+  }, [saveCurrent, autoSaveSeconds]);
+
+  /**
+   * Flush a pending debounced save synchronously, BEFORE the editor swaps
+   * to a new document or flow set. We can't call `saveCurrent` here because
+   * it reads `activeDoc` dynamically — by the time the effect that calls us
+   * runs, `activeDoc` has already moved on, so a naive flush would save the
+   * outgoing doc's text into the incoming doc's id. Instead, we read the
+   * id the editor was bound to (`docIdRef`) plus the editor's current
+   * markdown and write that explicitly.
+   */
+  const flushPendingSave = useCallback(() => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const ed = editorRef.current;
+    const project = useProjectStore.getState().project;
+    if (!ed || !project) return;
+
+    const flowKey = flowIdsRef.current;
+    if (flowKey) {
+      // Flow mode: use the existing multi-doc dispatch since the boundary
+      // markers carry their own ids — the editor's flow-set ref still
+      // matches the markdown buffer, so saveCurrent does the right thing.
+      saveCurrent();
+      return;
+    }
+    const oldDocId = docIdRef.current;
+    if (!oldDocId) return;
+    const markdown = getEditorMarkdown(ed);
+    docCmd
+      .updateDocumentContent(project.path, oldDocId, markdown)
+      .catch((e) => toastError(`Save failed: ${e}`));
   }, [saveCurrent]);
 
   const editor = useEditor({
@@ -152,6 +194,9 @@ export function Editor() {
       // Flow mode: concatenate documents with boundary markers.
       const flowKey = flow.map((d) => d.docId).join("|");
       if (flowIdsRef.current === flowKey) return;
+      // Persist any pending edits from the previous buffer (single-doc or
+      // a different flow set) before we replace the editor content.
+      flushPendingSave();
       flowIdsRef.current = flowKey;
       docIdRef.current = null;
 
@@ -161,9 +206,11 @@ export function Editor() {
       for (const fd of flow) {
         const doc = project.documents[fd.docId];
         if (!doc) continue;
-        if (parts.length > 0) {
-          parts.push(buildFlowBoundary(fd.docId, fd.name));
-        }
+        // Emit a leading boundary for *every* doc — including the first.
+        // splitFlowSections only outputs sections delimited by markers, so
+        // skipping the leading marker silently drops every edit to the
+        // first document on save.
+        parts.push(buildFlowBoundary(fd.docId, fd.name));
         parts.push(doc.content || "");
       }
       editor.commands.setContent(parts.join(""));
@@ -172,13 +219,24 @@ export function Editor() {
     }
 
     // Single-doc mode
+    if (flowIdsRef.current !== null) {
+      // Coming back from flow mode — flush whatever the flow buffer holds.
+      flushPendingSave();
+    }
     flowIdsRef.current = null;
     if (!activeDoc) {
+      // Switching to "no document" — flush so the previous doc's edits
+      // don't sit on the timer until the next mount.
+      if (docIdRef.current) flushPendingSave();
       editor.commands.clearContent();
       docIdRef.current = null;
       return;
     }
     if (docIdRef.current !== activeDoc.id) {
+      // Critical: persist edits to the OUTGOING doc *before* we overwrite
+      // the buffer with the incoming doc's content. Without this, any
+      // typing from the past 2s of debounce window is silently dropped.
+      flushPendingSave();
       docIdRef.current = activeDoc.id;
       const md = activeDoc.content || "";
       editor.commands.setContent(md);

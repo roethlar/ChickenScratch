@@ -4,6 +4,29 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-05-02 — Review-driven fixes (data-loss + correctness)
+
+**Change:** External review surfaced eight bugs across Tauri commands, the React editor, the core reader/writer, and the markdown preview. Most were data-loss class — silent on success, only visible if a writer noticed missing words. Patched in one batch.
+
+**Data-loss bugs:**
+- **Permanent delete recreated files** — `delete_node` (`src-tauri/src/commands/document.rs`) called `delete_node_files` to remove the `.md` / `.meta` from disk but left the entry in `project.documents`. The very next `write_project` iterates `project.documents.values()` and rewrites every doc, so the deleted files were re-emitted with their old content. Fixed by also dropping the entry from the in-memory map (and threading `&mut Project` through the recursive helper).
+- **Flow mode lost edits to the first document** — the editor concatenated docs as `[doc1, BOUNDARY, doc2, BOUNDARY, doc3]` with no leading boundary. `splitFlowSections` walks markers and only emits sections delimited by them, so any content before the first marker (i.e. all of doc1) was silently dropped on save. Fixed by emitting a leading boundary for every doc — first one too.
+- **Quick document switching dropped 2s of debounced edits** — typing then immediately switching to another doc replaced the editor buffer before the pending save fired. The naive flush approach would save the OLD content under the NEW doc's id (since `saveCurrent` reads `activeDoc` dynamically). Added a `flushPendingSave` that captures `docIdRef.current` (the id the editor was bound to) plus the current markdown and writes them explicitly. Called from every transition: single-doc → other doc, single-doc → flow, flow → single-doc, single-doc → no doc.
+
+**Correctness bugs:**
+- **Move Up / Move Down extracted nested items to root** — UI sent `newParentId: undefined` meaning "keep current parent," but `move_node` always called `hierarchy::move_node(None)` which means "move to root." Drag-drop reorder had the same shape. Fixed both sides: backend now treats `None` as "keep current parent" and uses `reorder_node`, while the drag-drop handler computes the *target's* parent and passes it explicitly so cross-folder drops land where the user dropped them. (`findNodeIndex` now returns `parentId` alongside index/siblings.)
+- **Reader's repair pass added entities to the main hierarchy** — characters under `characters/` and locations under `locations/` are by design *not* in `project.yaml.hierarchy`. UIs surface them in dedicated sections by walking `project.documents`. The repair pass treated them as orphans and migrated them into the binder tree on every reload, slowly draining the entity sections into the main pane. Fixed by skipping `characters/` and `locations/` paths in the orphan check.
+- **New projects shipped without a Trash folder** — `create_project` set up Manuscript and Research only; the Trash folder appeared on next reload via the repair pass. First-session "Move to Trash" deletes therefore fell through to permanent deletion. Added Trash to the initial hierarchy.
+
+**UX / security:**
+- **Preview rendered untrusted markdown without sanitization** — `Preview.tsx` ran `marked.parse(doc.content)` and dropped the raw HTML into `dangerouslySetInnerHTML`. With `csp: null` in `tauri.conf.json`, a `<script>` smuggled into a `.md` file would execute. Wrapped the parse in DOMPurify (added as a dep with default html profile) so the active vector is closed regardless of CSP state. CSP tightening deferred — the dev workflow uses Vite HMR which would need `'unsafe-eval'` exemptions and the trade-off needs more thought.
+- **Compile ignored the configured Pandoc path** — `core::compile::compile` always ran `Command::new("pandoc")` regardless of `settings.general.pandoc_path`. `CompileOptions` gained `pandoc_path: Option<String>`, and `compile_project` now threads the setting through. Same for `import_scriv` / `export_to_scriv` doctests, which had been stale on the existing `Option<&Path>` arg.
+- **Auto-save delay was hardcoded 2000ms** despite Settings ▸ Writing exposing the seconds. `Editor` now reads `appSettings.writing.auto_save_seconds` from the store and uses it (clamped to ≥250ms), falling back to 2s while settings hydrate.
+
+**Tests:** Doctest fix unblocks `cargo test -p chickenscratch-core --doc` (17/17). UI typecheck + production build pass. `cargo check` clean. Lint baseline unchanged (5 pre-existing errors, none new).
+
+---
+
 ## 2026-05-02 — macOS SwiftUI brought to format + workflow parity (slices A/B/C)
 
 **Change:** The macOS SwiftUI frontend was a shell — open / read / edit / save revision, nothing else. Brought it to feature parity with Tauri for everything that doesn't require a rich-text editor port.

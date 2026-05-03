@@ -2,7 +2,22 @@ import { useMemo, useState, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
 import { invoke } from "@tauri-apps/api/core";
 import { marked } from "marked";
+import DOMPurify from "dompurify";
 import type { TreeNode, Document, Project } from "../../types";
+
+/**
+ * Render markdown to a sanitized HTML string. The Tauri webview ships with
+ * `csp: null`, and the preview's `dangerouslySetInnerHTML` is the only
+ * place we ever inject untrusted markdown into the DOM — a malicious
+ * `.chikn` project could otherwise smuggle `<script>` payloads through a
+ * `Chapter 1.md`. DOMPurify strips scripts, on-event attributes, and
+ * `javascript:` URLs by default; we keep its config strict (no exotic
+ * profiles, no SVG/MathML allowance).
+ */
+function renderMarkdownSafe(markdown: string): string {
+  const raw = marked.parse(markdown, { async: false }) as string;
+  return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+}
 
 /** Find the main manuscript folder(s) and flatten their documents in order */
 function flattenManuscript(nodes: TreeNode[]): string[] {
@@ -168,7 +183,7 @@ export function Preview() {
               <div
                 className="preview-section-body"
                 dangerouslySetInnerHTML={{
-                  __html: marked.parse(doc.content || "", { async: false }) as string,
+                  __html: renderMarkdownSafe(doc.content || ""),
                 }}
               />
             </section>

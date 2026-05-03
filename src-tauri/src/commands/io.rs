@@ -30,6 +30,7 @@ pub fn compile_project(
         section_separator,
         include_title_page: include_title_page.unwrap_or(false),
         manuscript_format: ms_format,
+        pandoc_path: settings.general.pandoc_path.clone(),
     };
 
     compile::compile(

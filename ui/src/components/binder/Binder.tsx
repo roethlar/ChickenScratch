@@ -27,13 +27,18 @@ import { listTemplates, createFromTemplate, type Template } from "../../commands
 import { DocumentHistory } from "../revisions/DocumentHistory";
 import { DragProvider, useDrag } from "./DragContext";
 
-/** Find the index of a node within its parent's children list */
-function findNodeIndex(hierarchy: TreeNode[], nodeId: string): { siblings: TreeNode[]; index: number } | null {
+/** Find the index of a node within its parent's children list, plus the
+ *  parent id (null when the node is at the top of the hierarchy). */
+function findNodeIndex(
+  hierarchy: TreeNode[],
+  nodeId: string,
+  parentId: string | null = null,
+): { siblings: TreeNode[]; index: number; parentId: string | null } | null {
   for (let i = 0; i < hierarchy.length; i++) {
     const node = hierarchy[i];
-    if (node.id === nodeId) return { siblings: hierarchy, index: i };
+    if (node.id === nodeId) return { siblings: hierarchy, index: i, parentId };
     if (node.type === "Folder") {
-      const found = findNodeIndex(node.children, nodeId);
+      const found = findNodeIndex(node.children, nodeId, node.id);
       if (found) return found;
     }
   }
@@ -428,11 +433,14 @@ function BinderInner() {
         if (position === "into") {
           updated = await docCmd.moveNode(project.path, dragId, targetId);
         } else {
-          // Reorder within same parent
+          // Reorder relative to a target. The target's parent is what we
+          // want — without it the backend reorders inside the dragged
+          // item's *current* parent, which silently strands cross-folder
+          // drops.
           const found = findNodeIndex(project.hierarchy, targetId);
           if (!found) return;
           const newIndex = position === "before" ? found.index : found.index + 1;
-          updated = await docCmd.moveNode(project.path, dragId, undefined, newIndex);
+          updated = await docCmd.moveNode(project.path, dragId, found.parentId ?? undefined, newIndex);
         }
         setProject(updated);
       } catch (e) {
