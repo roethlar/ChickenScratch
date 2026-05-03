@@ -10,7 +10,7 @@ import { ProjectSearch } from "./components/search/ProjectSearch";
 import { Settings } from "./components/settings/Settings";
 import { StatsPanel } from "./components/stats/StatsPanel";
 import { CommentsPanel } from "./components/comments/CommentsPanel";
-import { getCurrentEditor } from "./components/editor/editorRef";
+import { getCurrentEditor, flushPendingEditorSave } from "./components/editor/editorRef";
 import { invoke } from "@tauri-apps/api/core";
 import * as gitCmd from "./commands/git";
 import {
@@ -141,9 +141,22 @@ export default function App() {
   // Auto-backup on close and warn if unsaved
   useEffect(() => {
     const handler = async () => {
+      // Flush any pending debounced editor save FIRST. Without this,
+      // typing-then-quitting would leave the last 2s of edits in
+      // memory only — `backup_on_close` auto-commits whatever is on
+      // disk, which wouldn't include them. `beforeunload` does not
+      // formally await async work (the WebView can tear down before
+      // the promise resolves), but the synchronous parts of this
+      // chain — clearing the timer and calling the Tauri command —
+      // still race to completion in practice and dramatically
+      // shorten the data-loss window.
+      try {
+        await flushPendingEditorSave();
+      } catch {
+        // Best-effort — don't block close on a flush hiccup.
+      }
       const store = useProjectStore.getState();
       if (store.project) {
-        // Trigger backup (non-blocking — best effort)
         try {
           await invoke("backup_on_close", { projectPath: store.project.path });
         } catch {

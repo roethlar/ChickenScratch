@@ -240,13 +240,18 @@ pub fn link_documents(
     doc_id_b: String,
 ) -> Result<Project, ChiknError> {
     let mut project = reader::read_project(Path::new(&project_path))?;
+    let now = chrono::Utc::now().to_rfc3339();
 
-    // Add bidirectional link
+    // Add bidirectional link. Both endpoints are mutated so both must
+    // bump `modified` — the writer now preserves the existing timestamp,
+    // so without an explicit bump the .meta files would record the link
+    // change with stale dates.
     for (from, to) in [(&doc_id_a, &doc_id_b), (&doc_id_b, &doc_id_a)] {
         if let Some(doc) = project.documents.get_mut(from) {
             let links = doc.links.get_or_insert_with(Vec::new);
             if !links.contains(to) {
                 links.push(to.clone());
+                doc.modified = now.clone();
             }
         }
     }
@@ -399,8 +404,13 @@ fn delete_node_files(
 ) -> Result<(), ChiknError> {
     match node {
         TreeNode::Document { id, .. } => {
+            // Surface filesystem errors instead of silently dropping the
+            // doc from the in-memory map. Otherwise a permission denial
+            // or disk-full would leave orphan `.md` / `.meta` files on
+            // disk while the binder thinks they're gone — and the next
+            // reload's repair pass would re-import them as orphans.
             if let Some(doc) = project.documents.get(id) {
-                let _ = writer::delete_document(project_path, &doc.path);
+                writer::delete_document(project_path, &doc.path)?;
             }
             project.documents.remove(id);
         }

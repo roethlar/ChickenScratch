@@ -4,6 +4,28 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-05-03 — Second review pass: app-close flush, store coherence, more
+
+**Change:** Six findings from a second review cycle, all real. Patched together.
+
+**App-close pending edits.** `beforeunload` triggered `backup_on_close` (which auto-commits whatever's already on disk) but didn't first ask the editor to write its in-flight debounced text. Editor unmount cleared the timer without flushing it. Two changes: the editor's unmount effect now calls `flushPendingSave` (fire-and-forget, fine for the typical "switch projects" path), and Editor publishes the flush via a new `setPendingFlush` / `flushPendingEditorSave` pair on `editorRef` so `App.tsx` can `await` it inside the close handler before kicking off the backup commit. `beforeunload` is famously not a real "wait until I'm done" hook — the WebView can tear down mid-promise — but the synchronous parts of the call (timer cancel, IPC dispatch) still race to completion and the data-loss window shrinks dramatically.
+
+**Store left stale after `flushPendingSave` / `saveCurrent`.** Both wrote to disk via `update_document_content` and then either updated nothing (`flushPendingSave`) or only `activeDoc` (`saveCurrent`); neither updated `project.documents[id]`. On rapid switch-back, `selectDocument` rehydrated `activeDoc` from the stale map and the editor effect loaded *that* into the buffer, silently reverting recent typing. Added an `applyContentToStore(id, markdown)` helper that updates both `project.documents[id]` and `activeDoc` in one pass, called from each save site.
+
+**`FlowBoundary` widget capture + names with quotes.** The widget callback closed over the loop's `match` variable, which a regex's `exec` mutates between iterations — by the time ProseMirror invoked the renderer, `match` was either `null` or a different match's data. Captured the values up front. Switched the widget from `innerHTML` to DOM-API `textContent` so the doc name can't smuggle markup. `escapeHtml` now also escapes `"` (renamed `escapeMarkerName`) so a doc named `Chapter "1"` doesn't terminate the marker's `name="..."` attribute and confuse the regex; matching `decodeMarkerName` reverses the escapes when the widget renders.
+
+**`threads.yaml` not removed when the last thread is deleted.** `write_threads_if_any` returned early when `project.threads` was empty, leaving a stale file on disk that a reload would resurrect. Now removes the file in the empty case (best-effort — a remove-failure is logged-only since the worst case is a stale sidecar, not data loss). Regression test: `test_emptying_threads_removes_file`.
+
+**Permanent delete swallowed filesystem errors.** `delete_node_files` did `let _ = writer::delete_document(...)` and then unconditionally dropped the doc from `project.documents`. A permission denial or full disk would leave orphan `.md` / `.meta` files that the next reload's repair pass would happily re-import. Now propagates the error and the doc stays in state if the disk delete fails.
+
+**Every `write_project` rewrote every `.meta` with a fresh `modified: now()`.** Renaming a single doc, moving any node, or saving any one document all caused the writer to iterate `project.documents.values()` and stamp every sidecar's `modified` timestamp. That makes git diffs noisy (every commit "touches" every doc) and per-document modified dates inaccurate (they all bump together). Switched `write_document` to use `document.modified` from the in-memory state — callers that genuinely change a doc bump that field themselves (most already did). Audited the one missing case: `link_documents` now bumps `doc.modified` on each linked endpoint. Regression test: `test_write_preserves_document_modified`.
+
+**Tests:** 58 lib + 2 integration + 17 doctest = 77 Rust tests passing. `cargo clippy --all-targets -- -D warnings` clean. macOS `swift run ChiknKitChecks` 65/65 green. UI typecheck + production build clean.
+
+**What's still on the medium-deferred list:** the broader "every project write rewrites every doc's content" inefficiency. After this pass the .meta noise is gone, but the writer still iterates and overwrites every `.md` on every save. Files with unchanged content will show byte-identical writes — git won't pick them up — but the I/O is wasted. A real fix splits `write_project` into structure-only (project.yaml + threads.yaml) and per-doc paths, and updates each command to write only what it changed. Larger refactor; punted.
+
+---
+
 ## 2026-05-02 — Review-driven fixes (data-loss + correctness)
 
 **Change:** External review surfaced eight bugs across Tauri commands, the React editor, the core reader/writer, and the markdown preview. Most were data-loss class — silent on success, only visible if a writer noticed missing words. Patched in one batch.

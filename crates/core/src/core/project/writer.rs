@@ -76,10 +76,18 @@ pub fn write_project(project: &mut Project) -> Result<(), ChiknError> {
     Ok(())
 }
 
-/// Writes `threads.yaml` if the project has any threads. Empty thread vec is a
-/// no-op so projects that never used threads don't get an empty sidecar.
+/// Writes `threads.yaml` if the project has any threads. Empty thread vec
+/// removes the existing sidecar (if present) so deleting the last thread
+/// actually persists — without the cleanup, the file lingered with the
+/// pre-deletion threads forever and a reload would resurrect them.
 fn write_threads_if_any(project: &Project) -> Result<(), ChiknError> {
+    let path = get_threads_path(Path::new(&project.path));
     if project.threads.is_empty() {
+        if path.exists() {
+            // Best-effort: a failure here would only mean a stale file on
+            // disk, not data loss; the user can delete it manually.
+            let _ = fs::remove_file(&path);
+        }
         return Ok(());
     }
     #[derive(serde::Serialize)]
@@ -90,7 +98,6 @@ fn write_threads_if_any(project: &Project) -> Result<(), ChiknError> {
         threads: &project.threads,
     };
     let yaml = serde_yaml::to_string(&payload)?;
-    let path = get_threads_path(Path::new(&project.path));
     let temp = path.with_extension("yaml.tmp");
     fs::write(&temp, yaml)?;
     fs::rename(&temp, &path)?;
@@ -284,7 +291,14 @@ fn write_document(
         id: document.id.clone(),
         name: Some(document.name.clone()),
         created: document.created.clone(),
-        modified: Utc::now().to_rfc3339(),
+        // Preserve the doc's own `modified` instead of stamping `now()`.
+        // `write_project` writes EVERY doc on each call, so a fresh
+        // `now()` here would bump every .meta's timestamp on every
+        // unrelated save (rename/move/comment/etc.) and produce noisy
+        // git diffs plus inaccurate per-doc modified dates. Callers who
+        // genuinely change a doc bump `document.modified` themselves
+        // before this runs (see commands/document.rs).
+        modified: document.modified.clone(),
         parent_id: document.parent_id.clone(),
         label: document.label.clone(),
         status: document.status.clone(),
@@ -849,5 +863,62 @@ mod tests {
 
         // Verify modified timestamp was updated
         assert_ne!(project.modified, original_modified);
+    }
+
+    #[test]
+    fn test_write_preserves_document_modified() {
+        // Regression: `write_project` used to stamp every doc's .meta with
+        // `Utc::now()`, so renaming or moving any node bumped the modified
+        // timestamp on every other document. Verify that an unrelated
+        // write leaves `Document.modified` untouched.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("ModifiedPreserve.chikn");
+
+        let mut project = create_project(&project_path, "Modified Preserve").unwrap();
+        let frozen = "2020-01-01T00:00:00Z".to_string();
+        let doc = Document {
+            id: "doc1".to_string(),
+            name: "Stable".to_string(),
+            path: "manuscript/stable.md".to_string(),
+            content: "frozen".to_string(),
+            parent_id: None,
+            created: frozen.clone(),
+            modified: frozen.clone(),
+            ..Default::default()
+        };
+        project.documents.insert(doc.id.clone(), doc);
+        write_project(&mut project).unwrap();
+
+        // Reload and confirm the writer kept the historical timestamp.
+        let reloaded = read_project(&project_path).unwrap();
+        let stable = reloaded.documents.get("doc1").unwrap();
+        assert_eq!(stable.modified, frozen);
+    }
+
+    #[test]
+    fn test_emptying_threads_removes_file() {
+        // Regression: `write_threads_if_any` used to no-op on an empty
+        // thread list, leaving stale `threads.yaml` content on disk.
+        // Deleting the last thread should actually persist.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("EmptyThreads.chikn");
+        let mut project = create_project(&project_path, "Empty Threads").unwrap();
+
+        project.threads = vec![crate::models::Thread {
+            id: "main".into(),
+            name: "Main Plot".into(),
+            color: None,
+            description: None,
+        }];
+        write_project(&mut project).unwrap();
+        let threads_path = project_path.join("threads.yaml");
+        assert!(threads_path.exists(), "threads.yaml written when threads present");
+
+        project.threads.clear();
+        write_project(&mut project).unwrap();
+        assert!(
+            !threads_path.exists(),
+            "threads.yaml removed when project drops to zero threads"
+        );
     }
 }

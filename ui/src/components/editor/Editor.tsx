@@ -14,11 +14,39 @@ import { Toolbar } from "./Toolbar";
 import { FindReplace } from "./FindReplace";
 import { CommentMark } from "../comments/CommentMark";
 import { FootnoteNode } from "./FootnoteNode";
-import { setCurrentEditor, getEditorMarkdown } from "./editorRef";
+import { setCurrentEditor, setPendingFlush, getEditorMarkdown } from "./editorRef";
 import { Markdown } from "tiptap-markdown";
 import * as docCmd from "../../commands/document";
 import { toastError } from "../shared/Toast";
 import { FlowBoundary, buildFlowBoundary, splitFlowSections } from "./FlowBoundary";
+
+/**
+ * Mirror a just-saved markdown payload into `project.documents` *and*
+ * `activeDoc` (when it points at the same id). This keeps the editor's
+ * load effect from reading stale store content if the user switches to
+ * another doc and back before the next full project reload — a common
+ * way to silently revert recent typing.
+ */
+function applyContentToStore(docId: string, markdown: string) {
+  useProjectStore.setState((state) => {
+    const project = state.project;
+    if (!project) return state;
+    const existing = project.documents[docId];
+    if (!existing) return state;
+    const updatedDoc = { ...existing, content: markdown };
+    return {
+      ...state,
+      project: {
+        ...project,
+        documents: { ...project.documents, [docId]: updatedDoc },
+      },
+      activeDoc:
+        state.activeDoc?.id === docId
+          ? { ...state.activeDoc, content: markdown }
+          : state.activeDoc,
+    };
+  });
+}
 
 export function Editor() {
   const activeDoc = useProjectStore((s) => s.activeDoc);
@@ -60,9 +88,11 @@ export function Editor() {
         const d = useProjectStore.getState().activeDoc;
         if (!d) return;
         await docCmd.updateDocumentContent(p.path, d.id, markdown);
-        useProjectStore.setState({
-          activeDoc: { ...d, content: markdown },
-        });
+        // Update BOTH activeDoc and project.documents[d.id]. Without the
+        // map update, switching to another doc and back makes the editor
+        // load the stale `project.documents[d.id].content` from before
+        // this save — silently reverting whatever the user just typed.
+        applyContentToStore(d.id, markdown);
       }
       setDirty(false);
     } catch (e) {
@@ -96,7 +126,7 @@ export function Editor() {
    * id the editor was bound to (`docIdRef`) plus the editor's current
    * markdown and write that explicitly.
    */
-  const flushPendingSave = useCallback(() => {
+  const flushPendingSave = useCallback(async (): Promise<void> => {
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
@@ -107,18 +137,24 @@ export function Editor() {
 
     const flowKey = flowIdsRef.current;
     if (flowKey) {
-      // Flow mode: use the existing multi-doc dispatch since the boundary
-      // markers carry their own ids — the editor's flow-set ref still
-      // matches the markdown buffer, so saveCurrent does the right thing.
-      saveCurrent();
+      // Flow mode: defer to saveCurrent which handles multi-doc dispatch
+      // and the post-write project reload.
+      await saveCurrent();
       return;
     }
     const oldDocId = docIdRef.current;
     if (!oldDocId) return;
     const markdown = getEditorMarkdown(ed);
-    docCmd
-      .updateDocumentContent(project.path, oldDocId, markdown)
-      .catch((e) => toastError(`Save failed: ${e}`));
+    // Reflect the save in the in-memory project IMMEDIATELY. The Tauri
+    // call may still be in flight when the user switches back to this
+    // doc; the editor's load effect would then read the stale content
+    // from `project.documents[oldDocId]` and silently revert their work.
+    applyContentToStore(oldDocId, markdown);
+    try {
+      await docCmd.updateDocumentContent(project.path, oldDocId, markdown);
+    } catch (e) {
+      toastError(`Save failed: ${e}`);
+    }
   }, [saveCurrent]);
 
   const editor = useEditor({
@@ -270,16 +306,30 @@ export function Editor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchHighlight, activeDoc?.id, editor]);
 
+  // On unmount: flush a pending debounced save before tearing down. Just
+  // clearing the timer (the original behavior) was a silent data-loss
+  // path — typing stops, the user navigates away, and the 2s debounce
+  // never fires. flushPendingSave is fire-and-forget; if the editor
+  // unmounts as part of app close, see App.tsx's beforeunload handler
+  // which awaits the same flush before backup_on_close runs.
   useEffect(() => {
     return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
+      flushPendingSave();
     };
-  }, []);
+  }, [flushPendingSave]);
 
   useEffect(() => {
     setCurrentEditor(editor);
     return () => setCurrentEditor(null);
   }, [editor]);
+
+  // Publish the pending-save flush to the global ref so non-Editor code
+  // (App.tsx's beforeunload handler) can wait on it before the window
+  // tears down.
+  useEffect(() => {
+    setPendingFlush(flushPendingSave);
+    return () => setPendingFlush(null);
+  }, [flushPendingSave]);
 
   const project = useProjectStore((s) => s.project);
   const sessionStartWords = useProjectStore((s) => s.sessionStartWords);

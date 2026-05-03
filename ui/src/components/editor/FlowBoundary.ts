@@ -15,7 +15,7 @@ export const FlowBoundary = Extension.create({
           init() {
             return DecorationSet.empty;
           },
-          apply(tr, _oldSet) {
+          apply(tr) {
             const decos: Decoration[] = [];
             tr.doc.descendants((node, pos) => {
               if (!node.isText) return;
@@ -23,14 +23,26 @@ export const FlowBoundary = Extension.create({
               const text = node.text || "";
               BOUNDARY_RE.lastIndex = 0;
               while ((match = BOUNDARY_RE.exec(text)) !== null) {
+                // Capture the matched values up front. The widget callback
+                // runs lazily when ProseMirror renders, by which time
+                // `match` has been overwritten by subsequent exec() calls
+                // (or set to null when the loop ends), so closing over the
+                // loop variable directly is a use-after-free.
                 const from = pos + match.index;
                 const to = from + match[0].length;
+                const docId = match[1];
+                const name = decodeMarkerName(match[2]);
                 decos.push(
                   Decoration.widget(from, () => {
                     const el = document.createElement("div");
                     el.className = "flow-divider";
-                    el.setAttribute("data-doc-id", match![1]);
-                    el.innerHTML = `<span>${escapeHtml(match![2])}</span>`;
+                    el.setAttribute("data-doc-id", docId);
+                    // textContent escapes the value safely — no innerHTML
+                    // path means the user's doc name can't smuggle markup
+                    // into the editor chrome.
+                    const span = document.createElement("span");
+                    span.textContent = name;
+                    el.appendChild(span);
                     return el;
                   }, { side: -1 })
                 );
@@ -52,12 +64,31 @@ export const FlowBoundary = Extension.create({
   },
 });
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/**
+ * Escape a doc name for inclusion inside the flow boundary marker. The
+ * marker is `name="..."` so a stray `"` would terminate the attribute and
+ * break the regex parser (or worse, make the parser see a bogus second
+ * marker). Mirror the standard HTML attribute escapes — `&` first, then
+ * the structural chars — and let `decodeMarkerName` undo them on read.
+ */
+function escapeMarkerName(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function decodeMarkerName(s: string): string {
+  return s
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
 
 export function buildFlowBoundary(docId: string, name: string): string {
-  return `\n\n<!-- CHIKN_FLOW id="${docId}" name="${escapeHtml(name)}" -->\n\n`;
+  return `\n\n<!-- CHIKN_FLOW id="${docId}" name="${escapeMarkerName(name)}" -->\n\n`;
 }
 
 export interface DocSection {
