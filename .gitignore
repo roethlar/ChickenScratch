@@ -15,6 +15,9 @@ windows/**/BundleArtifacts/
 node_modules/
 ui/dist/
 
+# Claude
+.claude/
+
 # Swift / Xcode
 macos/.build/
 macos/.swiftpm/

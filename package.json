@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "@tauri-apps/plugin-shell": "^2.3.5"
-  }
-}
