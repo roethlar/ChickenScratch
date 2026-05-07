@@ -30,6 +30,20 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-05-07 — Fifth review pass, batch 3: error propagation cleanup (F-011, F-016, F-017)
+
+Three swallowed-error sites across Rust core, macOS Swift, and TUI. All same shape: a write or delete throws, the surrounding code says "operation succeeded", later state diverges from on-disk reality.
+
+**F-011: `restore_document` swallowed sidecar restore errors.** The function restored the `.md` blob and then tried to restore the matching `.meta` blob via `let _ = std::fs::write(...)`. If the sidecar write failed (permissions, disk full, file locked), the user saw a successful document restore commit while metadata, comments, and `fields` stayed at the post-restore state. Now propagates write errors with a clear message — and treats sidecar absence in the commit as success (older commits predate the convention). Sidecar best-effort means "may not exist", not "may fail to write".
+
+**F-016: macOS Writer used `try?` on destructive deletes.** Permanent-delete and stale `threads.yaml` removal both swallowed errors via `try?`, reintroducing the same class of bug the Rust `commands/document.rs` fix addressed. Replaced with a `removeIfExists(at:)` helper that propagates errors but treats "file already gone" (NSFileNoSuchFileError) as idempotent success. Used at all three sites the review flagged.
+
+**F-017: TUI comment writes silenced project-write failures.** Three comment mutations (add, toggle resolve, edit body) all called `let _ = writer::write_project(&mut self.project)` — a failed disk write left the in-memory comment looking saved while `.meta` was unchanged, so the comment vanished on next reload. Each site now matches on the result and routes failures into the status line.
+
+**Tests:** Same suite as batch 2 — Rust unit tests + clippy clean, macOS `swift run ChiknKitChecks` 65/65 pass with the new error propagation paths. No new tests for these (the change is "stop ignoring errors"; covering each failure mode would mean simulating filesystem failures, which has poor test ROI).
+
+---
+
 ## 2026-05-07 — Fifth review pass, batch 2: git workflow + Unicode + draft merge (F-007 → F-010)
 
 **F-007: manual git ops bypassed the editor flush.** Earlier review passes carefully wired `flushPendingEditorSave()` into autosave, app close, and Ctrl+S; the Revisions panel was the missing seam. "Type, immediately click Save Revision" silently committed pre-debounce on-disk content while the typed words sat in the Tiptap buffer. Same exposure for restore, draft create/switch/merge, push, fetch, pull. Added `runWithEditorFlush(opName, fn)` — awaits the flush, surfaces any flush error and aborts before the git op runs. Wrapped every git entry point in `Revisions.tsx` (save, restore, new draft, switch draft, merge draft, push, fetch, pull). Force-pull and abort-pull intentionally don't gate (force-pull explicitly discards local; abort restores pre-merge state — the buffer is about to be discarded either way).

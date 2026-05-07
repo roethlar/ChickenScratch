@@ -368,9 +368,19 @@ impl<'a> App<'a> {
             false
         };
         if did_add {
-            let _ = writer::write_project(&mut self.project);
-            self.comments_selected = self.current_comments().len().saturating_sub(1);
-            self.status = "Comment added".to_string();
+            // Surface write errors via the status line. Previously `let _ =`
+            // silenced them, so a failed disk write left the in-memory comment
+            // looking saved while the on-disk `.meta` was unchanged — the
+            // comment vanished on next reload (F-017).
+            match writer::write_project(&mut self.project) {
+                Ok(()) => {
+                    self.comments_selected = self.current_comments().len().saturating_sub(1);
+                    self.status = "Comment added".to_string();
+                }
+                Err(e) => {
+                    self.status = format!("Comment save failed: {e}");
+                }
+            }
         }
     }
 
@@ -427,8 +437,14 @@ impl<'a> App<'a> {
             }
         };
         if let Some(r) = resolved_after {
-            let _ = writer::write_project(&mut self.project);
-            self.status = format!("Comment {}", if r { "resolved" } else { "reopened" });
+            match writer::write_project(&mut self.project) {
+                Ok(()) => {
+                    self.status = format!("Comment {}", if r { "resolved" } else { "reopened" });
+                }
+                Err(e) => {
+                    self.status = format!("Comment save failed: {e}");
+                }
+            }
         }
     }
 
@@ -452,8 +468,14 @@ impl<'a> App<'a> {
             }
         };
         if did_update {
-            let _ = writer::write_project(&mut self.project);
-            self.status = "Comment updated".to_string();
+            match writer::write_project(&mut self.project) {
+                Ok(()) => {
+                    self.status = "Comment updated".to_string();
+                }
+                Err(e) => {
+                    self.status = format!("Comment save failed: {e}");
+                }
+            }
         }
     }
 

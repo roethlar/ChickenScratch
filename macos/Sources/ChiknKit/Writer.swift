@@ -322,20 +322,46 @@ public enum Writer {
         return nil
     }
 
+    /// Delete the on-disk artifacts for a removed node. Propagates errors
+    /// instead of silently swallowing them via `try?` — UI claiming a
+    /// successful delete while the file remains lets a later read resurrect
+    /// the deleted content (same class as the Rust fix in `commands/document.rs`,
+    /// F-016).
+    ///
+    /// `fileNotFound` is treated as success: the node is already gone, which
+    /// is the desired end state. Anything else (permissions, busy file, parent
+    /// directory error) is surfaced so the caller can roll the project model
+    /// back instead of pretending the delete succeeded.
     private static func deleteNodeFiles(_ node: TreeNode, in project: inout Project) throws {
         switch node.kind {
         case .document:
             if let doc = project.documents[node.id] {
                 let docURL = project.path.appendingPathComponent(doc.relativePath)
                 let metaURL = docURL.deletingPathExtension().appendingPathExtension("meta")
-                try? FileManager.default.removeItem(at: docURL)
-                try? FileManager.default.removeItem(at: metaURL)
+                try removeIfExists(at: docURL)
+                try removeIfExists(at: metaURL)
                 project.documents.removeValue(forKey: node.id)
             }
         case .folder:
             for child in node.children {
                 try deleteNodeFiles(child, in: &project)
             }
+        }
+    }
+
+    /// Remove `url` if it exists on disk. Treats "no such file" as success
+    /// (idempotent delete); any other failure throws so the caller hears
+    /// about it.
+    private static func removeIfExists(at url: URL) throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path) else { return }
+        do {
+            try fm.removeItem(at: url)
+        } catch let error as NSError where error.domain == NSCocoaErrorDomain
+            && error.code == NSFileNoSuchFileError {
+            // Race with another deletion path — the file vanished between the
+            // exists-check and the remove call. Idempotent, not an error.
+            return
         }
     }
 
@@ -435,10 +461,10 @@ public enum Writer {
         let url = project.path.appendingPathComponent("threads.yaml")
         if project.threads.isEmpty {
             // Avoid leaving a stale empty file behind after the user deletes
-            // their last thread.
-            if FileManager.default.fileExists(atPath: url.path) {
-                try? FileManager.default.removeItem(at: url)
-            }
+            // their last thread. `try?` here let a permission failure silently
+            // resurrect deleted threads on the next read (F-016) — propagate
+            // the error instead, treating "already gone" as success.
+            try removeIfExists(at: url)
             return
         }
         let payload: [String: Any] = [

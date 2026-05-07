@@ -230,12 +230,25 @@ pub fn restore_document(
     }
     std::fs::write(&abs_target, blob.content())?;
 
+    // Sidecar restore is best-effort about EXISTENCE — older commits may
+    // predate the .meta convention, in which case there's nothing to restore
+    // and we shouldn't fail the operation. But if the sidecar IS in the
+    // commit and we then fail to write it, that's a real error: the user
+    // would see "restored successfully" while the document content reverted
+    // and metadata/comments/fields stayed at the post-restore state, with
+    // the merge commit cementing that mismatch into history. (F-011)
     if let Some(meta_rel) = meta_path {
         if let Ok(meta_entry) = tree.get_path(std::path::Path::new(&meta_rel)) {
-            if let Ok(meta_blob) = repo.find_blob(meta_entry.id()) {
-                let abs_meta = project_path.join(&meta_rel);
-                let _ = std::fs::write(&abs_meta, meta_blob.content());
-            }
+            let meta_blob = repo
+                .find_blob(meta_entry.id())
+                .map_err(|e| ChiknError::Unknown(format!("Sidecar blob: {}", e)))?;
+            let abs_meta = project_path.join(&meta_rel);
+            std::fs::write(&abs_meta, meta_blob.content()).map_err(|e| {
+                ChiknError::Unknown(format!(
+                    "Failed to restore sidecar metadata for {}: {}",
+                    doc_path, e
+                ))
+            })?;
         }
     }
 
