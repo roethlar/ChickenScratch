@@ -204,3 +204,36 @@ include_in_compile: false
         "YAML bool `false` should map to include_in_compile == false"
     );
 }
+
+#[test]
+fn project_self_heals_when_required_folder_missing() {
+    // F-012: roadmap claims self-healing, but the previous read pipeline
+    // ran strict folder validation BEFORE repair, so a missing
+    // `templates/` (or any other required folder) blocked load entirely.
+    // The fix runs repair first, then validates only the truly fatal
+    // conditions (path missing / not a directory / no project.yaml).
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().join("Healing.chikn");
+    fs::create_dir(&root).unwrap();
+
+    // Only create manuscript/ and settings/ — leave research/ and templates/
+    // missing. This used to error with "Missing required folder: templates".
+    fs::create_dir(root.join("manuscript")).unwrap();
+    fs::create_dir(root.join("settings")).unwrap();
+
+    fs::write(
+        root.join("project.yaml"),
+        r#"id: "p"
+name: "Healing"
+created: "2026-05-01T00:00:00Z"
+modified: "2026-05-01T00:00:00Z"
+hierarchy: []
+"#,
+    )
+    .unwrap();
+
+    let project = read_project(&root).expect("project should self-heal");
+    assert_eq!(project.name, "Healing");
+    assert!(root.join("research").is_dir(), "research/ should be created");
+    assert!(root.join("templates").is_dir(), "templates/ should be created");
+}

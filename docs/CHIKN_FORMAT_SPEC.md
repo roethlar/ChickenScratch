@@ -1,6 +1,6 @@
 # .chikn Format Specification v1.2
 **Status**: Living Specification
-**Last Updated**: 2026-04-23
+**Last Updated**: 2026-05-07
 **Purpose**: Define the .chikn project format for creative writing with git integration
 
 ---

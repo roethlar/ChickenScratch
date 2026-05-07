@@ -244,6 +244,13 @@ pub fn import_markdown_folder(
         .collect();
     entries.sort_by_key(|e| e.file_name());
 
+    // Per-file failures collected so we can either fail the whole import (if
+    // every file failed) or surface a partial-import warning. Listing failed
+    // paths is far more useful than the previous silent empty-document
+    // outcome (F-015).
+    let mut failures: Vec<String> = Vec::new();
+    let mut imported_count: usize = 0;
+
     for entry in entries {
         let path = entry.path();
         let ext = path
@@ -263,9 +270,27 @@ pub fn import_markdown_folder(
             .unwrap_or("Untitled")
             .to_string();
 
+        // F-015: previously `unwrap_or_default()` quietly turned read /
+        // pandoc failures into empty Document content — the project then
+        // committed with a real-looking entry whose body was "" and the
+        // user's original file silently lost. Skip the entry on failure
+        // and collect the error so we can report a partial import at the
+        // end of the loop instead of pretending success.
         let content = match ext.as_str() {
-            "md" | "markdown" | "txt" => fs::read_to_string(&path).unwrap_or_default(),
-            _ => convert_to_markdown_via_pandoc(&path, &ext).unwrap_or_default(),
+            "md" | "markdown" | "txt" => match fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(e) => {
+                    failures.push(format!("{}: {}", path.display(), e));
+                    continue;
+                }
+            },
+            _ => match convert_to_markdown_via_pandoc(&path, &ext) {
+                Ok(c) => c,
+                Err(e) => {
+                    failures.push(format!("{}: {}", path.display(), e));
+                    continue;
+                }
+            },
         };
 
         let doc_id = uuid::Uuid::new_v4().to_string();
@@ -294,10 +319,36 @@ pub fn import_markdown_folder(
             name: doc_name,
             path: doc_path,
         });
+        imported_count += 1;
+    }
+
+    // Fail the whole transaction when nothing imported AND we hit failures.
+    // An empty source folder (no failures, no imports) is still a successful
+    // — if useless — empty project, matching prior behavior for that case.
+    if imported_count == 0 && !failures.is_empty() {
+        return Err(ChiknError::Unknown(format!(
+            "Import failed for all {} file(s):\n{}",
+            failures.len(),
+            failures.join("\n")
+        )));
     }
 
     writer::write_project(&mut project)?;
     let _ = git::save_revision(output, &format!("Imported from: {}", name));
+
+    // Partial success: log skipped files to stderr so the operator sees them
+    // even though the import returned the project. A future API revision
+    // could fold this into a structured `ImportResult { project, skipped }`,
+    // but at this scale (and given Tauri's command return is JSON) the
+    // current shape is fine; the alternative was silent data loss.
+    if !failures.is_empty() {
+        eprintln!(
+            "Imported {} file(s); skipped {} that failed to read/convert:\n{}",
+            imported_count,
+            failures.len(),
+            failures.join("\n")
+        );
+    }
 
     Ok(project)
 }

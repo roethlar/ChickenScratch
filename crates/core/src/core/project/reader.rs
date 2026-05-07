@@ -32,7 +32,7 @@ use uuid::Uuid;
 use super::format::{
     get_characters_path, get_document_meta_path, get_locations_path, get_manuscript_path,
     get_project_file_path, get_research_path, get_settings_path, get_templates_path,
-    get_threads_path, validate_project_structure, DOCUMENT_EXTENSION,
+    get_threads_path, DOCUMENT_EXTENSION,
 };
 use crate::models::{Document, Project, Thread, TreeNode};
 use crate::utils::error::ChiknError;
@@ -192,8 +192,23 @@ fn current_timestamp() -> String {
 /// # Ok(()) }
 /// ```
 pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
-    // Validate project structure
-    validate_project_structure(path)?;
+    // F-012: previously `validate_project_structure` ran first and rejected
+    // the project the moment any of `manuscript/`, `research/`, `templates/`,
+    // `settings/` was missing — even though the rest of the read+repair flow
+    // can recreate them. The TODO/roadmap describe the project as
+    // self-healing, so honor that claim by giving repair a chance before
+    // strict validation.
+    //
+    // Split into two layers:
+    //  1. `validate_project_root(path)` — non-recoverable failures (path
+    //     missing, not a directory, no `project.yaml`). These genuinely
+    //     mean "not a chikn project".
+    //  2. `pre_repair_folders(path)` — silently recreate missing required
+    //     subfolders. Repair failures are logged to stderr but don't block
+    //     load; the user sees broken state rather than a confusing error
+    //     screen, and the next save attempt will surface the real fs problem.
+    validate_project_root(path)?;
+    pre_repair_folders(path);
 
     // Read project.yaml
     let metadata = read_project_metadata(path)?;
@@ -216,11 +231,71 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
     // Reconcile hierarchy with actual files on disk
     let repaired = repair_project(&mut project, path);
     if repaired {
-        // Write repaired state back to disk
-        let _ = super::writer::write_project(&mut project);
+        // Write repaired state back to disk. The previous `let _ = ...`
+        // silenced repair failures entirely — a permission error or full
+        // disk would let the user open and edit a project whose on-disk
+        // state still didn't match the in-memory model, and they'd find
+        // out only on the next save. Log the failure so it's visible at
+        // least via stderr / Tauri's log file (F-012).
+        if let Err(e) = super::writer::write_project(&mut project) {
+            eprintln!(
+                "Repair write failed for {}: {} — in-memory project loaded \
+                 anyway; the next save will surface the real error.",
+                path.display(),
+                e
+            );
+        }
     }
 
     Ok(project)
+}
+
+/// Soft top-level validation: only the failures that genuinely mean "not a
+/// chikn project". Sub-folder presence is handled by `pre_repair_folders`
+/// (the format claims self-healing — F-012).
+fn validate_project_root(path: &Path) -> Result<(), ChiknError> {
+    if !path.exists() {
+        return Err(ChiknError::NotFound(format!(
+            "Project path does not exist: {}",
+            path.display()
+        )));
+    }
+    if !path.is_dir() {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Project path is not a directory: {}",
+            path.display()
+        )));
+    }
+    let project_file = path.join(super::format::PROJECT_FILE);
+    if !project_file.exists() {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Missing required file: {}",
+            super::format::PROJECT_FILE
+        )));
+    }
+    Ok(())
+}
+
+/// Best-effort: create any missing required subfolders before the rest of
+/// the read pipeline runs. Failures here are logged but don't abort the
+/// load — the surrounding repair pass will try again, and a real fs problem
+/// will surface during the next write.
+fn pre_repair_folders(path: &Path) {
+    for folder in super::format::REQUIRED_FOLDERS {
+        let folder_path = path.join(folder);
+        if folder_path.exists() {
+            continue;
+        }
+        if let Err(e) = std::fs::create_dir_all(&folder_path) {
+            eprintln!(
+                "pre-repair: failed to create {}: {} — continuing anyway",
+                folder_path.display(),
+                e
+            );
+        } else {
+            eprintln!("pre-repair: created missing folder {}", folder_path.display());
+        }
+    }
 }
 
 /// Reconciles project.yaml hierarchy with actual files on disk.

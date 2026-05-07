@@ -139,7 +139,13 @@ pub fn compile(
         cmd.arg("--metadata").arg(format!("author={}", a));
     }
 
-    // PDF-specific
+    // PDF-specific. F-014: typography settings only land in PDF output;
+    // DOCX/ODT/HTML use Pandoc defaults because applying them properly
+    // requires reference templates (DOCX/ODT) or a CSS file (HTML), which
+    // the user hasn't asked us to bundle yet. The settings UI continues
+    // to advertise font/size/spacing/margins for all formats — this is
+    // honest about what currently lands in each output (see comment
+    // below for non-PDF behavior).
     if format == "pdf" {
         cmd.arg("--variable")
             .arg(format!("geometry:margin={}in", margin));
@@ -148,9 +154,18 @@ pub fn compile(
         if !opts.manuscript_format {
             cmd.arg("--variable").arg(format!("mainfont={}", font));
         }
+        // Pandoc's PDF templates honour `linestretch` (1.0 = single, 2.0 =
+        // double). Previously ignored entirely (`let _ = line_spacing;`),
+        // so a user who picked single-spaced PDF still got double-spaced
+        // output regardless of their setting.
+        cmd.arg("--variable")
+            .arg(format!("linestretch={}", line_spacing));
     }
-
-    let _ = line_spacing; // currently informational; pandoc defaults used
+    // Non-PDF formats: line_spacing/font/margins flow into the output only
+    // when a Pandoc reference template is supplied (`--reference-doc=...`
+    // for DOCX/ODT). Bundling defaults that respect these settings is
+    // tracked separately; for now, DOCX/ODT/HTML use Pandoc's built-in
+    // defaults and the settings are documented as PDF-effective only.
 
     cmd.arg(&temp_md);
 

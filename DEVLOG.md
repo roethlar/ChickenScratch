@@ -30,6 +30,24 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-05-07 — Fifth review pass, batch 4: self-healing + import + compile + docs (F-012, F-014, F-015, F-018)
+
+Closing out the fifth review pass. F-013 (full project rewrites) is intentionally deferred — the review marked it as a known-known and the broader writer split is a multi-day refactor that doesn't belong in a fix batch.
+
+**F-012: self-healing claim was hollow.** `read_project` ran strict folder validation FIRST, so a project missing `templates/` or `research/` failed to load even though the existing repair pass already had logic to recreate them. Split validation into `validate_project_root` (truly fatal: path missing, not a directory, no `project.yaml`) and a new `pre_repair_folders` step that creates missing required subfolders before the main read pipeline. Repair-write failures inside `read_project` no longer get `let _ = ...`'d into oblivion — they log to stderr with a clear message about why the in-memory state may diverge from disk. Added `project_self_heals_when_required_folder_missing` integration test covering the fix.
+
+**F-014: compile settings advertised more than they delivered.** `let _ = line_spacing;` discarded the user's setting entirely, and font / margins / fontsize only landed in PDF output. Wired `linestretch={value}` into the PDF Pandoc args (Pandoc's PDF templates honor it: 1.0 single, 2.0 double). For DOCX/ODT/HTML the settings are still Pandoc defaults — applying them properly needs reference templates we don't ship yet. Added a load-bearing comment block clarifying which settings are PDF-effective and which formats currently use Pandoc defaults, so future readers don't think "but we set fontsize" means it's reflected in DOCX output.
+
+**F-015: markdown folder import silently lost source content.** `unwrap_or_default()` on file reads and Pandoc conversions turned every read failure into an empty `Document.content` — a "successful" import that quietly dropped the source. Replaced with explicit `match` on each conversion, accumulating per-file failures into a `Vec<String>`. If every file fails, the whole import errors with the failure list; if some succeed and some fail, the import returns the project (matching prior partial-success expectations) but logs the skipped files to stderr. The "imported empty doc on every read error" behaviour is gone.
+
+**F-018: docs drift.** Updated `docs/CHIKN_FORMAT_SPEC.md` Last Updated to 2026-05-07. Moved AI streaming and remote-merge UX out of the "Planned" section in `docs/ROADMAP.md` — both shipped in v1.1. Updated `TODO.md` Windows parity status to reflect the fifth review pass batch 1 work (full identity + format-data preservation, wire-type fixes, disk-walking reader) and called out that local `dotnet build` is still blocked by the .NET 10.0.7 CoreCLR crash, so a Windows host smoke test remains outstanding. The `include_in_compile` spec entry was already updated in batch 1 to document `"Yes"`/`"No"` canonical with bool legacy.
+
+**F-013 (deferred):** The review marks "full project writes still rewrite every document" as known. Splitting `write_project` into `write_structure_only` / `write_threads_only` / `write_document_meta` / `write_document_content` / `delete_document` etc. is a multi-day refactor with broad call-site impact. Tracked separately; not blocking and not appropriate to bundle into a fix batch.
+
+**Tests:** 59 core lib, 5 src-tauri, 3 cross-frontend integration (added `project_self_heals_when_required_folder_missing`). `cargo clippy --all-targets -- -D warnings` clean. macOS `swift run ChiknKitChecks` 65/65. UI typecheck + production build clean, ESLint clean. Tauri backend builds clean.
+
+---
+
 ## 2026-05-07 — Fifth review pass, batch 3: error propagation cleanup (F-011, F-016, F-017)
 
 Three swallowed-error sites across Rust core, macOS Swift, and TUI. All same shape: a write or delete throws, the surrounding code says "operation succeeded", later state diverges from on-disk reality.

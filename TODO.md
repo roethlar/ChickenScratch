@@ -141,7 +141,10 @@ See [docs/plans/PHASE_FORMAT_FINALIZATION.md](docs/plans/PHASE_FORMAT_FINALIZATI
 - [x] Novelist-UI convention doc (`docs/UI_CONVENTIONS_NOVELIST.md`)
 - [x] Tauri: Inspector Scene section writes through generic `fields` payload
 - [x] Audit all 5 UIs for round-trip preservation
-- [x] Patch Windows WinUI (only frontend that dropped unknowns: closed POCO had no `Fields`); add to `DocumentMetaYaml` + `Document` + reader + writer
+- [x] Patch Windows WinUI for `Fields` map preservation
+- [x] Patch Windows WinUI for full identity + format-data preservation (`Id`/`Name`/`ParentId` + `comments`/`section_type`/`scrivener_uuid`/`session_target`/`threads.yaml`); fix `include_in_compile` wire-type drift; switch reader to disk-walking for entity folders (fifth review pass batch 1, see DEVLOG 2026-05-07)
+- [x] Cross-frontend Rust regression test (`crates/core/tests/cross_frontend_round_trip.rs`) covers Windows-shaped writer output + legacy bool `include_in_compile` + self-heal-on-missing-folder
+- [ ] Windows host smoke test (local `dotnet build` blocked on macOS by .NET 10.0.7 CoreCLR crash)
 - [ ] End-to-end round-trip test scripted across all 5 UIs (manual procedure documented; automated test deferred)
 
 ### v1.2 — Novelist UI features (paused, resumes after format finalization)

@@ -86,19 +86,13 @@ Not every frontend is at feature parity with Tauri — the SwiftUI, Qt6, and Win
 
 ---
 
-## v1.1 — Planned
+## v1.1 — Shipped
 
-### AI Streaming Responses
-Stream AI output word-by-word instead of waiting for full response.
-- **Requires:** Tauri async events, reqwest streaming
-- **Providers:** Ollama (newline-delimited JSON), Anthropic/OpenAI (SSE)
-- **UX:** Text appears progressively in editor/corkboard
+### AI Streaming Responses ✓
+`ai_transform_stream` emits `ai:chunk` / `ai:done` / `ai:error` events on a per-`request_id` channel; the AiMenu replaces selection incrementally as tokens arrive. Providers: Ollama (newline-delimited JSON), Anthropic and OpenAI (SSE).
 
-### Remote Sync — merge UX for conflicting pulls
-Push, fetch, and ahead/behind status shipped in v0.1.0-alpha. Missing: when a fetch brings down commits that conflict with local work, there's no in-app resolution — writer falls back to CLI `git merge`. Plan:
-- Detect divergent state in `sync_status` (ahead > 0 && behind > 0)
-- Offer "Pull & merge" with a conflict summary
-- For conflicts in markdown files, surface a three-way view in the revision diff UI
+### Remote Sync — merge UX for conflicting pulls ✓
+`sync_pull` returns a tagged `PullResult` (up_to_date / fast_forward / merged / conflicts{files}); the UI surfaces a real merge-conflict dialog with abort / force-pull / resolve-manually paths. Draft merge gained the same treatment in fifth review batch — `merge_draft` returns a sibling `MergeResult` enum.
 
 ### Frontend parity (SwiftUI + Qt6 + WinUI)
 Bring the newer native frontends up to Tauri's feature set. Highest-leverage gaps:
