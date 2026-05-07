@@ -23,6 +23,14 @@ public static class ProjectWriter
                 Genre = project.Metadata.Genre,
                 Theme = project.Metadata.Theme,
                 Summary = project.Metadata.Summary,
+                SessionTarget = project.Metadata.SessionTarget is { IsEmpty: false } st
+                    ? new SessionTargetYaml
+                    {
+                        WordsPerSession = st.WordsPerSession,
+                        Deadline = string.IsNullOrEmpty(st.Deadline) ? null : st.Deadline,
+                        TotalTarget = st.TotalTarget,
+                    }
+                    : null,
             },
             Hierarchy = project.Hierarchy.Select(SerializeNode).ToList(),
         };
@@ -39,6 +47,8 @@ public static class ProjectWriter
         {
             WriteDocument(project.Path, doc);
         }
+
+        WriteThreads(project);
     }
 
     public static void WriteDocument(string projectPath, Document doc)
@@ -49,16 +59,39 @@ public static class ProjectWriter
 
         var meta = new DocumentMetaYaml
         {
+            // Identity — required for the Rust reader's `meta.id`-keyed
+            // documents map. Omitting these caused F-001: hierarchy nodes
+            // pointed to ids the cross-frontend reader couldn't find.
+            Id = doc.Id,
+            Name = doc.Name,
+            ParentId = doc.ParentId,
+            Created = doc.Created,
+            Modified = doc.Modified,
+
             Synopsis = doc.Synopsis,
             Label = doc.Label,
             Status = doc.Status,
             Keywords = doc.Keywords.Count > 0 ? doc.Keywords : null,
             Links = doc.Links.Count > 0 ? doc.Links : null,
-            IncludeInCompile = doc.IncludeInCompile,
+            // Canonical wire form is "Yes"/"No" strings, not a YAML bool.
+            // The Rust reader (`Option<String>`) does not deserialize a bare
+            // boolean into an option-of-string; older builds wrote `true`/`false`
+            // here and the Tauri/Rust reader fell over on load (F-002).
+            IncludeInCompile = doc.IncludeInCompile ? "Yes" : "No",
             WordCountTarget = doc.WordCountTarget,
             CompileOrder = doc.CompileOrder,
-            Created = doc.Created,
-            Modified = doc.Modified,
+            SectionType = doc.SectionType,
+            ScrivenerUuid = doc.ScrivenerUuid,
+            Comments = doc.Comments.Count > 0
+                ? doc.Comments.Select(c => new CommentYaml
+                {
+                    Id = c.Id,
+                    Body = c.Body,
+                    Resolved = c.Resolved,
+                    Created = c.Created,
+                    Modified = c.Modified,
+                }).ToList()
+                : null,
             Fields = doc.Fields.Count > 0 ? doc.Fields : null,
         };
 
@@ -94,6 +127,33 @@ public static class ProjectWriter
         return project;
     }
 
+    /// <summary>
+    /// Write `threads.yaml` at the project root, or remove it when the project
+    /// has no threads. Removing rather than writing an empty file keeps clean
+    /// projects free of clutter — matches `Writer.swift`/`writer.rs` behavior.
+    /// </summary>
+    private static void WriteThreads(Project project)
+    {
+        var path = Path.Combine(project.Path, "threads.yaml");
+        if (project.Threads.Count == 0)
+        {
+            if (File.Exists(path)) File.Delete(path);
+            return;
+        }
+
+        var payload = new ThreadsYamlRoot
+        {
+            Threads = project.Threads.Select(t => new ThreadYaml
+            {
+                Id = t.Id,
+                Name = t.Name,
+                Color = string.IsNullOrEmpty(t.Color) ? null : t.Color,
+                Description = string.IsNullOrEmpty(t.Description) ? null : t.Description,
+            }).ToList(),
+        };
+        File.WriteAllText(path, YamlHelper.Serialize(payload));
+    }
+
     private static TreeNodeYaml SerializeNode(TreeNode node) => node switch
     {
         DocumentNode dn => new TreeNodeYaml { Id = dn.Id, Name = dn.Name, Type = "document", Path = dn.Path },
@@ -101,4 +161,3 @@ public static class ProjectWriter
         _ => throw new InvalidOperationException($"Unknown node type: {node.GetType()}")
     };
 }
-

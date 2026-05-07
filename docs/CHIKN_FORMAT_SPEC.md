@@ -238,7 +238,11 @@ status: string                # Status (e.g., "First Draft", "Revised")
 keywords: string[]            # Tags/keywords for searching
 synopsis: string              # Short summary/synopsis
 section_type: string          # Scrivener section type UUID
-include_in_compile: boolean   # Include when compiling/exporting
+include_in_compile: "Yes"|"No"  # Include when compiling/exporting.
+                              # Canonical wire form is the string "Yes"/"No"
+                              # (Scrivener legacy). Readers MUST also accept
+                              # a YAML boolean for round-trip with frontends
+                              # that historically wrote `true`/`false` here.
 
 # Custom formatting (for rich text preservation)
 custom_styles:

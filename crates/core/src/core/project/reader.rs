@@ -100,8 +100,17 @@ pub struct DocumentMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub section_type: Option<String>,
 
-    /// Include in compile flag
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Include in compile flag.
+    ///
+    /// The Rust canonical writer emits `"Yes"` / `"No"` strings (legacy
+    /// Scrivener convention). Other frontends — notably the Windows C# writer
+    /// before this fix — wrote a YAML boolean. Accept either on read so a
+    /// project authored on any frontend reopens cleanly.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_include_in_compile"
+    )]
     pub include_in_compile: Option<String>,
 
     /// Original Scrivener UUID (for round-trip)
@@ -132,6 +141,27 @@ pub struct DocumentMetadata {
 /// Helper function to generate a new UUID
 fn generate_id() -> String {
     Uuid::new_v4().to_string()
+}
+
+/// Accept either `"Yes"`/`"No"` strings or a YAML boolean for
+/// `include_in_compile`. Booleans coerce to the canonical string form so
+/// downstream code only deals with one shape.
+fn deserialize_include_in_compile<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum BoolOrStr {
+        Bool(bool),
+        Str(String),
+    }
+    let opt: Option<BoolOrStr> = Option::deserialize(deserializer)?;
+    Ok(opt.map(|v| match v {
+        BoolOrStr::Bool(true) => "Yes".to_string(),
+        BoolOrStr::Bool(false) => "No".to_string(),
+        BoolOrStr::Str(s) => s,
+    }))
 }
 
 /// Helper function to get current timestamp
@@ -819,6 +849,34 @@ hierarchy: []
         let (_temp, project_path) = create_test_project();
         let project = read_project(&project_path).expect("read");
         assert!(project.threads.is_empty());
+    }
+
+    #[test]
+    fn test_include_in_compile_accepts_bool_or_string() {
+        // Bool true → "Yes", bool false → "No", string passes through.
+        // Covers `.meta` files written by the Windows C# writer (bool) and
+        // the Rust canonical writer ("Yes"/"No").
+        let cases: &[(&str, Option<&str>)] = &[
+            ("include_in_compile: true", Some("Yes")),
+            ("include_in_compile: false", Some("No")),
+            ("include_in_compile: \"Yes\"", Some("Yes")),
+            ("include_in_compile: \"No\"", Some("No")),
+        ];
+        for (snippet, expected) in cases {
+            let yaml = format!("id: x\ncreated: \"2025\"\nmodified: \"2025\"\n{snippet}\n");
+            let meta: DocumentMetadata = serde_yaml::from_str(&yaml)
+                .unwrap_or_else(|e| panic!("parse failed for {snippet}: {e}"));
+            assert_eq!(
+                meta.include_in_compile.as_deref(),
+                *expected,
+                "snippet {snippet}"
+            );
+        }
+
+        // Missing key stays None — "Yes by default" is a downstream concern.
+        let meta: DocumentMetadata =
+            serde_yaml::from_str("id: x\ncreated: \"2025\"\nmodified: \"2025\"\n").unwrap();
+        assert!(meta.include_in_compile.is_none());
     }
 
     #[test]

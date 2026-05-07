@@ -46,11 +46,17 @@ public static class DocumentService
         var project = ProjectReader.ReadProject(projectPath);
         var trash = HierarchyOps.FindFolder(project.Hierarchy, "Trash");
 
-        // If already in trash, permanently delete
+        // If already in trash, permanently delete. The previous version called
+        // DeleteNodeFiles(nodeId), which only matches when nodeId is itself a
+        // document — so deleting a Trash folder left every child .md/.meta on
+        // disk and every child Documents[] entry in memory, ready for repair to
+        // resurrect on the next load (F-005). Now we recurse through the
+        // removed subtree by node, not id.
         if (trash != null && HierarchyOps.FindNode(trash.Children, nodeId) != null)
         {
-            DeleteNodeFiles(nodeId, project, projectPath);
-            HierarchyOps.RemoveNode(trash.Children, nodeId);
+            var removed = HierarchyOps.RemoveNode(trash.Children, nodeId);
+            if (removed != null)
+                DeleteNodeFilesRecursive(removed, project, projectPath);
         }
         else
         {
@@ -66,7 +72,16 @@ public static class DocumentService
     public static Project MoveNode(string projectPath, string nodeId, string? newParentId, int? newIndex = null)
     {
         var project = ProjectReader.ReadProject(projectPath);
-        HierarchyOps.MoveNode(project.Hierarchy, nodeId, newParentId);
+
+        // newParentId == null means "keep current parent, just reorder" — same
+        // semantics as the Tauri backend after the move-up/down fix. The old
+        // code unconditionally called HierarchyOps.MoveNode, which interprets
+        // null as "remove and re-append at root", so Move Up on a nested doc
+        // popped it out to the root list (F-006).
+        if (newParentId != null)
+        {
+            HierarchyOps.MoveNode(project.Hierarchy, nodeId, newParentId);
+        }
         if (newIndex.HasValue)
             HierarchyOps.ReorderNode(project.Hierarchy, nodeId, newIndex.Value);
         ProjectWriter.WriteProject(project);
@@ -160,15 +175,29 @@ public static class DocumentService
         return count;
     }
 
-    private static void DeleteNodeFiles(string nodeId, Project project, string projectPath)
+    /// <summary>
+    /// Recursively delete every document under <paramref name="node"/> from
+    /// disk and from `project.Documents`. Used by permanent-delete from Trash
+    /// so deleting a folder cleans up its children instead of leaving them
+    /// orphaned for the next repair pass to resurrect.
+    /// </summary>
+    private static void DeleteNodeFilesRecursive(TreeNode node, Project project, string projectPath)
     {
-        if (project.Documents.TryGetValue(nodeId, out var doc))
+        if (node is DocumentNode dn)
         {
-            var contentPath = Path.Combine(projectPath, doc.Path);
-            if (File.Exists(contentPath)) File.Delete(contentPath);
-            var metaPath = Path.ChangeExtension(contentPath, ".meta");
-            if (File.Exists(metaPath)) File.Delete(metaPath);
-            project.Documents.Remove(nodeId);
+            if (project.Documents.TryGetValue(dn.Id, out var doc))
+            {
+                var contentPath = Path.Combine(projectPath, doc.Path);
+                if (File.Exists(contentPath)) File.Delete(contentPath);
+                var metaPath = Path.ChangeExtension(contentPath, ".meta");
+                if (File.Exists(metaPath)) File.Delete(metaPath);
+                project.Documents.Remove(dn.Id);
+            }
+        }
+        else if (node is FolderNode folder)
+        {
+            foreach (var child in folder.Children)
+                DeleteNodeFilesRecursive(child, project, projectPath);
         }
     }
 }

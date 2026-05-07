@@ -4,6 +4,32 @@ Running log of architectural decisions and significant changes.
 
 ---
 
+## 2026-05-07 — Fifth review pass, batch 1: Windows format parity (F-001 → F-006)
+
+**Change:** External GPT review (`docs/GPT_Code_Review.md`) flagged six Windows-specific format/data-integrity issues plus two adjacent cross-frontend wire drifts. All landed here. Build verification on Windows is still blocked by the local CoreCLR crash on macOS .NET 10.0.7, so changes were verified by Rust integration tests that simulate the Windows writer's wire form, plus careful textual review.
+
+**F-001: Windows writer dropped document identity.** `DocumentMetaYaml` had no `Id`, `Name`, or `ParentId` fields, so a Windows save wrote `.meta` files the Rust reader could not key by id — Rust would then synthesize a fresh UUID in memory while the hierarchy still referenced the stale id, leaving the binder pointing at "missing" documents. Added all three to `ProjectYaml.DocumentMetaYaml` plus `Created`/`Modified`; `ProjectWriter.WriteDocument` now populates them from the in-memory `Document`; `ProjectReader` treats `meta.Id` as authoritative (matches the Rust reader's behavior).
+
+**F-002: include_in_compile bool/string wire drift.** Rust `Option<String>` writes `"Yes"`/`"No"`. Windows wrote a YAML bool. `serde_yaml` cannot deserialize a bare boolean into an option-of-string, so a Windows-written `.meta` blocked Tauri project load entirely. Two-sided fix:
+- Windows writer now emits `"Yes"`/`"No"` strings (matches Rust canonical).
+- Rust reader gains a `deserialize_with` helper that accepts either form (legacy bool → coerced to `"Yes"`/`"No"`), so older Windows projects still open.
+- Windows reader recovers a legacy YAML bool from older `.meta` files via a YamlDotNet `RepresentationModel` second-pass parse — YamlDotNet won't deserialize a bool into a string property and would otherwise silently null it.
+- Spec updated to document `"Yes"`/`"No"` as canonical with bool legacy accepted.
+
+**F-003: Windows dropped comments / Scrivener ids / session_target / threads.yaml.** Closed POCOs + `IgnoreUnmatchedProperties` meant a Windows round-trip silently stripped these. Added explicit `Comment`, `SectionType`, `ScrivenerUuid` fields to `Document` + `DocumentMetaYaml` + reader/writer. Added `SessionTarget` to `ProjectMetadata` + `ProjectMetaYaml`. Added a `Thread` model + `ThreadsYamlRoot` and a writer that round-trips `threads.yaml` (or removes the sidecar if the project has no threads, mirroring `Writer.swift` and `writer.rs`).
+
+**F-004: Windows reader missed entity documents under `characters/` / `locations/`.** The format intentionally keeps these out of `project.yaml.hierarchy`; Tauri and macOS walk the disk to find them. Windows only walked the hierarchy, so any character or location authored in another frontend was invisible (and would be orphaned on a Windows save). Replaced the hierarchy-driven document collection with a disk walk over `manuscript/`, `research/`, `templates/`, `characters/`, `locations/` — same root list as the Rust reader.
+
+**F-005: permanent folder delete left children behind.** `DeleteNode` called `DeleteNodeFiles(nodeId)`, which only matched when `nodeId` was itself a document id. Permanently deleting a Trash folder left every child `.md`/`.meta` on disk plus every child entry in `project.Documents`, ready for the next repair pass to resurrect. Now recurses through the removed `TreeNode` subtree, deleting each contained document by node (mirrors the Tauri fix).
+
+**F-006: move-with-null-parent dragged nested docs to root.** `DocumentService.MoveNode` unconditionally called `HierarchyOps.MoveNode`, which interprets `newParentId == null` as "remove and re-append at root". Move-Up/Down on a nested document silently extracted it to the root list. Fixed: only call the parent-changing move when a parent id is supplied; otherwise reorder within current parent.
+
+**Bonus drift caught while writing the F-001 regression test:** the `TreeNode` enum's `type` discriminator. Rust serializes variants as `Folder` / `Document` (PascalCase, the variant name), but the macOS Swift writer (`NodeKind.rawValue`) and the Windows C# writer both emit lowercase `folder` / `document`. Either-way means a Tauri reader could not load any project authored on a non-Rust frontend. Added `#[serde(alias = ...)]` on each variant so the Rust reader accepts either case while continuing to write the canonical PascalCase form. Same shape as the F-002 fix: tolerant reader, stable writer.
+
+**Tests:** 61 Rust core lib tests (was 59 — added `test_include_in_compile_accepts_bool_or_string`), 2 integration tests in the new `cross_frontend_round_trip` suite (Windows-shaped project + legacy bool both round-trip cleanly), `cargo clippy --all-targets -- -D warnings` clean, macOS `swift run ChiknKitChecks` 65/65, UI typecheck + production build clean, ESLint clean. Windows `dotnet build` not run locally due to known CoreCLR crash; needs verification on a Windows host.
+
+---
+
 ## 2026-05-03 — Fourth review pass: Tiptap 3 emitUpdate, idle-flush noise, flow-exit corruption, races
 
 **Change:** Seven more findings. Most were caused by interactions between fixes from earlier passes — in particular the "memory before disk" → "disk before memory" → "memory before disk + tracked failure" oscillation around `flushPendingSave`. Settled the model.

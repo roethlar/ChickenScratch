@@ -54,6 +54,15 @@ public class Document
     public uint WordCountTarget { get; set; } = 0;
     public int CompileOrder { get; set; } = 0;
 
+    /// <summary>Scrivener section type UUID; round-tripped, not interpreted here.</summary>
+    public string? SectionType { get; set; }
+
+    /// <summary>Original Scrivener UUID, preserved for round-trip imports/exports.</summary>
+    public string? ScrivenerUuid { get; set; }
+
+    /// <summary>Inline comments anchored to spans in the content.</summary>
+    public List<Comment> Comments { get; set; } = [];
+
     /// <summary>
     /// Generic UI extensibility (CHIKN_FORMAT_SPEC.md v1.2). The format owns
     /// nothing inside this map; UIs that recognize a key edit it, UIs that
@@ -61,6 +70,19 @@ public class Document
     /// "tolerant readers, preserving writers" guarantee.
     /// </summary>
     public Dictionary<string, object?> Fields { get; set; } = [];
+}
+
+/// <summary>
+/// Inline comment anchored to a `&lt;span class="comment" data-comment-id="..."&gt;`
+/// element inside `Document.Content`. Mirror of `chickenscratch_core::models::Comment`.
+/// </summary>
+public class Comment
+{
+    public required string Id { get; set; }
+    public string Body { get; set; } = string.Empty;
+    public bool Resolved { get; set; }
+    public required string Created { get; set; }
+    public required string Modified { get; set; }
 }
 
 public class DocumentMetaUpdate
@@ -83,6 +105,35 @@ public class ProjectMetadata
     public string? Genre { get; set; }
     public string? Theme { get; set; }
     public string? Summary { get; set; }
+    public SessionTarget? SessionTarget { get; set; }
+}
+
+/// <summary>
+/// Writer session targets — words/session goal, optional deadline, total target.
+/// All-null means the feature is off for this project; the writer drops the
+/// `session_target` key entirely in that case so projects ignoring it write zero diff.
+/// </summary>
+public class SessionTarget
+{
+    public uint? WordsPerSession { get; set; }
+    public string? Deadline { get; set; }   // ISO date YYYY-MM-DD; free-form on the wire
+    public uint? TotalTarget { get; set; }
+
+    public bool IsEmpty =>
+        WordsPerSession == null && string.IsNullOrEmpty(Deadline) && TotalTarget == null;
+}
+
+/// <summary>
+/// Plot thread (novelist convention; persisted in `threads.yaml` at the project root).
+/// Stays in the project model so the writer can preserve threads.yaml on round-trip
+/// even if the Windows UI doesn't yet surface them.
+/// </summary>
+public class Thread
+{
+    public required string Id { get; set; }
+    public required string Name { get; set; }
+    public string? Color { get; set; }
+    public string? Description { get; set; }
 }
 
 public class Project
@@ -95,6 +146,9 @@ public class Project
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime Modified { get; set; } = DateTime.UtcNow;
     public ProjectMetadata Metadata { get; set; } = new();
+
+    /// <summary>Plot threads (novelist convention; round-tripped via `threads.yaml`).</summary>
+    public List<Thread> Threads { get; set; } = [];
 }
 
 // ── Git ───────────────────────────────────────────────
