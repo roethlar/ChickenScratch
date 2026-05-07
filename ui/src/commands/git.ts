@@ -53,10 +53,18 @@ export async function switchDraft(
   return invoke("switch_draft", { projectPath, name });
 }
 
+/** Result of a draft merge. Same four cases as `PullResult` so the UI can
+ *  reuse the conflict dialog. (F-009) */
+export type MergeResult =
+  | { kind: "up_to_date" }
+  | { kind: "fast_forward" }
+  | { kind: "merged" }
+  | { kind: "conflicts"; files: string[] };
+
 export async function mergeDraft(
   projectPath: string,
   name: string
-): Promise<void> {
+): Promise<MergeResult> {
   return invoke("merge_draft", { projectPath, name });
 }
 

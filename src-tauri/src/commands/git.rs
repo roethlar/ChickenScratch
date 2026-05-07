@@ -55,7 +55,7 @@ pub fn switch_draft(project_path: String, name: String) -> Result<(), ChiknError
 }
 
 #[tauri::command]
-pub fn merge_draft(project_path: String, name: String) -> Result<(), ChiknError> {
+pub fn merge_draft(project_path: String, name: String) -> Result<git::MergeResult, ChiknError> {
     git::merge_draft(Path::new(&project_path), &name)
 }
 

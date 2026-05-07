@@ -123,8 +123,19 @@ public partial class RevisionsViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            await Task.Run(() => GitService.MergeDraft(_projectPath, name));
-            StatusMessage = $"Merged \"{name}\"";
+            var outcome = await Task.Run(() => GitService.MergeDraft(_projectPath, name));
+            // F-009: surface conflicts honestly. The UI doesn't yet have a
+            // dedicated conflict dialog, so the status line carries the file
+            // count for now — at minimum the user knows the merge didn't
+            // complete cleanly instead of seeing a misleading "Merged" toast.
+            StatusMessage = outcome.Kind switch
+            {
+                "up_to_date" => $"\"{name}\" is already merged",
+                "fast_forward" => $"Merged \"{name}\" (fast-forward)",
+                "merged" => $"Merged \"{name}\"",
+                "conflicts" => $"Conflicts in {outcome.Files.Count} file(s) — resolve manually before committing",
+                _ => $"Merged \"{name}\"",
+            };
             Refresh();
         }
         catch (Exception ex) { StatusMessage = $"Error: {ex.Message}"; }

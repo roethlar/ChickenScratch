@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { dialogPrompt, dialogConfirm } from "../shared/Dialog";
+import { flushPendingEditorSave } from "../editor/editorRef";
 import {
   Save,
   History,
@@ -33,6 +34,9 @@ export function Revisions() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
+  // Surfaced from both pull (remote conflict) and draft merge (local conflict).
+  // Declared up here so handleMergeDraft can dispatch to it.
+  const [conflictFiles, setConflictFiles] = useState<string[] | null>(null);
 
   const refresh = useCallback(async () => {
     if (!project) return;
@@ -53,14 +57,43 @@ export function Revisions() {
     refresh();
   }, [refresh]);
 
+  /**
+   * Run a git operation only after the editor's pending debounced save has
+   * landed on disk. Without this gate, "type, immediately click Save Revision"
+   * (or switch draft, restore, push, pull, force-pull) commits/operates on the
+   * pre-debounce on-disk state and the typed words go into the next revision —
+   * or get clobbered when a destructive op overwrites disk while the live
+   * Tiptap buffer still holds newer memory-only text. (F-007)
+   *
+   * If the flush throws, we surface the error and abort — better to let the
+   * user retry than silently commit stale content.
+   */
+  const runWithEditorFlush = useCallback(
+    async <T,>(opName: string, fn: () => Promise<T>): Promise<T | undefined> => {
+      try {
+        await flushPendingEditorSave();
+      } catch (e) {
+        toastError(`${opName} aborted — editor save failed: ${e}`);
+        return undefined;
+      }
+      return await fn();
+    },
+    []
+  );
+
   const handleSave = async () => {
     if (!project || !message.trim()) return;
     setSaving(true);
     try {
-      await gitCmd.saveRevision(project.path, message.trim());
-      setMessage("");
-      toastSuccess("Revision saved.");
-      await refresh();
+      const ok = await runWithEditorFlush("Save revision", async () => {
+        await gitCmd.saveRevision(project.path, message.trim());
+        return true;
+      });
+      if (ok) {
+        setMessage("");
+        toastSuccess("Revision saved.");
+        await refresh();
+      }
     } catch (e) {
       toastError(`Save failed: ${e}`);
     }
@@ -71,34 +104,49 @@ export function Revisions() {
     if (!project) return;
     if (!(await dialogConfirm("Restore to this revision? Your current work will be preserved as a new revision.")))
       return;
-    await gitCmd.restoreRevision(project.path, commitId);
-    // Reload the project to reflect restored state
-    await useProjectStore.getState().openProject(project.path);
-    await refresh();
+    await runWithEditorFlush("Restore", async () => {
+      await gitCmd.restoreRevision(project.path, commitId);
+      // Reload the project to reflect restored state
+      await useProjectStore.getState().openProject(project.path);
+      await refresh();
+    });
   };
 
   const handleNewDraft = async () => {
     if (!project) return;
     const name = await dialogPrompt("Draft version name:");
     if (!name) return;
-    await gitCmd.createDraft(project.path, name);
-    await useProjectStore.getState().openProject(project.path);
-    await refresh();
+    await runWithEditorFlush("Create draft", async () => {
+      await gitCmd.createDraft(project.path, name);
+      await useProjectStore.getState().openProject(project.path);
+      await refresh();
+    });
   };
 
   const handleSwitchDraft = async (name: string) => {
     if (!project) return;
-    await gitCmd.switchDraft(project.path, name);
-    await useProjectStore.getState().openProject(project.path);
-    await refresh();
+    await runWithEditorFlush("Switch draft", async () => {
+      await gitCmd.switchDraft(project.path, name);
+      await useProjectStore.getState().openProject(project.path);
+      await refresh();
+    });
   };
 
   const handleMergeDraft = async (name: string) => {
     if (!project) return;
     if (!(await dialogConfirm(`Merge "${name}" into the current draft?`))) return;
-    await gitCmd.mergeDraft(project.path, name);
-    await useProjectStore.getState().openProject(project.path);
-    await refresh();
+    await runWithEditorFlush("Merge draft", async () => {
+      const result = await gitCmd.mergeDraft(project.path, name);
+      // F-009: merge_draft now returns a tagged result. Conflict surfaces
+      // through the same dialog used by remote pull so the user can abort
+      // or escalate.
+      if (result.kind === "conflicts") {
+        setConflictFiles(result.files);
+        return;
+      }
+      await useProjectStore.getState().openProject(project.path);
+      await refresh();
+    });
   };
 
   const handleBackup = async () => {
@@ -121,49 +169,64 @@ export function Revisions() {
     if (!project) return;
     setSyncBusy(true);
     try {
-      await gitCmd.syncPush(project.path);
-      toastSuccess("Pushed to remote.");
-      await refresh();
+      await runWithEditorFlush("Push", async () => {
+        await gitCmd.syncPush(project.path);
+        toastSuccess("Pushed to remote.");
+        await refresh();
+      });
     } catch (e) {
       toastError(`Push failed: ${e}`);
     }
     setSyncBusy(false);
   };
 
+  // Fetch reads remote refs but doesn't touch the working tree, so the editor
+  // flush is unnecessary for correctness. Wrapping anyway keeps every git
+  // entry point uniform — easier to reason about than "most ops gate, fetch
+  // doesn't" — and the cost is one no-op flush when the buffer is clean.
   const handleFetch = async () => {
     if (!project) return;
     setSyncBusy(true);
     try {
-      await gitCmd.syncFetch(project.path);
-      toastSuccess("Fetched from remote.");
-      await refresh();
+      await runWithEditorFlush("Fetch", async () => {
+        await gitCmd.syncFetch(project.path);
+        toastSuccess("Fetched from remote.");
+        await refresh();
+      });
     } catch (e) {
       toastError(`Fetch failed: ${e}`);
     }
     setSyncBusy(false);
   };
 
-  const [conflictFiles, setConflictFiles] = useState<string[] | null>(null);
   const handlePull = async () => {
     if (!project) return;
     setSyncBusy(true);
     try {
-      const result = await gitCmd.syncPull(project.path);
-      switch (result.kind) {
-        case "up_to_date":
-          toastSuccess("Already up to date.");
-          break;
-        case "fast_forward":
-          toastSuccess("Pulled (fast-forward).");
-          break;
-        case "merged":
-          toastSuccess("Pulled and merged.");
-          break;
-        case "conflicts":
-          setConflictFiles(result.files);
-          break;
-      }
-      await refresh();
+      await runWithEditorFlush("Pull", async () => {
+        const result = await gitCmd.syncPull(project.path);
+        switch (result.kind) {
+          case "up_to_date":
+            toastSuccess("Already up to date.");
+            break;
+          case "fast_forward":
+            toastSuccess("Pulled (fast-forward).");
+            // F-008: fast_forward and merged both rewrite working-tree files.
+            // Without re-reading project state the React store keeps the
+            // pre-pull `documents` map; the next autosave then writes the
+            // stale editor buffer back over the freshly pulled content.
+            await useProjectStore.getState().openProject(project.path);
+            break;
+          case "merged":
+            toastSuccess("Pulled and merged.");
+            await useProjectStore.getState().openProject(project.path);
+            break;
+          case "conflicts":
+            setConflictFiles(result.files);
+            break;
+        }
+        await refresh();
+      });
     } catch (e) {
       toastError(`Pull failed: ${e}`);
     }
@@ -174,9 +237,12 @@ export function Revisions() {
     if (!project) return;
     setSyncBusy(true);
     try {
+      // No editor-flush gate here: the buffer holds local edits we're about
+      // to discard anyway. Reload the project after abort to refresh state.
       await gitCmd.syncAbortPull(project.path);
       toastSuccess("Merge aborted; local restored.");
       setConflictFiles(null);
+      await useProjectStore.getState().openProject(project.path);
       await refresh();
     } catch (e) {
       toastError(`Abort failed: ${e}`);
@@ -191,9 +257,14 @@ export function Revisions() {
     ))) return;
     setSyncBusy(true);
     try {
+      // Force-pull explicitly discards local — no flush gate (the user just
+      // confirmed the discard). Still reload the React store afterwards so
+      // the next autosave doesn't write the now-stale buffer back over remote
+      // content. (F-008)
       await gitCmd.syncPullForce(project.path);
       toastSuccess("Local overwritten with remote.");
       setConflictFiles(null);
+      await useProjectStore.getState().openProject(project.path);
       await refresh();
     } catch (e) {
       toastError(`Overwrite failed: ${e}`);

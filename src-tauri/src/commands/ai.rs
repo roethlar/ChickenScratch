@@ -2,6 +2,21 @@ use chickenscratch_core::ChiknError;
 
 use super::settings::{get_app_settings, AiSettings};
 
+/// Truncate `s` at a UTF-8 boundary so it fits within `max_chars` codepoints.
+///
+/// Byte slicing (`&s[..n]`) panics if the boundary lands inside a multi-byte
+/// codepoint. Fiction projects routinely contain curly quotes, em dashes,
+/// accents, emoji, and CJK characters, so the previous `&plain[..4000]` shape
+/// would crash AI requests on perfectly valid manuscripts (F-010). We count
+/// codepoints, not bytes, so the limit reads as "characters" — a friendlier
+/// concept for prose than UTF-8 byte counts.
+fn truncate_chars(s: &str, max_chars: usize) -> &str {
+    match s.char_indices().nth(max_chars) {
+        Some((boundary, _)) => &s[..boundary],
+        None => s,
+    }
+}
+
 /// Get AI settings from the unified app settings
 #[tauri::command]
 pub fn get_ai_settings() -> AiSettings {
@@ -30,11 +45,7 @@ pub fn ai_summarize(content: String) -> Result<String, ChiknError> {
         return Ok(String::new());
     }
 
-    let excerpt = if plain.len() > 2000 {
-        &plain[..2000]
-    } else {
-        &plain
-    };
+    let excerpt = truncate_chars(&plain, 2000);
     let prompt = format!(
         "Summarize this scene in one sentence (max 20 words). Just the summary, no preamble:\n\n{}",
         excerpt
@@ -67,11 +78,7 @@ pub fn ai_transform_stream(
         return Ok(());
     }
 
-    let excerpt = if plain.len() > 4000 {
-        plain[..4000].to_string()
-    } else {
-        plain
-    };
+    let excerpt = truncate_chars(&plain, 4000).to_string();
     let instruction = instruction_for(&operation);
     let prompt = format!("{}\n\n{}", instruction, excerpt);
     let max_tokens: u32 = 2000;
@@ -332,11 +339,7 @@ pub fn ai_transform(content: String, operation: String) -> Result<String, ChiknE
         return Ok(String::new());
     }
 
-    let excerpt = if plain.len() > 4000 {
-        &plain[..4000]
-    } else {
-        &plain
-    };
+    let excerpt = truncate_chars(&plain, 4000);
 
     let instruction = match operation.as_str() {
         "polish" => "Improve the writing quality of this text. Fix grammar, improve word choice, and enhance clarity. Keep the same meaning and tone. Return only the improved text, no commentary.",
@@ -487,4 +490,38 @@ fn call_openai(
         .unwrap_or("")
         .trim()
         .to_string())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_chars_handles_emoji_at_boundary() {
+        // 4-byte codepoints right at the truncation point were the original
+        // panic mode (F-010). With byte slicing, &s[..2000] would land 1-3
+        // bytes inside an emoji and crash.
+        let s: String = "🌊".repeat(2050);
+        let truncated = truncate_chars(&s, 2000);
+        assert_eq!(truncated.chars().count(), 2000);
+    }
+
+    #[test]
+    fn truncate_chars_returns_input_when_short() {
+        let s = "hello";
+        assert_eq!(truncate_chars(s, 100), "hello");
+    }
+
+    #[test]
+    fn truncate_chars_handles_combining_marks() {
+        // Combining marks count as separate codepoints — we don't try to be
+        // grapheme-cluster aware, just UTF-8-boundary safe.
+        let s = "ñü\u{0301}!".repeat(1000);
+        let n = s.chars().count();
+        let truncated = truncate_chars(&s, n);
+        assert_eq!(truncated, s);
+        let truncated = truncate_chars(&s, n - 1);
+        assert!(truncated.chars().count() == n - 1);
+    }
 }

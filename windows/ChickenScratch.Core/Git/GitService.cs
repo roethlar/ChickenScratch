@@ -70,14 +70,35 @@ public static class GitService
         Commands.Checkout(repo, name);
     }
 
-    public static void MergeDraft(string path, string name)
+    /// <summary>
+    /// Merge <paramref name="name"/> into the current branch with conflict
+    /// awareness. Returns a tagged result the UI can dispatch on — matching
+    /// the Rust backend's `MergeResult` shape (F-009). On conflicts, the
+    /// working tree is left with merge markers and the merge state stays
+    /// in progress; callers can resolve manually or call an abort path.
+    /// </summary>
+    public static MergeOutcome MergeDraft(string path, string name)
     {
         using var repo = new Repository(path);
         var branch = repo.Branches[name]
             ?? throw new InvalidOperationException($"Branch {name} not found");
         var sig = new Signature(Author.Name, Author.Email, DateTimeOffset.UtcNow);
-        repo.Merge(branch, sig);
+        var result = repo.Merge(branch, sig);
+
+        return result.Status switch
+        {
+            MergeStatus.UpToDate => new MergeOutcome("up_to_date", []),
+            MergeStatus.FastForward => new MergeOutcome("fast_forward", []),
+            MergeStatus.NonFastForward => new MergeOutcome("merged", []),
+            MergeStatus.Conflicts => new MergeOutcome(
+                "conflicts",
+                repo.Index.Conflicts.Select(c => c.Ours?.Path ?? c.Theirs?.Path ?? "").Where(p => !string.IsNullOrEmpty(p)).ToList()
+            ),
+            _ => new MergeOutcome("merged", []),
+        };
     }
+
+    public record MergeOutcome(string Kind, List<string> Files);
 
     public static void PushBackup(string projectPath, string backupDir)
     {

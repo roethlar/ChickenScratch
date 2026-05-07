@@ -342,34 +342,132 @@ pub fn switch_draft(path: &Path, name: &str) -> Result<(), ChiknError> {
     Ok(())
 }
 
-/// Merge a draft branch back into the current branch.
-pub fn merge_draft(path: &Path, name: &str) -> Result<(), ChiknError> {
+/// Result of a `merge_draft` operation. Same four cases as `PullResult` —
+/// kept as a separate enum so callers (and the UI) don't have to reason about
+/// "is this from pull or merge?" when consuming the result.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum MergeResult {
+    /// Source branch is already an ancestor of HEAD — nothing to merge.
+    UpToDate,
+    /// HEAD was strictly behind the source; we moved HEAD forward.
+    FastForward,
+    /// Auto-merge succeeded; a merge commit was created.
+    Merged,
+    /// Auto-merge produced conflicts. Working tree carries conflict markers
+    /// and the merge state is still in progress; caller must resolve, abort
+    /// (`sync_abort_pull` works for draft merges too), or force-overwrite.
+    Conflicts { files: Vec<String> },
+}
+
+/// Merge a draft branch into the current branch with conflict awareness.
+///
+/// The previous version called `repo.merge` and immediately invoked
+/// `save_revision` — meaning a conflicting merge would either commit the
+/// conflict markers wholesale (because `save_revision` stages everything in
+/// the working tree) or leave the repo in a confused state with no UI signal.
+/// Now mirrors `sync_pull`'s shape: analyze first, fast-forward when possible,
+/// detect `index.has_conflicts()` before committing, return a `MergeResult`
+/// the UI can dispatch on. (F-009)
+pub fn merge_draft(path: &Path, name: &str) -> Result<MergeResult, ChiknError> {
     let repo = Repository::open(path)
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
 
     let branch = repo
         .find_branch(name, BranchType::Local)
         .map_err(|e| ChiknError::Unknown(format!("Draft not found: {}", e)))?;
-    let commit = branch
+    let source_oid = branch
         .get()
         .peel_to_commit()
-        .map_err(|e| ChiknError::Unknown(format!("Failed to find branch commit: {}", e)))?;
-
+        .map_err(|e| ChiknError::Unknown(format!("Failed to find branch commit: {}", e)))?
+        .id();
     let annotated = repo
-        .find_annotated_commit(commit.id())
+        .find_annotated_commit(source_oid)
         .map_err(|e| ChiknError::Unknown(format!("Failed to annotate commit: {}", e)))?;
+
+    let (analysis, _) = repo
+        .merge_analysis(&[&annotated])
+        .map_err(|e| ChiknError::Unknown(format!("Merge analysis: {}", e)))?;
+
+    if analysis.is_up_to_date() {
+        return Ok(MergeResult::UpToDate);
+    }
+
+    if analysis.is_fast_forward() {
+        let current_branch = current_branch_name(&repo)?;
+        let mut reference = repo
+            .find_reference(&format!("refs/heads/{current_branch}"))
+            .map_err(|e| ChiknError::Unknown(format!("Branch ref: {}", e)))?;
+        reference
+            .set_target(source_oid, "fast-forward via merge_draft")
+            .map_err(|e| ChiknError::Unknown(format!("Set ref: {}", e)))?;
+        repo.set_head(&format!("refs/heads/{current_branch}"))
+            .map_err(|e| ChiknError::Unknown(format!("Set HEAD: {}", e)))?;
+        let mut co = git2::build::CheckoutBuilder::new();
+        co.force();
+        repo.checkout_head(Some(&mut co))
+            .map_err(|e| ChiknError::Unknown(format!("Checkout: {}", e)))?;
+        return Ok(MergeResult::FastForward);
+    }
 
     repo.merge(&[&annotated], None, None)
         .map_err(|e| ChiknError::Unknown(format!("Merge failed: {}", e)))?;
 
-    // Commit the merge
-    save_revision(path, &format!("Merged draft: {}", name))?;
+    let index = repo
+        .index()
+        .map_err(|e| ChiknError::Unknown(format!("Index: {}", e)))?;
+    if index.has_conflicts() {
+        // Collect conflict paths the same way sync_pull does. Leave the merge
+        // state in place so the user can resolve manually or call
+        // `sync_abort_pull` to back out.
+        let files: Vec<String> = index
+            .conflicts()
+            .map_err(|e| ChiknError::Unknown(format!("Conflicts iter: {}", e)))?
+            .filter_map(|c| {
+                c.ok()
+                    .and_then(|c| c.our.or(c.their).or(c.ancestor))
+                    .and_then(|e| String::from_utf8(e.path).ok())
+            })
+            .collect();
+        return Ok(MergeResult::Conflicts { files });
+    }
 
-    // Clean up merge state
+    // Clean merge — write a real merge commit (two parents) so history shows
+    // the draft was integrated, instead of `save_revision`'s single-parent
+    // commit shape.
+    let signature = repo
+        .signature()
+        .or_else(|_| git2::Signature::now("ChickenScratch", "merge@chickenscratch.local"))
+        .map_err(|e| ChiknError::Unknown(format!("Signature: {}", e)))?;
+    let head_commit = repo
+        .head()
+        .and_then(|h| h.peel_to_commit())
+        .map_err(|e| ChiknError::Unknown(format!("Head commit: {}", e)))?;
+    let source_commit = repo
+        .find_commit(source_oid)
+        .map_err(|e| ChiknError::Unknown(format!("Source commit: {}", e)))?;
+    let mut idx = repo
+        .index()
+        .map_err(|e| ChiknError::Unknown(format!("Index: {}", e)))?;
+    let tree_oid = idx
+        .write_tree()
+        .map_err(|e| ChiknError::Unknown(format!("Write tree: {}", e)))?;
+    let tree = repo
+        .find_tree(tree_oid)
+        .map_err(|e| ChiknError::Unknown(format!("Tree: {}", e)))?;
+    repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        &format!("Merged draft: {name}"),
+        &tree,
+        &[&head_commit, &source_commit],
+    )
+    .map_err(|e| ChiknError::Unknown(format!("Merge commit: {}", e)))?;
     repo.cleanup_state()
-        .map_err(|e| ChiknError::Unknown(format!("Failed to cleanup: {}", e)))?;
+        .map_err(|e| ChiknError::Unknown(format!("Cleanup: {}", e)))?;
 
-    Ok(())
+    Ok(MergeResult::Merged)
 }
 
 /// Push to a backup remote. Creates the bare repo and remote if needed.
