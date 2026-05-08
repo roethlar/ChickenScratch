@@ -4,6 +4,25 @@ Generated: 2026-05-05
 Scope: Rust core/Tauri backend, React/Tiptap UI, macOS Swift package, Windows C# core/app surface, TUI, docs/devlog/TODO.
 Format: Markdown with stable finding IDs for LLM-agent follow-up.
 
+## Resolution Summary (2026-05-07)
+
+Worked through this review in four commits on `master`. F-013 is the only finding intentionally deferred — splitting `write_project` into per-concern writers is a multi-day refactor that doesn't fit a fix-batch shape. F-001..F-012 and F-014..F-018 are all addressed; per-finding status is updated below in each section.
+
+| Commit     | Findings                                                                              |
+|------------|---------------------------------------------------------------------------------------|
+| `ec5417f`  | F-001, F-002, F-003, F-004, F-005, F-006 + cross-frontend `TreeNode` type-tag drift   |
+| `b659e31`  | F-007, F-008, F-009, F-010                                                            |
+| `07760e6`  | F-011, F-016, F-017                                                                   |
+| `88d88a9`  | F-012, F-014, F-015, F-018 (F-013 deferred)                                           |
+
+**Outstanding:**
+- **F-013** — known-known, separately tracked. Not blocking.
+- **Windows host smoke test** — local `dotnet build` on macOS is blocked by a CoreCLR crash in `.NET 10.0.7`. The fifth-pass Windows changes (F-001..F-006, plus F-009 `MergeOutcome` plumbing) are textually verified but need a Windows host to confirm `.chikn` round-trip behavior, the `MergeStatus.Conflicts` path, and `DocumentService.MoveNode`/`DeleteNode` semantics in the running app. The Rust integration tests in `crates/core/tests/cross_frontend_round_trip.rs` simulate the patched Windows wire form and pass.
+
+See `DEVLOG.md` 2026-05-07 entries for batch-by-batch reasoning.
+
+---
+
 ## Executive Summary
 
 The Rust core, Tauri backend, React UI, and macOS format checks are in good shape at the build/test level. The highest-risk remaining issues are not compiler failures; they are cross-frontend format drift and workflow races around git operations.
@@ -47,7 +66,7 @@ Blocked:
 - Severity: Critical
 - Confidence: High
 - Area: Windows, `.chikn` format round-trip
-- Status: Open
+- Status: Addressed in `ec5417f`. `Id`/`Name`/`ParentId`/`Created`/`Modified` added to `DocumentMetaYaml`; `ProjectWriter.WriteDocument` populates them; `ProjectReader` treats `meta.Id` as authoritative. Regression test: `crates/core/tests/cross_frontend_round_trip.rs::windows_style_project_round_trips_identity_and_format_data` (asserts Windows-shaped `.meta` round-trips through the Rust reader with hierarchy/document-map ids matching).
 - Affected files:
   - `windows/ChickenScratch.Core/IO/ProjectYaml.cs:33`
   - `windows/ChickenScratch.Core/IO/ProjectWriter.cs:50`
@@ -72,7 +91,7 @@ Add `Id`, `Name`, and `ParentId` to Windows `DocumentMetaYaml`; populate them fr
 - Severity: Critical
 - Confidence: High
 - Area: Windows, Rust reader interop
-- Status: Open
+- Status: Addressed in `ec5417f`. Two-sided fix: Windows writer now emits `"Yes"`/`"No"` strings (canonical); Rust reader gains a `deserialize_with` helper that accepts either bool or string for back-compat with older Windows-written `.meta` files; Windows reader recovers the legacy YAML-bool form via a YamlDotNet `RepresentationModel` second-pass parse. Spec updated. Regression test: `test_include_in_compile_accepts_bool_or_string` plus `legacy_bool_include_in_compile_still_loads`.
 - Affected files:
   - `windows/ChickenScratch.Core/IO/ProjectYaml.cs:40`
   - `windows/ChickenScratch.Core/IO/ProjectWriter.cs:57`
@@ -97,7 +116,7 @@ Pick one wire type and support legacy forms. The safest near-term fix is to make
 - Severity: High
 - Confidence: High
 - Area: Windows, format parity
-- Status: Open
+- Status: Addressed in `ec5417f`. Explicit `Comment`, `SectionType`, `ScrivenerUuid` properties added to `Document`/`DocumentMetaYaml` + reader/writer; `SessionTarget` added to `ProjectMetadata`/`ProjectMetaYaml`; new `Thread` model + `ThreadsYamlRoot` reader/writer round-trips `threads.yaml` (or removes it when empty, matching Swift/Rust). Closed-POCO drift on these specific fields is gone; the generic-preservation strategy for fully unknown future keys is still future work.
 - Affected files:
   - `windows/ChickenScratch.Core/Models/Models.cs:39`
   - `windows/ChickenScratch.Core/IO/ProjectYaml.cs:14`
@@ -131,7 +150,7 @@ Treat Windows as a preserving reader/writer before adding more UI. Add explicit 
 - Severity: High
 - Confidence: High
 - Area: Windows, v1.2 novelist convention parity
-- Status: Open
+- Status: Addressed in `ec5417f`. Replaced hierarchy-driven document collection with a disk walk over `manuscript/`, `research/`, `templates/`, `characters/`, `locations/` — same root list as the Rust reader. Regression test (`windows_style_project_round_trips_…`) asserts a `characters/sarah.md` entity is loaded into `project.documents` even when not in `project.yaml.hierarchy`.
 - Affected files:
   - `windows/ChickenScratch.Core/IO/ProjectReader.cs:36`
   - `windows/ChickenScratch.Core/IO/ProjectReader.cs:70`
@@ -155,7 +174,7 @@ Mirror the Rust/Swift disk-walking reader behavior. Entity docs should be loaded
 - Severity: High
 - Confidence: High
 - Area: Windows document operations
-- Status: Open
+- Status: Addressed in `ec5417f`. `DocumentService.DeleteNode` now invokes a new `DeleteNodeFilesRecursive(TreeNode, ...)` that recurses through removed folder subtrees, deleting each contained document by node — mirrors the Tauri fix. Pending Windows host smoke test for end-to-end behavior.
 - Affected files:
   - `windows/ChickenScratch.Core/IO/DocumentService.cs:44`
   - `windows/ChickenScratch.Core/IO/DocumentService.cs:163`
@@ -172,12 +191,12 @@ Recommendation:
 
 Delete by removed `TreeNode`, not by id, and recurse through folder children. This should mirror the fixed Tauri implementation in `src-tauri/src/commands/document.rs`.
 
-### F-006: Windows Move/Reorder Has the Old “Null Parent Means Move to Root” Bug
+### F-006: Windows Move/Reorder Has the Old "Null Parent Means Move to Root" Bug
 
 - Severity: High
 - Confidence: High
 - Area: Windows document operations
-- Status: Open
+- Status: Addressed in `ec5417f`. `DocumentService.MoveNode` now only calls `HierarchyOps.MoveNode` when `newParentId != null`; otherwise it just reorders within the current parent. Matches the Tauri semantic. Pending Windows host smoke test for Move-Up/Down on nested nodes.
 - Affected files:
   - `windows/ChickenScratch.Core/IO/DocumentService.cs:66`
   - `windows/ChickenScratch.Core/IO/HierarchyOps.cs:75`
@@ -200,7 +219,7 @@ Port the Tauri semantics: only call parent-changing move when a parent id is sup
 - Severity: High
 - Confidence: High
 - Area: Tauri UI, git workflow, data loss
-- Status: Open
+- Status: Addressed in `b659e31`. New `runWithEditorFlush(opName, fn)` helper in `Revisions.tsx` awaits `flushPendingEditorSave()` and aborts (with a toast) if the flush throws, before any git op. Wraps save / restore / new draft / switch draft / merge draft / push / fetch / pull. Force-pull and abort-pull intentionally don't gate (force-pull explicitly discards local; abort restores pre-merge state — the buffer is being discarded either way).
 - Affected files:
   - `ui/src/components/revisions/Revisions.tsx:56`
   - `ui/src/components/revisions/Revisions.tsx:70`
@@ -237,7 +256,7 @@ Create one UI helper, for example `runGitOperationWithEditorFlush`, that awaits 
 - Severity: High
 - Confidence: High
 - Area: Tauri remote sync
-- Status: Open
+- Status: Addressed in `b659e31`. `handlePull` calls `useProjectStore.getState().openProject(project.path)` after `fast_forward`/`merged` results; `handleAbortPull` and `handleForcePull` reload too. The next autosave can no longer write the stale editor buffer back over freshly pulled remote content.
 - Affected files:
   - `ui/src/components/revisions/Revisions.tsx:147`
   - `ui/src/components/revisions/Revisions.tsx:187`
@@ -261,7 +280,7 @@ After `fast_forward`, `merged`, and force-pull success, call `openProject(projec
 - Severity: High
 - Confidence: Medium
 - Area: Core git, Tauri revisions
-- Status: Open
+- Status: Addressed in `b659e31`. `core::git::merge_draft` reshaped to mirror `sync_pull`: merge-analysis first (handles up-to-date/fast-forward without touching the index), then real merge with `index.has_conflicts()` check before committing. New `MergeResult` enum (UpToDate / FastForward / Merged / Conflicts { files }) flows through the Tauri command and the UI types; the existing conflict dialog now handles draft conflicts. Windows `GitService.MergeDraft` got the same treatment via LibGit2Sharp's `MergeStatus` and now returns a `MergeOutcome` record. Pending Windows host smoke test for conflict UX.
 - Affected files:
   - `crates/core/src/core/git.rs:345`
   - `crates/core/src/core/git.rs:362`
@@ -285,7 +304,7 @@ Give draft merge the same shape as remote pull: merge analysis, conflict detecti
 - Severity: High
 - Confidence: High
 - Area: Tauri backend, Unicode correctness
-- Status: Open
+- Status: Addressed in `b659e31`. New `truncate_chars(s, max_chars)` helper in `commands/ai.rs` truncates at `char_indices().nth(max_chars)` (codepoint count, not byte count) — replaces all three byte-slice sites. New `snippet_around(text, byte_pos, match_chars, padding)` in `commands/search.rs` builds snippets in char indices and rounds back to byte boundaries via `char_indices().nth()`. Unit tests cover 4-byte emoji at boundary 2000, curly quote at byte 39, and combining marks. The "build snippets from original-case text" recommendation is left as a future polish — current behavior matches the prior lowercased-snippet shape, just without panics.
 - Affected files:
   - `src-tauri/src/commands/ai.rs:33`
   - `src-tauri/src/commands/ai.rs:70`
@@ -316,7 +335,7 @@ Replace byte slicing with character-safe truncation, for example `plain.chars().
 - Severity: Medium
 - Confidence: High
 - Area: Core git restore
-- Status: Open
+- Status: Addressed in `07760e6`. Sidecar absence in the commit is still treated as success (older commits predate the convention), but a write failure when the sidecar IS in the commit now propagates with a clear "Failed to restore sidecar metadata for X" error.
 - Affected files:
   - `crates/core/src/core/git.rs:224`
   - `crates/core/src/core/git.rs:237`
@@ -338,7 +357,7 @@ Propagate sidecar write errors. If sidecar restore is best-effort by design, ret
 - Severity: Medium
 - Confidence: High
 - Area: Rust project reader, docs consistency
-- Status: Open
+- Status: Addressed in `88d88a9`. Validation split into `validate_project_root` (truly fatal: path missing / not a directory / no `project.yaml`) and a new `pre_repair_folders` step that creates missing required subfolders before the rest of the read pipeline. Repair-write failures inside `read_project` are now logged via `eprintln!` instead of being swallowed by `let _ = ...`. Regression test: `project_self_heals_when_required_folder_missing` (loads a project with `templates/` and `research/` missing; asserts both are recreated and the project loads).
 - Affected files:
   - `crates/core/src/core/project/reader.rs:164`
   - `crates/core/src/core/project/reader.rs:187`
@@ -363,7 +382,7 @@ Either narrow the self-healing claim or move repair before strict validation. Pr
 - Severity: Medium
 - Confidence: High
 - Area: Rust writer, performance/race surface
-- Status: Known, still open
+- Status: **Deferred.** Splitting `write_project` into `write_structure_only` / `write_threads_only` / `write_project_metadata_only` / `write_document_content` / `write_document_meta` / `delete_document` is a multi-day refactor with broad call-site impact across `src-tauri`, the TUI, and tests. Tracked separately as a writer-API split task; not bundled into a fix-batch commit. The existing `Repair write failed` logging from F-012 reduces the silent-failure exposure in the meantime.
 - Affected files:
   - `crates/core/src/core/project/writer.rs:70`
   - `crates/core/src/core/project/writer.rs:233`
@@ -386,7 +405,7 @@ Split writes into explicit APIs: structure-only, threads-only, project-metadata-
 - Severity: Medium
 - Confidence: High
 - Area: Compile/export
-- Status: Open
+- Status: Partially addressed in `88d88a9`. `line_spacing` now lands as `linestretch={value}` in PDF Pandoc args (was discarded entirely via `let _ = line_spacing;`). DOCX/ODT/HTML still use Pandoc defaults — applying typography settings there properly requires reference templates we don't ship yet. Added an inline comment block clarifying which settings are PDF-effective and which formats use Pandoc defaults; the settings UI is no longer silently lying about non-PDF output. Bundled reference templates remain a separate feature task.
 - Affected files:
   - `crates/core/src/core/compile.rs:54`
   - `crates/core/src/core/compile.rs:142`
@@ -414,7 +433,7 @@ Implement format-specific Pandoc options, reference DOCX/ODT templates, or clear
 - Severity: Medium
 - Confidence: High
 - Area: Import
-- Status: Open
+- Status: Addressed in `88d88a9`. Replaced `unwrap_or_default()` on file reads and Pandoc conversions with explicit `match` blocks that accumulate per-file errors into a `Vec<String>`. Whole-import failure (every file failed) errors out with the failure list. Partial success (some succeeded, some failed) returns the project but logs skipped files to stderr. The "import created an empty document for every read failure" silent data-loss path is gone. Future: lift the per-file failure list into a structured `ImportResult` so the UI can surface it inline; current shape is the minimum honest fix.
 - Affected files:
   - `src-tauri/src/commands/io.rs:266`
   - `src-tauri/src/commands/io.rs:268`
@@ -437,7 +456,7 @@ Collect per-file import errors and return a partial-import result, or fail the i
 - Severity: Medium
 - Confidence: High
 - Area: macOS Swift writer
-- Status: Open
+- Status: Addressed in `07760e6`. Permanent-delete and stale `threads.yaml` removal both stop using `try?`. New `removeIfExists(at:)` helper propagates errors but treats `NSFileNoSuchFileError` as idempotent success — same shape as the Rust fix in `commands/document.rs`. UI claims of "deleted" now match disk reality.
 - Affected files:
   - `macos/Sources/ChiknKit/Writer.swift:325`
   - `macos/Sources/ChiknKit/Writer.swift:331`
@@ -460,7 +479,7 @@ Propagate delete failures for document and metadata deletes. For stale `threads.
 - Severity: Low
 - Confidence: High
 - Area: TUI
-- Status: Open
+- Status: Addressed in `07760e6`. The three comment mutations (add, toggle resolve, edit body) all stop discarding the result of `writer::write_project` via `let _ = ...`. Each site now matches on the result and routes failures into the status line so the operator sees "Comment save failed: X" instead of the in-memory comment looking saved while disk is unchanged.
 - Affected files:
   - `crates/tui/src/app.rs:371`
   - `crates/tui/src/app.rs:430`
@@ -483,7 +502,7 @@ Return `Result<()>` from these helpers and set status to the concrete write erro
 - Severity: Low
 - Confidence: High
 - Area: Documentation
-- Status: Open
+- Status: Addressed in `88d88a9` (and partly in `ec5417f` for the `include_in_compile` line). `CHIKN_FORMAT_SPEC.md` Last Updated → 2026-05-07. `include_in_compile` documented as `"Yes"`/`"No"` canonical with bool legacy accepted. `ROADMAP.md` moves AI streaming and remote merge UX out of "Planned" into "Shipped" under v1.1. `TODO.md` Windows-parity section updated to reflect the fifth-pass batch 1 work and explicitly tracks the unverified Windows host smoke test.
 - Affected files:
   - `docs/CHIKN_FORMAT_SPEC.md:2`
   - `docs/CHIKN_FORMAT_SPEC.md:241`
