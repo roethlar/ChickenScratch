@@ -228,9 +228,13 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 
 ## LOW
 
-### L-1: Binder re-renders on every editor save `[ ]`
+### L-1: Binder re-renders on every editor save `[~]`
 - **What**: Binder subscribes to whole `project`. Every 2s autosave rebuilds `project.documents` → full Binder tree + EntitySections + CommandPalette `flattenDocNames` re-runs.
 - **Notes for GPT**: Switch to per-slice selectors with `useShallow`; specifically `(s) => s.project?.hierarchy` and `(s) => s.project?.documents` separately.
+- **Branch**: `fix/l-1-binder-selectors`
+- **Approach**: Split Binder and CommandPalette away from the full-project subscription. Binder now selects stable project identity fields plus hierarchy with `useShallow`, EntitySection uses a stable visible-entity signature, and ThreadDots subscribes only to the visible thread ids plus thread metadata references. Flow mode still checks `project.documents` at click time so stale hierarchy entries are filtered as before.
+- **Tests**: `cd ui && npm run lint && npm run build` (passed; pre-existing Vite chunk/dynamic-import warnings); `git diff --check` (passed)
+- **Known gaps**: EntitySection still scans the document map inside its selector to produce the stable signature; eliminating that selector-time scan would need a normalized store/entity index.
 
 ### L-2: Bundle is ~890 KB, no code splitting `[ ]`
 - **Notes for GPT**: `vite.config.ts` add `build.rollupOptions.output.manualChunks: { tiptap: [...], prosemirror: [...] }`; `React.lazy` the rarely-mounted modals (Timeline, Preview, Compile, Stats, Comments).
