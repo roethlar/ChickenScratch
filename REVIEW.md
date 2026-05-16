@@ -250,9 +250,13 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **What**: `macos/Sources/ChiknKit/Writer.swift:24-27` writes `TreeNode(id: "manuscript", ...)`; Rust writer.rs:147-160 writes `uuid::Uuid::new_v4()`. No exploit today but a footgun if any code hardcodes the id shape.
 - **Notes for GPT**: Align Swift to UUIDs.
 
-### L-6: Pandoc resolved via $PATH `[ ]`
+### L-6: Pandoc resolved via $PATH `[~]`
 - **Files**: `src-tauri/src/commands/io.rs:188-222`. Hijackable if a writable dir is ahead of `/usr/local/bin`.
 - **Notes for GPT**: Document the requirement in `docs/USER_GUIDE.md` and prefer absolute paths in the candidates list.
+- **Branch**: `fix/l-6-pandoc-path-hardening`
+- **Approach**: Added a shared Tauri `resolve_pandoc` helper that rejects non-empty relative custom paths, checks absolute standard install locations, and returns an absolute executable path. Tauri compile, file import, Scrivener import, and `check_pandoc` now use that resolver. Documented the absolute-path requirement in `docs/USER_GUIDE.md`.
+- **Tests**: `cargo test --manifest-path src-tauri/Cargo.toml settings::tests --bin chickenscratch` (passed); `cargo check --manifest-path src-tauri/Cargo.toml` (passed); `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` (passed); `git diff --check` (passed)
+- **Known gaps**: Core/CLI Scrivener helpers still use PATH when non-Tauri callers pass no Pandoc path.
 
 ### L-7: AI SSE streams no max-bytes guard `[ ]`
 - **Files**: `src-tauri/src/commands/ai.rs:170-188, 228-260, 302-323`. Malicious endpoint = unbounded memory.

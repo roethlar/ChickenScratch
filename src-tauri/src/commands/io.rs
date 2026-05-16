@@ -3,12 +3,12 @@ use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::hierarchy;
 use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::utils::process::{
-    output_bounded, BoundedProcessError, PANDOC_OUTPUT_LIMIT_BYTES, PANDOC_TIMEOUT,
+    output_bounded, PANDOC_OUTPUT_LIMIT_BYTES, PANDOC_TIMEOUT,
 };
 use chickenscratch_core::{ChiknError, Document, Project, TreeNode};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::State;
 
@@ -27,6 +27,7 @@ pub fn compile_project(
     manuscript_format: Option<bool>,
 ) -> Result<(), ChiknError> {
     let settings = super::settings::get_app_settings();
+    let (pandoc_path, _) = super::settings::resolve_pandoc(&settings)?;
     let ms_format = manuscript_format.unwrap_or(false);
     let options = compile::CompileOptions {
         font: Some(settings.compile.font),
@@ -36,7 +37,7 @@ pub fn compile_project(
         section_separator,
         include_title_page: include_title_page.unwrap_or(false),
         manuscript_format: ms_format,
-        pandoc_path: settings.general.pandoc_path.clone(),
+        pandoc_path: Some(pandoc_path.to_string_lossy().into_owned()),
     };
 
     compile::compile(
@@ -194,44 +195,9 @@ fn convert_to_markdown_via_pandoc(file_path: &Path, ext: &str) -> Result<String,
         .map_err(|e| ChiknError::Unknown(format!("Invalid UTF-8 from Pandoc: {}", e)))
 }
 
-fn find_pandoc() -> Result<String, ChiknError> {
-    // Check settings for custom path
+fn find_pandoc() -> Result<PathBuf, ChiknError> {
     let settings = super::settings::get_app_settings();
-    if let Some(ref p) = settings.general.pandoc_path {
-        if !p.is_empty() {
-            return Ok(p.clone());
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    let candidates: &[&str] = &["pandoc", "pandoc.exe"];
-
-    #[cfg(not(target_os = "windows"))]
-    let candidates: &[&str] = &[
-        "pandoc",
-        "/usr/local/bin/pandoc",
-        "/opt/homebrew/bin/pandoc",
-        "/usr/bin/pandoc",
-    ];
-
-    for candidate in candidates {
-        let mut cmd = Command::new(candidate);
-        cmd.arg("--version");
-        match output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES) {
-            Ok(output) if output.status.success() => return Ok(candidate.to_string()),
-            Ok(_) | Err(BoundedProcessError::Io(_)) => {}
-            Err(err) => {
-                return Err(ChiknError::Unknown(format!(
-                    "Pandoc availability check failed: {}",
-                    err
-                )));
-            }
-        }
-    }
-
-    Err(ChiknError::Unknown(
-        "Pandoc is not installed. Required for importing this file format.".to_string(),
-    ))
+    super::settings::resolve_pandoc(&settings).map(|(path, _)| path)
 }
 
 /// Import a folder of files as a new project.

@@ -503,6 +503,10 @@ fn validate_app_settings(settings: &AppSettings) -> Result<(), ChiknError> {
             .map_err(ChiknError::InvalidFormat)?;
     }
 
+    if let Some(ref pandoc_path) = settings.general.pandoc_path {
+        normalize_pandoc_path(pandoc_path)?;
+    }
+
     Ok(())
 }
 
@@ -543,62 +547,85 @@ pub fn add_recent_project(name: String, path: String) -> Result<(), ChiknError> 
 
 // ── Pandoc ────────────────────────────────────────────
 
-#[tauri::command]
-pub fn check_pandoc() -> Result<String, ChiknError> {
-    let settings = get_app_settings();
+fn normalize_pandoc_path(raw: &str) -> Result<Option<PathBuf>, ChiknError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
 
-    // If user configured a specific path, try that first
+    let path = PathBuf::from(trimmed);
+    if !path.is_absolute() {
+        return Err(ChiknError::InvalidFormat(
+            "Pandoc path must be absolute. Use Settings > General to set the full path to the pandoc executable.".to_string(),
+        ));
+    }
+
+    Ok(Some(path))
+}
+
+#[cfg(target_os = "windows")]
+fn pandoc_candidates() -> &'static [&'static str] {
+    &[
+        r"C:\Program Files\Pandoc\pandoc.exe",
+        r"C:\Program Files (x86)\Pandoc\pandoc.exe",
+    ]
+}
+
+#[cfg(not(target_os = "windows"))]
+fn pandoc_candidates() -> &'static [&'static str] {
+    &[
+        "/opt/homebrew/bin/pandoc",
+        "/usr/local/bin/pandoc",
+        "/usr/bin/pandoc",
+        "/opt/local/bin/pandoc",
+        "/snap/bin/pandoc",
+    ]
+}
+
+fn pandoc_version(path: &Path) -> Result<Option<String>, ChiknError> {
+    let mut cmd = Command::new(path);
+    cmd.arg("--version");
+    match output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES) {
+        Ok(output) if output.status.success() => {
+            let version = String::from_utf8_lossy(&output.stdout);
+            Ok(Some(
+                version.lines().next().unwrap_or("unknown").to_string(),
+            ))
+        }
+        Ok(_) | Err(BoundedProcessError::Io(_)) => Ok(None),
+        Err(err) => Err(ChiknError::Unknown(format!(
+            "Pandoc availability check failed: {}",
+            err
+        ))),
+    }
+}
+
+pub(crate) fn resolve_pandoc(settings: &AppSettings) -> Result<(PathBuf, String), ChiknError> {
     if let Some(ref custom) = settings.general.pandoc_path {
-        let mut cmd = Command::new(custom);
-        cmd.arg("--version");
-        match output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES) {
-            Ok(output) if output.status.success() => {
-                let version = String::from_utf8_lossy(&output.stdout);
-                return Ok(version.lines().next().unwrap_or("unknown").to_string());
-            }
-            Ok(_) | Err(BoundedProcessError::Io(_)) => {}
-            Err(err) => {
-                return Err(ChiknError::Unknown(format!(
-                    "Pandoc availability check failed: {}",
-                    err
-                )));
+        if let Some(path) = normalize_pandoc_path(custom)? {
+            if let Some(version) = pandoc_version(&path)? {
+                return Ok((path, version));
             }
         }
     }
 
-    // Check common install locations
-    #[cfg(target_os = "windows")]
-    let candidates: &[&str] = &["pandoc", "pandoc.exe"];
-
-    #[cfg(not(target_os = "windows"))]
-    let candidates: &[&str] = &[
-        "pandoc",
-        "/usr/local/bin/pandoc",
-        "/opt/homebrew/bin/pandoc",
-        "/usr/bin/pandoc",
-    ];
-
-    for pandoc in candidates {
-        let mut cmd = Command::new(pandoc);
-        cmd.arg("--version");
-        match output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES) {
-            Ok(output) if output.status.success() => {
-                let version = String::from_utf8_lossy(&output.stdout);
-                return Ok(version.lines().next().unwrap_or("unknown").to_string());
-            }
-            Ok(_) | Err(BoundedProcessError::Io(_)) => {}
-            Err(err) => {
-                return Err(ChiknError::Unknown(format!(
-                    "Pandoc availability check failed: {}",
-                    err
-                )));
-            }
+    for candidate in pandoc_candidates() {
+        let path = PathBuf::from(candidate);
+        if let Some(version) = pandoc_version(&path)? {
+            return Ok((path, version));
         }
     }
 
     Err(ChiknError::Unknown(
-        "Pandoc is not installed. Required for Scrivener import and manuscript export.".to_string(),
+        "Pandoc is not installed in a standard location. Install Pandoc or set an absolute Pandoc Path in Settings > General.".to_string(),
     ))
+}
+
+#[tauri::command]
+pub fn check_pandoc() -> Result<String, ChiknError> {
+    let settings = get_app_settings();
+    let (_, version) = resolve_pandoc(&settings)?;
+    Ok(version)
 }
 
 #[cfg(test)]
@@ -744,6 +771,43 @@ mod tests {
 
         let settings = app_settings_for_ai("ollama", Some("http://127.0.0.1:11434"));
         assert!(validate_app_settings(&settings).is_ok());
+    }
+
+    #[test]
+    fn validate_app_settings_rejects_relative_pandoc_path() {
+        let settings = AppSettings {
+            general: GeneralSettings {
+                pandoc_path: Some("pandoc".to_string()),
+                ..GeneralSettings::default()
+            },
+            ..AppSettings::default()
+        };
+
+        assert!(matches!(
+            validate_app_settings(&settings),
+            Err(ChiknError::InvalidFormat(_))
+        ));
+    }
+
+    #[test]
+    fn normalize_pandoc_path_accepts_empty_and_absolute_only() {
+        let absolute = std::env::current_dir().unwrap().join("pandoc");
+        assert_eq!(normalize_pandoc_path("  ").unwrap(), None);
+        assert_eq!(
+            normalize_pandoc_path(&absolute.to_string_lossy()).unwrap(),
+            Some(absolute)
+        );
+        assert!(matches!(
+            normalize_pandoc_path("pandoc"),
+            Err(ChiknError::InvalidFormat(_))
+        ));
+    }
+
+    #[test]
+    fn bundled_pandoc_candidates_are_absolute_paths() {
+        assert!(pandoc_candidates()
+            .iter()
+            .all(|candidate| Path::new(candidate).is_absolute()));
     }
 
     #[test]
