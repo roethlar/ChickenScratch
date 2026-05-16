@@ -74,6 +74,30 @@ export function Settings({
     });
   };
 
+  const updateRemoteToken = (value: string) => {
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      remote: {
+        ...settings.remote,
+        token: value || null,
+        token_in_keyring: value ? true : false,
+      },
+    });
+  };
+
+  const updateAiApiKey = (value: string) => {
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      ai: {
+        ...settings.ai,
+        api_key: value || null,
+        api_key_in_keyring: value ? true : false,
+      },
+    });
+  };
+
   if (!open || !settings) return null;
 
   return (
@@ -278,18 +302,32 @@ export function Settings({
                   />
                 </Field>
                 <Field label="Personal Access Token">
-                  <input
-                    type="password"
-                    value={settings.remote.token || ""}
-                    onChange={(e) =>
-                      update("remote", "token", e.target.value || null)
-                    }
-                    placeholder="ghp_… or equivalent"
-                  />
+                  <div className="settings-browse-row">
+                    <input
+                      type="password"
+                      value={settings.remote.token || ""}
+                      onChange={(e) => updateRemoteToken(e.target.value)}
+                      placeholder={
+                        settings.remote.token_in_keyring
+                          ? "Configured - enter a new token to replace"
+                          : "ghp_... or equivalent"
+                      }
+                    />
+                    {settings.remote.token_in_keyring && (
+                      <button
+                        className="settings-browse-btn"
+                        onClick={() => updateRemoteToken("")}
+                        aria-label="Clear stored token"
+                        title="Clear stored token"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
                   <p className="settings-hint">
-                    Stored in plaintext in your settings file. Use a token
-                    scoped to just this repository. SSH URLs fall back to your
-                    ssh-agent if no token is set.
+                    Stored in the OS keyring. Use a token scoped to just this
+                    repository. SSH URLs fall back to your ssh-agent if no token
+                    is set.
                   </p>
                 </Field>
                 <Field label="Auto-Push on Save Revision">
@@ -359,16 +397,31 @@ export function Settings({
                     </Field>
                     {settings.ai.provider !== "ollama" && (
                       <Field label="API Key">
-                        <input
-                          type="password"
-                          value={settings.ai.api_key || ""}
-                          onChange={(e) =>
-                            update("ai", "api_key", e.target.value || null)
-                          }
-                          placeholder="sk-..."
-                        />
+                        <div className="settings-browse-row">
+                          <input
+                            type="password"
+                            value={settings.ai.api_key || ""}
+                            onChange={(e) => updateAiApiKey(e.target.value)}
+                            placeholder={
+                              settings.ai.api_key_in_keyring
+                                ? "Configured - enter a new key to replace"
+                                : "sk-..."
+                            }
+                          />
+                          {settings.ai.api_key_in_keyring && (
+                            <button
+                              className="settings-browse-btn"
+                              onClick={() => updateAiApiKey("")}
+                              aria-label="Clear stored API key"
+                              title="Clear stored API key"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
                         <p className="settings-hint">
-                          Your API key is stored locally and never shared.
+                          Your API key is stored in the OS keyring and never
+                          shown here after saving.
                         </p>
                       </Field>
                     )}

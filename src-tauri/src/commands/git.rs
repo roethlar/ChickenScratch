@@ -9,7 +9,7 @@ pub fn save_revision(project_path: String, message: String) -> Result<git::Revis
 
     // After named revision: push to backup remote and remote-sync if configured.
     // Both are fire-and-forget — a failed push must not fail the revision.
-    let settings = super::settings::get_app_settings();
+    let settings = super::settings::get_app_settings_hydrated();
     if let Some(ref backup_dir) = settings.backup.backup_directory {
         let _ = git::push_backup(path, Path::new(backup_dir));
     }
@@ -123,7 +123,7 @@ pub fn sync_pull_force(project_path: String) -> Result<(), ChiknError> {
 }
 
 fn remote_from_settings() -> Result<(String, git::RemoteAuth), ChiknError> {
-    let settings = super::settings::get_app_settings();
+    let settings = super::settings::get_app_settings_hydrated();
     let url = settings.remote.url.clone().ok_or_else(|| {
         ChiknError::Unknown(
             "No remote URL configured. Set one in Settings > Remote.".to_string(),
