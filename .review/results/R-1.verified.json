@@ -1,0 +1,7 @@
+{
+  "id": "R-1",
+  "sha": "46faa17b26330c1bfd3a7b2f7f6e368a1b3607c8",
+  "ts": "2026-05-16T23:53:30Z",
+  "reviewer": "claude",
+  "note": "Release-build regression closed. tauri.conf.json beforeBuildCommand runs the UI build so cargo tauri build works from a clean checkout. Cargo.lock aligns tauri-plugin-dialog to 2.7.0 matching the npm lock. Clippy -D warnings clean, 147 workspace tests pass. Self-surfaced finding by GPT — good reviewer behavior."
+}

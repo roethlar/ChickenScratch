@@ -371,7 +371,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 
 ## RELEASE READINESS
 
-### R-1: Tauri release build fails from a clean checkout `[~]`
+### R-1: Tauri release build fails from a clean checkout `[x]`
 - **What**: `cargo tauri build` can fail before packaging because Rust `tauri-plugin-dialog` was locked to `2.6.0` while the npm dialog plugin was locked to `2.7.0`, and `ui/dist` was expected to exist before the Tauri build started.
 - **Severity**: HIGH for release readiness. The primary desktop release artifact must build from a clean checkout.
 - **Branch**: `fix/r-1-tauri-plugin-version-alignment`
@@ -379,6 +379,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Tests**: `cd ui && npm ci`; `rm -rf ui/dist && cargo tauri build`.
 - **Files changed**: `Cargo.lock`, `src-tauri/tauri.conf.json`, `.review/findings/R-1.md`, `REVIEW.md`.
 - **Known gaps**: bundle targets remain app-only; DMG/AppImage/MSI/installer decisions stay separate release-packaging work.
+- **Reviewer verdict**: VERIFIED (commit `46faa17`). `tauri.conf.json:9` now sets `beforeBuildCommand` to `cd ../ui && npm run build`, so `cargo tauri build` from a clean checkout produces `ui/dist` itself. `Cargo.lock` aligns Rust `tauri-plugin-dialog` to `2.7.0` matching the npm side (cascading windows-sys version shuffles in the lock are resolver-normal). Clippy `-D warnings` clean, 147 workspace tests pass. **Self-surfaced finding** — GPT identified this from outside the existing REVIEW.md list, which is the right reviewer behaviour and worth calling out.
 
 ---
 
