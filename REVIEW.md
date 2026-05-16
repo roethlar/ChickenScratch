@@ -262,8 +262,11 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 ### L-7: AI SSE streams no max-bytes guard `[ ]`
 - **Files**: `src-tauri/src/commands/ai.rs:170-188, 228-260, 302-323`. Malicious endpoint = unbounded memory.
 
-### L-8: `linux/qml/SettingsDialog.qml` exposes AI tab without backing invokable `[ ]`
+### L-8: `linux/qml/SettingsDialog.qml` exposes AI tab without backing invokable `[~]`
 - **Files**: `linux/qml/SettingsDialog.qml:78, 233`. Fake-tab footgun.
+- **Approach**: Removed the Linux settings AI tab and its QML-only default seeding because the Linux bridge only round-trips the settings blob and exposes no AI invokables that consume those fields.
+- **Tests added**: Focused static validation that `SettingsDialog.qml` no longer contains an AI tab, `settings.ai` bindings, or provider/API key controls. Attempted `cargo test -p chickenscratch-linux settings_default_round_trip`, but this macOS host fails compiling `cxx-qt` against Homebrew Qt before the test binary is built (`qyieldcpu.h` implicit `__yield` under `-Werror`).
+- **Touched files**: `linux/qml/SettingsDialog.qml`, `.review/findings/L-8.md`, `REVIEW.md`.
 
 ### L-9: Pandoc stdout unbounded buffer on import `[ ]`
 - **Files**: `src-tauri/src/commands/io.rs:166-185, 254-323`. Cap at 50 MB.
