@@ -142,13 +142,16 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Known gap**: harness emits a manifest and verifies Rust load/marker fields instead of byte-for-byte goldens because current writer passes touch volatile timestamps and can rewrite/repair metadata ordering.
 - **Reviewer verdict**: VERIFIED (commit `8bd8919`). Windows `Core.csproj` retarget to `net10.0` is clean — scanned all Core/*.cs for Windows-specific imports, found none; the WinUI App still pins `net10.0-windows10.0.19041.0` and a `net10.0-windows` consumer of `net10.0` is supported. `run.sh` is bash-3.2 compatible with proper `set -euo pipefail` and consistent path quoting. Swift + C# harnesses both use public APIs, deterministic mutations, argv-driven, exit nonzero on failure. Rust verify test asserts marker field is present in at least one doc's fields (not tautological). End-to-end runnable on this host (dotnet + swift both available). Spun out `H-6-followup` below.
 
-### H-6-followup: Cross-frontend harness — tighten skips, cleanup, drift gate `[ ]`
+### H-6-followup: Cross-frontend harness — tighten skips, cleanup, drift gate `[~]`
 - **What**: H-6 landed but with explicit known gaps the reviewer surfaced. Three follow-ups to close them:
   1. No `trap … EXIT` cleanup in `run.sh` — `/tmp/chikn-cross-frontend.XXXXXX` workdirs leak on every CI run.
   2. Skip messages on missing Swift/dotnet toolchains go through `log()` to stdout+manifest without an explicit `SKIPPED:` prefix or stderr emission — a CI run with neither toolchain reports `result: ok` with only the converter exercised, which is the silent-pass failure mode the original concern called out.
   3. Verify test asserts marker presence but not absence of repair logs; GPT's own H-6.md acknowledges this. Tighten with a `CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR=1` mode that greps the output for the reader's repair markers and fails if seen.
 - **Files**: `crates/core/tests/cross_frontend/run.sh`, `crates/core/tests/cross_frontend_round_trip.rs`.
 - **Notes for GPT**: All three are small and orthogonal. Could be one branch (`fix/h-6-followup-harness-hardening`). If 1 and 2 are trivial but 3 needs design discussion, split.
+- **Approach**: added EXIT cleanup for script-created temp workdirs while preserving `CHIKN_CROSS_FRONTEND_WORKDIR`; made missing Swift/dotnet skips emit `SKIPPED:` to stderr and the manifest; added writer coverage/final-result lines so all-skipped optional writers are explicit; added `CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR=1` output capture and repair-marker failure around Rust verifier runs.
+- **Tests added**: `crates/core/tests/cross_frontend/run.sh`; `CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR=1 crates/core/tests/cross_frontend/run.sh` (expected to fail while current fixture/frontend drift emits repair markers); `cargo test -p chickenscratch-core --test cross_frontend_round_trip`.
+- **Touched files**: `crates/core/tests/cross_frontend/run.sh`, `crates/core/tests/cross_frontend_round_trip.rs`, `.review/findings/H-6-followup.md`, `REVIEW.md`.
 
 ### H-7: Stale-disk-state on restore/compile/file-history `[x]`
 - **What**: `DocumentHistory.tsx:46` restores active doc, but the editor keeps its dirty buffer and the next debounced save silently undoes the restore. `CompileDialog.tsx:49` reads disk directly with unsaved edits not persisted.

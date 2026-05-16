@@ -7,6 +7,11 @@
 //! historic wire-type drift on `include_in_compile`); the project.yaml /
 //! `.meta` snippets here intentionally mirror what that writer produces so
 //! changes to the Rust reader can't silently regress its behavior.
+//!
+//! `crates/core/tests/cross_frontend/run.sh` also drives the env-based
+//! verifier below and owns harness-level checks that need process output,
+//! including `CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR=1` detection of reader
+//! repair markers on stdout/stderr.
 
 use chickenscratch_core::core::project::reader::read_project;
 use std::fs;
