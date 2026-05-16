@@ -52,6 +52,7 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 
 ### C-3: Symlink writes outside project root `[~]`
 - **What**: `writer.rs:253` only checks string traversal (`..`) and absolute paths. Symlinks aren't checked. A hostile project whose `manuscript/chapter.md` is a symlink to `~/.ssh/authorized_keys` will be overwritten on next save. Same vector on delete.
+- **Branch**: `fix/c-3-symlink-writes`
 - **Files**: `crates/core/src/core/project/writer.rs:253` (write), `:330-360` (delete).
 - **Notes for GPT**: Use `std::fs::symlink_metadata(...).file_type().is_symlink()` on the full path before write. Reject with `ChiknError::InvalidFormat`. Also harden the traversal check to component-based: `Path::components().any(|c| matches!(c, Component::ParentDir | Component::RootDir | Component::Prefix(_)))` is more robust than `contains("..")`.
 - **Tests**: write_project should reject a project containing a symlinked doc; delete_document should refuse to remove a symlink. Add to `crates/core/src/core/project/writer.rs` test module.

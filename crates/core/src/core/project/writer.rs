@@ -23,11 +23,11 @@
 
 use chrono::Utc;
 use std::fs;
-use std::path::Path;
+use std::io::ErrorKind;
+use std::path::{Component, Path, PathBuf};
 
 use super::format::{
-    get_document_meta_path, get_manuscript_path, get_project_file_path, get_research_path,
-    get_settings_path, get_templates_path, get_threads_path,
+    get_document_meta_path, get_project_file_path, get_threads_path, REQUIRED_FOLDERS,
 };
 use super::reader::{DocumentMetadata, ProjectMetadata};
 use crate::models::{Project, TreeNode};
@@ -63,6 +63,10 @@ pub fn write_project(project: &mut Project) -> Result<(), ChiknError> {
 
     // Create directory structure if it doesn't exist
     create_project_structure(project_path)?;
+
+    // Fail before rewriting project.yaml if any document path would escape
+    // the project or traverse a symlink.
+    validate_all_document_targets(project)?;
 
     // Write project.yaml
     write_project_metadata(project)?;
@@ -197,11 +201,10 @@ fn create_project_structure(path: &Path) -> Result<(), ChiknError> {
     // Create root directory
     fs::create_dir_all(path)?;
 
-    // Create required folders
-    fs::create_dir_all(get_manuscript_path(path))?;
-    fs::create_dir_all(get_research_path(path))?;
-    fs::create_dir_all(get_templates_path(path))?;
-    fs::create_dir_all(get_settings_path(path))?;
+    let project_root = canonical_project_root(path)?;
+    for folder in REQUIRED_FOLDERS {
+        ensure_safe_directory_path(path, &project_root, Path::new(folder), folder)?;
+    }
 
     Ok(())
 }
@@ -241,34 +244,257 @@ fn write_all_documents(project: &Project) -> Result<(), ChiknError> {
     Ok(())
 }
 
+fn validate_all_document_targets(project: &Project) -> Result<(), ChiknError> {
+    let project_path = Path::new(&project.path);
+    let project_root = canonical_project_root(project_path)?;
+
+    for document in project.documents.values() {
+        validate_relative_document_path(&document.path)?;
+
+        let doc_path = Path::new(&document.path);
+        let full_content_path = project_path.join(doc_path);
+        let folder_path = full_content_path.parent().ok_or_else(|| {
+            ChiknError::InvalidFormat(format!("Document has no parent: {}", document.path))
+        })?;
+        let relative_parent = doc_path.parent().ok_or_else(|| {
+            ChiknError::InvalidFormat(format!("Document has no parent: {}", document.path))
+        })?;
+        ensure_existing_ancestors_safe(
+            project_path,
+            &project_root,
+            relative_parent,
+            &document.path,
+        )?;
+        ensure_existing_path_safe(
+            &full_content_path,
+            &project_root,
+            &document.path,
+            "document file",
+        )?;
+
+        let doc_name = full_content_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| {
+                ChiknError::InvalidFormat(format!("Invalid document path: {}", document.path))
+            })?;
+        let meta_path = get_document_meta_path(folder_path, doc_name);
+        ensure_existing_path_safe(
+            &meta_path,
+            &project_root,
+            &document.path,
+            "document metadata",
+        )?;
+    }
+
+    Ok(())
+}
+
+fn validate_relative_document_path(document_path: &str) -> Result<(), ChiknError> {
+    let path = Path::new(document_path);
+    let mut has_normal_component = false;
+
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => {
+                has_normal_component = true;
+            }
+            Component::CurDir => {
+                return Err(invalid_document_path(
+                    document_path,
+                    "current-directory components are not allowed",
+                ));
+            }
+            Component::ParentDir => {
+                return Err(invalid_document_path(
+                    document_path,
+                    "parent-directory components are not allowed",
+                ));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(invalid_document_path(
+                    document_path,
+                    "absolute paths are not allowed",
+                ));
+            }
+        }
+    }
+
+    if !has_normal_component {
+        return Err(invalid_document_path(
+            document_path,
+            "path must contain a file name",
+        ));
+    }
+
+    Ok(())
+}
+
+fn invalid_document_path(document_path: &str, reason: &str) -> ChiknError {
+    ChiknError::InvalidFormat(format!(
+        "Document path must be relative and within project ({}): {}",
+        reason, document_path
+    ))
+}
+
+fn canonical_project_root(project_path: &Path) -> Result<PathBuf, ChiknError> {
+    let project_root = project_path.canonicalize()?;
+    if !project_root.is_dir() {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Project path is not a directory: {}",
+            project_path.display()
+        )));
+    }
+    Ok(project_root)
+}
+
+fn ensure_document_parent_directory(
+    project_path: &Path,
+    document_path: &str,
+) -> Result<PathBuf, ChiknError> {
+    validate_relative_document_path(document_path)?;
+
+    let doc_path = Path::new(document_path);
+    let relative_parent = doc_path.parent().ok_or_else(|| {
+        ChiknError::InvalidFormat(format!("Document has no parent: {}", document_path))
+    })?;
+    let project_root = canonical_project_root(project_path)?;
+    ensure_safe_directory_path(project_path, &project_root, relative_parent, document_path)
+}
+
+fn ensure_safe_directory_path(
+    project_path: &Path,
+    project_root: &Path,
+    relative_path: &Path,
+    document_path: &str,
+) -> Result<PathBuf, ChiknError> {
+    let mut current = project_path.to_path_buf();
+
+    for component in relative_path.components() {
+        let Component::Normal(part) = component else {
+            return Err(invalid_document_path(
+                document_path,
+                "directory path contains unsafe components",
+            ));
+        };
+        current.push(part);
+
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) => {
+                ensure_directory_metadata_safe(&current, &metadata, project_root, document_path)?;
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                fs::create_dir(&current)?;
+                let metadata = fs::symlink_metadata(&current)?;
+                ensure_directory_metadata_safe(&current, &metadata, project_root, document_path)?;
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    Ok(current)
+}
+
+fn ensure_existing_ancestors_safe(
+    project_path: &Path,
+    project_root: &Path,
+    relative_parent: &Path,
+    document_path: &str,
+) -> Result<(), ChiknError> {
+    let mut current = project_path.to_path_buf();
+
+    for component in relative_parent.components() {
+        let Component::Normal(part) = component else {
+            return Err(invalid_document_path(
+                document_path,
+                "directory path contains unsafe components",
+            ));
+        };
+        current.push(part);
+
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) => {
+                ensure_directory_metadata_safe(&current, &metadata, project_root, document_path)?;
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    Ok(())
+}
+
+fn ensure_directory_metadata_safe(
+    path: &Path,
+    metadata: &fs::Metadata,
+    project_root: &Path,
+    document_path: &str,
+) -> Result<(), ChiknError> {
+    if metadata.file_type().is_symlink() {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Document path traverses a symlink: {} ({})",
+            document_path,
+            path.display()
+        )));
+    }
+    if !metadata.is_dir() {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Document path parent is not a directory: {} ({})",
+            document_path,
+            path.display()
+        )));
+    }
+    ensure_canonical_path_within_project(path, project_root, document_path)
+}
+
+fn ensure_existing_path_safe(
+    path: &Path,
+    project_root: &Path,
+    document_path: &str,
+    kind: &str,
+) -> Result<(), ChiknError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(ChiknError::InvalidFormat(format!(
+                    "Document {} is a symlink: {} ({})",
+                    kind,
+                    document_path,
+                    path.display()
+                )));
+            }
+            ensure_canonical_path_within_project(path, project_root, document_path)
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn ensure_canonical_path_within_project(
+    path: &Path,
+    project_root: &Path,
+    document_path: &str,
+) -> Result<(), ChiknError> {
+    let canonical_path = path.canonicalize()?;
+    if !canonical_path.starts_with(project_root) {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Document path escapes project root: {} ({})",
+            document_path,
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
 /// Writes a single document (content + metadata)
 fn write_document(
     project_path: &Path,
     document: &crate::models::Document,
 ) -> Result<(), ChiknError> {
-    // Use document.path to determine actual location
-    let doc_path = Path::new(&document.path);
-
-    // Validate path stays within project (security)
-    if doc_path.is_absolute() || document.path.contains("..") {
-        return Err(ChiknError::InvalidFormat(format!(
-            "Document path must be relative and within project: {}",
-            document.path
-        )));
-    }
-
     // Resolve full path from project root
     let full_content_path = project_path.join(&document.path);
 
-    // Create parent directories if needed
-    if let Some(parent) = full_content_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    // Write content (.md file)
-    fs::write(&full_content_path, &document.content)?;
-
-    // Write metadata (.meta file) in same directory
+    let folder_path = ensure_document_parent_directory(project_path, &document.path)?;
     let doc_name = full_content_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -276,11 +502,22 @@ fn write_document(
             ChiknError::InvalidFormat(format!("Invalid document path: {}", document.path))
         })?;
 
-    let folder_path = full_content_path.parent().ok_or_else(|| {
-        ChiknError::InvalidFormat(format!("Document has no parent: {}", document.path))
-    })?;
+    let project_root = canonical_project_root(project_path)?;
+    ensure_existing_path_safe(
+        &full_content_path,
+        &project_root,
+        &document.path,
+        "document file",
+    )?;
 
-    let meta_path = get_document_meta_path(folder_path, doc_name);
+    let meta_path = get_document_meta_path(&folder_path, doc_name);
+    ensure_existing_path_safe(
+        &meta_path,
+        &project_root,
+        &document.path,
+        "document metadata",
+    )?;
+
     // Read existing metadata to preserve fields we don't model in Document
     let existing_meta = if meta_path.exists() {
         fs::read_to_string(&meta_path)
@@ -326,6 +563,9 @@ fn write_document(
         fields: document.fields.clone(),
     };
 
+    // Write content (.md file)
+    fs::write(&full_content_path, &document.content)?;
+
     let meta_content = serde_yaml::to_string(&metadata)?;
     fs::write(&meta_path, meta_content)?;
 
@@ -342,16 +582,21 @@ fn write_document(
 /// * `Ok(())` on success
 /// * `Err(ChiknError)` if file doesn't exist or can't be deleted
 pub fn delete_document(project_path: &Path, document_path: &str) -> Result<(), ChiknError> {
-    // Validate path (security)
-    if Path::new(document_path).is_absolute() || document_path.contains("..") {
-        return Err(ChiknError::InvalidFormat(format!(
-            "Document path must be relative: {}",
-            document_path
-        )));
-    }
+    validate_relative_document_path(document_path)?;
 
     // Resolve full paths
     let full_content_path = project_path.join(document_path);
+    let project_root = canonical_project_root(project_path)?;
+    let relative_parent = Path::new(document_path).parent().ok_or_else(|| {
+        ChiknError::InvalidFormat(format!("Document has no parent: {}", document_path))
+    })?;
+    ensure_existing_ancestors_safe(project_path, &project_root, relative_parent, document_path)?;
+    ensure_existing_path_safe(
+        &full_content_path,
+        &project_root,
+        document_path,
+        "document file",
+    )?;
 
     // Delete .md file
     if full_content_path.exists() {
@@ -371,6 +616,12 @@ pub fn delete_document(project_path: &Path, document_path: &str) -> Result<(), C
     })?;
 
     let meta_path = get_document_meta_path(folder_path, doc_name);
+    ensure_existing_path_safe(
+        &meta_path,
+        &project_root,
+        document_path,
+        "document metadata",
+    )?;
     if meta_path.exists() {
         fs::remove_file(&meta_path)?;
     }
@@ -381,6 +632,7 @@ pub fn delete_document(project_path: &Path, document_path: &str) -> Result<(), C
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::project::format::{get_manuscript_path, get_research_path};
     use crate::core::project::reader::read_project;
     use crate::models::{Document, TreeNode};
     use tempfile::TempDir;
@@ -523,7 +775,10 @@ mod tests {
         );
         // A nested mapping — the format has no opinion about shape.
         let mut nested = serde_yaml::Mapping::new();
-        nested.insert(Value::String("scale".into()), Value::String("medium".into()));
+        nested.insert(
+            Value::String("scale".into()),
+            Value::String("medium".into()),
+        );
         nested.insert(Value::String("year".into()), Value::Number(1987.into()));
         fields.insert("world_state".to_string(), Value::Mapping(nested));
 
@@ -579,7 +834,10 @@ mod tests {
 
         let meta_path = project_path.join("manuscript/basic.meta");
         let meta_text = std::fs::read_to_string(&meta_path).unwrap();
-        assert!(!meta_text.contains("fields:"), "empty fields map must be skipped");
+        assert!(
+            !meta_text.contains("fields:"),
+            "empty fields map must be skipped"
+        );
     }
 
     #[test]
@@ -815,6 +1073,138 @@ mod tests {
     }
 
     #[test]
+    fn test_write_document_allows_dotdot_inside_component() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("DotDotName.chikn");
+
+        let mut project = create_project(&project_path, "Dot Dot Name").unwrap();
+
+        let doc = Document {
+            id: "doc-dotdot".to_string(),
+            name: "chapter..01".to_string(),
+            path: "manuscript/chapter..01.md".to_string(),
+            content: "Dots in names are allowed.".to_string(),
+            parent_id: None,
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+
+        project.documents.insert(doc.id.clone(), doc);
+        write_project(&mut project).unwrap();
+
+        assert!(project_path.join("manuscript/chapter..01.md").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_write_document_rejects_symlink_parent() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("SymlinkParent.chikn");
+        let outside_path = temp_dir.path().join("outside");
+        fs::create_dir(&outside_path).unwrap();
+
+        let mut project = create_project(&project_path, "Symlink Parent").unwrap();
+        unix_fs::symlink(&outside_path, project_path.join("manuscript/link")).unwrap();
+
+        let doc = Document {
+            id: "bad-link-parent".to_string(),
+            name: "pwned".to_string(),
+            path: "manuscript/link/pwned.md".to_string(),
+            content: "must not escape".to_string(),
+            parent_id: None,
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+
+        project.documents.insert(doc.id.clone(), doc);
+        let result = write_project(&mut project);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        assert!(!outside_path.join("pwned.md").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_write_document_rejects_symlink_file_target() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("SymlinkTarget.chikn");
+        let outside_file = temp_dir.path().join("outside.md");
+        fs::write(&outside_file, "original").unwrap();
+
+        let mut project = create_project(&project_path, "Symlink Target").unwrap();
+        unix_fs::symlink(&outside_file, project_path.join("manuscript/linked.md")).unwrap();
+
+        let doc = Document {
+            id: "bad-link-file".to_string(),
+            name: "linked".to_string(),
+            path: "manuscript/linked.md".to_string(),
+            content: "must not overwrite outside".to_string(),
+            parent_id: None,
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+
+        project.documents.insert(doc.id.clone(), doc);
+        let result = write_project(&mut project);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        assert_eq!(fs::read_to_string(&outside_file).unwrap(), "original");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_delete_document_rejects_symlink_parent() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("DeleteSymlinkParent.chikn");
+        let outside_path = temp_dir.path().join("outside-delete");
+        fs::create_dir(&outside_path).unwrap();
+        let outside_file = outside_path.join("victim.md");
+        fs::write(&outside_file, "do not delete").unwrap();
+
+        create_project(&project_path, "Delete Symlink Parent").unwrap();
+        unix_fs::symlink(&outside_path, project_path.join("manuscript/link")).unwrap();
+
+        let result = delete_document(&project_path, "manuscript/link/victim.md");
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        assert!(outside_file.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_delete_document_rejects_symlink_file_target() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("DeleteSymlinkTarget.chikn");
+        let outside_file = temp_dir.path().join("outside.md");
+        fs::write(&outside_file, "do not delete").unwrap();
+
+        create_project(&project_path, "Delete Symlink Target").unwrap();
+        unix_fs::symlink(&outside_file, project_path.join("manuscript/linked.md")).unwrap();
+
+        let result = delete_document(&project_path, "manuscript/linked.md");
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        assert!(outside_file.exists());
+        assert!(
+            fs::symlink_metadata(project_path.join("manuscript/linked.md"))
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+    }
+
+    #[test]
     fn test_delete_nested_document() {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("DeleteNested.chikn");
@@ -915,7 +1305,10 @@ mod tests {
         }];
         write_project(&mut project).unwrap();
         let threads_path = project_path.join("threads.yaml");
-        assert!(threads_path.exists(), "threads.yaml written when threads present");
+        assert!(
+            threads_path.exists(),
+            "threads.yaml written when threads present"
+        );
 
         project.threads.clear();
         write_project(&mut project).unwrap();
