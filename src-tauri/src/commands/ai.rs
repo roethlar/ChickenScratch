@@ -2,6 +2,8 @@ use chickenscratch_core::ChiknError;
 
 use super::settings::{get_app_settings, AiSettings};
 
+const DEFAULT_OPENAI_CHAT_COMPLETIONS_URL: &str = "https://api.openai.com/v1/chat/completions";
+
 /// Truncate `s` at a UTF-8 boundary so it fits within `max_chars` codepoints.
 ///
 /// Byte slicing (`&s[..n]`) panics if the boundary lands inside a multi-byte
@@ -272,10 +274,7 @@ fn stream_openai(
         .api_key
         .as_deref()
         .ok_or_else(|| "OpenAI API key not configured.".to_string())?;
-    let endpoint = settings
-        .endpoint
-        .as_deref()
-        .unwrap_or("https://api.openai.com");
+    let url = openai_chat_completions_url(settings.endpoint.as_deref())?;
     let body = serde_json::json!({
         "model": settings.model,
         "max_tokens": max_tokens,
@@ -287,7 +286,7 @@ fn stream_openai(
         .build()
         .map_err(|e| format!("HTTP client: {}", e))?;
     let resp = client
-        .post(format!("{}/v1/chat/completions", endpoint))
+        .post(url)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&body)
@@ -458,10 +457,8 @@ fn call_openai(
         ChiknError::Unknown("OpenAI API key not configured. Set it in Settings > AI.".to_string())
     })?;
 
-    let endpoint = settings
-        .endpoint
-        .as_deref()
-        .unwrap_or("https://api.openai.com");
+    let url = openai_chat_completions_url(settings.endpoint.as_deref())
+        .map_err(ChiknError::InvalidFormat)?;
 
     let body = serde_json::json!({
         "model": settings.model,
@@ -470,7 +467,7 @@ fn call_openai(
     });
 
     let resp = client
-        .post(format!("{}/v1/chat/completions", endpoint))
+        .post(url)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&body)
@@ -492,6 +489,54 @@ fn call_openai(
         .to_string())
 }
 
+pub(super) fn openai_chat_completions_url(endpoint: Option<&str>) -> Result<reqwest::Url, String> {
+    let endpoint = endpoint.map(str::trim).filter(|value| !value.is_empty());
+    let Some(endpoint) = endpoint else {
+        return reqwest::Url::parse(DEFAULT_OPENAI_CHAT_COMPLETIONS_URL)
+            .map_err(|e| format!("Invalid built-in OpenAI endpoint: {}", e));
+    };
+
+    let mut url = reqwest::Url::parse(endpoint).map_err(|_| invalid_openai_endpoint_message())?;
+    validate_openai_endpoint_url(&url)?;
+
+    let path = url.path().trim_end_matches('/');
+    if path.ends_with("/v1/chat/completions") {
+        return Ok(url);
+    }
+
+    {
+        let mut segments = url
+            .path_segments_mut()
+            .map_err(|_| invalid_openai_endpoint_message())?;
+        segments.pop_if_empty();
+        segments.push("v1");
+        segments.push("chat");
+        segments.push("completions");
+    }
+
+    Ok(url)
+}
+
+fn validate_openai_endpoint_url(url: &reqwest::Url) -> Result<(), String> {
+    if url.scheme() != "https" {
+        return Err(invalid_openai_endpoint_message());
+    }
+    if url.host_str().is_none() {
+        return Err(invalid_openai_endpoint_message());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(invalid_openai_endpoint_message());
+    }
+    if url.query().is_some() || url.fragment().is_some() {
+        return Err(invalid_openai_endpoint_message());
+    }
+
+    Ok(())
+}
+
+fn invalid_openai_endpoint_message() -> String {
+    "Invalid OpenAI endpoint: use an HTTPS URL with a host and no username, password, query, or fragment.".to_string()
+}
 
 #[cfg(test)]
 mod tests {
@@ -523,5 +568,45 @@ mod tests {
         assert_eq!(truncated, s);
         let truncated = truncate_chars(&s, n - 1);
         assert!(truncated.chars().count() == n - 1);
+    }
+
+    #[test]
+    fn openai_chat_url_defaults_to_official_chat_completions_endpoint() {
+        let url = openai_chat_completions_url(None).unwrap();
+        assert_eq!(url.as_str(), "https://api.openai.com/v1/chat/completions");
+
+        let url = openai_chat_completions_url(Some("   ")).unwrap();
+        assert_eq!(url.as_str(), "https://api.openai.com/v1/chat/completions");
+    }
+
+    #[test]
+    fn openai_chat_url_accepts_https_endpoint() {
+        let url = openai_chat_completions_url(Some("https://api.openai.com")).unwrap();
+        assert_eq!(url.as_str(), "https://api.openai.com/v1/chat/completions");
+
+        let url = openai_chat_completions_url(Some("https://gateway.example/openai/")).unwrap();
+        assert_eq!(
+            url.as_str(),
+            "https://gateway.example/openai/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn openai_chat_url_rejects_http_endpoint() {
+        let result = openai_chat_completions_url(Some("http://api.openai.com"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn openai_chat_url_rejects_malformed_and_no_scheme_endpoint() {
+        assert!(openai_chat_completions_url(Some("api.openai.com")).is_err());
+        assert!(openai_chat_completions_url(Some("https://")).is_err());
+    }
+
+    #[test]
+    fn openai_chat_url_rejects_userinfo_query_and_fragment() {
+        assert!(openai_chat_completions_url(Some("https://user@example.com")).is_err());
+        assert!(openai_chat_completions_url(Some("https://api.openai.com?x=1")).is_err());
+        assert!(openai_chat_completions_url(Some("https://api.openai.com#token")).is_err());
     }
 }
