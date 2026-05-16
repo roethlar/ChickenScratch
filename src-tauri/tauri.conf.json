@@ -6,7 +6,7 @@
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "",
-    "beforeBuildCommand": ""
+    "beforeBuildCommand": "cd ../ui && npm run build"
   },
   "app": {
     "windows": [
