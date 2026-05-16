@@ -5,6 +5,9 @@
 //! Uses Pandoc as external tool for robust RTF parsing.
 
 use crate::utils::error::ChiknError;
+use crate::utils::process::{
+    output_bounded, BoundedProcessError, PANDOC_OUTPUT_LIMIT_BYTES, PANDOC_TIMEOUT,
+};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
@@ -20,14 +23,14 @@ fn pandoc_cmd(pandoc_path: Option<&Path>) -> &OsStr {
 pub fn rtf_to_html(rtf_path: &Path, pandoc_path: Option<&Path>) -> Result<String, ChiknError> {
     check_pandoc_available(pandoc_path)?;
 
-    let output = Command::new(pandoc_cmd(pandoc_path))
-        .arg("-f")
+    let mut cmd = Command::new(pandoc_cmd(pandoc_path));
+    cmd.arg("-f")
         .arg("rtf")
         .arg("-t")
         .arg("markdown")
         .arg("--wrap=none")
-        .arg(rtf_path)
-        .output()
+        .arg(rtf_path);
+    let output = output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES)
         .map_err(|e| ChiknError::Unknown(format!("Failed to run Pandoc: {}", e)))?;
 
     if !output.status.success() {
@@ -67,15 +70,15 @@ pub fn html_to_rtf(
 ) -> Result<(), ChiknError> {
     check_pandoc_available(pandoc_path)?;
 
-    let output = Command::new(pandoc_cmd(pandoc_path))
-        .arg("-f")
+    let mut cmd = Command::new(pandoc_cmd(pandoc_path));
+    cmd.arg("-f")
         .arg("markdown")
         .arg("-t")
         .arg("rtf")
         .arg("-o")
         .arg(rtf_path)
-        .arg(html_path)
-        .output()
+        .arg(html_path);
+    let output = output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES)
         .map_err(|e| ChiknError::Unknown(format!("Failed to run Pandoc: {}", e)))?;
 
     if !output.status.success() {
@@ -115,15 +118,17 @@ pub fn html_string_to_rtf(
 }
 
 fn check_pandoc_available(pandoc_path: Option<&Path>) -> Result<(), ChiknError> {
-    let output = Command::new(pandoc_cmd(pandoc_path))
-        .arg("--version")
-        .output()
-        .map_err(|_| {
-            ChiknError::Unknown(
+    let mut cmd = Command::new(pandoc_cmd(pandoc_path));
+    cmd.arg("--version");
+    let output = output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES).map_err(
+        |err| match err {
+            BoundedProcessError::Io(_) => ChiknError::Unknown(
                 "Pandoc not found. Please install Pandoc: https://pandoc.org/installing.html"
                     .to_string(),
-            )
-        })?;
+            ),
+            other => ChiknError::Unknown(format!("Pandoc availability check failed: {}", other)),
+        },
+    )?;
 
     if !output.status.success() {
         return Err(ChiknError::Unknown("Pandoc not available".to_string()));

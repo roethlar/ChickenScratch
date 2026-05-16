@@ -2,6 +2,9 @@ use chickenscratch_core::core::compile;
 use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::hierarchy;
 use chickenscratch_core::core::project::{reader, writer};
+use chickenscratch_core::utils::process::{
+    output_bounded, BoundedProcessError, PANDOC_OUTPUT_LIMIT_BYTES, PANDOC_TIMEOUT,
+};
 use chickenscratch_core::{ChiknError, Document, Project, TreeNode};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -169,14 +172,14 @@ fn convert_to_markdown_via_pandoc(file_path: &Path, ext: &str) -> Result<String,
     // Try common Pandoc paths
     let pandoc = find_pandoc()?;
 
-    let output = Command::new(&pandoc)
-        .arg("-f")
+    let mut cmd = Command::new(&pandoc);
+    cmd.arg("-f")
         .arg(format)
         .arg("-t")
         .arg("markdown")
         .arg("--wrap=none")
-        .arg(file_path)
-        .output()
+        .arg(file_path);
+    let output = output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES)
         .map_err(|e| ChiknError::Unknown(format!("Failed to run Pandoc: {}", e)))?;
 
     if !output.status.success() {
@@ -212,13 +215,17 @@ fn find_pandoc() -> Result<String, ChiknError> {
     ];
 
     for candidate in candidates {
-        if Command::new(candidate)
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-        {
-            return Ok(candidate.to_string());
+        let mut cmd = Command::new(candidate);
+        cmd.arg("--version");
+        match output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES) {
+            Ok(output) if output.status.success() => return Ok(candidate.to_string()),
+            Ok(_) | Err(BoundedProcessError::Io(_)) => {}
+            Err(err) => {
+                return Err(ChiknError::Unknown(format!(
+                    "Pandoc availability check failed: {}",
+                    err
+                )));
+            }
         }
     }
 

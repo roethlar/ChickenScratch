@@ -1,7 +1,11 @@
+use chickenscratch_core::utils::process::{
+    output_bounded, BoundedProcessError, PANDOC_OUTPUT_LIMIT_BYTES, PANDOC_TIMEOUT,
+};
 use chickenscratch_core::ChiknError;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use super::ai::openai_chat_completions_url;
 
@@ -545,10 +549,19 @@ pub fn check_pandoc() -> Result<String, ChiknError> {
 
     // If user configured a specific path, try that first
     if let Some(ref custom) = settings.general.pandoc_path {
-        if let Ok(output) = std::process::Command::new(custom).arg("--version").output() {
-            if output.status.success() {
+        let mut cmd = Command::new(custom);
+        cmd.arg("--version");
+        match output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES) {
+            Ok(output) if output.status.success() => {
                 let version = String::from_utf8_lossy(&output.stdout);
                 return Ok(version.lines().next().unwrap_or("unknown").to_string());
+            }
+            Ok(_) | Err(BoundedProcessError::Io(_)) => {}
+            Err(err) => {
+                return Err(ChiknError::Unknown(format!(
+                    "Pandoc availability check failed: {}",
+                    err
+                )));
             }
         }
     }
@@ -566,10 +579,19 @@ pub fn check_pandoc() -> Result<String, ChiknError> {
     ];
 
     for pandoc in candidates {
-        if let Ok(output) = std::process::Command::new(pandoc).arg("--version").output() {
-            if output.status.success() {
+        let mut cmd = Command::new(pandoc);
+        cmd.arg("--version");
+        match output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES) {
+            Ok(output) if output.status.success() => {
                 let version = String::from_utf8_lossy(&output.stdout);
                 return Ok(version.lines().next().unwrap_or("unknown").to_string());
+            }
+            Ok(_) | Err(BoundedProcessError::Io(_)) => {}
+            Err(err) => {
+                return Err(ChiknError::Unknown(format!(
+                    "Pandoc availability check failed: {}",
+                    err
+                )));
             }
         }
     }
