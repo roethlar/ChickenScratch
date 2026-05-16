@@ -6,6 +6,9 @@ use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::{ChiknError, Project, Thread};
 use serde::Serialize;
 use std::path::Path;
+use tauri::State;
+
+use super::ProjectWriteLocks;
 
 /// A dangling reference from a scene to an entity that no longer exists.
 #[derive(Debug, Clone, Serialize)]
@@ -51,7 +54,10 @@ pub fn validate_references(project_path: String) -> Result<Vec<DanglingRef>, Chi
 
     let mut dangling = Vec::new();
     for doc in project.documents.values() {
-        let check = |field: &str, value: &serde_yaml::Value, set: &std::collections::HashSet<String>, out: &mut Vec<DanglingRef>| {
+        let check = |field: &str,
+                     value: &serde_yaml::Value,
+                     set: &std::collections::HashSet<String>,
+                     out: &mut Vec<DanglingRef>| {
             if let Some(s) = value.as_str() {
                 if !s.is_empty() && !set.contains(s) {
                     out.push(DanglingRef {
@@ -102,73 +108,85 @@ pub fn list_threads(project_path: String) -> Result<Vec<Thread>, ChiknError> {
 #[tauri::command]
 pub fn create_thread(
     project_path: String,
+    write_locks: State<'_, ProjectWriteLocks>,
     name: String,
     color: Option<String>,
     description: Option<String>,
 ) -> Result<Project, ChiknError> {
-    let trimmed = name.trim();
-    if trimmed.is_empty() {
-        return Err(ChiknError::InvalidFormat(
-            "Thread name cannot be empty".to_string(),
-        ));
-    }
-    let mut project = reader::read_project(Path::new(&project_path))?;
+    write_locks.with_project_lock(&project_path, || {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(ChiknError::InvalidFormat(
+                "Thread name cannot be empty".to_string(),
+            ));
+        }
+        let mut project = reader::read_project(Path::new(&project_path))?;
 
-    let id = unique_thread_id(trimmed, &project.threads);
-    project.threads.push(Thread {
-        id,
-        name: trimmed.to_string(),
-        color: color.and_then(non_empty),
-        description: description.and_then(non_empty),
-    });
-    writer::write_project(&mut project)?;
-    Ok(project)
+        let id = unique_thread_id(trimmed, &project.threads);
+        project.threads.push(Thread {
+            id,
+            name: trimmed.to_string(),
+            color: color.and_then(non_empty),
+            description: description.and_then(non_empty),
+        });
+        writer::write_project(&mut project)?;
+        Ok(project)
+    })
 }
 
 #[tauri::command]
 pub fn update_thread(
     project_path: String,
+    write_locks: State<'_, ProjectWriteLocks>,
     id: String,
     name: Option<String>,
     color: Option<String>,
     description: Option<String>,
 ) -> Result<Project, ChiknError> {
-    let mut project = reader::read_project(Path::new(&project_path))?;
-    let thread = project
-        .threads
-        .iter_mut()
-        .find(|t| t.id == id)
-        .ok_or_else(|| ChiknError::NotFound(format!("Thread not found: {}", id)))?;
+    write_locks.with_project_lock(&project_path, || {
+        let mut project = reader::read_project(Path::new(&project_path))?;
+        let thread = project
+            .threads
+            .iter_mut()
+            .find(|t| t.id == id)
+            .ok_or_else(|| ChiknError::NotFound(format!("Thread not found: {}", id)))?;
 
-    if let Some(n) = name.and_then(non_empty) {
-        thread.name = n;
-    }
-    if let Some(c) = color {
-        thread.color = non_empty(c);
-    }
-    if let Some(d) = description {
-        thread.description = non_empty(d);
-    }
-    writer::write_project(&mut project)?;
-    Ok(project)
+        if let Some(n) = name.and_then(non_empty) {
+            thread.name = n;
+        }
+        if let Some(c) = color {
+            thread.color = non_empty(c);
+        }
+        if let Some(d) = description {
+            thread.description = non_empty(d);
+        }
+        writer::write_project(&mut project)?;
+        Ok(project)
+    })
 }
 
 /// Delete a thread. Strips the ref from every scene's `fields.threads` list
 /// so we don't leave dangling references.
 #[tauri::command]
-pub fn delete_thread(project_path: String, id: String) -> Result<Project, ChiknError> {
-    let mut project = reader::read_project(Path::new(&project_path))?;
-    project.threads.retain(|t| t.id != id);
+pub fn delete_thread(
+    project_path: String,
+    write_locks: State<'_, ProjectWriteLocks>,
+    id: String,
+) -> Result<Project, ChiknError> {
+    write_locks.with_project_lock(&project_path, || {
+        let mut project = reader::read_project(Path::new(&project_path))?;
+        project.threads.retain(|t| t.id != id);
 
-    for doc in project.documents.values_mut() {
-        if let Some(value) = doc.fields.get_mut("threads") {
-            if let Some(seq) = value.as_sequence_mut() {
-                seq.retain(|v| v.as_str().map(|s| s != id).unwrap_or(true));
+        for doc in project.documents.values_mut() {
+            if let Some(value) = doc.fields.get_mut("threads") {
+                if let Some(seq) = value.as_sequence_mut() {
+                    seq.retain(|v| v.as_str().map(|s| s != id).unwrap_or(true));
+                }
             }
         }
-    }
-    writer::write_project(&mut project)?;
-    Ok(project)
+        writer::write_project(&mut project)?;
+        Ok(project)
+    })
 }
 
 fn non_empty(s: String) -> Option<String> {

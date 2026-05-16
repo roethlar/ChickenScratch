@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use tauri::State;
+
+use super::ProjectWriteLocks;
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -80,12 +83,11 @@ const PANDOC_IMPORT_EXTENSIONS: &[&str] = &[
 #[tauri::command]
 pub fn import_file(
     project_path: String,
+    write_locks: State<'_, ProjectWriteLocks>,
     file_path: String,
     parent_id: Option<String>,
 ) -> Result<Project, ChiknError> {
     let path = Path::new(&file_path);
-    let mut project = reader::read_project(Path::new(&project_path))?;
-
     let name = path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -108,38 +110,42 @@ pub fn import_file(
         }
     };
 
-    let doc_id = uuid::Uuid::new_v4().to_string();
-    let slug =
-        chickenscratch_core::utils::slug::unique_slug(&name, "manuscript/", &project.documents);
-    let doc_path = format!("manuscript/{}.md", slug);
-    let now = chrono::Utc::now().to_rfc3339();
+    write_locks.with_project_lock(&project_path, || {
+        let mut project = reader::read_project(Path::new(&project_path))?;
 
-    let document = Document {
-        id: doc_id.clone(),
-        name: name.clone(),
-        path: doc_path.clone(),
-        content: content.clone(),
-        parent_id: parent_id.clone(),
-        created: now.clone(),
-        modified: now,
-        ..Default::default()
-    };
+        let doc_id = uuid::Uuid::new_v4().to_string();
+        let slug =
+            chickenscratch_core::utils::slug::unique_slug(&name, "manuscript/", &project.documents);
+        let doc_path = format!("manuscript/{}.md", slug);
+        let now = chrono::Utc::now().to_rfc3339();
 
-    project.documents.insert(doc_id.clone(), document);
+        let document = Document {
+            id: doc_id.clone(),
+            name: name.clone(),
+            path: doc_path.clone(),
+            content,
+            parent_id: parent_id.clone(),
+            created: now.clone(),
+            modified: now,
+            ..Default::default()
+        };
 
-    let node = TreeNode::Document {
-        id: doc_id,
-        name,
-        path: doc_path,
-    };
+        project.documents.insert(doc_id.clone(), document);
 
-    match parent_id {
-        Some(pid) => hierarchy::add_child_to_folder(&mut project.hierarchy, &pid, node)?,
-        None => hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node),
-    }
+        let node = TreeNode::Document {
+            id: doc_id,
+            name,
+            path: doc_path,
+        };
 
-    writer::write_project(&mut project)?;
-    Ok(project)
+        match parent_id {
+            Some(pid) => hierarchy::add_child_to_folder(&mut project.hierarchy, &pid, node)?,
+            None => hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node),
+        }
+
+        writer::write_project(&mut project)?;
+        Ok(project)
+    })
 }
 
 fn convert_to_markdown_via_pandoc(file_path: &Path, ext: &str) -> Result<String, ChiknError> {
@@ -224,6 +230,17 @@ fn find_pandoc() -> Result<String, ChiknError> {
 /// Import a folder of files as a new project.
 #[tauri::command]
 pub fn import_markdown_folder(
+    folder_path: String,
+    output_path: String,
+    write_locks: State<'_, ProjectWriteLocks>,
+) -> Result<Project, ChiknError> {
+    let lock_path = output_path.clone();
+    write_locks.with_project_lock(lock_path, || {
+        import_markdown_folder_impl(folder_path, output_path)
+    })
+}
+
+fn import_markdown_folder_impl(
     folder_path: String,
     output_path: String,
 ) -> Result<Project, ChiknError> {
@@ -425,7 +442,16 @@ pub fn get_writing_history(project_path: String) -> Result<WritingHistory, Chikn
 }
 
 #[tauri::command]
-pub fn record_daily_words(project_path: String, words: usize) -> Result<(), ChiknError> {
+pub fn record_daily_words(
+    project_path: String,
+    write_locks: State<'_, ProjectWriteLocks>,
+    words: usize,
+) -> Result<(), ChiknError> {
+    let lock_path = project_path.clone();
+    write_locks.with_project_lock(lock_path, || record_daily_words_impl(project_path, words))
+}
+
+fn record_daily_words_impl(project_path: String, words: usize) -> Result<(), ChiknError> {
     let dir = Path::new(&project_path).join("settings");
     fs::create_dir_all(&dir)?;
     let path = dir.join("writing-history.json");
@@ -510,10 +536,12 @@ pub fn get_session_progress(project_path: String) -> Result<SessionProgress, Chi
     };
 
     let days_remaining = target.deadline.as_ref().and_then(|d| {
-        chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok().map(|deadline| {
-            let now = chrono::Utc::now().date_naive();
-            (deadline - now).num_days()
-        })
+        chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+            .ok()
+            .map(|deadline| {
+                let now = chrono::Utc::now().date_naive();
+                (deadline - now).num_days()
+            })
     });
 
     let needed_per_day = match (target.total_target, days_remaining) {

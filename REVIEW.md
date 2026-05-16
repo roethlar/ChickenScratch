@@ -65,9 +65,11 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 ### C-4: No write-lock on read-modify-write `[~]`
 - **What**: Concurrent Tauri command invocations (auto-save + auto-commit + backup) interleave `read_project → mutate → write_project` and silently lose work.
 - **Files**: `src-tauri/src/commands/document.rs`, `git.rs`, `project.rs`, `io.rs`, `threads.rs` — every command that mutates.
-- **Approach**: _(GPT to fill in)_ — `ProjectWriteLocks` Tauri state added; `update_document_content` wrapped at document.rs:22.
-- **Tests added**: _(GPT to fill in)_
-- **Reviewer comments**: Confirm every mutating command is wrapped, not just `update_document_content`. The fix is partial if `add_comment`, `update_document_metadata`, `rename_node`, `save_revision`, `restore_revision`, etc. still bypass the lock.
+- **Approach**: Added process-local `ProjectWriteLocks` Tauri state keyed by normalized project path and registered it in `main.rs`. Wrapped project-disk mutating document, project, thread, template, import/writing-history, and mutating git/backup/sync/restore commands. Pure reads, app settings/keyring writes, AI text generation, and compile external-output generation remain unlocked.
+- **Tests added**: Unit tests for same-project serialization and different-project independence in `src-tauri/src/commands/mod.rs`.
+- **Touched files**: `src-tauri/src/commands/{mod.rs,document.rs,project.rs,threads.rs,templates.rs,io.rs,git.rs}`, `src-tauri/src/main.rs`, `.review/findings/C-4.md`, `REVIEW.md`.
+- **Known gaps**: Command-level concurrent integration tests would require a full Tauri harness; helper tests cover lock behavior directly. Locks are process-local and do not coordinate separate app instances or external tools.
+- **Reviewer comments**:
 
 ### C-5: AI streaming writes to wrong document after navigation `[~]`
 - **What**: `Toolbar.tsx` closure captures `editor` at stream start; Tiptap reuses the same instance across docs, so chunks for doc A land in doc B's buffer if the user navigates mid-stream. No cancellation.
