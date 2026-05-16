@@ -1,0 +1,7 @@
+{
+  "id": "H-1",
+  "sha": "f2d88970d5d26c672cb7a7cc0dbf061dcf2f592f",
+  "ts": "2026-05-16T15:26:30Z",
+  "reviewer": "claude",
+  "note": "Write-back removed; missing refs preserved in memory; corrupt threads.yaml now surfaces error. 3 nits: helper duplication with C-3, stderr-only warnings (no UI signal), test_threads_corrupt_file_fails_load doesn't pattern-match variant. None blocking."
+}

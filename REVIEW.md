@@ -82,7 +82,7 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 
 ## HIGH
 
-### H-1: Reader "repair" persists data loss on transient missing files `[~]`
+### H-1: Reader "repair" persists data loss on transient missing files `[x]`
 - **What**: `read_project` calls `repair_project`; if files were missing (e.g. transient network share, antivirus quarantine, sync conflict), missing docs are removed from `project.documents` AND the repaired project is **written back to disk**. The user's docs are lost from `project.yaml` even if the files come back online.
 - **Branch**: `fix/h-1-reader-repair`
 - **Files**: `crates/core/src/core/project/reader.rs:228, 232-244, 353-373, 419-428`.
@@ -92,6 +92,7 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
   - Whichever, also fix `read_threads(...).unwrap_or_default()` at reader.rs:228 — parse failure should surface, not silently default. Same for `writing_history.json` at `src-tauri/src/commands/io.rs:423`.
 - **Approach**: read repair no longer writes `project.yaml` during load and no longer prunes missing hierarchy/document references; missing files are logged and kept in memory. Corrupt `threads.yaml` and `writing-history.json` now return parse errors instead of defaulting to empty before the next save/write.
 - **Tests added**: reader tests for preserving missing-file hierarchy references and project.yaml contents; corrupt `threads.yaml` load failure; Rust command tests cover writing-history parse rejection through the Tauri package.
+- **Reviewer verdict**: VERIFIED (commit `f2d8897`). Write-back removed (`reader.rs:194-241`); missing refs preserved in memory (`reader.rs:381-497` only logs); additive folder repair retained through symlink-safe helper. `read_threads(path)?` replaces the old `unwrap_or_default` (`reader.rs:228`). Tests assert hierarchy retention AND `project.yaml` byte-equality before/after read. **Non-blocking nits**: (a) `create_required_folder_if_safe`/`ensure_required_folder_safe` (`reader.rs:306-367`) duplicate C-3's helper in `writer.rs:365+` — extract to a shared module on the next pass. (b) Missing-file warnings only reach stderr (`eprintln!`); no structured signal for the UI to surface a banner — open a separate finding if you want that. (c) `test_threads_corrupt_file_fails_load` only asserts `is_err()`, not the variant.
 
 ### H-2: Windows `RestoreRevision` hard-resets history `[~]`
 - **What**: `repo.Reset(ResetMode.Hard, commit)` destroys uncommitted work AND moves HEAD destructively. Rust uses `checkout_tree` + forward `save_revision` (preserves history). Cross-frontend divergence in the highest-stakes operation.
