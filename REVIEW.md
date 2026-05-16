@@ -84,6 +84,7 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 
 ### H-1: Reader "repair" persists data loss on transient missing files `[~]`
 - **What**: `read_project` calls `repair_project`; if files were missing (e.g. transient network share, antivirus quarantine, sync conflict), missing docs are removed from `project.documents` AND the repaired project is **written back to disk**. The user's docs are lost from `project.yaml` even if the files come back online.
+- **Branch**: `fix/h-1-reader-repair`
 - **Files**: `crates/core/src/core/project/reader.rs:228, 232-244, 353-373, 419-428`.
 - **Notes for GPT**: Two acceptable shapes:
   - (a) Repair in-memory only; never write back. Surface a structured warning (`ChiknError::ProjectRepaired { missing: Vec<String> }`?) so the UI shows a banner.

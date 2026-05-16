@@ -21,7 +21,8 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::io::ErrorKind;
+use std::path::{Component, Path};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -31,8 +32,7 @@ use uuid::Uuid;
 
 use super::format::{
     get_characters_path, get_document_meta_path, get_locations_path, get_manuscript_path,
-    get_project_file_path, get_research_path, get_settings_path, get_templates_path,
-    get_threads_path, DOCUMENT_EXTENSION,
+    get_project_file_path, get_research_path, get_threads_path, DOCUMENT_EXTENSION,
 };
 use crate::models::{Document, Project, Thread, TreeNode};
 use crate::utils::error::ChiknError;
@@ -225,26 +225,16 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
         created: metadata.created,
         modified: metadata.modified,
         metadata: metadata.metadata,
-        threads: read_threads(path).unwrap_or_default(),
+        threads: read_threads(path)?,
     };
 
     // Reconcile hierarchy with actual files on disk
     let repaired = repair_project(&mut project, path);
     if repaired {
-        // Write repaired state back to disk. The previous `let _ = ...`
-        // silenced repair failures entirely — a permission error or full
-        // disk would let the user open and edit a project whose on-disk
-        // state still didn't match the in-memory model, and they'd find
-        // out only on the next save. Log the failure so it's visible at
-        // least via stderr / Tauri's log file (F-012).
-        if let Err(e) = super::writer::write_project(&mut project) {
-            eprintln!(
-                "Repair write failed for {}: {} — in-memory project loaded \
-                 anyway; the next save will surface the real error.",
-                path.display(),
-                e
-            );
-        }
+        eprintln!(
+            "Repaired {} in memory; project.yaml was not rewritten during load.",
+            path.display()
+        );
     }
 
     Ok(project)
@@ -281,44 +271,125 @@ fn validate_project_root(path: &Path) -> Result<(), ChiknError> {
 /// load — the surrounding repair pass will try again, and a real fs problem
 /// will surface during the next write.
 fn pre_repair_folders(path: &Path) {
-    for folder in super::format::REQUIRED_FOLDERS {
-        let folder_path = path.join(folder);
-        if folder_path.exists() {
-            continue;
-        }
-        if let Err(e) = std::fs::create_dir_all(&folder_path) {
+    let project_root = match path.canonicalize() {
+        Ok(root) => root,
+        Err(e) => {
             eprintln!(
-                "pre-repair: failed to create {}: {} — continuing anyway",
-                folder_path.display(),
+                "pre-repair: failed to resolve project root {}: {} — continuing anyway",
+                path.display(),
                 e
             );
-        } else {
-            eprintln!("pre-repair: created missing folder {}", folder_path.display());
+            return;
+        }
+    };
+
+    for folder in super::format::REQUIRED_FOLDERS {
+        match create_required_folder_if_safe(path, &project_root, folder) {
+            Ok(true) => {
+                eprintln!(
+                    "pre-repair: created missing folder {}",
+                    path.join(folder).display()
+                );
+            }
+            Ok(false) => {}
+            Err(e) => {
+                eprintln!(
+                    "pre-repair: failed to create {} safely: {} — continuing anyway",
+                    path.join(folder).display(),
+                    e
+                );
+            }
         }
     }
 }
 
-/// Reconciles project.yaml hierarchy with actual files on disk.
-/// Returns true if any repairs were made.
+fn create_required_folder_if_safe(
+    project_path: &Path,
+    project_root: &Path,
+    folder: &str,
+) -> Result<bool, ChiknError> {
+    let mut current = project_path.to_path_buf();
+    let mut created = false;
+
+    for component in Path::new(folder).components() {
+        let Component::Normal(part) = component else {
+            return Err(ChiknError::InvalidFormat(format!(
+                "Required folder path contains unsafe components: {}",
+                folder
+            )));
+        };
+        current.push(part);
+
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) => {
+                ensure_required_folder_safe(&current, &metadata, project_root)?;
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                fs::create_dir(&current)?;
+                let metadata = fs::symlink_metadata(&current)?;
+                ensure_required_folder_safe(&current, &metadata, project_root)?;
+                created = true;
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    Ok(created)
+}
+
+fn ensure_required_folder_safe(
+    path: &Path,
+    metadata: &fs::Metadata,
+    project_root: &Path,
+) -> Result<(), ChiknError> {
+    if metadata.file_type().is_symlink() {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Required folder is a symlink: {}",
+            path.display()
+        )));
+    }
+    if !metadata.is_dir() {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Required folder path is not a directory: {}",
+            path.display()
+        )));
+    }
+
+    let canonical_path = path.canonicalize()?;
+    if !canonical_path.starts_with(project_root) {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Required folder escapes project root: {}",
+            path.display()
+        )));
+    }
+
+    Ok(())
+}
+
+/// Reconciles project.yaml hierarchy with actual files on disk in memory.
+/// Returns true if any additive repairs were made.
+///
+/// This deliberately avoids destructive pruning: a transient filesystem miss
+/// must not remove document references from the loaded project and then
+/// persist that smaller model on the next save. Missing files are logged, while
+/// additive repairs like orphan adoption still happen in memory.
 ///
 /// Handles:
-/// 1. Hierarchy references a file that doesn't exist — remove from hierarchy
+/// 1. Hierarchy references a file that doesn't exist — keep it and warn
 /// 2. A .md file exists on disk but isn't in hierarchy — add to hierarchy
-/// 3. Document in hierarchy has no matching loaded document — remove
+/// 3. Document in the loaded map has no file on disk — keep it and warn
 fn repair_project(project: &mut Project, project_path: &Path) -> bool {
     let mut repaired = false;
 
-    // Pass 1: Remove hierarchy entries that point to missing files
-    let before_count = count_hierarchy_docs(&project.hierarchy);
-    project.hierarchy = prune_missing_files(&project.hierarchy, project_path);
-    let after_count = count_hierarchy_docs(&project.hierarchy);
-    if after_count < before_count {
-        let removed = before_count - after_count;
+    // Pass 1: Warn on hierarchy entries that point to missing files. Keep the
+    // references so a temporary sync/network miss does not become data loss.
+    let missing_paths = missing_hierarchy_paths(&project.hierarchy, project_path);
+    if !missing_paths.is_empty() {
         eprintln!(
-            "Repaired: removed {} hierarchy entries pointing to missing files",
-            removed
+            "Repair warning: {} hierarchy entries point to missing files and were kept: {}",
+            missing_paths.len(),
+            missing_paths.join(", ")
         );
-        repaired = true;
     }
 
     // Pass 2: Find documents on disk that aren't in the hierarchy.
@@ -350,7 +421,8 @@ fn repair_project(project: &mut Project, project_path: &Path) -> bool {
         repaired = true;
     }
 
-    // Pass 3: Remove documents from the map that have no file on disk
+    // Pass 3: Warn if documents in the map have no file on disk. Keep them in
+    // memory for the same reason as hierarchy references above.
     let missing_ids: Vec<String> = project
         .documents
         .iter()
@@ -363,31 +435,41 @@ fn repair_project(project: &mut Project, project_path: &Path) -> bool {
 
     if !missing_ids.is_empty() {
         eprintln!(
-            "Repaired: removed {} documents with missing files from index",
-            missing_ids.len()
+            "Repair warning: {} loaded documents have missing files and were kept in memory: {}",
+            missing_ids.len(),
+            missing_ids.join(", ")
         );
-        for id in &missing_ids {
-            project.documents.remove(id);
-        }
-        repaired = true;
     }
 
-    // Pass 4: Ensure default directories exist on disk
-    let all_default_dirs: &[fn(&Path) -> std::path::PathBuf] = &[
-        get_manuscript_path as fn(&Path) -> std::path::PathBuf,
-        get_research_path,
-        get_templates_path,
-        get_settings_path,
-    ];
-    for path_fn in all_default_dirs {
-        let folder_path = path_fn(project_path);
-        if !folder_path.exists() {
-            let _ = std::fs::create_dir_all(&folder_path);
+    // Pass 4: Ensure default directories exist on disk when doing so is safe.
+    match project_path.canonicalize() {
+        Ok(project_root) => {
+            for folder in super::format::REQUIRED_FOLDERS {
+                match create_required_folder_if_safe(project_path, &project_root, folder) {
+                    Ok(true) => {
+                        eprintln!(
+                            "Repaired: created missing folder on disk: {}",
+                            project_path.join(folder).display()
+                        );
+                        repaired = true;
+                    }
+                    Ok(false) => {}
+                    Err(e) => {
+                        eprintln!(
+                            "Repair skipped unsafe folder creation for {}: {}",
+                            project_path.join(folder).display(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+        Err(e) => {
             eprintln!(
-                "Repaired: created missing folder on disk: {}",
-                folder_path.display()
+                "Repair skipped required folder creation for {}: {}",
+                project_path.display(),
+                e
             );
-            repaired = true;
         }
     }
 
@@ -414,25 +496,18 @@ fn repair_project(project: &mut Project, project_path: &Path) -> bool {
     repaired
 }
 
-/// Recursively removes Document nodes whose files don't exist on disk.
-/// Folders are kept even if empty (the user may have intentionally emptied them).
-fn prune_missing_files(hierarchy: &[TreeNode], project_path: &Path) -> Vec<TreeNode> {
+fn missing_hierarchy_paths(hierarchy: &[TreeNode], project_path: &Path) -> Vec<String> {
     let mut result = Vec::new();
     for node in hierarchy {
         match node {
             TreeNode::Document { path, .. } => {
                 let full = project_path.join(path);
-                if full.exists() {
-                    result.push(node.clone());
+                if !full.exists() {
+                    result.push(path.clone());
                 }
             }
-            TreeNode::Folder { id, name, children } => {
-                let pruned_children = prune_missing_files(children, project_path);
-                result.push(TreeNode::Folder {
-                    id: id.clone(),
-                    name: name.clone(),
-                    children: pruned_children,
-                });
+            TreeNode::Folder { children, .. } => {
+                result.extend(missing_hierarchy_paths(children, project_path));
             }
         }
     }
@@ -440,6 +515,7 @@ fn prune_missing_files(hierarchy: &[TreeNode], project_path: &Path) -> Vec<TreeN
 }
 
 /// Counts total Document nodes in a hierarchy.
+#[cfg(test)]
 fn count_hierarchy_docs(hierarchy: &[TreeNode]) -> usize {
     let mut count = 0;
     for node in hierarchy {
@@ -834,19 +910,54 @@ hierarchy: []
     }
 
     #[test]
-    fn test_repair_removes_missing_file_from_hierarchy() {
+    fn test_repair_keeps_missing_file_reference_in_memory_and_on_disk() {
         let (_temp, project_path) = create_test_project();
+        let project_yaml_before = fs::read_to_string(project_path.join(PROJECT_FILE)).unwrap();
 
         // Delete the document file but leave project.yaml referencing it
         fs::remove_file(project_path.join("manuscript/chapter-01.md")).unwrap();
         fs::remove_file(project_path.join("manuscript/chapter-01.meta")).unwrap();
 
-        // Load should succeed and repair
+        // Load should succeed, but missing-file references must not be pruned:
+        // the file may be temporarily unavailable and return later.
         let project = read_project(&project_path).unwrap();
 
-        // Hierarchy should be empty — the dangling reference was pruned
-        assert_eq!(count_hierarchy_docs(&project.hierarchy), 0);
+        assert_eq!(count_hierarchy_docs(&project.hierarchy), 1);
+        assert!(
+            collect_hierarchy_paths(&project.hierarchy).contains("manuscript/chapter-01.md"),
+            "dangling hierarchy reference should be preserved"
+        );
         assert_eq!(project.documents.len(), 0);
+        assert_eq!(
+            fs::read_to_string(project_path.join(PROJECT_FILE)).unwrap(),
+            project_yaml_before,
+            "read repair must not rewrite project.yaml"
+        );
+    }
+
+    #[test]
+    fn test_read_project_does_not_persist_missing_file_repair() {
+        let (_temp, project_path) = create_test_project();
+        let project_file = project_path.join(PROJECT_FILE);
+        let original_project_yaml = fs::read_to_string(&project_file).unwrap();
+
+        // Delete the document file but leave project.yaml referencing it.
+        fs::remove_file(project_path.join("manuscript/chapter-01.md")).unwrap();
+        fs::remove_file(project_path.join("manuscript/chapter-01.meta")).unwrap();
+
+        let project = read_project(&project_path).unwrap();
+
+        assert_eq!(count_hierarchy_docs(&project.hierarchy), 1);
+        assert!(
+            collect_hierarchy_paths(&project.hierarchy).contains("manuscript/chapter-01.md"),
+            "load-time repair must keep the missing document reference in memory"
+        );
+        assert_eq!(project.documents.len(), 0);
+        assert_eq!(
+            fs::read_to_string(&project_file).unwrap(),
+            original_project_yaml,
+            "load-time repair must not rewrite project.yaml"
+        );
     }
 
     #[test]
@@ -924,6 +1035,18 @@ hierarchy: []
         let (_temp, project_path) = create_test_project();
         let project = read_project(&project_path).expect("read");
         assert!(project.threads.is_empty());
+    }
+
+    #[test]
+    fn test_threads_corrupt_file_fails_load() {
+        let (_temp, project_path) = create_test_project();
+        fs::write(project_path.join("threads.yaml"), "threads: [").unwrap();
+
+        let result = read_project(&project_path);
+        assert!(
+            result.is_err(),
+            "corrupt threads.yaml must not silently default to empty"
+        );
     }
 
     #[test]
