@@ -22,6 +22,7 @@ export interface AppSettings {
     url: string | null;
     username: string | null;
     token: string | null;
+    token_in_keyring: boolean;
     auto_push_on_revision: boolean;
   };
   ai: {
@@ -29,6 +30,7 @@ export interface AppSettings {
     provider: string;
     endpoint: string | null;
     api_key: string | null;
+    api_key_in_keyring: boolean;
     model: string;
   };
   compile: {

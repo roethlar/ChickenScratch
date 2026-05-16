@@ -1,6 +1,6 @@
 use chickenscratch_core::ChiknError;
 
-use super::settings::{get_app_settings, AiSettings};
+use super::settings::{get_app_settings, get_app_settings_hydrated, AiSettings};
 
 const DEFAULT_OPENAI_CHAT_COMPLETIONS_URL: &str = "https://api.openai.com/v1/chat/completions";
 
@@ -35,7 +35,7 @@ pub fn save_ai_settings(ai: AiSettings) -> Result<(), ChiknError> {
 
 #[tauri::command]
 pub fn ai_summarize(content: String) -> Result<String, ChiknError> {
-    let settings = get_app_settings();
+    let settings = get_app_settings_hydrated();
     if !settings.ai.enabled {
         return Err(ChiknError::Unknown(
             "AI features are disabled. Enable in Settings.".to_string(),
@@ -67,7 +67,7 @@ pub fn ai_transform_stream(
     operation: String,
     request_id: String,
 ) -> Result<(), ChiknError> {
-    let settings = get_app_settings();
+    let settings = get_app_settings_hydrated();
     if !settings.ai.enabled {
         return Err(ChiknError::Unknown(
             "AI features are disabled. Enable in Settings.".to_string(),
@@ -326,7 +326,7 @@ fn stream_openai(
 /// Transform selected text with AI (polish, expand, simplify, brainstorm)
 #[tauri::command]
 pub fn ai_transform(content: String, operation: String) -> Result<String, ChiknError> {
-    let settings = get_app_settings();
+    let settings = get_app_settings_hydrated();
     if !settings.ai.enabled {
         return Err(ChiknError::Unknown(
             "AI features are disabled. Enable in Settings.".to_string(),
