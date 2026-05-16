@@ -411,6 +411,15 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: Linux AppImage configuration remains a separate release packaging finding.
 - **Reviewer verdict**: VERIFIED (commit `369ca38`). `src-tauri/tauri.conf.json` bundle targets now `["app", "dmg"]` — `cargo tauri build` actually produces the `.dmg` README promises. README path correction is correct: Tauri's bundle layout puts `.app` under `target/release/bundle/macos/` and `.dmg` under `target/release/bundle/dmg/` (separate directories). GPT validated by running `cargo tauri build --bundles app,dmg` and asserting both artifacts exist.
 
+### R-4: Windows README build instructions target stale SDK and invalid solution platform `[~]`
+- **What**: README says Windows requires .NET 8 even though the Windows projects target .NET 10, and documents `dotnet build ChickenScratch.slnx /p:Platform=x64`, which is invalid for the current `.slnx`.
+- **Severity**: MEDIUM for release readiness. The documented Windows release path should match the project files and CI.
+- **Branch**: `fix/r-4-windows-readme-dotnet10`
+- **Approach**: updated the prerequisite to .NET 10 and changed the x64 release command to build `ChickenScratch.App/ChickenScratch.App.csproj` directly.
+- **Tests**: README grep checks; `dotnet restore ChickenScratch.App/ChickenScratch.App.csproj /p:Platform=x64 /p:EnableWindowsTargeting=true`; `git diff --check`.
+- **Files changed**: `README.md`, `.review/findings/R-4.md`, `REVIEW.md`.
+- **Known gaps**: full WinUI app build still requires a Windows host.
+
 ---
 
 ## Recently landed (awaiting reviewer verification)
