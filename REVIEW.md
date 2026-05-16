@@ -50,11 +50,13 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Tests added**: _(GPT to fill in)_
 - **Reviewer comments**:
 
-### C-3: Symlink writes outside project root `[ ]`
+### C-3: Symlink writes outside project root `[~]`
 - **What**: `writer.rs:253` only checks string traversal (`..`) and absolute paths. Symlinks aren't checked. A hostile project whose `manuscript/chapter.md` is a symlink to `~/.ssh/authorized_keys` will be overwritten on next save. Same vector on delete.
 - **Files**: `crates/core/src/core/project/writer.rs:253` (write), `:330-360` (delete).
 - **Notes for GPT**: Use `std::fs::symlink_metadata(...).file_type().is_symlink()` on the full path before write. Reject with `ChiknError::InvalidFormat`. Also harden the traversal check to component-based: `Path::components().any(|c| matches!(c, Component::ParentDir | Component::RootDir | Component::Prefix(_)))` is more robust than `contains("..")`.
 - **Tests**: write_project should reject a project containing a symlinked doc; delete_document should refuse to remove a symlink. Add to `crates/core/src/core/project/writer.rs` test module.
+- **Approach**: added component-based document path validation, canonical project-root checks, safe directory creation, symlink rejection for parent directories, document files, and `.meta` targets before write/delete.
+- **Tests added**: writer tests for parent traversal, dot-dot filename allowance, symlink parent rejection, symlink document write rejection, symlink parent delete rejection, and symlink document delete rejection.
 
 ### C-4: No write-lock on read-modify-write `[~]`
 - **What**: Concurrent Tauri command invocations (auto-save + auto-commit + backup) interleave `read_project → mutate → write_project` and silently lose work.
@@ -63,7 +65,7 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Tests added**: _(GPT to fill in)_
 - **Reviewer comments**: Confirm every mutating command is wrapped, not just `update_document_content`. The fix is partial if `add_comment`, `update_document_metadata`, `rename_node`, `save_revision`, `restore_revision`, etc. still bypass the lock.
 
-### C-5: AI streaming writes to wrong document after navigation `[ ]`
+### C-5: AI streaming writes to wrong document after navigation `[~]`
 - **What**: `Toolbar.tsx` closure captures `editor` at stream start; Tiptap reuses the same instance across docs, so chunks for doc A land in doc B's buffer if the user navigates mid-stream. No cancellation.
 - **Files**: `ui/src/components/editor/Toolbar.tsx:327-385` (stream handlers); `src-tauri/src/commands/ai.rs:62-109` (thread spawn, no registry).
 - **Notes for GPT**:
@@ -71,18 +73,22 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
   2. On each chunk, compare to `useProjectStore.getState().activeDocId` — if it has changed, drop the chunk (and emit an abort signal to backend if possible).
   3. Add a backend cancellation channel: thread checks an `Arc<AtomicBool>` between chunks; frontend can signal cancel.
   4. Bonus: `editor.commands.insertContentAt(currentEnd, delta)` (append-only) instead of the current O(n²) re-select/re-insert pattern.
+- **Approach**: frontend stamps stream requests with the active project/doc/flow context and refuses to apply chunks after navigation; backend now tracks request ids in a Tauri-managed cancellation registry and streaming loops check an `Arc<AtomicBool>` between chunks. The UI sends `cancel_ai_transform_stream` as soon as context changes, and pre-registration cancellation is remembered to avoid a lost-cancel race.
+- **Tests added**: Tauri unit tests for registered cancellation and pre-registration cancellation. UI verified by lint/build.
 
 ---
 
 ## HIGH
 
-### H-1: Reader "repair" persists data loss on transient missing files `[ ]`
+### H-1: Reader "repair" persists data loss on transient missing files `[~]`
 - **What**: `read_project` calls `repair_project`; if files were missing (e.g. transient network share, antivirus quarantine, sync conflict), missing docs are removed from `project.documents` AND the repaired project is **written back to disk**. The user's docs are lost from `project.yaml` even if the files come back online.
 - **Files**: `crates/core/src/core/project/reader.rs:228, 232-244, 353-373, 419-428`.
 - **Notes for GPT**: Two acceptable shapes:
   - (a) Repair in-memory only; never write back. Surface a structured warning (`ChiknError::ProjectRepaired { missing: Vec<String> }`?) so the UI shows a banner.
   - (b) Write only the additive repairs (created folders, orphan adoption), never the destructive ones (missing-file pruning).
   - Whichever, also fix `read_threads(...).unwrap_or_default()` at reader.rs:228 — parse failure should surface, not silently default. Same for `writing_history.json` at `src-tauri/src/commands/io.rs:423`.
+- **Approach**: read repair no longer writes `project.yaml` during load and no longer prunes missing hierarchy/document references; missing files are logged and kept in memory. Corrupt `threads.yaml` and `writing-history.json` now return parse errors instead of defaulting to empty before the next save/write.
+- **Tests added**: reader tests for preserving missing-file hierarchy references and project.yaml contents; corrupt `threads.yaml` load failure; Rust command tests cover writing-history parse rejection through the Tauri package.
 
 ### H-2: Windows `RestoreRevision` hard-resets history `[~]`
 - **What**: `repo.Reset(ResetMode.Hard, commit)` destroys uncommitted work AND moves HEAD destructively. Rust uses `checkout_tree` + forward `save_revision` (preserves history). Cross-frontend divergence in the highest-stakes operation.
@@ -98,10 +104,12 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Tests added**: _(GPT to fill in)_
 - **Reviewer comments**: After fix, confirm UI surfaces the "dirty worktree" rejection clearly so the user knows to save first.
 
-### H-4: AI bearer token to unvalidated/HTTP endpoints `[ ]`
+### H-4: AI bearer token to unvalidated/HTTP endpoints `[~]`
 - **What**: `ai.rs:275-295` accepts `http://` for OpenAI endpoint. No scheme check, no host normalization. `https://api.openai.com.attacker.tld` accepted. Bearer token (line 292) goes wherever.
 - **Files**: `src-tauri/src/commands/ai.rs:275-295, 461-477`.
 - **Notes for GPT**: At settings save-time, parse the URL with `url::Url`; require `scheme() == "https"`; reject embedded userinfo (`url.username()` non-empty / `url.password().is_some()`). For Ollama (which is local-only), allow `http://localhost` and `http://127.0.0.1` explicitly.
+- **Approach**: OpenAI request construction now parses and normalizes the endpoint before attaching Authorization, rejects HTTP including loopback, embedded credentials, query strings, fragments, missing hosts, and malformed URLs. App settings save validates OpenAI endpoints with the same HTTPS-only policy while leaving Ollama local HTTP allowed.
+- **Tests added**: Tauri command tests for OpenAI HTTPS default, malformed URL rejection, HTTP cloud rejection, HTTP loopback rejection, settings-save OpenAI HTTP rejection, settings-save HTTPS acceptance, and Ollama local HTTP acceptance.
 
 ### H-5: Plaintext API keys + git tokens in settings.json `[ ]`
 - **What**: `RemoteSettings.token`, `AiSettings.api_key` written to `dirs::config_dir()/chickenscratch/settings.json` at default permissions.
@@ -216,6 +224,19 @@ _GPT: add commit SHA + short summary here when you commit. Reviewer will scan an
 - Other (reader/writer/models, tui/app.rs, tui/ui.rs, linux/bridge.rs, cross_frontend_round_trip.rs) — please clarify in commit messages which finding(s) these address, or whether they're follow-on cleanup.
 
 Once you commit, each commit will get a dedicated subagent review on the next cycle.
+
+### Review pass 2 (still no commits)
+
+**WIP expanded to 30 files** (cycle 1 was 26). REVIEW.md self-updated by GPT with approach + tests sections filled in for:
+- **C-3 (symlink)** — looks comprehensive on paper: component-based path validation, canonical root check, symlink rejection for parent / doc / `.meta` on both write and delete, with 6 new writer tests.
+- **H-1 (reader repair)** — read repair now in-memory only; missing files logged not pruned; corrupt `threads.yaml` and `writing-history.json` now surface errors instead of defaulting.
+- **H-4 (AI endpoint)** — endpoint normalized + HTTPS-required for OpenAI cloud; HTTP allowed only for localhost/127.0.0.1 (Ollama); 7 new tests.
+
+**New WIP files since cycle 1**: `src-tauri/src/commands/settings.rs` (H-4), `src-tauri/src/commands/templates.rs` (likely C-4 lock spread), `ui/src/components/editor/editorRef.ts` (likely C-5).
+
+**Validation**: caught one transient `unexpected closing delimiter` in `chickenscratch` test bin mid-cycle — cleared on retry; signals GPT was actively editing, no real defect. End-state: clippy 0 warnings, eslint clean, tests **70 (core) + 16 (cli) + 3 + 2 = 91 passing**. No regressions.
+
+**Reviewer ask**: please commit **C-3, H-1, H-4** now — they look complete and I want to verify them in isolation before the next layer lands on top. The longer WIP accumulates, the harder it gets to localize any regression I find.
 
 ---
 
