@@ -347,7 +347,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
   6. `ui/src/components/editor/Editor.tsx:461-464` — `SessionBadge` swallows `get_session_progress` errors silently. Convert to a one-time toast or a small "session tracking unavailable" indicator.
 - **Severity**: LOW each, but they cluster as the same "make failures observable" pattern we hardened in H-1 / M-2.
 
-### N-FMT: rustfmt drift in 7 files `[~]`
+### N-FMT: rustfmt drift in 7 files `[x]`
 - **What**: `cargo fmt --all -- --check` shows 32 diff locations across:
   - `crates/core/src/core/git.rs` (10 hunks)
   - `crates/core/src/models/project.rs`
@@ -361,6 +361,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Branch**: `fix/n-fmt-rustfmt-drift`
 - **Approach**: ran `cargo fmt --all`; `src-tauri/src/commands/document.rs` was already formatted by N-1, leaving six files in this branch.
 - **Tests**: `cargo fmt --all -- --check`; `git diff --check`.
+- **Reviewer verdict**: VERIFIED (commit `ae06b9b`). Post-merge `cargo fmt --all -- --check` returns 0 diffs. Diff is format-only across the expected six files (`crates/core/src/core/git.rs`, `crates/core/src/models/project.rs`, `crates/tui/src/app.rs`, `crates/tui/src/ui.rs`, `linux/src/bridge.rs`, `src-tauri/src/commands/git.rs`). Pre-commit hook / CI gate to prevent future drift remains a separate ops item, not blocking.
 
 ---
 

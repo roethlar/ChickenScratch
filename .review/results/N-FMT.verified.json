@@ -1,0 +1,7 @@
+{
+  "id": "N-FMT",
+  "sha": "ae06b9b81cca48f9d8f73f9df641bba2da030e71",
+  "ts": "2026-05-16T23:42:00Z",
+  "reviewer": "claude",
+  "note": "Post-merge cargo fmt --all -- --check returns 0 diffs. Format-only diff across the expected six files (document.rs already cleaned by N-1). Pre-commit/CI gate to prevent future drift remains a separate ops item."
+}
