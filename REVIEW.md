@@ -185,8 +185,8 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **What**: `reader.rs:228` `read_threads(...).unwrap_or_default()` — one corrupt `threads.yaml` and the next save erases every thread. Same shape at `writer.rs:285` (swallowed `.meta` parse), `src-tauri/src/commands/io.rs:423` (writing_history wipe).
 - **Branch**: `fix/m-2-corrupt-sidecars`
 - **Notes for GPT**: Quarantine the corrupt file (rename to `.corrupt-<timestamp>`) before defaulting, and emit a warning so the user sees a banner. Pair with H-1.
-- **Approach**: Corrupt `threads.yaml` already fails load on current master. This branch makes existing document `.meta` parsing fail before `project.yaml` or the sidecar can be rewritten, and makes `writing-history.json` parsing fail instead of defaulting to an empty history.
-- **Tests**: `cargo test -p chickenscratch-core corrupt --lib` (passed); `cargo test -p chickenscratch writing_history --bins` (passed); `git diff --check` (passed)
+- **Approach**: Corrupt `threads.yaml` already fails load on current master. This branch makes existing document `.meta` parsing fail before `project.yaml` or the sidecar can be rewritten, and makes all project writing-history reads/writes, including session progress, use the same strict parser instead of defaulting corrupt JSON to empty history.
+- **Tests**: `cargo test -p chickenscratch-core corrupt --lib` (passed); `cargo test -p chickenscratch writing_history --bins` (passed); `cargo test -p chickenscratch session_progress_rejects_corrupt_writing_history --bins` (passed); `git diff --check` (passed)
 
 ### M-3: Pandoc subprocesses have no timeout `[~]`
 - **What**: `Command::new("pandoc").output()` blocks forever if pandoc hangs.
