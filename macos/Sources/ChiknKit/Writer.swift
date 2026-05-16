@@ -22,9 +22,9 @@ public enum Writer {
             created: now,
             modified: now,
             hierarchy: [
-                TreeNode(id: "manuscript", name: "Manuscript", kind: .folder),
-                TreeNode(id: "research",   name: "Research",   kind: .folder),
-                TreeNode(id: "trash",      name: "Trash",      kind: .folder),
+                TreeNode(id: UUID().uuidString.lowercased(), name: "Manuscript", kind: .folder),
+                TreeNode(id: UUID().uuidString.lowercased(), name: "Research",   kind: .folder),
+                TreeNode(id: UUID().uuidString.lowercased(), name: "Trash",      kind: .folder),
             ],
             metadata: ProjectMetadata(),
             documents: [:]
@@ -106,7 +106,8 @@ public enum Writer {
             throw ChiknError.invalidProjectYaml("Document name cannot be empty")
         }
 
-        let rootDir = rootDirectory(for: parentID, in: project.hierarchy)
+        let resolvedParentID = resolvedParentID(parentID, in: project.hierarchy)
+        let rootDir = rootDirectory(for: resolvedParentID, in: project.hierarchy)
         let slug = uniqueSlug(for: trimmed, in: rootDir, projectPath: project.path)
         let relativePath = "\(rootDir)/\(slug).md"
         let absoluteURL = project.path.appendingPathComponent(relativePath)
@@ -127,13 +128,13 @@ public enum Writer {
             "name": trimmed,
             "created": now,
             "modified": now,
-            "parent_id": parentID as Any? as Any,
+            "parent_id": resolvedParentID as Any? as Any,
         ].compactMapValues { $0 is NSNull ? nil : $0 }
         try writeYaml(meta, to: metaURL)
 
         let node = TreeNode(id: id, name: trimmed, kind: .document)
         var project = project
-        project.hierarchy = insertNode(node, parentID: parentID, in: project.hierarchy, path: relativePath)
+        project.hierarchy = insertNode(node, parentID: resolvedParentID, in: project.hierarchy, path: relativePath)
         let document = Document(
             id: id,
             name: trimmed,
@@ -541,13 +542,13 @@ public enum Writer {
     /// next to their siblings on disk. Falls back to manuscript/.
     private static func rootDirectory(for parentID: String?, in hierarchy: [TreeNode]) -> String {
         guard let parentID else { return "manuscript" }
-        if ["research", "trash", "templates"].contains(parentID) { return parentID }
+        if let legacyRoot = rootDirectoryByLegacyID[parentID] { return legacyRoot }
         return findRoot(parentID: parentID, in: hierarchy, current: nil) ?? "manuscript"
     }
 
     private static func findRoot(parentID: String, in nodes: [TreeNode], current: String?) -> String? {
         for node in nodes {
-            let here = current ?? (["manuscript", "research", "trash", "templates"].contains(node.id) ? node.id : nil)
+            let here = current ?? rootDirectory(forTopLevelNode: node)
             if node.id == parentID { return here ?? "manuscript" }
             if let found = findRoot(parentID: parentID, in: node.children, current: here) {
                 return found
@@ -555,6 +556,38 @@ public enum Writer {
         }
         return nil
     }
+
+    private static func resolvedParentID(_ parentID: String?, in hierarchy: [TreeNode]) -> String? {
+        guard let parentID else { return nil }
+        if containsNode(id: parentID, in: hierarchy) { return parentID }
+        guard let legacyRoot = rootDirectoryByLegacyID[parentID] else { return parentID }
+        return hierarchy.first { rootDirectory(forTopLevelNode: $0) == legacyRoot }?.id ?? parentID
+    }
+
+    private static func containsNode(id: String, in nodes: [TreeNode]) -> Bool {
+        for node in nodes {
+            if node.id == id || containsNode(id: id, in: node.children) { return true }
+        }
+        return false
+    }
+
+    private static func rootDirectory(forTopLevelNode node: TreeNode) -> String? {
+        rootDirectoryByLegacyID[node.id] ?? rootDirectoryByDisplayName[node.name]
+    }
+
+    private static let rootDirectoryByLegacyID = [
+        "manuscript": "manuscript",
+        "research": "research",
+        "trash": "trash",
+        "templates": "templates",
+    ]
+
+    private static let rootDirectoryByDisplayName = [
+        "Manuscript": "manuscript",
+        "Research": "research",
+        "Trash": "trash",
+        "Templates": "templates",
+    ]
 
     // MARK: - Slug
 
