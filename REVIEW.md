@@ -381,6 +381,15 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: bundle targets remain app-only; DMG/AppImage/MSI/installer decisions stay separate release-packaging work.
 - **Reviewer verdict**: VERIFIED (commit `46faa17`). `tauri.conf.json:9` now sets `beforeBuildCommand` to `cd ../ui && npm run build`, so `cargo tauri build` from a clean checkout produces `ui/dist` itself. `Cargo.lock` aligns Rust `tauri-plugin-dialog` to `2.7.0` matching the npm side (cascading windows-sys version shuffles in the lock are resolver-normal). Clippy `-D warnings` clean, 147 workspace tests pass. **Self-surfaced finding** — GPT identified this from outside the existing REVIEW.md list, which is the right reviewer behaviour and worth calling out.
 
+### R-2: Windows CI workflow points at stale solution and SDK `[~]`
+- **What**: `.github/workflows/windows.yml` installs .NET `8.0.x` while the Windows projects target .NET 10, restores/builds missing `ChickenScratch.sln`, and passes a solution-level `/p:Platform=x64` that is invalid for the checked-in `.slnx`.
+- **Severity**: HIGH for release readiness. The only Windows CI workflow is failing by construction.
+- **Branch**: `fix/r-2-windows-ci-sdk-slnx`
+- **Approach**: install .NET `10.0.x`, restore/build `ChickenScratch.slnx`, remove the invalid solution-level `Platform=x64`, and build both core test harness projects in the final CI step.
+- **Tests**: old-path and old-platform restore commands fail as expected; `dotnet restore ChickenScratch.slnx /p:EnableWindowsTargeting=true`; core and both harness Release builds; `git diff --check`.
+- **Files changed**: `.github/workflows/windows.yml`, `.review/findings/R-2.md`, `REVIEW.md`.
+- **Known gaps**: full WinUI solution build must be validated on Windows; macOS cannot execute the Windows App SDK XAML compiler.
+
 ---
 
 ## Recently landed (awaiting reviewer verification)
