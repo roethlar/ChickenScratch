@@ -1,15 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo } from "react";
 import { useProjectStore } from "./stores/projectStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { Welcome } from "./components/welcome/Welcome";
 import { Binder } from "./components/binder/Binder";
 import { Editor } from "./components/editor/Editor";
-import { Corkboard } from "./components/corkboard/Corkboard";
-import { Inspector } from "./components/inspector/Inspector";
-import { ProjectSearch } from "./components/search/ProjectSearch";
-import { Settings } from "./components/settings/Settings";
-import { StatsPanel } from "./components/stats/StatsPanel";
-import { CommentsPanel } from "./components/comments/CommentsPanel";
 import { getCurrentEditor, flushPendingEditorSave } from "./components/editor/editorRef";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -31,14 +25,65 @@ import {
   HelpCircle,
   Clock,
 } from "lucide-react";
-import { CommandPalette } from "./components/command-palette/CommandPalette";
-import { Revisions } from "./components/revisions/Revisions";
-import { Preview } from "./components/preview/Preview";
-import { TimelineView } from "./components/timeline/TimelineView";
-import { CompileDialog } from "./components/compile/CompileDialog";
 import { toastError } from "./components/shared/Toast";
 import { dialogPrompt } from "./components/shared/Dialog";
 import * as docCmd from "./commands/document";
+
+const CommandPalette = lazy(() =>
+  import("./components/command-palette/CommandPalette").then((module) => ({
+    default: module.CommandPalette,
+  }))
+);
+const Corkboard = lazy(() =>
+  import("./components/corkboard/Corkboard").then((module) => ({
+    default: module.Corkboard,
+  }))
+);
+const Inspector = lazy(() =>
+  import("./components/inspector/Inspector").then((module) => ({
+    default: module.Inspector,
+  }))
+);
+const ProjectSearch = lazy(() =>
+  import("./components/search/ProjectSearch").then((module) => ({
+    default: module.ProjectSearch,
+  }))
+);
+const Settings = lazy(() =>
+  import("./components/settings/Settings").then((module) => ({
+    default: module.Settings,
+  }))
+);
+const Revisions = lazy(() =>
+  import("./components/revisions/Revisions").then((module) => ({
+    default: module.Revisions,
+  }))
+);
+const Preview = lazy(() =>
+  import("./components/preview/Preview").then((module) => ({
+    default: module.Preview,
+  }))
+);
+const TimelineView = lazy(() =>
+  import("./components/timeline/TimelineView").then((module) => ({
+    default: module.TimelineView,
+  }))
+);
+const StatsPanel = lazy(() =>
+  import("./components/stats/StatsPanel").then((module) => ({
+    default: module.StatsPanel,
+  }))
+);
+const CommentsPanel = lazy(() =>
+  import("./components/comments/CommentsPanel").then((module) => ({
+    default: module.CommentsPanel,
+  }))
+);
+const CompileDialog = lazy(() =>
+  import("./components/compile/CompileDialog").then((module) => ({
+    default: module.CompileDialog,
+  }))
+);
 
 type View = "editor" | "corkboard" | "preview" | "timeline";
 
@@ -403,21 +448,25 @@ export default function App() {
             <HelpCircle size={16} />
           </button>
         </div>
-        {view === "editor" ? <Editor /> : view === "corkboard" ? <Corkboard /> : view === "preview" ? <Preview /> : <TimelineView />}
+        <Suspense fallback={null}>
+          {view === "editor" ? <Editor /> : view === "corkboard" ? <Corkboard /> : view === "preview" ? <Preview /> : <TimelineView />}
+        </Suspense>
       </div>
-      {showRevisions && <Revisions />}
-      {showInspector && <Inspector />}
-      <CommandPalette open={showPalette} onClose={() => setShowPalette(false)} />
-      <ProjectSearch open={showSearch} onClose={() => setShowSearch(false)} />
-      <Settings open={showSettings} onClose={() => setShowSettings(false)} />
-      {showStats && <StatsPanel open={showStats} onClose={() => setShowStats(false)} />}
-      {showComments && (
-        <CommentsPanel
-          editor={getCurrentEditor()}
-          onClose={() => setShowComments(false)}
-        />
-      )}
-      <CompileDialog open={showCompile} onClose={() => setShowCompile(false)} />
+      <Suspense fallback={null}>
+        {showRevisions && <Revisions />}
+        {showInspector && <Inspector />}
+        {showPalette && <CommandPalette open={showPalette} onClose={() => setShowPalette(false)} />}
+        {showSearch && <ProjectSearch open={showSearch} onClose={() => setShowSearch(false)} />}
+        {showSettings && <Settings open={showSettings} onClose={() => setShowSettings(false)} />}
+        {showStats && <StatsPanel open={showStats} onClose={() => setShowStats(false)} />}
+        {showComments && (
+          <CommentsPanel
+            editor={getCurrentEditor()}
+            onClose={() => setShowComments(false)}
+          />
+        )}
+        {showCompile && <CompileDialog open={showCompile} onClose={() => setShowCompile(false)} />}
+      </Suspense>
     </div>
   );
 }

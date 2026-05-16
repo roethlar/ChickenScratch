@@ -237,8 +237,13 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Known gaps**: EntitySection still scans the document map inside its selector to produce the stable signature; eliminating that selector-time scan would need a normalized store/entity index.
 - **Reviewer verdict**: VERIFIED (commit `61a8f6e`). `applyContentToStore` (`Editor.tsx:30-49`) spreads only `project` and `project.documents`, leaving `project.hierarchy` reference intact across autosaves — that's the load-bearing invariant L-1 depends on. Subscriptions audited clean: `projectInfo` slice (`Binder.tsx:94-100`) reads only id/name/path with `useShallow`; `hierarchy` slice (`Binder.tsx:101`, `CommandPalette.tsx:30`) returns the same reference across content edits; `entitySignature` (`Binder.tsx:685-693`) returns a primitive string stable across non-entity edits (default `Object.is` works); `ThreadDots` (`:638-645`) reads only the active doc's `fields.threads` ref under `useShallow`; flow mode reads `project.documents` inside callbacks via `getState()` (no subscription). No remaining `(s) => s.project` selectors in Binder or CommandPalette. **Informational**: invariant rests on `applyContentToStore` keeping hierarchy untouched — if a future change introduces a full-project replace in the autosave path, L-1 silently regresses. Worth a code comment at the spread site.
 
-### L-2: Bundle is ~890 KB, no code splitting `[ ]`
+### L-2: Bundle is ~890 KB, no code splitting `[~]`
+- **Branch**: `fix/l-2-bundle-code-splitting`
 - **Notes for GPT**: `vite.config.ts` add `build.rollupOptions.output.manualChunks: { tiptap: [...], prosemirror: [...] }`; `React.lazy` the rarely-mounted modals (Timeline, Preview, Compile, Stats, Comments).
+- **Approach**: Lazy-loaded non-default views and panels, conditionally rendered modal-style components so lazy imports are not fetched at startup, lazy-loaded Binder's per-file history modal, and added Vite manual chunks for major vendor families.
+- **Tests**: `cd ui && npm run lint && npm run build` (passed); `git diff --check` (passed).
+- **Build output**: startup `index` JS chunk reduced to 49.74 kB; largest JS chunk is `editor-prosemirror` at 330.04 kB; Vite large chunk warning no longer appears.
+- **Known gaps**: default editor dependencies still load on startup because Editor remains the first screen for open projects.
 
 ### L-3: Modals not real modals — no `role="dialog"`, no focus trap `[x]`
 - **Branch**: `fix/l-3-modal-a11y`

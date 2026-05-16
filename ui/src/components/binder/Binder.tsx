@@ -15,7 +15,7 @@ import {
   History,
   Layers,
 } from "lucide-react";
-import { useState, useCallback, useRef, useEffect, useMemo, useId } from "react";
+import { lazy, Suspense, useState, useCallback, useRef, useEffect, useMemo, useId } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { TreeNode, Project } from "../../types";
 import { useProjectStore, type FlowDoc } from "../../stores/projectStore";
@@ -25,8 +25,13 @@ import { dialogPrompt, dialogConfirm, useModalFocusTrap } from "../shared/Dialog
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { listTemplates, createFromTemplate, type Template } from "../../commands/templates";
-import { DocumentHistory } from "../revisions/DocumentHistory";
 import { DragProvider, useDrag } from "./DragContext";
+
+const DocumentHistory = lazy(() =>
+  import("../revisions/DocumentHistory").then((module) => ({
+    default: module.DocumentHistory,
+  }))
+);
 
 /** Find the index of a node within its parent's children list, plus the
  *  parent id (null when the node is at the top of the hierarchy). */
@@ -604,11 +609,15 @@ function BinderInner() {
         />
       )}
 
-      <DocumentHistory
-        open={historyDocId !== null}
-        docId={historyDocId}
-        onClose={() => setHistoryDocId(null)}
-      />
+      <Suspense fallback={null}>
+        {historyDocId !== null && (
+          <DocumentHistory
+            open={historyDocId !== null}
+            docId={historyDocId}
+            onClose={() => setHistoryDocId(null)}
+          />
+        )}
+      </Suspense>
 
 
       {movingNodeId && (
