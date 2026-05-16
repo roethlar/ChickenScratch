@@ -14,6 +14,7 @@ use std::path::Path;
 /// Name of the git remote used for remote-sync (distinct from `backup` which is
 /// the local-directory mirror remote).
 const SYNC_REMOTE: &str = "sync";
+const SIMPLE_WORD_DIFF_LCS_CELL_CAP: usize = 1_500 * 1_500;
 
 fn git_kind_from_error(error: &git2::Error) -> GitErrorKind {
     let message = error.message().to_ascii_lowercase();
@@ -1121,17 +1122,18 @@ fn strip_html_words(html: &str) -> Vec<String> {
 /// Simple longest common subsequence word diff.
 /// Returns vec of ("equal"|"added"|"deleted", text)
 fn simple_word_diff(old: &[String], new: &[String]) -> Vec<(String, String)> {
-    // For performance, limit to reasonable sizes
-    if old.len() > 5000 || new.len() > 5000 {
-        return vec![
-            ("deleted".to_string(), old.join(" ")),
-            ("added".to_string(), new.join(" ")),
-        ];
+    let m = old.len();
+    let n = new.len();
+
+    let exceeds_lcs_cell_cap = match (m + 1).checked_mul(n + 1) {
+        Some(cells) => cells > SIMPLE_WORD_DIFF_LCS_CELL_CAP,
+        None => true,
+    };
+    if exceeds_lcs_cell_cap {
+        return coarse_word_diff(old, new);
     }
 
     // Build LCS table
-    let m = old.len();
-    let n = new.len();
     let mut dp = vec![vec![0u32; n + 1]; m + 1];
     for i in 1..=m {
         for j in 1..=n {
@@ -1178,6 +1180,13 @@ fn simple_word_diff(old: &[String], new: &[String]) -> Vec<(String, String)> {
     }
 
     result
+}
+
+fn coarse_word_diff(old: &[String], new: &[String]) -> Vec<(String, String)> {
+    vec![
+        ("deleted".to_string(), old.join(" ")),
+        ("added".to_string(), new.join(" ")),
+    ]
 }
 
 /// Compare two drafts (branches) by name. Returns the list of files that differ
@@ -1320,5 +1329,48 @@ fn oid_to_revision(repo: &Repository, oid: Oid) -> Revision {
         message,
         timestamp,
         author,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn words(text: &str) -> Vec<String> {
+        text.split_whitespace().map(|word| word.to_string()).collect()
+    }
+
+    fn numbered_words(prefix: &str, count: usize) -> Vec<String> {
+        (0..count).map(|index| format!("{prefix}{index}")).collect()
+    }
+
+    #[test]
+    fn simple_word_diff_preserves_small_lcs_output() {
+        let old = words("alpha beta gamma");
+        let new = words("alpha delta gamma");
+
+        assert_eq!(
+            simple_word_diff(&old, &new),
+            vec![
+                ("equal".to_string(), "alpha".to_string()),
+                ("deleted".to_string(), "beta".to_string()),
+                ("added".to_string(), "delta".to_string()),
+                ("equal".to_string(), "gamma".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn simple_word_diff_uses_coarse_diff_above_lcs_cell_cap() {
+        let old = numbered_words("old", 1_500);
+        let new = numbered_words("new", 1_500);
+
+        assert_eq!(
+            simple_word_diff(&old, &new),
+            vec![
+                ("deleted".to_string(), old.join(" ")),
+                ("added".to_string(), new.join(" ")),
+            ]
+        );
     }
 }
