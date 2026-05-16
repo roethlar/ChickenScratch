@@ -27,7 +27,7 @@ use crate::utils::error::ChiknError;
 use quick_xml::de::from_str;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 /// Parsed Scrivener project structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -177,22 +177,60 @@ struct BinderContainer {
     items: Vec<BinderItem>,
 }
 
+/// Validates a Scrivener BinderItem UUID before using it as a path component.
+pub fn validate_scrivener_uuid(uuid: &str) -> Result<(), ChiknError> {
+    let is_hyphenated_uuid = uuid.len() == 36
+        && uuid.char_indices().all(|(idx, ch)| match idx {
+            8 | 13 | 18 | 23 => ch == '-',
+            _ => ch.is_ascii_hexdigit(),
+        });
+
+    if !is_hyphenated_uuid {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Invalid Scrivener BinderItem UUID: {uuid:?}"
+        )));
+    }
+
+    let path = Path::new(uuid);
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir
+        )
+    }) || path.components().count() != 1
+    {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Invalid Scrivener BinderItem UUID path component: {uuid:?}"
+        )));
+    }
+
+    Ok(())
+}
+
 /// Gets the RTF file path for a given UUID
-pub fn get_rtf_path(scriv_path: &Path, uuid: &str) -> std::path::PathBuf {
-    scriv_path
+pub fn get_rtf_path(scriv_path: &Path, uuid: &str) -> Result<PathBuf, ChiknError> {
+    validate_scrivener_uuid(uuid)?;
+
+    Ok(scriv_path
         .join("Files")
         .join("Data")
         .join(uuid)
-        .join("content.rtf")
+        .join("content.rtf"))
 }
 
 /// Gets the content file path for a given UUID and file extension (e.g., "pdf", "png")
-pub fn get_media_path(scriv_path: &Path, uuid: &str, extension: &str) -> std::path::PathBuf {
-    scriv_path
+pub fn get_media_path(
+    scriv_path: &Path,
+    uuid: &str,
+    extension: &str,
+) -> Result<PathBuf, ChiknError> {
+    validate_scrivener_uuid(uuid)?;
+
+    Ok(scriv_path
         .join("Files")
         .join("Data")
         .join(uuid)
-        .join(format!("content.{}", extension))
+        .join(format!("content.{}", extension)))
 }
 
 #[cfg(test)]
@@ -240,13 +278,39 @@ mod tests {
     #[test]
     fn test_get_rtf_path() {
         let scriv_path = Path::new("/path/to/Project.scriv");
-        let uuid = "ABC123";
+        let uuid = "F8F9FDEF-FD9F-4A8C-B33D-3434A1220ADC";
 
-        let rtf_path = get_rtf_path(scriv_path, uuid);
+        let rtf_path = get_rtf_path(scriv_path, uuid).unwrap();
 
         assert_eq!(
             rtf_path,
-            Path::new("/path/to/Project.scriv/Files/Data/ABC123/content.rtf")
+            Path::new(
+                "/path/to/Project.scriv/Files/Data/F8F9FDEF-FD9F-4A8C-B33D-3434A1220ADC/content.rtf"
+            )
         );
+    }
+
+    #[test]
+    fn test_get_rtf_path_rejects_absolute_uuid() {
+        let scriv_path = Path::new("/path/to/Project.scriv");
+        let result = get_rtf_path(scriv_path, "/tmp/host-file");
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_get_rtf_path_rejects_parent_dir_uuid() {
+        let scriv_path = Path::new("/path/to/Project.scriv");
+        let result = get_rtf_path(scriv_path, "../../host-file");
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_get_media_path_rejects_uuid_before_host_path_resolution() {
+        let scriv_path = Path::new("/path/to/Project.scriv");
+        let result = get_media_path(scriv_path, "/tmp/host-file", "pdf");
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
     }
 }

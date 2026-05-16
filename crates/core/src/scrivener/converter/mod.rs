@@ -86,7 +86,7 @@ pub fn import_scriv(
         scriv_path,
         &mut uuid_to_path,
         "manuscript",
-    );
+    )?;
 
     // Convert binder items to documents and hierarchy
     let mut documents = HashMap::new();
@@ -162,14 +162,14 @@ fn build_uuid_map(
     scriv_path: &Path,
     uuid_to_path: &mut HashMap<String, String>,
     target_folder: &str,
-) {
+) -> Result<(), ChiknError> {
     // Track slugs we've seen to handle collisions (mirrors unique_slug logic)
     for item in items {
         match item.item_type.as_str() {
             "TrashFolder" => continue,
 
             "ResearchFolder" => {
-                build_uuid_map(&item.children.items, scriv_path, uuid_to_path, "research");
+                build_uuid_map(&item.children.items, scriv_path, uuid_to_path, "research")?;
             }
 
             "DraftFolder" | "Folder" => {
@@ -178,7 +178,7 @@ fn build_uuid_map(
                     uuid_to_path.insert(item.uuid.clone(), path);
                 }
                 // Also map if the folder itself has content
-                let rtf_path = get_rtf_path(scriv_path, &item.uuid);
+                let rtf_path = get_rtf_path(scriv_path, &item.uuid)?;
                 if rtf_path.exists() {
                     let name = item.title.clone().unwrap_or_else(|| "folder".to_string());
                     let slug = crate::utils::slug::slugify(&name);
@@ -190,7 +190,7 @@ fn build_uuid_map(
                     scriv_path,
                     uuid_to_path,
                     target_folder,
-                );
+                )?;
             }
 
             "Text" => {
@@ -204,7 +204,7 @@ fn build_uuid_map(
                         scriv_path,
                         uuid_to_path,
                         target_folder,
-                    );
+                    )?;
                 }
             }
 
@@ -225,6 +225,8 @@ fn build_uuid_map(
             }
         }
     }
+
+    Ok(())
 }
 
 /// Finds the .md path of the first Text item in a binder subtree.
@@ -316,7 +318,7 @@ fn convert_binder_items_inner(
                 )?;
 
                 // Folders in Scrivener can also have their own text content
-                let rtf_path = get_rtf_path(scriv_path, &item.uuid);
+                let rtf_path = get_rtf_path(scriv_path, &item.uuid)?;
                 if rtf_path.exists() {
                     let content = rtf_to_html(&rtf_path, pandoc_path)?;
                     if !content.trim().is_empty() {
@@ -378,7 +380,7 @@ fn convert_binder_items_inner(
                 let doc_id = Uuid::new_v4().to_string();
                 let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
 
-                let rtf_path = get_rtf_path(scriv_path, &item.uuid);
+                let rtf_path = get_rtf_path(scriv_path, &item.uuid)?;
                 let content = if rtf_path.exists() {
                     rtf_to_html(&rtf_path, pandoc_path)?
                 } else {
@@ -438,7 +440,7 @@ fn convert_binder_items_inner(
 
                 if let Some(ext) = ext {
                     // Media file — copy into the project
-                    let media_src = get_media_path(scriv_path, &item.uuid, ext);
+                    let media_src = get_media_path(scriv_path, &item.uuid, ext)?;
                     if media_src.exists() {
                         let doc_id = Uuid::new_v4().to_string();
                         let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
@@ -673,5 +675,63 @@ mod tests {
         assert!(output_path.exists());
         assert!(output_path.join("project.yaml").exists());
         assert!(output_path.join("manuscript").exists());
+    }
+
+    #[test]
+    fn test_import_rejects_absolute_uuid_before_resolving_host_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Bad.scriv");
+        let host_path = temp_dir.path().join("host-secret");
+        let output_path = temp_dir.path().join("Bad.chikn");
+        fs::create_dir_all(&scriv_path).unwrap();
+        fs::create_dir_all(&host_path).unwrap();
+        fs::write(host_path.join("content.rtf"), "{\\rtf1 secret}").unwrap();
+
+        fs::write(
+            scriv_path.join("Bad.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="3.0">
+    <Binder>
+        <BinderItem UUID="{}" Type="Text">
+            <Title>Escape</Title>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#,
+                host_path.display()
+            ),
+        )
+        .unwrap();
+
+        let result = import_scriv(&scriv_path, &output_path, None);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        assert!(!output_path.join("manuscript/escape.md").exists());
+    }
+
+    #[test]
+    fn test_import_rejects_parent_dir_uuid() {
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Bad.scriv");
+        let output_path = temp_dir.path().join("Bad.chikn");
+        fs::create_dir_all(&scriv_path).unwrap();
+
+        fs::write(
+            scriv_path.join("Bad.scrivx"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="3.0">
+    <Binder>
+        <BinderItem UUID="../../host-secret" Type="Text">
+            <Title>Escape</Title>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#,
+        )
+        .unwrap();
+
+        let result = import_scriv(&scriv_path, &output_path, None);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        assert!(!output_path.join("manuscript/escape.md").exists());
     }
 }
