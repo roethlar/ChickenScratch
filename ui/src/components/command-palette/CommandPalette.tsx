@@ -3,6 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useProjectStore } from "../../stores/projectStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { TreeNode } from "../../types";
+import { useModalFocusTrap } from "../shared/Dialog";
 
 interface CommandItem {
   id: string;
@@ -33,6 +34,11 @@ export function CommandPalette({
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { dialogRef, onDialogKeyDown } = useModalFocusTrap<HTMLDivElement>(
+    open,
+    onClose,
+    inputRef
+  );
 
   // Reset state when opening (derived from prop — React's "adjust state on prop change" pattern)
   const [lastOpen, setLastOpen] = useState(open);
@@ -95,8 +101,11 @@ export function CommandPalette({
       e.preventDefault();
       setSelectedIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter" && filtered[selectedIndex]) {
+      e.preventDefault();
       execute(filtered[selectedIndex]);
     } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
       onClose();
     }
   };
@@ -105,10 +114,20 @@ export function CommandPalette({
 
   return (
     <div className="palette-overlay" onClick={onClose}>
-      <div className="palette" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={onDialogKeyDown}
+      >
         <input
           ref={inputRef}
           className="palette-input"
+          aria-label="Search documents and commands"
           value={query}
           onChange={handleQueryChange}
           onKeyDown={handleKeyDown}

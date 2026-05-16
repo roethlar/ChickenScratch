@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { dialogPrompt, dialogConfirm } from "../shared/Dialog";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
+import { dialogPrompt, dialogConfirm, useModalFocusTrap } from "../shared/Dialog";
 import { flushPendingEditorSave } from "../editor/editorRef";
 import {
   Save,
@@ -483,10 +483,26 @@ function ConflictDialog({
   onForce: () => void;
   onResolveManually: () => void;
 }) {
+  const titleId = useId();
+  const manualButtonRef = useRef<HTMLButtonElement>(null);
+  const { dialogRef, onDialogKeyDown } = useModalFocusTrap<HTMLDivElement>(
+    true,
+    onResolveManually,
+    manualButtonRef
+  );
+
   return (
     <div className="conflict-overlay">
-      <div className="conflict-dialog">
-        <h3>Merge conflicts</h3>
+      <div
+        ref={dialogRef}
+        className="conflict-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
+      >
+        <h3 id={titleId}>Merge conflicts</h3>
         <p>
           The remote changed the same files you did. The working tree now has
           conflict markers. Pick one:
@@ -496,7 +512,7 @@ function ConflictDialog({
           {files.length > 10 && <li>…and {files.length - 10} more</li>}
         </ul>
         <div className="conflict-actions">
-          <button onClick={onResolveManually} disabled={busy}>
+          <button ref={manualButtonRef} onClick={onResolveManually} disabled={busy}>
             Resolve manually
           </button>
           <button onClick={onAbort} disabled={busy}>
@@ -561,7 +577,7 @@ function SyncControls({
 
 /** ── Threads list (Tier 1 #3) ─────────────────────────────────────────── */
 import type { Project, Document, Thread } from "../../types";
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 
 const DEFAULT_THREAD_COLORS = [
   "#3b82f6", "#ef4444", "#f59e0b", "#10b981",

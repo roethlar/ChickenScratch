@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { MessageSquare, Check, Trash2, X, CornerDownLeft } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
@@ -22,6 +22,7 @@ export function CommentsPanel({ editor, onClose }: CommentsPanelProps) {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftBody, setDraftBody] = useState("");
+  const titleId = useId();
 
   const comments = activeDoc?.comments || [];
   const unresolved = comments.filter((c) => !c.resolved);
@@ -89,12 +90,20 @@ export function CommentsPanel({ editor, onClose }: CommentsPanelProps) {
   };
 
   return (
-    <div className="comments-panel">
+    <div
+      className="comments-panel"
+      role="complementary"
+      aria-labelledby={titleId}
+    >
       <div className="comments-header">
         <MessageSquare size={14} />
-        <span>Comments ({unresolved.length})</span>
+        <span id={titleId}>Comments ({unresolved.length})</span>
         <div style={{ flex: 1 }} />
-        <button onClick={onClose} className="comments-close">
+        <button
+          onClick={onClose}
+          className="comments-close"
+          aria-label="Close comments panel"
+        >
           <X size={14} />
         </button>
       </div>
@@ -119,6 +128,7 @@ export function CommentsPanel({ editor, onClose }: CommentsPanelProps) {
                       handleSaveEdit(c.id);
                     }
                     if (e.key === "Escape") {
+                      e.stopPropagation();
                       setEditingId(null);
                       setDraftBody("");
                     }
@@ -149,6 +159,7 @@ export function CommentsPanel({ editor, onClose }: CommentsPanelProps) {
                 <button
                   onClick={() => handleSaveEdit(c.id)}
                   title="Save (Ctrl+Enter)"
+                  aria-label="Save edited comment"
                 >
                   <CornerDownLeft size={12} />
                 </button>
@@ -157,12 +168,14 @@ export function CommentsPanel({ editor, onClose }: CommentsPanelProps) {
                   <button
                     onClick={() => handleResolveToggle(c.id, c.resolved)}
                     title="Resolve"
+                    aria-label="Resolve comment"
                   >
                     <Check size={12} />
                   </button>
                   <button
                     onClick={() => handleDelete(c.id)}
                     title="Delete"
+                    aria-label="Delete comment"
                     className="danger"
                   >
                     <Trash2 size={12} />
@@ -190,12 +203,14 @@ export function CommentsPanel({ editor, onClose }: CommentsPanelProps) {
                   <button
                     onClick={() => handleResolveToggle(c.id, c.resolved)}
                     title="Unresolve"
+                    aria-label="Unresolve comment"
                   >
                     <CornerDownLeft size={12} />
                   </button>
                   <button
                     onClick={() => handleDelete(c.id)}
                     title="Delete"
+                    aria-label="Delete comment"
                     className="danger"
                   >
                     <Trash2 size={12} />

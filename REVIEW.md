@@ -240,8 +240,12 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 ### L-2: Bundle is ~890 KB, no code splitting `[ ]`
 - **Notes for GPT**: `vite.config.ts` add `build.rollupOptions.output.manualChunks: { tiptap: [...], prosemirror: [...] }`; `React.lazy` the rarely-mounted modals (Timeline, Preview, Compile, Stats, Comments).
 
-### L-3: Modals not real modals — no `role="dialog"`, no focus trap `[ ]`
-- **Files**: `ui/src/components/shared/Dialog.tsx`, `compile/CompileDialog.tsx`, `command-palette/CommandPalette.tsx`, `settings/Settings.tsx`, `comments/CommentsPanel.tsx`.
+### L-3: Modals not real modals — no `role="dialog"`, no focus trap `[~]`
+- **Branch**: `fix/l-3-modal-a11y`
+- **Files**: `ui/src/components/shared/Dialog.tsx`, `ui/src/components/compile/CompileDialog.tsx`, `ui/src/components/command-palette/CommandPalette.tsx`, `ui/src/components/search/ProjectSearch.tsx`, `ui/src/components/settings/Settings.tsx`, `ui/src/components/comments/CommentsPanel.tsx`, `ui/src/components/binder/Binder.tsx`, `ui/src/components/revisions/DocumentHistory.tsx`, `ui/src/components/revisions/DraftCompare.tsx`, `ui/src/components/revisions/Revisions.tsx`.
+- **Approach**: Added a shared modal focus trap and applied dialog role, `aria-modal`, labels, Escape handling, focus restoration, and Tab containment to the blocking overlay dialogs. Kept `CommentsPanel` non-modal and labelled it as a complementary side panel.
+- **Tests**: `cd ui && npm run lint && npm run build` (passed; pre-existing Vite bundle/dynamic-import warnings); `git diff --check` (passed); two subagent review passes completed and their findings were fixed.
+- **Known gaps**: No automated keyboard-navigation harness exists for these interactions; validation is lint/build plus focused code review.
 
 ### L-4: Binder is not a keyboard tree `[ ]`
 - **Files**: `ui/src/components/binder/Binder.tsx`. No `role="tree"`/`role="treeitem"`, no arrow-key nav, no `aria-expanded`/`aria-selected`.

@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
 import { compileProject } from "../../commands/io";
 import { save } from "@tauri-apps/plugin-dialog";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { flushPendingEditorSave } from "../editor/editorRef";
+import { useModalFocusTrap } from "../shared/Dialog";
 
 interface CompileDialogProps {
   open: boolean;
@@ -13,12 +14,22 @@ interface CompileDialogProps {
 
 export function CompileDialog({ open, onClose }: CompileDialogProps) {
   const project = useProjectStore((s) => s.project);
+  const titleId = useId();
+  const titleFieldId = useId();
+  const authorFieldId = useId();
+  const separatorFieldId = useId();
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [separator, setSeparator] = useState("# # #");
   const [titlePage, setTitlePage] = useState(true);
   const [manuscriptFormat, setManuscriptFormat] = useState(false);
   const [compiling, setCompiling] = useState(false);
+  const { dialogRef, onDialogKeyDown } = useModalFocusTrap<HTMLDivElement>(
+    open && !!project,
+    onClose,
+    titleInputRef
+  );
 
   // Initialize from project metadata when dialog opens
   useState(() => {
@@ -63,24 +74,49 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
 
   return (
     <div className="dialog-overlay" onClick={onClose}>
-      <div className="compile-dialog" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="compile-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={onDialogKeyDown}
+      >
         <div className="compile-header">
-          <h3>Compile Manuscript</h3>
-          <button onClick={onClose} className="compile-close"><X size={16} /></button>
+          <h3 id={titleId}>Compile Manuscript</h3>
+          <button onClick={onClose} className="compile-close" aria-label="Close compile dialog"><X size={16} /></button>
         </div>
 
         <div className="compile-body">
           <div className="compile-field">
-            <label>Title</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Manuscript title" />
+            <label htmlFor={titleFieldId}>Title</label>
+            <input
+              id={titleFieldId}
+              ref={titleInputRef}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Manuscript title"
+            />
           </div>
           <div className="compile-field">
-            <label>Author</label>
-            <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Author name" />
+            <label htmlFor={authorFieldId}>Author</label>
+            <input
+              id={authorFieldId}
+              value={author}
+              onChange={(e) => setAuthor(e.target.value)}
+              placeholder="Author name"
+            />
           </div>
           <div className="compile-field">
-            <label>Section Separator</label>
-            <input value={separator} onChange={(e) => setSeparator(e.target.value)} placeholder="# # #" />
+            <label htmlFor={separatorFieldId}>Section Separator</label>
+            <input
+              id={separatorFieldId}
+              value={separator}
+              onChange={(e) => setSeparator(e.target.value)}
+              placeholder="# # #"
+            />
             <span className="compile-hint">Placed between each document in the manuscript</span>
           </div>
 

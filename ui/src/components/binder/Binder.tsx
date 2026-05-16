@@ -15,13 +15,13 @@ import {
   History,
   Layers,
 } from "lucide-react";
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, useId } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { TreeNode, Project } from "../../types";
 import { useProjectStore, type FlowDoc } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
 import { importFile } from "../../commands/io";
-import { dialogPrompt, dialogConfirm } from "../shared/Dialog";
+import { dialogPrompt, dialogConfirm, useModalFocusTrap } from "../shared/Dialog";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { listTemplates, createFromTemplate, type Template } from "../../commands/templates";
@@ -330,6 +330,14 @@ function BinderInner() {
   // State for "Move to..." folder picker
   const [movingNodeId, setMovingNodeId] = useState<string | null>(null);
   const [historyDocId, setHistoryDocId] = useState<string | null>(null);
+  const moveDialogTitleId = useId();
+  const moveDialogCancelRef = useRef<HTMLButtonElement>(null);
+  const { dialogRef: moveDialogRef, onDialogKeyDown: onMoveDialogKeyDown } =
+    useModalFocusTrap<HTMLDivElement>(
+      movingNodeId !== null,
+      () => setMovingNodeId(null),
+      moveDialogCancelRef
+    );
 
   /** Collect all folders in the hierarchy for the Move To picker */
   const allFolders = useCallback((): { id: string; name: string; depth: number }[] => {
@@ -605,8 +613,17 @@ function BinderInner() {
 
       {movingNodeId && (
         <div className="dialog-overlay" onClick={() => setMovingNodeId(null)}>
-          <div className="dialog" onClick={(e) => e.stopPropagation()}>
-            <p className="dialog-title">Move to folder:</p>
+          <div
+            ref={moveDialogRef}
+            className="dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={moveDialogTitleId}
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={onMoveDialogKeyDown}
+          >
+            <p className="dialog-title" id={moveDialogTitleId}>Move to folder:</p>
             <div className="move-folder-list">
               {allFolders()
                 .filter((f) => f.id !== movingNodeId)
@@ -623,7 +640,11 @@ function BinderInner() {
                 ))}
             </div>
             <div className="dialog-buttons">
-              <button className="dialog-btn cancel" onClick={() => setMovingNodeId(null)}>
+              <button
+                ref={moveDialogCancelRef}
+                className="dialog-btn cancel"
+                onClick={() => setMovingNodeId(null)}
+              >
                 Cancel
               </button>
             </div>

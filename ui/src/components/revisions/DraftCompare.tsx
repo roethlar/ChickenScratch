@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
 import { X, GitCompare, ArrowRightLeft } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
 import * as gitCmd from "../../commands/git";
 import type { FileDiff, DraftVersion } from "../../commands/git";
+import { useModalFocusTrap } from "../shared/Dialog";
 
 interface DraftCompareProps {
   open: boolean;
@@ -18,6 +19,13 @@ export function DraftCompare({ open, onClose }: DraftCompareProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [wordDiff, setWordDiff] = useState<[string, string][] | null>(null);
   const [loading, setLoading] = useState(false);
+  const titleId = useId();
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const { dialogRef, onDialogKeyDown } = useModalFocusTrap<HTMLDivElement>(
+    open,
+    onClose,
+    closeButtonRef
+  );
 
   useEffect(() => {
     if (!open || !project) return;
@@ -76,12 +84,26 @@ export function DraftCompare({ open, onClose }: DraftCompareProps) {
 
   return (
     <div className="dialog-overlay" onClick={onClose}>
-      <div className="draft-compare-dialog" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="draft-compare-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={onDialogKeyDown}
+      >
         <div className="draft-compare-header">
           <GitCompare size={14} />
-          <span>Compare Drafts</span>
+          <span id={titleId}>Compare Drafts</span>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="draft-compare-close">
+          <button
+            ref={closeButtonRef}
+            onClick={onClose}
+            className="draft-compare-close"
+            aria-label="Close draft compare dialog"
+          >
             <X size={14} />
           </button>
         </div>
