@@ -48,9 +48,13 @@ pub fn import_scrivener(
     write_locks: State<'_, ProjectWriteLocks>,
 ) -> Result<Project, ChiknError> {
     let settings = crate::commands::settings::get_app_settings();
-    let pandoc = settings.general.pandoc_path.as_deref().map(Path::new);
+    let (pandoc_path, _) = crate::commands::settings::resolve_pandoc(&settings)?;
     write_locks.with_project_lock(&output_path, || {
-        converter::import_scriv(Path::new(&scriv_path), Path::new(&output_path), pandoc)
+        converter::import_scriv(
+            Path::new(&scriv_path),
+            Path::new(&output_path),
+            Some(pandoc_path.as_path()),
+        )
     })
 }
 

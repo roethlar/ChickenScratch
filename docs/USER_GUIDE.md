@@ -195,7 +195,7 @@ Click the **gear icon** in the toolbar to open Settings.
 
 ### General
 - **Theme:** Light, Dark, or Sepia
-- **Pandoc Path:** Override auto-detection if Pandoc is installed in a non-standard location
+- **Pandoc Path:** Override auto-detection if Pandoc is installed in a non-standard location. Use the absolute path to the executable, not just `pandoc`.
 
 ### Writing
 - **Font:** Choose your editing font (Literata, Georgia, Times, Palatino, System)
@@ -330,6 +330,8 @@ Install Pandoc for Scrivener import and export:
 - **macOS:** `brew install pandoc`
 - **Arch Linux:** `pacman -S pandoc`
 - **Others:** Download from [pandoc.org](https://pandoc.org/installing.html)
+
+ChickenScratch auto-detects Pandoc from standard installation paths. If you installed it somewhere else, set **Settings > General > Pandoc Path** to the absolute executable path, for example `/usr/local/bin/pandoc` or `C:\Program Files\Pandoc\pandoc.exe`.
 
 ### AI summaries aren't working
 - Check that AI is enabled in **Settings > AI**
