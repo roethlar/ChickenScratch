@@ -1,0 +1,7 @@
+{
+  "id": "M-3",
+  "sha": "53995c51b7a45fb0bd0bb9b379a12fb4b295bc28",
+  "ts": "2026-05-16T20:42:00Z",
+  "reviewer": "claude",
+  "note": "VERIFIED after reopen. All 4 io_other_error sites at process.rs:85,89,191,212 swapped to io::Error::other(msg). Re-ran cargo clippy --all-targets -- -D warnings on the branch — clean. Helper functionality unchanged: std-only, both pipes drained concurrently, atomic counter, kill+reap on timeout/cap, 5 tests pass, all 6 pandoc callsites routed."
+}

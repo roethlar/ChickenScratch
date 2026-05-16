@@ -189,13 +189,14 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Tests**: `cargo test -p chickenscratch-core corrupt --lib` (passed); `cargo test -p chickenscratch writing_history --bins` (passed); `cargo test -p chickenscratch session_progress_rejects_corrupt_writing_history --bins` (passed); `git diff --check` (passed)
 - **Reviewer verdict**: VERIFIED after reopen (commit `d89b3a2` on top of `a41a672`). First pass was reopened because `get_session_progress` at `io.rs:533-536` still used the silent `.ok().and_then(...).ok().unwrap_or_default()` pattern. Fix-up extracts `parse_writing_history` as a shared helper used by all three sites (`get_writing_history:440`, `record_daily_words_impl:470`, `get_session_progress:533`); `unwrap_or_default` is gone. New test `writing_history_parser_rejects_corrupt_json` covers the corruption path. `.meta` pre-flight validation (`writer.rs:288, 490-506, 541`) and H-1's `read_threads?` (`reader.rs:228`) retained. M-2-followup-app-settings flagged separately for `settings.rs:354-357, 517-520` silent-default parses.
 
-### M-3: Pandoc subprocesses have no timeout `[~]`
+### M-3: Pandoc subprocesses have no timeout `[x]`
 - **What**: `Command::new("pandoc").output()` blocks forever if pandoc hangs.
 - **Branch**: `fix/m-3-pandoc-process-limits`
 - **Files**: `crates/core/src/core/compile.rs:172`, `crates/core/src/scrivener/parser/rtf.rs:23`, `src-tauri/src/commands/io.rs:166`.
 - **Notes for GPT**: Use `wait_timeout` crate, or spawn + `child.wait_timeout(Duration::from_secs(60))` + kill on expiry. Add a max-bytes guard on stdout (~50 MB) too.
 - **Approach**: Added a std-only shared process runner with a 60-second timeout, kill-on-expiry, and a 50 MiB combined stdout/stderr cap. Routed compile, Scrivener RTF conversion, import conversion, Pandoc discovery, and the settings Pandoc check through it.
 - **Tests**: `cargo fmt --all` (ran; unrelated existing rustfmt churn not committed); `cargo clippy -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings` (passed); `cargo test -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests` (passed); `cd ui && npm run lint && npm run build` (passed); `git diff --check` (passed)
+- **Reviewer verdict**: VERIFIED after reopen (commit `53995c5`, force-pushed onto `bce74b5`-style single-commit shape). All 4 `clippy::io_other_error` sites at `process.rs:85, 89, 191, 212` now use `io::Error::other(msg)`. Re-ran `cargo clippy ... --all-targets -- -D warnings` clean on the branch. Helper functionality unchanged from the first pass: std-only, both pipes drained concurrently, atomic counter, kill+reap on timeout/cap, 5 tests, no zombies, all 6 pandoc callsites routed.
 
 ### M-4: Tauri CSP disabled + `shell:open` unconstrained `[x]`
 - **What**: `tauri.conf.json:22` `csp: null`. `tauri.conf.json:36-38` `shell.open: true` with no validator regex. Any renderer injection chains to OS-handler code-exec.
