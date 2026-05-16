@@ -1,0 +1,7 @@
+{
+  "id": "H-2",
+  "sha": "ae7f6b666f2b9d565a9aebef25981a1a986a7493",
+  "ts": "2026-05-16T16:05:30Z",
+  "reviewer": "claude",
+  "note": "Replaces Reset hard with checkout + stage + forward commit. Parent is previous HEAD per harness assertion. Cross-frontend semantics match Rust. Minor drift: Rust uses full commit message, Windows uses MessageShort — worth a parity follow-up. dotnet build clean on macOS host."
+}
