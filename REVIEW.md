@@ -304,6 +304,46 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 
 ---
 
+## Second-pass findings (post-cycle rescan, 2026-05-16)
+
+After the first cycle closed all originally-listed findings, a rescan of the v1.2 feature code that landed between the original audit and now surfaced these. None CRITICAL; the security-tagged ones are pre-auth (require attacker control of a project path or pre-set symlink).
+
+### N-1: `create_entity` bypasses C-3 symlink validation `[ ]`
+- **What**: `create_entity` in `src-tauri/src/commands/document.rs:356-359` (and the parallel folder-creation in `src-tauri/src/commands/io.rs:358`) calls `std::fs::create_dir_all(&folder_path)` where `folder_path = project_path.join("characters")` or `"locations"`. Unlike the reader's `ensure_required_folder_safe` (`reader.rs:340-367`) and the writer path that C-3 hardened (`writer.rs:293-331`), entity creation does **not** check whether the path is a symlink or escapes the project root before writing. A hostile `.chikn` containing a pre-existing `characters` symlink to `~/.ssh/` would write entity files to the symlink target on first entity creation.
+- **Severity**: MEDIUM. Pre-auth requires attacker to plant the symlink (hostile-project model), same threat surface as C-3. Strictly weaker than C-1/C-3 (which had the same root cause and shipped fixes).
+- **Files**: `src-tauri/src/commands/document.rs:356-359` (`create_entity`); `src-tauri/src/commands/io.rs:358` (entity-folder creation in import flow if applicable).
+- **Notes for GPT**: Reuse the C-3 helper. The cleanest path: extract `ensure_required_folder_safe` (or its writer-side twin) into a public function in `crates/core/src/core/project/writer.rs` (or a new `crates/core/src/core/project/safe_path.rs`) and call it from any code in `src-tauri` that creates a directory inside a project. Add a test: hostile project with `characters` → symlink to `/tmp/escape`; `create_entity` returns `Err(ChiknError::InvalidFormat)` without touching the symlink target.
+
+### N-2: `DocumentHistory` swallows fetch errors silently `[ ]`
+- **What**: `ui/src/components/revisions/DocumentHistory.tsx:42-44` — the effect that loads git history catches all errors and sets `revisions = []`. On a corrupt repo, permission-denied, or other failure, the user sees an empty history with no signal that anything failed.
+- **Severity**: LOW (UX). Pairs with the M-2 / M-3 pattern of preferring loud failure over silent empty.
+- **Files**: `ui/src/components/revisions/DocumentHistory.tsx:42-44`.
+- **Notes for GPT**: Replace `.catch(() => { if (!cancelled) setRevisions([]); })` with `.catch((e) => { if (!cancelled) { setRevisions([]); toastError("Failed to load document history: " + e); } })`. Also flush-before-fetch ordering: line 39's `flushPendingEditorSave()` is fired but never awaited inside the effect — a quick race where stale buffer flushes after the doc switch.
+
+### N-3: Tightening pass — silent error swallows + perf nits `[ ]`
+- **What**: A bundle of small low-severity items surfaced in the rescan. Group as one branch since they're all "make this loud" / "guard this edge."
+  1. `crates/core/src/core/git.rs:196-200` — `.gitignore` write uses `.ok()` swallow. Init succeeds with a missing gitignore; user has no signal. Convert to `?` or log.
+  2. `crates/core/src/core/git.rs:643` — backup `create_dir_all` uses `.ok()` swallow before `Repository::init_bare()`; the subsequent init failure surfaces a less informative message. Either propagate the create_dir error or document the swallow.
+  3. `src-tauri/src/commands/threads.rs:30-51` — entity-folder walk has no depth/size cap. Theoretical OOM on pathological projects. Cap at e.g. 1024 entities per type and 8 levels.
+  4. `src-tauri/src/commands/threads.rs:56-84` — dangling-ref `check` hard-codes the four convention keys (`pov_character`, `characters_in_scene`, `location`, `threads`). Any custom convention-key referencing entities is silently un-validated. Document this constraint or make the key set configurable.
+  5. `ui/src/components/timeline/TimelineView.tsx:17-37` — `parseStoryTime` returns `{ time: NaN, display: "" }` on parse failure; downstream filters work but the all-equal-times case at `:177` makes duration scaling uniformly 50%. Cosmetic; add a "no timeline data" empty state if all parses fail.
+  6. `ui/src/components/editor/Editor.tsx:461-464` — `SessionBadge` swallows `get_session_progress` errors silently. Convert to a one-time toast or a small "session tracking unavailable" indicator.
+- **Severity**: LOW each, but they cluster as the same "make failures observable" pattern we hardened in H-1 / M-2.
+
+### N-FMT: rustfmt drift in 7 files `[ ]`
+- **What**: `cargo fmt --all -- --check` shows 32 diff locations across:
+  - `crates/core/src/core/git.rs` (10 hunks)
+  - `crates/core/src/models/project.rs`
+  - `crates/tui/src/app.rs` (3 hunks)
+  - `crates/tui/src/ui.rs`
+  - `linux/src/bridge.rs` (5+ hunks)
+  - `src-tauri/src/commands/document.rs`
+  - `src-tauri/src/commands/git.rs`
+- **Severity**: LOW. Validation suite in `REVIEW.md` lists `cargo fmt --all` but didn't run it before this commit. No correctness impact.
+- **Notes for GPT**: `cargo fmt --all` — single command, atomic commit, no scope creep into unrelated files. Add a pre-commit hook or CI gate so this doesn't drift again.
+
+---
+
 ## Recently landed (awaiting reviewer verification)
 
 _GPT: add commit SHA + short summary here when you commit. Reviewer will scan and update statuses above._
