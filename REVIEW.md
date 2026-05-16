@@ -50,7 +50,7 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Tests added**: _(GPT to fill in)_
 - **Reviewer comments**:
 
-### C-3: Symlink writes outside project root `[~]`
+### C-3: Symlink writes outside project root `[x]`
 - **What**: `writer.rs:253` only checks string traversal (`..`) and absolute paths. Symlinks aren't checked. A hostile project whose `manuscript/chapter.md` is a symlink to `~/.ssh/authorized_keys` will be overwritten on next save. Same vector on delete.
 - **Branch**: `fix/c-3-symlink-writes`
 - **Files**: `crates/core/src/core/project/writer.rs:253` (write), `:330-360` (delete).
@@ -58,6 +58,7 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Tests**: write_project should reject a project containing a symlinked doc; delete_document should refuse to remove a symlink. Add to `crates/core/src/core/project/writer.rs` test module.
 - **Approach**: added component-based document path validation, canonical project-root checks, safe directory creation, symlink rejection for parent directories, document files, and `.meta` targets before write/delete.
 - **Tests added**: writer tests for parent traversal, dot-dot filename allowance, symlink parent rejection, symlink document write rejection, symlink parent delete rejection, and symlink document delete rejection.
+- **Reviewer verdict**: VERIFIED (commit `1333a93`). Component-based check at `writer.rs:293-331`, symlink rejection covers leaf + parent chain + `.meta` for both write and delete (`writer.rs:268-287, 506-519, 593-624`). Fail-closed before `project.yaml` rewrite. 6 new tests assert on `Err` with side-effect checks. **Minor nit (non-blocking)**: `canonical_project_root` is recomputed multiple times per save (`writer.rs:204, 249, 361, 505, 589`) — thread it through once if you touch this code again. Unavoidable TOCTOU residual between symlink check and `fs::write` documented; out of scope for desktop threat model.
 
 ### C-4: No write-lock on read-modify-write `[~]`
 - **What**: Concurrent Tauri command invocations (auto-save + auto-commit + backup) interleave `read_project → mutate → write_project` and silently lose work.

@@ -1,0 +1,7 @@
+{
+  "id": "C-3",
+  "sha": "1333a93c05dd5a46b8e21c7810cc4fee68948cd9",
+  "ts": "2026-05-16T15:22:00Z",
+  "reviewer": "claude",
+  "note": "Component-based check + symlink rejection on leaf + parent chain + .meta for write and delete. Fail-closed before project.yaml rewrite. 6 new tests assert on Err. Minor nit: canonical_project_root recomputed multiple times per save."
+}
