@@ -37,6 +37,7 @@ use std::fs;
 use std::path::Path;
 use uuid::Uuid;
 
+use super::parser::scrivx::sanitize_file_extension;
 use super::parser::{get_media_path, get_rtf_path, parse_scrivx, rtf_to_html, BinderItem};
 use crate::core::project::writer;
 use crate::models::{Document, Project, TreeNode};
@@ -74,6 +75,7 @@ pub fn import_scriv(
 
     // Parse Scrivener project
     let scriv_project = parse_scrivx(&scrivx_file)?;
+    validate_media_file_extensions(&scriv_project.binder)?;
 
     // Create .chikn project
     let mut chikn_project = writer::create_project(output_path, &scriv_project.name)?;
@@ -215,6 +217,7 @@ fn build_uuid_map(
                     .as_ref()
                     .and_then(|m| m.file_extension.as_deref())
                 {
+                    let ext = sanitize_file_extension(ext)?;
                     let name = item.title.clone().unwrap_or_else(|| "untitled".to_string());
                     let slug = crate::utils::slug::slugify(&name);
                     uuid_to_path.insert(
@@ -439,8 +442,9 @@ fn convert_binder_items_inner(
                     .and_then(|m| m.file_extension.as_deref());
 
                 if let Some(ext) = ext {
+                    let ext = sanitize_file_extension(ext)?;
                     // Media file — copy into the project
-                    let media_src = get_media_path(scriv_path, &item.uuid, ext)?;
+                    let media_src = get_media_path(scriv_path, &item.uuid, &ext)?;
                     if media_src.exists() {
                         let doc_id = Uuid::new_v4().to_string();
                         let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
@@ -506,6 +510,28 @@ fn convert_binder_items_inner(
     }
 
     Ok(hierarchy)
+}
+
+fn validate_media_file_extensions(items: &[BinderItem]) -> Result<(), ChiknError> {
+    for item in items {
+        match item.item_type.as_str() {
+            "TrashFolder" => continue,
+            "ResearchFolder" | "DraftFolder" | "Folder" | "Text" => {
+                validate_media_file_extensions(&item.children.items)?;
+            }
+            _ => {
+                if let Some(ext) = item
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.file_extension.as_deref())
+                {
+                    sanitize_file_extension(ext)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Cleans Scrivener-specific markup from converted Markdown content.
@@ -733,5 +759,74 @@ mod tests {
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert!(!output_path.join("manuscript/escape.md").exists());
+    }
+
+    #[test]
+    fn test_import_copies_media_with_valid_common_extension() {
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Media.scriv");
+        let output_path = temp_dir.path().join("Media.chikn");
+        let uuid = "F8F9FDEF-FD9F-4A8C-B33D-3434A1220ADC";
+        let media_dir = scriv_path.join("Files").join("Data").join(uuid);
+        fs::create_dir_all(&media_dir).unwrap();
+        fs::write(media_dir.join("content.pdf"), b"%PDF sample").unwrap();
+
+        fs::write(
+            scriv_path.join("Media.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="3.0">
+    <Binder>
+        <BinderItem UUID="{uuid}" Type="Image">
+            <Title>Reference PDF</Title>
+            <MetaData>
+                <FileExtension>pdf</FileExtension>
+            </MetaData>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#
+            ),
+        )
+        .unwrap();
+
+        let result = import_scriv(&scriv_path, &output_path, None);
+
+        assert!(result.is_ok(), "import failed: {result:?}");
+        assert_eq!(
+            fs::read(output_path.join("manuscript/reference-pdf.pdf")).unwrap(),
+            b"%PDF sample"
+        );
+    }
+
+    #[test]
+    fn test_import_rejects_malicious_media_extension_before_project_write() {
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("BadMedia.scriv");
+        let output_path = temp_dir.path().join("BadMedia.chikn");
+        let uuid = "F8F9FDEF-FD9F-4A8C-B33D-3434A1220ADC";
+        fs::create_dir_all(&scriv_path).unwrap();
+
+        fs::write(
+            scriv_path.join("BadMedia.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="3.0">
+    <Binder>
+        <BinderItem UUID="{uuid}" Type="Image">
+            <Title>Escape</Title>
+            <MetaData>
+                <FileExtension>../md</FileExtension>
+            </MetaData>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#
+            ),
+        )
+        .unwrap();
+
+        let result = import_scriv(&scriv_path, &output_path, None);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        assert!(!output_path.exists());
     }
 }

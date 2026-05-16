@@ -225,12 +225,45 @@ pub fn get_media_path(
     extension: &str,
 ) -> Result<PathBuf, ChiknError> {
     validate_scrivener_uuid(uuid)?;
+    let extension = sanitize_file_extension(extension)?;
 
     Ok(scriv_path
         .join("Files")
         .join("Data")
         .join(uuid)
         .join(format!("content.{}", extension)))
+}
+
+/// Sanitizes a Scrivener media file extension before path interpolation.
+pub fn sanitize_file_extension(extension: &str) -> Result<String, ChiknError> {
+    let trimmed = extension.trim();
+    let extension = trimmed.strip_prefix('.').unwrap_or(trimmed);
+
+    if extension.is_empty() {
+        return Err(invalid_file_extension(extension));
+    }
+
+    if extension.len() > 32 {
+        return Err(invalid_file_extension(extension));
+    }
+
+    let path = Path::new(extension);
+    let mut components = path.components();
+    if !matches!(components.next(), Some(Component::Normal(_))) || components.next().is_some() {
+        return Err(invalid_file_extension(extension));
+    }
+
+    if !extension.chars().all(|ch| ch.is_ascii_alphanumeric()) {
+        return Err(invalid_file_extension(extension));
+    }
+
+    Ok(extension.to_string())
+}
+
+fn invalid_file_extension(extension: &str) -> ChiknError {
+    ChiknError::InvalidFormat(format!(
+        "Invalid Scrivener FileExtension path component: {extension:?}"
+    ))
 }
 
 #[cfg(test)]
@@ -312,5 +345,65 @@ mod tests {
         let result = get_media_path(scriv_path, "/tmp/host-file", "pdf");
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_sanitize_file_extension_accepts_common_extensions() {
+        for (raw, expected) in [
+            ("pdf", "pdf"),
+            ("jpg", "jpg"),
+            ("jpeg", "jpeg"),
+            ("png", "png"),
+            ("gif", "gif"),
+            ("tiff", "tiff"),
+            ("mp3", "mp3"),
+            ("mp4", "mp4"),
+            ("docx", "docx"),
+            ("7z", "7z"),
+            (" .PDF ", "PDF"),
+        ] {
+            assert_eq!(sanitize_file_extension(raw).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn test_sanitize_file_extension_rejects_unsafe_values() {
+        for raw in [
+            "",
+            "   ",
+            ".",
+            "..",
+            "../pdf",
+            "pdf/../../md",
+            "/tmp/pdf",
+            r"C:\tmp\pdf",
+            r"\\server\share",
+            "pdf;rm",
+            "pdf $(touch x)",
+            "pdf\nmd",
+            "tar.gz",
+            "pdf:ads",
+        ] {
+            let result = sanitize_file_extension(raw);
+            assert!(
+                matches!(result, Err(ChiknError::InvalidFormat(_))),
+                "expected {raw:?} to be rejected, got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_media_path_uses_sanitized_file_extension() {
+        let scriv_path = Path::new("/path/to/Project.scriv");
+        let uuid = "F8F9FDEF-FD9F-4A8C-B33D-3434A1220ADC";
+
+        let media_path = get_media_path(scriv_path, uuid, " .pdf ").unwrap();
+
+        assert_eq!(
+            media_path,
+            Path::new(
+                "/path/to/Project.scriv/Files/Data/F8F9FDEF-FD9F-4A8C-B33D-3434A1220ADC/content.pdf"
+            )
+        );
     }
 }
