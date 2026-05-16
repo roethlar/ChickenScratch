@@ -1,0 +1,7 @@
+{
+  "id": "M-5",
+  "sha": "1cf225299291f361da8724a05a3ce4372236048a",
+  "ts": "2026-05-16T16:42:00Z",
+  "reviewer": "claude",
+  "note": "1500*1500 cell cap checked via checked_mul before allocation (product, not per-side — closes the asymmetric-input loophole). Coarse fallback returns same (String,String) shape; 9 MB max vs prior 100 MB hazard. Tests cover small + large; empty/asymmetric/boundary cases correct by inspection."
+}

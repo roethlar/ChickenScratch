@@ -201,13 +201,14 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Approach**: Added a production CSP plus a dev CSP that keeps Tauri IPC and the Vite dev server reachable. Switched the shell plugin to an HTTPS-only validator and replaced the unscoped capability command with `shell:default`.
 - **Tests**: `cargo check -p chickenscratch`
 
-### M-5: `simple_word_diff` O(m·n) without sane bail-out `[~]`
+### M-5: `simple_word_diff` O(m·n) without sane bail-out `[x]`
 - **What**: `git.rs:973-1033` builds `vec![vec![0u32; n+1]; m+1]` LCS table. Cap is 5000 words → up to 100 MB allocation per call from the revisions UI.
 - **Branch**: `fix/m-5-word-diff-bounds`
 - **Files**: `crates/core/src/core/git.rs`.
 - **Notes for GPT**: Either drop the cap to ~1500 words, or replace with a streaming diff (e.g. `similar` crate). Render a "diff too large" placeholder above the cap.
 - **Approach**: Added an LCS matrix cell cap of `1_500 * 1_500`; larger requests now return the existing coarse deleted/added diff without building the table.
 - **Tests added**: Small-diff regression preserving LCS output and large-diff regression proving the coarse deleted/added fallback is used above the cap. Validation: `cargo test -p chickenscratch-core simple_word_diff --lib`.
+- **Reviewer verdict**: VERIFIED (commit `1cf2252`). Constant `SIMPLE_WORD_DIFF_LCS_CELL_CAP = 1_500 * 1_500` at `git.rs:17`. Pre-allocation cell-count check via `checked_mul((m+1), (n+1))` at `:1128-1134` — overflow-safe and **product**-based (the old per-side guard would let 100 × 100000 pass while blocking the cheap 100k × 50). Fallback `coarse_word_diff` (`:1185-1190`) returns exactly two `(String, String)` entries (`("deleted", old.join())`, `("added", new.join())`) — same shape as the normal return so the UI renders identically; allocation O(input bytes) not O(m·n). 9 MB max allocation vs the previous 100 MB hazard. **Non-blocking nit**: tests don't cover empty inputs, asymmetric inputs (1 × 100000), or the exact-boundary case — all correct by inspection but a spec lock would be tidier.
 
 ### M-6: `beforeunload` flush is best-effort `[~]`
 - **What**: `App.tsx:148` awaits `flushPendingEditorSave()` in `beforeunload`, but `beforeunload` cannot block on real promises across the webview boundary.
