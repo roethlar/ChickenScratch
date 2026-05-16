@@ -24,7 +24,6 @@ Dialog {
         if (!settings.writing) settings.writing = { font_family: "Literata Variable", font_size: 18, paragraph_style: "block", auto_save_seconds: 2, spell_check: true }
         if (!settings.backup)  settings.backup  = { backup_directory: null, auto_backup_on_close: true, auto_backup_minutes: 30 }
         if (!settings.remote)  settings.remote  = { url: null, username: null, token: null, auto_push_on_revision: false }
-        if (!settings.ai)      settings.ai      = { enabled: true, provider: "ollama", endpoint: "http://localhost:11434", api_key: null, model: "llama3.2" }
         if (!settings.compile) settings.compile = { default_format: "docx", font: "Times New Roman", font_size: 12, line_spacing: 2, margin_inches: 1 }
         statusText = ""
         pandocVersion = controller.check_pandoc()
@@ -75,7 +74,6 @@ Dialog {
             TabButton { text: "General" }
             TabButton { text: "Writing" }
             TabButton { text: "Backup" }
-            TabButton { text: "AI" }
             TabButton { text: "Compile" }
             TabButton { text: "Remote" }
         }
@@ -224,66 +222,6 @@ Dialog {
                             stepSize: 5
                             value: root.settings.backup && root.settings.backup.auto_backup_minutes || 30
                             onValueModified: root.settings.backup.auto_backup_minutes = value
-                        }
-                    }
-                    Item { Layout.fillHeight: true }
-                }
-            }
-
-            // ── AI ──
-            ScrollView {
-                clip: true
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 12
-                    CheckBox {
-                        text: "Enable AI features"
-                        checked: root.settings.ai && root.settings.ai.enabled || false
-                        onToggled: root.settings.ai.enabled = checked
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        enabled: root.settings.ai && root.settings.ai.enabled
-                        Label { text: "Provider"; color: "#9a9a9a"; font.pixelSize: 11 }
-                        ComboBox {
-                            Layout.fillWidth: true
-                            model: ["ollama", "anthropic", "openai"]
-                            currentIndex: model.indexOf(root.settings.ai && root.settings.ai.provider || "ollama")
-                            onActivated: root.settings.ai.provider = currentText
-                        }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        enabled: root.settings.ai && root.settings.ai.enabled
-                        Label { text: "Model"; color: "#9a9a9a"; font.pixelSize: 11 }
-                        TextField {
-                            Layout.fillWidth: true
-                            text: root.settings.ai && root.settings.ai.model || ""
-                            placeholderText: "llama3.2 / claude-sonnet-4-6 / gpt-4o"
-                            onEditingFinished: root.settings.ai.model = text
-                        }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        enabled: root.settings.ai && root.settings.ai.enabled
-                        Label { text: "Endpoint URL"; color: "#9a9a9a"; font.pixelSize: 11 }
-                        TextField {
-                            Layout.fillWidth: true
-                            text: root.settings.ai && root.settings.ai.endpoint || ""
-                            placeholderText: "http://localhost:11434"
-                            onEditingFinished: root.settings.ai.endpoint = text.length > 0 ? text : null
-                        }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        enabled: root.settings.ai && root.settings.ai.enabled && root.settings.ai.provider !== "ollama"
-                        Label { text: "API key"; color: "#9a9a9a"; font.pixelSize: 11 }
-                        TextField {
-                            Layout.fillWidth: true
-                            text: root.settings.ai && root.settings.ai.api_key || ""
-                            echoMode: TextInput.Password
-                            placeholderText: "sk-…"
-                            onEditingFinished: root.settings.ai.api_key = text.length > 0 ? text : null
                         }
                     }
                     Item { Layout.fillHeight: true }
