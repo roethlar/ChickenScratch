@@ -285,6 +285,7 @@ fn validate_all_document_targets(project: &Project) -> Result<(), ChiknError> {
             &document.path,
             "document metadata",
         )?;
+        let _ = read_existing_document_metadata(&meta_path)?;
     }
 
     Ok(())
@@ -486,6 +487,24 @@ fn ensure_canonical_path_within_project(
     Ok(())
 }
 
+fn read_existing_document_metadata(
+    meta_path: &Path,
+) -> Result<Option<DocumentMetadata>, ChiknError> {
+    match fs::read_to_string(meta_path) {
+        Ok(content) => serde_yaml::from_str::<DocumentMetadata>(&content)
+            .map(Some)
+            .map_err(|e| {
+                ChiknError::InvalidFormat(format!(
+                    "Failed to parse document metadata at {}: {}",
+                    meta_path.display(),
+                    e
+                ))
+            }),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Writes a single document (content + metadata)
 fn write_document(
     project_path: &Path,
@@ -519,13 +538,7 @@ fn write_document(
     )?;
 
     // Read existing metadata to preserve fields we don't model in Document
-    let existing_meta = if meta_path.exists() {
-        fs::read_to_string(&meta_path)
-            .ok()
-            .and_then(|s| serde_yaml::from_str::<DocumentMetadata>(&s).ok())
-    } else {
-        None
-    };
+    let existing_meta = read_existing_document_metadata(&meta_path)?;
 
     let metadata = DocumentMetadata {
         id: document.id.clone(),
@@ -1286,6 +1299,46 @@ mod tests {
         let reloaded = read_project(&project_path).unwrap();
         let stable = reloaded.documents.get("doc1").unwrap();
         assert_eq!(stable.modified, frozen);
+    }
+
+    #[test]
+    fn test_write_project_rejects_corrupt_existing_document_meta() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("CorruptMeta.chikn");
+
+        let mut project = create_project(&project_path, "Corrupt Meta").unwrap();
+        let doc = Document {
+            id: "doc1".to_string(),
+            name: "Stable".to_string(),
+            path: "manuscript/stable.md".to_string(),
+            content: "initial".to_string(),
+            parent_id: None,
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        project.documents.insert(doc.id.clone(), doc);
+        write_project(&mut project).unwrap();
+
+        let meta_path = get_manuscript_path(&project_path).join("stable.meta");
+        fs::write(&meta_path, "id: [").unwrap();
+        let project_yaml_before = fs::read_to_string(project_path.join("project.yaml")).unwrap();
+
+        project
+            .documents
+            .get_mut("doc1")
+            .unwrap()
+            .content
+            .push_str("\nupdated");
+
+        let result = write_project(&mut project);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        assert_eq!(fs::read_to_string(&meta_path).unwrap(), "id: [");
+        assert_eq!(
+            fs::read_to_string(project_path.join("project.yaml")).unwrap(),
+            project_yaml_before
+        );
     }
 
     #[test]

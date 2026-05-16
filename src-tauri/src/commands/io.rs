@@ -437,8 +437,17 @@ pub fn get_writing_history(project_path: String) -> Result<WritingHistory, Chikn
         return Ok(WritingHistory::default());
     }
     let data = fs::read_to_string(&path)?;
-    let history: WritingHistory = serde_json::from_str(&data).unwrap_or_default();
-    Ok(history)
+    parse_writing_history(&path, &data)
+}
+
+fn parse_writing_history(path: &Path, data: &str) -> Result<WritingHistory, ChiknError> {
+    serde_json::from_str(data).map_err(|e| {
+        ChiknError::InvalidFormat(format!(
+            "Failed to parse writing history at {}: {}",
+            path.display(),
+            e
+        ))
+    })
 }
 
 #[tauri::command]
@@ -458,7 +467,7 @@ fn record_daily_words_impl(project_path: String, words: usize) -> Result<(), Chi
 
     let mut history: WritingHistory = if path.exists() {
         let data = fs::read_to_string(&path)?;
-        serde_json::from_str(&data).unwrap_or_default()
+        parse_writing_history(&path, &data)?
     } else {
         WritingHistory::default()
     };
@@ -594,4 +603,32 @@ pub fn get_project_stats(project_path: String) -> Result<ProjectStats, ChiknErro
         total_docs: docs.len(),
         docs,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writing_history_parser_rejects_corrupt_json() {
+        let path = Path::new("/tmp/writing-history.json");
+        let result = parse_writing_history(path, "{\"entries\":[");
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn writing_history_parser_accepts_valid_json() {
+        let path = Path::new("/tmp/writing-history.json");
+        let history = parse_writing_history(
+            path,
+            r#"{"entries":[{"date":"2026-05-16","words":1200,"start_words":900}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(history.entries.len(), 1);
+        assert_eq!(history.entries[0].date, "2026-05-16");
+        assert_eq!(history.entries[0].words, 1200);
+        assert_eq!(history.entries[0].start_words, Some(900));
+    }
 }
