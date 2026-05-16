@@ -194,14 +194,13 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Approach**: Added a shared process runner with a 60-second timeout, kill-on-expiry, and a 50 MB stdout/stderr cap. Routed compile, Scrivener RTF conversion, import conversion, pandoc discovery, and the settings pandoc check through it.
 - **Tests**: `cargo test -p chickenscratch-core process --lib`; `cargo check -p chickenscratch`
 
-### M-4: Tauri CSP disabled + `shell:open` unconstrained `[ ]`
+### M-4: Tauri CSP disabled + `shell:open` unconstrained `[~]`
 - **What**: `tauri.conf.json:22` `csp: null`. `tauri.conf.json:36-38` `shell.open: true` with no validator regex. Any renderer injection chains to OS-handler code-exec.
+- **Branch**: `fix/m-4-tauri-csp-shell-scope`
 - **Files**: `src-tauri/tauri.conf.json:21-22, 36-38`; `src-tauri/capabilities/default.json:11`.
 - **Notes for GPT**: CSP: start with `"csp": "default-src 'self'; img-src 'self' data: asset: https://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'"` and tighten. `shell.open`: change to a URL-scheme regex like `"open": "^https?://"`.
-- **Branch**: `fix/m-4-tauri-csp-shell-scope` (REOPENED — see `.review/results/M-4.reopened.md`)
-- **Approach**: Added a production CSP plus a dev CSP that keeps Tauri IPC and the Vite dev server reachable. Switched the shell plugin to an HTTPS-only validator and replaced the unscoped capability command with `shell:default`.
-- **Tests**: `cargo check -p chickenscratch`
-- **Reviewer comments (REOPEN)**: CSP half is ship-ready. **Shell.open regex at `tauri.conf.json:39` is missing `^` start anchor.** `tauri-plugin-shell` v2.3.5 validates via `regex.is_match(path)` (substring) at `scope.rs:210` and then opens the **original unmodified path** at `scope.rs:228`. Attack: `file:///etc/passwd#https://x` matches the substring `https://x`, passes the regex, but `open::that_detached` dispatches the `file://` URL to the OS handler. Same for `javascript:x//https://y`, custom-handler URLs, etc. — the exact bypass class M-4 was supposed to block. Fix: anchor both ends, e.g. `^https://[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]{1,5})?(?:[/?#][^\s]*)?$`. Add a test case for each bypass shape. Tauri's documented default (`^((mailto:\w+)|(tel:\w+)|(https?://\w+)).+`) anchors with `^` for exactly this reason. After fix-up commit, write a new `.review/ready/M-4.json` sentinel.
+- **Approach**: Added a production CSP that restores same-origin defaults while allowing Tauri IPC and local app assets, plus a dev CSP for `http://localhost:1420` and Vite HMR. Switched the shell plugin from `open: true` to an anchored HTTPS-only host-shaped validator, added a config-regression test for prefix-bypass URLs, and replaced the unscoped capability command with `shell:default`.
+- **Tests**: `cargo check --manifest-path src-tauri/Cargo.toml` (passed); `cargo test --manifest-path src-tauri/Cargo.toml shell_open_validator --bin chickenscratch` (passed)
 
 ### M-5: `simple_word_diff` O(m·n) without sane bail-out `[x]`
 - **What**: `git.rs:973-1033` builds `vec![vec![0u32; n+1]; m+1]` LCS table. Cap is 5000 words → up to 100 MB allocation per call from the revisions UI.

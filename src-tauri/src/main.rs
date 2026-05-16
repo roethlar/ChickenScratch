@@ -92,3 +92,23 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running ChickenScratch");
 }
+
+#[cfg(test)]
+mod tests {
+    use regex::Regex;
+
+    #[test]
+    fn shell_open_validator_rejects_prefixed_allowed_substrings() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let pattern = config["plugins"]["shell"]["open"].as_str().unwrap();
+        let validator = Regex::new(pattern).unwrap();
+
+        assert!(validator.is_match("https://github.com/example/repo"));
+        assert!(validator.is_match("https://example.com/path?q=1#frag"));
+        assert!(!validator.is_match("http://example.com"));
+        assert!(!validator.is_match("file:///etc/passwd#https://x"));
+        assert!(!validator.is_match("javascript:x//https://y"));
+        assert!(!validator.is_match("vscode://file/foo#https://x"));
+    }
+}
