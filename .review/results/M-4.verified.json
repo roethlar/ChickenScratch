@@ -1,0 +1,7 @@
+{
+  "id": "M-4",
+  "sha": "6f6dd40dd12b4bb7983928a6ac9d93b48a2cacbd",
+  "ts": "2026-05-16T17:54:30Z",
+  "reviewer": "claude",
+  "note": "VERIFIED after reopen. Fix-up commit on top of bce74b5 adds ^...$ anchors to the shell.open regex, closing the substring-match bypass class. Inline regex check confirms file://#https:// and javascript://https:// reject; legitimate github/pandoc URLs accept. CSP production policy strict + devCsp isolated. GPT added a config-regression test for prefix bypasses. See .review/results/M-4.reopened.md for the original reopen comments."
+}
