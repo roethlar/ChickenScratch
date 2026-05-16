@@ -105,8 +105,8 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 ### H-3: Destructive git ops lack dirty-worktree guards `[~]`
 - **What**: `restore_revision` (`git.rs:276-278`) uses `CheckoutBuilder::new().force()` with no dirty check. `sync_pull_force` (`git.rs:797`) does `reset HARD`. Auto-save model means there's always uncommitted state — these ops silently nuke 0–2 seconds of typing.
 - **Files**: `crates/core/src/core/git.rs:276-280, 797`.
-- **Approach**: _(GPT to fill in)_
-- **Tests added**: _(GPT to fill in)_
+- **Approach**: added a shared git status helper and reject dirty worktrees before `restore_revision` force-checkout and `sync_pull_force` hard reset; the current taxonomy has no dirty-specific kind, so rejection uses `GitErrorKind::Conflict` with a save/discard action message.
+- **Tests added**: restore dirty rejection without clobbering, clean restore still creates a forward commit, force-pull dirty rejection without clobbering, and clean force-pull overwrite behavior in `crates/core/tests/remote_sync.rs`.
 - **Reviewer comments**: After fix, confirm UI surfaces the "dirty worktree" rejection clearly so the user knows to save first.
 
 ### H-4: AI bearer token to unvalidated/HTTP endpoints `[x]`

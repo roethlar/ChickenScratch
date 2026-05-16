@@ -132,6 +132,30 @@ fn classified_git_error_as(
     git_error(kind, format!("{context}: {error}"))
 }
 
+fn repo_has_changes(repo: &Repository) -> Result<bool, ChiknError> {
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true).recurse_untracked_dirs(true);
+
+    let statuses = repo
+        .statuses(Some(&mut opts))
+        .map_err(|e| classified_git_error("Failed to get worktree status", e))?;
+
+    Ok(!statuses.is_empty())
+}
+
+fn reject_dirty_worktree(repo: &Repository, operation: &str) -> Result<(), ChiknError> {
+    if repo_has_changes(repo)? {
+        return Err(git_error(
+            GitErrorKind::Conflict,
+            format!(
+                "Cannot {operation} because the working tree has unsaved changes. Save a revision or discard the changes first."
+            ),
+        ));
+    }
+
+    Ok(())
+}
+
 /// A single revision (commit) in writer-friendly form
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Revision {
@@ -379,6 +403,7 @@ pub fn restore_document(
 pub fn restore_revision(path: &Path, commit_id: &str) -> Result<Revision, ChiknError> {
     let repo = Repository::open(path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
+    reject_dirty_worktree(&repo, "restore this revision")?;
 
     let oid = Oid::from_str(commit_id)
         .map_err(|e| classified_git_error_as(GitErrorKind::InvalidRevision, "Invalid revision ID", e))?;
@@ -905,9 +930,11 @@ pub fn sync_pull_force(
     url: &str,
     auth: &RemoteAuth,
 ) -> Result<(), ChiknError> {
-    fetch_remote(project_path, url, auth)?;
     let repo = Repository::open(project_path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
+    reject_dirty_worktree(&repo, "force pull")?;
+
+    fetch_remote(project_path, url, auth)?;
     let branch = current_branch_name(&repo)?;
     let remote_oid = repo
         .refname_to_id(&format!("refs/remotes/{SYNC_REMOTE}/{branch}"))
@@ -1254,14 +1281,7 @@ pub fn has_changes(path: &Path) -> Result<bool, ChiknError> {
     let repo = Repository::open(path)
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
 
-    let mut opts = StatusOptions::new();
-    opts.include_untracked(true);
-
-    let statuses = repo
-        .statuses(Some(&mut opts))
-        .map_err(|e| ChiknError::Unknown(format!("Failed to get status: {}", e)))?;
-
-    Ok(!statuses.is_empty())
+    repo_has_changes(&repo)
 }
 
 fn default_signature(repo: &Repository) -> Result<Signature<'static>, ChiknError> {
