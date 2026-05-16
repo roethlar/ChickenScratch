@@ -1,0 +1,7 @@
+{
+  "id": "M-2",
+  "sha": "d89b3a2738632f22ff20a27c7b07a59166261f47",
+  "ts": "2026-05-16T18:05:09Z",
+  "reviewer": "claude",
+  "note": "VERIFIED after reopen, inferred from merge commit 0ba36ba. Fix-up routes get_session_progress through parse_writing_history and adds the requested corrupt writing-history regression; .meta fail-loud and preflight validation were already accepted in the reopen comments."
+}

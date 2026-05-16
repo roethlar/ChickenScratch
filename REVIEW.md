@@ -181,12 +181,13 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Touched files**: `crates/core/src/core/git.rs`, `crates/core/src/lib.rs`, `crates/core/tests/remote_sync.rs`, `.review/findings/M-1.md`, `REVIEW.md`.
 - **Reviewer verdict**: VERIFIED (commit `6a8c6bb`). Classifier at `git.rs:18-106` maps `UnbornBranch → NoCommits`, `NotFound + Reference → NoUpstream`, `Net|Http → RemoteUnavailable`, `NotFastForward`, and `Merge|Checkout → Conflict`; auth path present (Code + Class + message fallback) but untested per acknowledged gap. 4 new tests pattern-match on `GitErrorKind` variants (not just `is_err`). 84 `Unknown` sites remain in `git.rs` (intentional per Known Gaps — index/commit plumbing not user-actionable). Tauri serialization unchanged (string passthrough via `serialize_str`), so frontend wire compat preserved.
 
-### M-2: Corrupt sidecars silently overwritten `[~]`
+### M-2: Corrupt sidecars silently overwritten `[x]`
 - **What**: `reader.rs:228` `read_threads(...).unwrap_or_default()` — one corrupt `threads.yaml` and the next save erases every thread. Same shape at `writer.rs:285` (swallowed `.meta` parse), `src-tauri/src/commands/io.rs:423` (writing_history wipe).
 - **Branch**: `fix/m-2-corrupt-sidecars`
 - **Notes for GPT**: Quarantine the corrupt file (rename to `.corrupt-<timestamp>`) before defaulting, and emit a warning so the user sees a banner. Pair with H-1.
 - **Approach**: Corrupt `threads.yaml` already fails load on current master. This branch makes existing document `.meta` parsing fail before `project.yaml` or the sidecar can be rewritten, and makes all project writing-history reads/writes, including session progress, use the same strict parser instead of defaulting corrupt JSON to empty history.
 - **Tests**: `cargo test -p chickenscratch-core corrupt --lib` (passed); `cargo test -p chickenscratch writing_history --bins` (passed); `cargo test -p chickenscratch session_progress_rejects_corrupt_writing_history --bins` (passed); `git diff --check` (passed)
+- **Reviewer verdict**: VERIFIED after reopen (merge commit `0ba36ba`). The fix-up routes `get_session_progress` through the shared strict writing-history parser and adds the requested corrupt-history regression.
 
 ### M-3: Pandoc subprocesses have no timeout `[~]`
 - **What**: `Command::new("pandoc").output()` blocks forever if pandoc hangs.
