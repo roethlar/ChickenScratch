@@ -1,0 +1,7 @@
+{
+  "id": "N-1",
+  "sha": "a754127c32cccf8f61850c881ed42c2bb2a61033",
+  "ts": "2026-05-16T23:28:30Z",
+  "reviewer": "claude",
+  "note": "safe_path module (crates/core/src/core/project/safe_path.rs) factors out the C-3-equivalent rules: component validation, symlink rejection at every level, one-component-at-a-time create, canonicalize-under-root with project root canonicalized once. create_entity rejects hostile symlink before read_project. Reader required-folder repair now delegates to the same helper (closes H-1 DRY nit). 5 new safe_path tests + entity-rejection test. Follow-up opened: io.rs:438 record_daily_words settings folder still uses create_dir_all unguarded."
+}
