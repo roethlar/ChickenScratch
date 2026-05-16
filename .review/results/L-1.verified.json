@@ -1,0 +1,7 @@
+{
+  "id": "L-1",
+  "sha": "61a8f6e0ef2576fde1bc6f12dfea666eaa6b647d",
+  "ts": "2026-05-16T20:46:30Z",
+  "reviewer": "claude",
+  "note": "Full-project subscriptions removed from Binder + CommandPalette. Load-bearing invariant: applyContentToStore preserves project.hierarchy reference across autosaves. projectInfo/hierarchy slices wrapped in useShallow; entitySignature returns stable primitive; ThreadDots subscribes to per-doc thread-ids ref; Flow mode uses getState() not subscription. Worth a code comment near applyContentToStore noting the invariant L-1 depends on."
+}
