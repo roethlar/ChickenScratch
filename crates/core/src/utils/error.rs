@@ -5,6 +5,45 @@
 use serde::{Serialize, Serializer};
 use thiserror::Error;
 
+/// Actionable git failure classes for UI and CLI callers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GitErrorKind {
+    Auth,
+    Conflict,
+    NotFastForward,
+    NoUpstream,
+    RemoteUnavailable,
+    NoCommits,
+    NotARepo,
+    InvalidRevision,
+    DetachedHead,
+    Other,
+}
+
+/// Git-specific error payload that preserves the user-facing message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitError {
+    pub kind: GitErrorKind,
+    pub message: String,
+}
+
+impl GitError {
+    pub fn new(kind: GitErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for GitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for GitError {}
+
 /// Main error type for ChickenScratch operations
 #[derive(Debug, Error)]
 pub enum ChiknError {
@@ -22,6 +61,9 @@ pub enum ChiknError {
 
     #[error("Invalid format: {0}")]
     InvalidFormat(String),
+
+    #[error("{0}")]
+    Git(GitError),
 
     #[error("Unknown error: {0}")]
     Unknown(String),

@@ -1,0 +1,7 @@
+{
+  "id": "H-4",
+  "sha": "c52ea4a495fab273b2afddd3071c3adc5e15d938",
+  "ts": "2026-05-16T15:36:00Z",
+  "reviewer": "claude",
+  "note": "Single helper openai_chat_completions_url used by both request paths and settings save-validation. Positive HTTPS check + reject userinfo/query/fragment/hostless. Bearer-attach grep confirms no bypass path. Ollama exempted intentionally. Nits: helper doc-comment, short-circuit branch test, IP-literal host policy."
+}

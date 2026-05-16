@@ -3,10 +3,10 @@
 //! All revision control uses embedded git2 — no system git required.
 //! Writers see "Save Revision" / "Revision History" — never "git".
 
-use crate::utils::error::ChiknError;
+use crate::utils::error::{ChiknError, GitError, GitErrorKind};
 use git2::{
-    BranchType, Cred, DiffOptions, FetchOptions, IndexAddOption, Oid, PushOptions,
-    RemoteCallbacks, Repository, Signature, StatusOptions,
+    BranchType, Cred, DiffOptions, ErrorClass, ErrorCode, FetchOptions, IndexAddOption, Oid,
+    PushOptions, RemoteCallbacks, Repository, Signature, StatusOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -14,6 +14,121 @@ use std::path::Path;
 /// Name of the git remote used for remote-sync (distinct from `backup` which is
 /// the local-directory mirror remote).
 const SYNC_REMOTE: &str = "sync";
+
+fn git_kind_from_error(error: &git2::Error) -> GitErrorKind {
+    let message = error.message().to_ascii_lowercase();
+    match (error.code(), error.class()) {
+        (ErrorCode::Auth | ErrorCode::Certificate, _)
+        | (_, ErrorClass::Ssh | ErrorClass::Ssl) => GitErrorKind::Auth,
+        (ErrorCode::NotFastForward, _) => GitErrorKind::NotFastForward,
+        (ErrorCode::UnbornBranch, _) => GitErrorKind::NoCommits,
+        (ErrorCode::Conflict | ErrorCode::Unmerged | ErrorCode::MergeConflict, _)
+        | (_, ErrorClass::Merge | ErrorClass::Checkout) => GitErrorKind::Conflict,
+        (ErrorCode::Invalid | ErrorCode::InvalidSpec | ErrorCode::Ambiguous, _) => {
+            GitErrorKind::InvalidRevision
+        }
+        (ErrorCode::NotFound, ErrorClass::Repository) => GitErrorKind::NotARepo,
+        (ErrorCode::NotFound, ErrorClass::Reference) => GitErrorKind::NoUpstream,
+        (ErrorCode::NotFound, ErrorClass::Net | ErrorClass::Http)
+        | (ErrorCode::Timeout, _)
+        | (_, ErrorClass::Net | ErrorClass::Http) => GitErrorKind::RemoteUnavailable,
+        _ if message_contains_any(
+            &message,
+            &[
+                "authentication",
+                "credential",
+                "credentials",
+                "permission denied",
+                "access denied",
+                "certificate",
+            ],
+        ) =>
+        {
+            GitErrorKind::Auth
+        }
+        _ if message_contains_any(
+            &message,
+            &[
+                "non-fast-forward",
+                "non fast-forward",
+                "non-fastforward",
+                "not fast forward",
+                "fetch first",
+            ],
+        ) =>
+        {
+            GitErrorKind::NotFastForward
+        }
+        _ if message_contains_any(
+            &message,
+            &[
+                "unborn",
+                "no commits",
+                "current branch",
+                "does not have any commits",
+            ],
+        ) =>
+        {
+            GitErrorKind::NoCommits
+        }
+        _ if message_contains_any(
+            &message,
+            &[
+                "remote ref",
+                "upstream",
+                "no tracking",
+                "couldn't find remote ref",
+                "could not find remote ref",
+            ],
+        ) =>
+        {
+            GitErrorKind::NoUpstream
+        }
+        _ if message_contains_any(
+            &message,
+            &[
+                "repository not found",
+                "not found",
+                "could not read from remote repository",
+                "failed to connect",
+                "connection refused",
+                "not a git repository",
+            ],
+        ) =>
+        {
+            GitErrorKind::RemoteUnavailable
+        }
+        _ if message_contains_any(&message, &["conflict", "merge"]) => GitErrorKind::Conflict,
+        _ => GitErrorKind::Other,
+    }
+}
+
+fn message_contains_any(message: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| message.contains(needle))
+}
+
+fn git_error(kind: GitErrorKind, message: impl Into<String>) -> ChiknError {
+    ChiknError::Git(GitError::new(kind, message))
+}
+
+fn classified_git_error(context: &str, error: git2::Error) -> ChiknError {
+    let kind = git_kind_from_error(&error);
+    git_error(kind, format!("{context}: {error}"))
+}
+
+fn classified_git_error_as(
+    fallback: GitErrorKind,
+    context: &str,
+    error: git2::Error,
+) -> ChiknError {
+    let classified = git_kind_from_error(&error);
+    let kind = if classified == GitErrorKind::Other {
+        fallback
+    } else {
+        classified
+    };
+    git_error(kind, format!("{context}: {error}"))
+}
 
 /// A single revision (commit) in writer-friendly form
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -261,23 +376,23 @@ pub fn restore_document(
 /// Never rewrites history — always moves forward.
 pub fn restore_revision(path: &Path, commit_id: &str) -> Result<Revision, ChiknError> {
     let repo = Repository::open(path)
-        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
 
     let oid = Oid::from_str(commit_id)
-        .map_err(|e| ChiknError::Unknown(format!("Invalid revision ID: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::InvalidRevision, "Invalid revision ID", e))?;
     let commit = repo
         .find_commit(oid)
-        .map_err(|e| ChiknError::Unknown(format!("Revision not found: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::InvalidRevision, "Revision not found", e))?;
     let tree = commit
         .tree()
-        .map_err(|e| ChiknError::Unknown(format!("Failed to get tree: {}", e)))?;
+        .map_err(|e| classified_git_error("Failed to get tree", e))?;
 
     // Checkout that tree into the working directory
     repo.checkout_tree(
         tree.as_object(),
         Some(git2::build::CheckoutBuilder::new().force()),
     )
-    .map_err(|e| ChiknError::Unknown(format!("Failed to restore: {}", e)))?;
+    .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Failed to restore", e))?;
 
     // Create a new commit on HEAD pointing to the restored state
     let msg = format!(
@@ -290,11 +405,11 @@ pub fn restore_revision(path: &Path, commit_id: &str) -> Result<Revision, ChiknE
 /// Create a new draft version (branch).
 pub fn create_draft(path: &Path, name: &str) -> Result<(), ChiknError> {
     let repo = Repository::open(path)
-        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
 
     let head = repo
         .head()
-        .map_err(|e| ChiknError::Unknown(format!("No commits yet: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NoCommits, "No commits yet", e))?;
     let commit = head
         .peel_to_commit()
         .map_err(|e| ChiknError::Unknown(format!("Failed to find head commit: {}", e)))?;
@@ -384,7 +499,7 @@ pub enum MergeResult {
 /// the UI can dispatch on. (F-009)
 pub fn merge_draft(path: &Path, name: &str) -> Result<MergeResult, ChiknError> {
     let repo = Repository::open(path)
-        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
 
     let branch = repo
         .find_branch(name, BranchType::Local)
@@ -400,7 +515,7 @@ pub fn merge_draft(path: &Path, name: &str) -> Result<MergeResult, ChiknError> {
 
     let (analysis, _) = repo
         .merge_analysis(&[&annotated])
-        .map_err(|e| ChiknError::Unknown(format!("Merge analysis: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Merge analysis", e))?;
 
     if analysis.is_up_to_date() {
         return Ok(MergeResult::UpToDate);
@@ -410,21 +525,21 @@ pub fn merge_draft(path: &Path, name: &str) -> Result<MergeResult, ChiknError> {
         let current_branch = current_branch_name(&repo)?;
         let mut reference = repo
             .find_reference(&format!("refs/heads/{current_branch}"))
-            .map_err(|e| ChiknError::Unknown(format!("Branch ref: {}", e)))?;
+            .map_err(|e| classified_git_error_as(GitErrorKind::NoUpstream, "Branch ref", e))?;
         reference
             .set_target(source_oid, "fast-forward via merge_draft")
-            .map_err(|e| ChiknError::Unknown(format!("Set ref: {}", e)))?;
+            .map_err(|e| classified_git_error("Set ref", e))?;
         repo.set_head(&format!("refs/heads/{current_branch}"))
-            .map_err(|e| ChiknError::Unknown(format!("Set HEAD: {}", e)))?;
+            .map_err(|e| classified_git_error("Set HEAD", e))?;
         let mut co = git2::build::CheckoutBuilder::new();
         co.force();
         repo.checkout_head(Some(&mut co))
-            .map_err(|e| ChiknError::Unknown(format!("Checkout: {}", e)))?;
+            .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Checkout", e))?;
         return Ok(MergeResult::FastForward);
     }
 
     repo.merge(&[&annotated], None, None)
-        .map_err(|e| ChiknError::Unknown(format!("Merge failed: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Merge failed", e))?;
 
     let index = repo
         .index()
@@ -435,7 +550,7 @@ pub fn merge_draft(path: &Path, name: &str) -> Result<MergeResult, ChiknError> {
         // `sync_abort_pull` to back out.
         let files: Vec<String> = index
             .conflicts()
-            .map_err(|e| ChiknError::Unknown(format!("Conflicts iter: {}", e)))?
+            .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Conflicts iter", e))?
             .filter_map(|c| {
                 c.ok()
                     .and_then(|c| c.our.or(c.their).or(c.ancestor))

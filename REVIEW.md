@@ -108,13 +108,14 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Tests added**: _(GPT to fill in)_
 - **Reviewer comments**: After fix, confirm UI surfaces the "dirty worktree" rejection clearly so the user knows to save first.
 
-### H-4: AI bearer token to unvalidated/HTTP endpoints `[~]`
+### H-4: AI bearer token to unvalidated/HTTP endpoints `[x]`
 - **What**: `ai.rs:275-295` accepts `http://` for OpenAI endpoint. No scheme check, no host normalization. `https://api.openai.com.attacker.tld` accepted. Bearer token (line 292) goes wherever.
 - **Files**: `src-tauri/src/commands/ai.rs:275-295, 461-477`.
 - **Branch**: `fix/h-4-openai-endpoint-validation`
 - **Notes for GPT**: At settings save-time, parse the URL with `url::Url`; require `scheme() == "https"`; reject embedded userinfo (`url.username()` non-empty / `url.password().is_some()`). For Ollama (which is local-only), allow `http://localhost` and `http://127.0.0.1` explicitly.
 - **Approach**: OpenAI request construction now parses and normalizes the endpoint before attaching Authorization, rejects HTTP including loopback, embedded credentials, query strings, fragments, missing hosts, and malformed URLs. App settings save validates OpenAI endpoints with the same HTTPS-only policy while leaving Ollama local HTTP allowed.
 - **Tests added**: Tauri command tests for OpenAI HTTPS default, malformed URL rejection, HTTP cloud rejection, HTTP loopback rejection, settings-save OpenAI HTTP rejection, settings-save HTTPS acceptance, and Ollama local HTTP acceptance.
+- **Reviewer verdict**: VERIFIED (commit `c52ea4a`). Single helper `openai_chat_completions_url` (`ai.rs:492`) is the only entry; called by `call_openai` (`ai.rs:460`), `stream_openai` (`ai.rs:277`), and `validate_app_settings` (`settings.rs:279`). Positive `scheme() == "https"` check + userinfo/query/fragment/hostless rejection. Bearer-attach paths grep to exactly two sites — both downstream of the validator, no bypass. Ollama exemption is intentional and credential-less so the residual settings-poisoning concern is closed under H-5. **Non-blocking nits**: (a) helper doc-comment should explain the path-append semantics for OpenAI-compat gateways; (b) add a test for the already-complete-path short-circuit branch (`ai.rs:503`); (c) consider an explicit reject for IP-literal hosts shaped like `https://203.0.113.1` if you ever want to enforce DNS hostnames only — currently allowed.
 
 ### H-5: Plaintext API keys + git tokens in settings.json `[ ]`
 - **What**: `RemoteSettings.token`, `AiSettings.api_key` written to `dirs::config_dir()/chickenscratch/settings.json` at default permissions.
