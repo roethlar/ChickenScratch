@@ -218,7 +218,7 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **What**: `App.tsx:148` awaits `flushPendingEditorSave()` in `beforeunload`, but `beforeunload` cannot block on real promises across the webview boundary.
 - **Notes for GPT**: Switch to Tauri v2's `onCloseRequested` (`@tauri-apps/api/window`) to actually defer close until the save resolves.
 - **Branch**: `fix/m-6-tauri-close-flush`
-- **Approach**: Replaced the Tauri close path with `getCurrentWindow().onCloseRequested`, awaiting the pending editor flush and canceling close if that flush fails; browser `beforeunload` remains only as a fallback outside Tauri.
+- **Approach**: Replaced the Tauri close path with `getCurrentWindow().onCloseRequested`, awaiting the pending editor flush and canceling close with a user-visible toast if that flush fails; browser `beforeunload` remains only as a fallback outside Tauri.
 - **Tests**: `cd ui && npm run lint`; `cd ui && npm run build`
 
 ---

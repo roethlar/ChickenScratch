@@ -175,14 +175,18 @@ export default function App() {
         const flushed = await flushAndBackupOnClose();
         if (!flushed) {
           event.preventDefault();
+          toastError(
+            "Close canceled because the latest editor changes could not be saved. Please retry, or check the editor for errors."
+          );
         }
       }).then((fn) => {
         if (disposed) fn();
         else unlisten = fn;
-      }).catch(() => {
+      }).catch((err) => {
         // If close-listener registration fails, keep the browser
         // fallback below out of the Tauri path instead of adding a
         // misleading best-effort handler.
+        console.warn("onCloseRequested registration failed", err);
       });
 
       return () => {
