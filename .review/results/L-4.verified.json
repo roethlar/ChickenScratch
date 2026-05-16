@@ -1,0 +1,7 @@
+{
+  "id": "L-4",
+  "sha": "e151aea25de7807442c1957f5bd1a1813fb98a15",
+  "ts": "2026-05-16T21:50:30Z",
+  "reviewer": "claude",
+  "note": "WAI-ARIA Tree View pattern correctly implemented. Container role=tree with aria-activedescendant; treeitems carry role + aria-level + aria-selected; folders get aria-expanded only when they have children (leaves omit it per spec); child groups have role=group. Keyboard handler covers Up/Down, Home/End, Right (expand|first child), Left (collapse|parent), Enter/Space, ContextMenu/Shift+F10 (positioned at active item, not mouse), Escape. flattenVisibleTreeNodes mirrors rendered DOM via lifted openFolders state. No mouse/drag/context-menu regression. ... affordance aria-hidden so keyboard users use ContextMenu key."
+}
