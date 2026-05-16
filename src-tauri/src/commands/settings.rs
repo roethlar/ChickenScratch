@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+use super::ai::openai_chat_completions_url;
+
 // ── App Settings ──────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -264,9 +266,20 @@ pub fn get_app_settings() -> AppSettings {
 
 #[tauri::command]
 pub fn save_app_settings(settings: AppSettings) -> Result<(), ChiknError> {
+    validate_app_settings(&settings)?;
+
     let json = serde_json::to_string_pretty(&settings)
         .map_err(|e| ChiknError::Unknown(format!("Failed to serialize settings: {}", e)))?;
     fs::write(settings_path(), json)?;
+    Ok(())
+}
+
+fn validate_app_settings(settings: &AppSettings) -> Result<(), ChiknError> {
+    if settings.ai.provider == "openai" {
+        openai_chat_completions_url(settings.ai.endpoint.as_deref())
+            .map_err(ChiknError::InvalidFormat)?;
+    }
+
     Ok(())
 }
 
@@ -345,4 +358,77 @@ pub fn check_pandoc() -> Result<String, ChiknError> {
     Err(ChiknError::Unknown(
         "Pandoc is not installed. Required for Scrivener import and manuscript export.".to_string(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app_settings_for_ai(provider: &str, endpoint: Option<&str>) -> AppSettings {
+        AppSettings {
+            ai: AiSettings {
+                provider: provider.to_string(),
+                endpoint: endpoint.map(str::to_string),
+                ..AiSettings::default()
+            },
+            ..AppSettings::default()
+        }
+    }
+
+    #[test]
+    fn validate_app_settings_allows_empty_openai_endpoint_for_default() {
+        let settings = app_settings_for_ai("openai", None);
+        assert!(validate_app_settings(&settings).is_ok());
+
+        let settings = app_settings_for_ai("openai", Some(" "));
+        assert!(validate_app_settings(&settings).is_ok());
+    }
+
+    #[test]
+    fn validate_app_settings_accepts_openai_https_endpoint() {
+        let settings = app_settings_for_ai("openai", Some("https://api.openai.com"));
+        assert!(validate_app_settings(&settings).is_ok());
+    }
+
+    #[test]
+    fn validate_app_settings_rejects_openai_http_endpoint() {
+        let settings = app_settings_for_ai("openai", Some("http://api.openai.com"));
+        assert!(matches!(
+            validate_app_settings(&settings),
+            Err(ChiknError::InvalidFormat(_))
+        ));
+    }
+
+    #[test]
+    fn save_app_settings_rejects_openai_http_endpoint_before_write() {
+        let settings = app_settings_for_ai("openai", Some("http://api.openai.com"));
+        assert!(matches!(
+            save_app_settings(settings),
+            Err(ChiknError::InvalidFormat(_))
+        ));
+    }
+
+    #[test]
+    fn validate_app_settings_rejects_openai_malformed_and_no_scheme_endpoint() {
+        let settings = app_settings_for_ai("openai", Some("api.openai.com"));
+        assert!(matches!(
+            validate_app_settings(&settings),
+            Err(ChiknError::InvalidFormat(_))
+        ));
+
+        let settings = app_settings_for_ai("openai", Some("https://"));
+        assert!(matches!(
+            validate_app_settings(&settings),
+            Err(ChiknError::InvalidFormat(_))
+        ));
+    }
+
+    #[test]
+    fn validate_app_settings_allows_ollama_local_http_endpoint() {
+        let settings = app_settings_for_ai("ollama", Some("http://localhost:11434"));
+        assert!(validate_app_settings(&settings).is_ok());
+
+        let settings = app_settings_for_ai("ollama", Some("http://127.0.0.1:11434"));
+        assert!(validate_app_settings(&settings).is_ok());
+    }
 }
