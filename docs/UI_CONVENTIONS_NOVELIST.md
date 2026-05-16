@@ -102,7 +102,8 @@ fields:
 2. **Omit empty values.** Absent key is different from `null`. Writers must skip keys whose value is empty so `.meta` diffs stay quiet.
 3. **Preserve unknown entries.** If a user's `.meta` has a `fields` key you don't recognize (added by a different UI or a future version), keep it on write. This is not optional — it's the format contract.
 4. **Invalid references are opaque strings, not errors.** `pov_character: sarah-who-does-not-exist` loads the string, displays "Unknown," and offers to clear the reference. It does not fail validation.
-5. **Extensions that outgrow `fields`** — e.g., a full character bible — belong in their own files under the project root (e.g., `characters/sarah-bennett.md` + `.meta`), tracked by git, discovered by convention. They are not format-mandated; they are how the novelist UI chooses to organize.
+5. **Reference validation is scoped to known keys.** The Tauri validator checks only `pov_character`, `characters_in_scene`, `location`, and `threads`. Custom convention keys remain opaque unless a UI publishes and implements its own validator.
+6. **Extensions that outgrow `fields`** — e.g., a full character bible — belong in their own files under the project root (e.g., `characters/sarah-bennett.md` + `.meta`), tracked by git, discovered by convention. They are not format-mandated; they are how the novelist UI chooses to organize.
 
 ## Related conventions (for other domains)
 
