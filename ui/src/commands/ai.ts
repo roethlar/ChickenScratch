@@ -33,45 +33,87 @@ export async function aiTransform(
  * Stream a transform. Resolves when the backend reports the request finished.
  * Rejects on error events. Each delta is delivered to `onChunk` as it arrives.
  *
- * The returned promise is the lifecycle of one request only — if you need to
- * cancel, drop subscriptions on unmount; the backend thread will keep running
- * but its events will be ignored.
+ * The returned promise is the lifecycle of one request only. `shouldContinue`
+ * is checked before every stream event is applied; returning false cancels the
+ * backend request and resolves without applying that event.
  */
+export function createAiStreamId(): string {
+  return crypto.randomUUID();
+}
+
+export async function cancelAiTransformStream(requestId: string): Promise<void> {
+  return invoke("cancel_ai_transform_stream", { requestId });
+}
+
 export async function aiTransformStream(
   content: string,
   operation: AiOperation,
-  onChunk: (delta: string) => void
+  onChunk: (delta: string) => void,
+  options: {
+    requestId?: string;
+    shouldContinue?: () => boolean;
+    abortSignal?: AbortSignal;
+  } = {}
 ): Promise<void> {
-  const requestId = crypto.randomUUID();
+  const requestId = options.requestId ?? createAiStreamId();
   const unlisteners: UnlistenFn[] = [];
 
   return new Promise<void>((resolve, reject) => {
     let settled = false;
-    const cleanup = () => {
+    let cancelling = false;
+
+    function cleanup() {
+      options.abortSignal?.removeEventListener("abort", cancelAndIgnore);
       for (const u of unlisteners) {
         try { u(); } catch { /* ignore */ }
       }
-    };
-    const finish = (err?: string) => {
+    }
+    function finish(err?: string) {
       if (settled) return;
       settled = true;
       cleanup();
       if (err) reject(new Error(err));
       else resolve();
-    };
+    }
+    function cancelAndIgnore() {
+      if (!cancelling) {
+        cancelling = true;
+        cancelAiTransformStream(requestId).catch(() => {});
+      }
+      finish();
+      return false;
+    }
+    function shouldHandleEvent() {
+      if (settled) return false;
+      return options.shouldContinue?.() === false ? cancelAndIgnore() : true;
+    }
+
+    if (options.abortSignal?.aborted) {
+      cancelAndIgnore();
+      return;
+    }
+    options.abortSignal?.addEventListener("abort", cancelAndIgnore, { once: true });
 
     Promise.all([
       listen<{ id: string; delta: string }>("ai:chunk", (e) => {
-        if (e.payload.id === requestId) onChunk(e.payload.delta);
+        if (e.payload.id === requestId && shouldHandleEvent()) {
+          onChunk(e.payload.delta);
+        }
       }),
       listen<{ id: string }>("ai:done", (e) => {
-        if (e.payload.id === requestId) finish();
+        if (e.payload.id === requestId && shouldHandleEvent()) finish();
       }),
       listen<{ id: string; message: string }>("ai:error", (e) => {
-        if (e.payload.id === requestId) finish(e.payload.message);
+        if (e.payload.id === requestId && shouldHandleEvent()) finish(e.payload.message);
       }),
     ])
       .then((unlistens) => {
+        if (settled) {
+          for (const u of unlistens) {
+            try { u(); } catch { /* ignore */ }
+          }
+          return undefined;
+        }
         unlisteners.push(...unlistens);
         return invoke("ai_transform_stream", {
           content,

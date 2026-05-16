@@ -15,6 +15,7 @@ fn main() {
 
     tauri::Builder::default()
         .manage(commands::ProjectWriteLocks::default())
+        .manage(ai::AiStreamRegistry::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
@@ -40,6 +41,7 @@ fn main() {
             ai::get_ai_settings,
             ai::save_ai_settings,
             ai::ai_transform_stream,
+            ai::cancel_ai_transform_stream,
             ai::ai_summarize,
             ai::ai_transform,
             git::save_revision,
