@@ -2,10 +2,27 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-WORKDIR="${CHIKN_CROSS_FRONTEND_WORKDIR:-$(mktemp -d "${TMPDIR:-/tmp}/chikn-cross-frontend.XXXXXX")}"
+if [[ -n "${CHIKN_CROSS_FRONTEND_WORKDIR:-}" ]]; then
+  WORKDIR="$CHIKN_CROSS_FRONTEND_WORKDIR"
+  CLEANUP_WORKDIR=0
+else
+  WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/chikn-cross-frontend.XXXXXX")"
+  CLEANUP_WORKDIR=1
+fi
 PROJECT="$WORKDIR/Corn.chikn"
 MANIFEST="$WORKDIR/manifest.txt"
 PANDOC_SHIM="$WORKDIR/pandoc-shim"
+FAIL_ON_REPAIR="${CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR:-0}"
+SWIFT_WRITER_RAN=0
+CSHARP_WRITER_RAN=0
+SKIPPED_TOOLCHAINS=()
+
+cleanup() {
+  if [[ "$CLEANUP_WORKDIR" == "1" ]]; then
+    rm -rf "$WORKDIR"
+  fi
+}
+trap cleanup EXIT
 
 mkdir -p "$WORKDIR"
 : > "$MANIFEST"
@@ -15,21 +32,71 @@ log() {
   printf '%s\n' "$*" >> "$MANIFEST"
 }
 
+skip_toolchain() {
+  local toolchain="$1"
+  local reason="$2"
+  local message="SKIPPED: $toolchain ($reason)"
+
+  printf '%s\n' "$message" >&2
+  printf '%s\n' "$message" >> "$MANIFEST"
+  SKIPPED_TOOLCHAINS+=("$toolchain")
+}
+
+join_by_comma() {
+  local IFS=","
+  printf '%s' "$*"
+}
+
+run_and_capture() {
+  local output_file="$1"
+  shift
+
+  set +e
+  "$@" >"$output_file" 2>&1
+  local status=$?
+  set -e
+
+  cat "$output_file"
+  cat "$output_file" >> "$MANIFEST"
+  return "$status"
+}
+
+fail_if_repair_markers_present() {
+  local output_file="$1"
+  local stage="$2"
+
+  if [[ "$FAIL_ON_REPAIR" != "1" ]]; then
+    return 0
+  fi
+
+  if grep -E '(^|[[:space:]])(pre-repair:|Repair warning:|Repair skipped|Repaired:|Repaired .+ in memory;)' "$output_file" >/dev/null; then
+    log "rust-reader:$stage: repair markers found"
+    printf 'FAILED: rust-reader:%s emitted repair markers with CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR=1\n' "$stage" >&2
+    return 1
+  fi
+}
+
 verify_rust_reader() {
   local stage="$1"
   local marker="${2:-}"
+  local output_file="$WORKDIR/rust-reader-$stage.log"
 
   log "rust-reader:$stage: start"
   if [[ -n "$marker" ]]; then
-    CHIKN_CROSS_FRONTEND_VERIFY="$PROJECT" \
-    CHIKN_CROSS_FRONTEND_EXPECT_FIELD="$marker" \
-      cargo test -p chickenscratch-core --test cross_frontend_round_trip \
-        verify_cross_frontend_harness_project_from_env -- --exact --nocapture
+    run_and_capture "$output_file" \
+      env \
+        CHIKN_CROSS_FRONTEND_VERIFY="$PROJECT" \
+        CHIKN_CROSS_FRONTEND_EXPECT_FIELD="$marker" \
+        cargo test -p chickenscratch-core --test cross_frontend_round_trip \
+          verify_cross_frontend_harness_project_from_env -- --exact --nocapture
   else
-    CHIKN_CROSS_FRONTEND_VERIFY="$PROJECT" \
-      cargo test -p chickenscratch-core --test cross_frontend_round_trip \
-        verify_cross_frontend_harness_project_from_env -- --exact --nocapture
+    run_and_capture "$output_file" \
+      env \
+        CHIKN_CROSS_FRONTEND_VERIFY="$PROJECT" \
+        cargo test -p chickenscratch-core --test cross_frontend_round_trip \
+          verify_cross_frontend_harness_project_from_env -- --exact --nocapture
   fi
+  fail_if_repair_markers_present "$output_file" "$stage"
   log "rust-reader:$stage: ok"
 }
 
@@ -85,19 +152,32 @@ verify_rust_reader "after-rust-converter"
 
 if command -v swift >/dev/null 2>&1; then
   swift run --package-path macos ChiknKitCrossFrontendHarness "$PROJECT"
+  SWIFT_WRITER_RAN=1
   log "swift-chiknkit-writer: ok"
   verify_rust_reader "after-swift-writer" "cross_frontend_swift"
 else
-  log "swift-chiknkit-writer: skipped (swift not found)"
+  skip_toolchain "swift-chiknkit-writer" "swift not found"
 fi
 
 if command -v dotnet >/dev/null 2>&1; then
   dotnet run --project windows/ChickenScratch.Core.Tests/CrossFrontendHarness/ChickenScratch.Core.CrossFrontendHarness.csproj -- "$PROJECT"
+  CSHARP_WRITER_RAN=1
   log "csharp-core-writer: ok"
   verify_rust_reader "after-csharp-writer" "cross_frontend_csharp"
 else
-  log "csharp-core-writer: skipped (dotnet not found)"
+  skip_toolchain "csharp-core-writer" "dotnet not found"
 fi
 
+if [[ "${#SKIPPED_TOOLCHAINS[@]}" -gt 0 ]]; then
+  log "skipped-toolchains:$(join_by_comma "${SKIPPED_TOOLCHAINS[@]}")"
+else
+  log "skipped-toolchains:none"
+fi
+log "writer-toolchains-ran:$((SWIFT_WRITER_RAN + CSHARP_WRITER_RAN))/2"
 log "manifest:$MANIFEST"
-log "result: ok"
+if [[ "$SWIFT_WRITER_RAN" == "0" && "$CSHARP_WRITER_RAN" == "0" ]]; then
+  log "result: ok-with-skipped-toolchains"
+  printf 'SKIPPED: no optional frontend writer toolchains ran; only Rust converter/reader was verified\n' >&2
+else
+  log "result: ok"
+fi
