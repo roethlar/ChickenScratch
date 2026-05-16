@@ -37,10 +37,22 @@ export function DocumentHistory({ open, docId, onClose }: Props) {
     (async () => {
       try {
         await flushPendingEditorSave();
+      } catch (e) {
+        if (!cancelled) {
+          setRevisions([]);
+          toastError(`File history aborted — editor save failed: ${e}`);
+        }
+        return;
+      }
+
+      try {
         const r = await gitCmd.documentHistory(project.path, doc.path);
         if (!cancelled) setRevisions(r);
-      } catch {
-        if (!cancelled) setRevisions([]);
+      } catch (e) {
+        if (!cancelled) {
+          setRevisions([]);
+          toastError(`Failed to load document history: ${e}`);
+        }
       }
     })();
     return () => { cancelled = true; };
