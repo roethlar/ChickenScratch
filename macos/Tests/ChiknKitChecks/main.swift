@@ -40,7 +40,59 @@ func cleanup(_ url: URL) {
     try? FileManager.default.removeItem(at: url)
 }
 
+func topLevelFolderID(named name: String, in project: Project) -> String? {
+    project.hierarchy.first { $0.kind == .folder && $0.name == name }?.id
+}
+
 // MARK: - Cases
+
+runCase("createProject uses UUID IDs for required folders") {
+    let url = makeTempProjectURL()
+    defer { cleanup(url) }
+
+    let project = try Writer.createProject(at: url, name: "RootIDs")
+    let legacyIDs = Set(["manuscript", "research", "trash"])
+
+    for name in ["Manuscript", "Research", "Trash"] {
+        guard let id = topLevelFolderID(named: name, in: project) else {
+            check(false, "\(name) folder exists")
+            continue
+        }
+        check(UUID(uuidString: id) != nil, "\(name) folder id is a UUID")
+        check(id == id.lowercased(), "\(name) folder id is lowercase")
+        check(!legacyIDs.contains(id), "\(name) folder id is not a legacy literal")
+    }
+}
+
+runCase("legacy root parent IDs still write under UUID roots") {
+    let url = makeTempProjectURL()
+    defer { cleanup(url) }
+
+    var project = try Writer.createProject(at: url, name: "LegacyAliases")
+    guard let manuscriptID = topLevelFolderID(named: "Manuscript", in: project),
+          let researchID = topLevelFolderID(named: "Research", in: project)
+    else {
+        check(false, "required root folders exist")
+        return
+    }
+
+    let (p1, scene) = try Writer.createDocument(name: "Opening", parentID: "manuscript", in: project)
+    project = p1
+    let (p2, note) = try Writer.createDocument(name: "Clue", parentID: "research", in: project)
+    project = p2
+
+    let manuscript = project.hierarchy.first { $0.id == manuscriptID }
+    let research = project.hierarchy.first { $0.id == researchID }
+    check(scene.relativePath == "manuscript/opening.md", "legacy manuscript alias keeps manuscript path")
+    check(note.relativePath == "research/clue.md", "legacy research alias keeps research path")
+    check(manuscript?.children.contains(where: { $0.id == scene.id }) == true, "legacy manuscript alias attaches to UUID root")
+    check(research?.children.contains(where: { $0.id == note.id }) == true, "legacy research alias attaches to UUID root")
+
+    let sceneMetaURL = project.path.appendingPathComponent(scene.relativePath)
+        .deletingPathExtension().appendingPathExtension("meta")
+    let sceneMeta = try String(contentsOf: sceneMetaURL, encoding: .utf8)
+    check(sceneMeta.contains(manuscriptID), "meta parent_id stores resolved UUID root")
+}
 
 runCase("fields map round-trip preserves arbitrary keys") {
     let url = makeTempProjectURL()
@@ -467,7 +519,7 @@ runCase("reorderNode swaps siblings within a parent") {
 
     // Manuscript children should be [Alpha, Beta, Gamma] now.
     func manuscriptChildIDs(_ p: Project) -> [String] {
-        p.hierarchy.first(where: { $0.id == "manuscript" })?.children.map(\.id) ?? []
+        p.hierarchy.first(where: { $0.name == "Manuscript" })?.children.map(\.id) ?? []
     }
     check(manuscriptChildIDs(project) == [a.id, b.id, c.id], "initial sibling order")
 
