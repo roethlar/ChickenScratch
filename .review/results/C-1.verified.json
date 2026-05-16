@@ -1,0 +1,7 @@
+{
+  "id": "C-1",
+  "sha": "be9a2974025eb8e4a63882ec0397106a9753d453",
+  "ts": "2026-05-16T16:10:00Z",
+  "reviewer": "claude",
+  "note": "Validator at scrivx.rs:181-208 enforces 36-char 8-4-4-4-12 hex/hyphen shape + Path::components() rejection of Prefix/RootDir/ParentDir. All 4 callsites in converter/mod.rs use ?. Importer-level hostile-fixture tests assert Err via matches! and prove no host file read occurred. C-2 scope clean. Sample-fixture regression passes. Minor nit: dedicated null-byte/non-hex/wrong-length tests would tighten spec lock."
+}

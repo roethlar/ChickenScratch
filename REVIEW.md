@@ -36,13 +36,13 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 
 ## CRITICAL — data-loss or remote-exploitable
 
-### C-1: Scrivener importer — UUID path traversal `[~]`
+### C-1: Scrivener importer — UUID path traversal `[x]`
 - **What**: `BinderItem.uuid` is raw XML data; `Path::join(uuid)` with an absolute or `..`-bearing UUID reads arbitrary host files into the imported project as document content. Arbitrary-read primitive.
 - **Branch**: `fix/c-1-scrivener-uuid-validation`
 - **Files**: `crates/core/src/scrivener/parser/scrivx.rs:50` (uuid field), `:181-196` (`get_rtf_path`/`get_media_path`); `crates/core/src/scrivener/converter/mod.rs:381` (callsite).
 - **Approach**: Added strict hyphenated UUID validation before `get_rtf_path`/`get_media_path` join `Files/Data/<uuid>/...`; absolute paths, parent dirs, prefixes, separators, empty values, and non-UUID-like values now return `ChiknError::InvalidFormat`. `converter/mod.rs` was touched only to propagate those fallible path helper errors and to exercise rejection through the real importer.
 - **Tests added**: Parser helper tests for valid sample UUIDs plus absolute/parent-dir/media UUID rejection; importer tests proving absolute and parent-dir UUIDs fail before resolving/writing escaped content.
-- **Reviewer comments**:
+- **Reviewer verdict**: VERIFIED (commit `be9a297`). Validator at `scrivx.rs:181-208` length-checks `== 36` + per-position hex/hyphen (8-4-4-4-12) + second-pass `Path::components()` rejection of `Prefix`/`RootDir`/`ParentDir`. Four `get_rtf_path`/`get_media_path` callsites in `converter/mod.rs:181, 321, 383, 443` all use `?`; no raw `item.uuid` reaches `Path::join`. Importer-level hostile-fixture tests at `converter/mod.rs:681, 713` call full `import_scriv` and assert `Err(ChiknError::InvalidFormat(_))` via `matches!` (not `is_err`); absolute-path test seeds a real file at `host_path` to prove no read occurred. Sample-fixture regression `test_import_corn_scriv_sample` passes. Error message echoes the UUID via `{:?}` but the validator runs before any filesystem access, so no "file exists" oracle. C-2 scope clean — `file_extension` remains raw at converter changes are pure error propagation. **Minor nit**: no dedicated test for null-byte/non-hex/35-or-37-char inputs, though the validator's `len == 36` + `is_ascii_hexdigit` chains provably reject them via the same code path tested with the absolute-path/parent-dir cases. Add explicit tests on the next pass if you want spec lock.
 
 ### C-2: Scrivener importer — `<FileExtension>` sanitization `[~]`
 - **What**: User-controlled `ext` interpolated into destination paths for media copy. `write_project` currently rejects the resulting `..` path, so the import aborts — not an escape primitive today, but a malformed-import / partial-write footgun. Treating as CRITICAL because it's adjacent to C-1 and both should land together.
