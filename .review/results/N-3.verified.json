@@ -1,0 +1,7 @@
+{
+  "id": "N-3",
+  "sha": "b494f9e6aba1abec7c775ab90c8571900f5bc9a7",
+  "ts": "2026-05-16T23:49:00Z",
+  "reviewer": "claude",
+  "note": "All 6 items addressed. (1+2) Rust filesystem swallows replaced with ?-propagated errors carrying the path. (3) Entity scan capped at 1024 entities and 8 path components; overflow returns InvalidFormat (loud). (4) Doc-only acceptance for the 4-key validator scope (Known Gap acknowledged). (5) Timeline distinguishes 'no times' vs 'all NaN' empty states; durationWidth returns undefined when all times equal so scaling artifact gone. (6) SessionBadge one-time toast per project, suppression keyed on project identity. Clippy -D warnings clean; 43+90+4+10 tests pass; eslint clean; no scope creep."
+}
