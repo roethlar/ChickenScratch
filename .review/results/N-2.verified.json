@@ -1,0 +1,7 @@
+{
+  "id": "N-2",
+  "sha": "5f85bf9dfe0145a0ea00e5d812c0313d5458837b",
+  "ts": "2026-05-16T23:31:00Z",
+  "reviewer": "claude",
+  "note": "Effect wrapped in async IIFE so flushPendingEditorSave is actually awaited (closes the race I called out alongside the silent-error issue). Two split try/catch: flush failure toasts and aborts; gitCmd failure toasts and clears revisions. Cancellation guards preserved."
+}

@@ -323,7 +323,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Files**: `src-tauri/src/commands/io.rs:438`.
 - **Notes for GPT**: One-liner — replace the `create_dir_all` call with `safe_path::ensure_project_subdir_safe(project_path, "settings")?`. Validate `cargo clippy ... -- -D warnings` clean before sentinelling.
 
-### N-2: `DocumentHistory` swallows fetch errors silently `[~]`
+### N-2: `DocumentHistory` swallows fetch errors silently `[x]`
 - **What**: `ui/src/components/revisions/DocumentHistory.tsx:42-44` — the effect that loads git history catches all errors and sets `revisions = []`. On a corrupt repo, permission-denied, or other failure, the user sees an empty history with no signal that anything failed.
 - **Severity**: LOW (UX). Pairs with the M-2 / M-3 pattern of preferring loud failure over silent empty.
 - **Files**: `ui/src/components/revisions/DocumentHistory.tsx:42-44`.
@@ -331,6 +331,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Branch**: `fix/n-2-document-history-errors`
 - **Approach**: split flush and git-history catches; file-history flush failure now toasts and aborts the fetch, while git-history load failure clears revisions and shows a failure toast.
 - **Tests**: `cd ui && npm ci && npm run lint && npm run build && git diff --check`.
+- **Reviewer verdict**: VERIFIED (commit `5f85bf9`). Effect at `DocumentHistory.tsx:32-58` now wraps the work in an async IIFE so `flushPendingEditorSave()` is actually awaited (closes the race I called out alongside the toast issue). Two separate `try/catch` blocks: flush failure → toast "File history aborted — editor save failed: …" and returns; gitCmd failure → toast "Failed to load document history: …". Cancellation guards (`if (!cancelled)`) preserved on every state mutation. Lint clean.
 
 ### N-3: Tightening pass — silent error swallows + perf nits `[ ]`
 - **What**: A bundle of small low-severity items surfaced in the rescan. Group as one branch since they're all "make this loud" / "guard this edge."
