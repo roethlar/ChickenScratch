@@ -1,0 +1,7 @@
+{
+  "id": "H-5",
+  "sha": "a570f79b270ab1a96debba04eee6846e45d0f7b0",
+  "ts": "2026-05-16T16:00:30Z",
+  "reviewer": "claude",
+  "note": "Keyring 3.6.3 with native backends. All Serialize-to-file paths nul plaintext via redact_secrets first. Migration writes keyring then nulls plaintext only on success; failure-mode tested. Provider-namespaced (chickenscratch.ai.api_key.{provider}); UI never receives plaintext. 13 fake-keyring tests, no real keychain touched. Nits: single sync token namespace; load-time migration errors swallowed."
+}
