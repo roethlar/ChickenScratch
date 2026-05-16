@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useProjectStore } from "../../stores/projectStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { TreeNode } from "../../types";
@@ -26,7 +27,7 @@ export function CommandPalette({
   open: boolean;
   onClose: () => void;
 }) {
-  const project = useProjectStore((s) => s.project);
+  const hierarchy = useProjectStore(useShallow((s) => s.project?.hierarchy ?? null));
   const selectDocument = useProjectStore((s) => s.selectDocument);
   const { setTheme, toggleFocusMode } = useSettingsStore();
   const [query, setQuery] = useState("");
@@ -58,8 +59,8 @@ export function CommandPalette({
       { id: "focus", label: "Toggle Focus Mode", category: "action", action: toggleFocusMode },
     ];
 
-    const docs: CommandItem[] = project
-      ? flattenDocNames(project.hierarchy).map((d) => ({
+    const docs: CommandItem[] = hierarchy
+      ? flattenDocNames(hierarchy).map((d) => ({
           id: `doc-${d.id}`,
           label: d.name,
           category: "document",
@@ -68,7 +69,7 @@ export function CommandPalette({
       : [];
 
     return [...docs, ...actions];
-  }, [project, selectDocument, setTheme, toggleFocusMode]);
+  }, [hierarchy, selectDocument, setTheme, toggleFocusMode]);
 
   const filtered = useMemo(() => {
     if (!query) return items;

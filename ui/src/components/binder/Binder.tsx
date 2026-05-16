@@ -16,6 +16,7 @@ import {
   Layers,
 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import type { TreeNode, Project } from "../../types";
 import { useProjectStore, type FlowDoc } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
@@ -90,7 +91,14 @@ export function Binder() {
 }
 
 function BinderInner() {
-  const project = useProjectStore((s) => s.project);
+  const projectInfo = useProjectStore(
+    useShallow((s) =>
+      s.project
+        ? { id: s.project.id, name: s.project.name, path: s.project.path }
+        : null
+    )
+  );
+  const hierarchy = useProjectStore(useShallow((s) => s.project?.hierarchy ?? null));
   const activeDocId = useProjectStore((s) => s.activeDocId);
   const selectDocument = useProjectStore((s) => s.selectDocument);
   // Use the store helper so `activeDoc` re-derives from the new project
@@ -136,13 +144,13 @@ function BinderInner() {
         }
         return null;
       };
-      return project ? search(project.hierarchy) : null;
+      return hierarchy ? search(hierarchy) : null;
     },
-    [project]
+    [hierarchy]
   );
 
   /** Find the Manuscript folder ID */
-  const manuscriptId = project?.hierarchy.find(
+  const manuscriptId = hierarchy?.find(
     (n): n is Extract<TreeNode, { type: "Folder" }> =>
       n.type === "Folder" && n.name === "Manuscript"
   )?.id;
@@ -157,55 +165,55 @@ function BinderInner() {
 
   const handleNewDoc = useCallback(
     async (parentId?: string) => {
-      if (!project) return;
+      if (!projectInfo) return;
       const name = await dialogPrompt("Document name:");
       if (!name || !name.trim()) return;
       const pid = parentId !== undefined ? parentId : getParentForNew();
-      const updated = await docCmd.createDocument(project.path, name.trim(), pid);
+      const updated = await docCmd.createDocument(projectInfo.path, name.trim(), pid);
       setProject(updated);
       closeMenu();
     },
-    [project, getParentForNew, setProject, closeMenu]
+    [projectInfo, getParentForNew, setProject, closeMenu]
   );
 
   const handleNewFolder = useCallback(
     async (parentId?: string) => {
-      if (!project) return;
+      if (!projectInfo) return;
       const name = await dialogPrompt("Folder name:");
       if (!name || !name.trim()) return;
       const pid = parentId !== undefined ? parentId : getParentForNew();
-      const updated = await docCmd.createFolder(project.path, name.trim(), pid);
+      const updated = await docCmd.createFolder(projectInfo.path, name.trim(), pid);
       setProject(updated);
       closeMenu();
     },
-    [project, getParentForNew, setProject, closeMenu]
+    [projectInfo, getParentForNew, setProject, closeMenu]
   );
 
   // Find Trash folder ID
-  const trashId = project?.hierarchy.find(
+  const trashId = hierarchy?.find(
     (n): n is Extract<TreeNode, { type: "Folder" }> =>
       n.type === "Folder" && n.name === "Trash"
   )?.id ?? null;
 
   const handleDelete = useCallback(
     async (nodeId: string) => {
-      if (!project) return;
+      if (!projectInfo || !hierarchy) return;
 
       // If item is already in Trash, permanently delete
-      const isInTrash = trashId && isChildOf(project.hierarchy, nodeId, trashId);
+      const isInTrash = trashId && isChildOf(hierarchy, nodeId, trashId);
       if (isInTrash) {
         if (!(await dialogConfirm("Permanently delete this item?"))) return;
-        const updated = await docCmd.deleteNode(project.path, nodeId);
+        const updated = await docCmd.deleteNode(projectInfo.path, nodeId);
         setProject(updated);
       } else if (trashId) {
         // Move to Trash
-        const updated = await docCmd.moveNode(project.path, nodeId, trashId);
+        const updated = await docCmd.moveNode(projectInfo.path, nodeId, trashId);
         setProject(updated);
         toastSuccess("Moved to Trash");
       } else {
         // No Trash folder — permanent delete
         if (!(await dialogConfirm("Permanently delete this item?"))) return;
-        const updated = await docCmd.deleteNode(project.path, nodeId);
+        const updated = await docCmd.deleteNode(projectInfo.path, nodeId);
         setProject(updated);
       }
 
@@ -214,12 +222,12 @@ function BinderInner() {
       }
       closeMenu();
     },
-    [project, activeDocId, trashId, setProject, closeMenu]
+    [projectInfo, hierarchy, activeDocId, trashId, setProject, closeMenu]
   );
 
   const handleRename = useCallback(
     async (nodeId: string) => {
-      if (!project) return;
+      if (!projectInfo || !hierarchy) return;
       const findName = (nodes: TreeNode[]): string | null => {
         for (const n of nodes) {
           if (n.id === nodeId) return n.name;
@@ -230,38 +238,38 @@ function BinderInner() {
         }
         return null;
       };
-      const currentName = findName(project.hierarchy) || "";
+      const currentName = findName(hierarchy) || "";
       const newName = await dialogPrompt("Rename:", currentName);
       if (!newName || !newName.trim() || newName.trim() === currentName) return;
-      const updated = await docCmd.renameNode(project.path, nodeId, newName.trim());
+      const updated = await docCmd.renameNode(projectInfo.path, nodeId, newName.trim());
       setProject(updated);
       closeMenu();
     },
-    [project, setProject, closeMenu]
+    [projectInfo, hierarchy, setProject, closeMenu]
   );
 
   const handleMoveUp = useCallback(
     async (nodeId: string) => {
-      if (!project) return;
-      const found = findNodeIndex(project.hierarchy, nodeId);
+      if (!projectInfo || !hierarchy) return;
+      const found = findNodeIndex(hierarchy, nodeId);
       if (!found || found.index === 0) return;
-      const updated = await docCmd.moveNode(project.path, nodeId, undefined, found.index - 1);
+      const updated = await docCmd.moveNode(projectInfo.path, nodeId, undefined, found.index - 1);
       setProject(updated);
       closeMenu();
     },
-    [project, setProject, closeMenu]
+    [projectInfo, hierarchy, setProject, closeMenu]
   );
 
   const handleMoveDown = useCallback(
     async (nodeId: string) => {
-      if (!project) return;
-      const found = findNodeIndex(project.hierarchy, nodeId);
+      if (!projectInfo || !hierarchy) return;
+      const found = findNodeIndex(hierarchy, nodeId);
       if (!found || found.index >= found.siblings.length - 1) return;
-      const updated = await docCmd.moveNode(project.path, nodeId, undefined, found.index + 1);
+      const updated = await docCmd.moveNode(projectInfo.path, nodeId, undefined, found.index + 1);
       setProject(updated);
       closeMenu();
     },
-    [project, setProject, closeMenu]
+    [projectInfo, hierarchy, setProject, closeMenu]
   );
 
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -271,25 +279,25 @@ function BinderInner() {
 
   const handleNewFromTemplate = useCallback(
     async (templateId: string, parentId?: string) => {
-      if (!project) return;
+      if (!projectInfo) return;
       const template = templates.find((t) => t.id === templateId);
       const name = await dialogPrompt("Document name:", template?.name || "");
       if (!name || !name.trim()) return;
       const pid = parentId !== undefined ? parentId : getParentForNew();
       try {
-        const updated = await createFromTemplate(project.path, templateId, name.trim(), pid);
+        const updated = await createFromTemplate(projectInfo.path, templateId, name.trim(), pid);
         setProject(updated);
       } catch (e) {
         toastError(`Failed: ${e}`);
       }
       closeMenu();
     },
-    [project, templates, getParentForNew, setProject, closeMenu]
+    [projectInfo, templates, getParentForNew, setProject, closeMenu]
   );
 
   const handleImportFile = useCallback(
     async (parentId?: string) => {
-      if (!project) return;
+      if (!projectInfo) return;
       const filePath = await openDialog({
         title: "Import File",
         filters: [
@@ -308,7 +316,7 @@ function BinderInner() {
       });
       if (!filePath) return;
       try {
-        const updated = await importFile(project.path, filePath, parentId);
+        const updated = await importFile(projectInfo.path, filePath, parentId);
         setProject(updated);
         toastSuccess("File imported");
       } catch (e) {
@@ -316,7 +324,7 @@ function BinderInner() {
       }
       closeMenu();
     },
-    [project, setProject, closeMenu]
+    [projectInfo, setProject, closeMenu]
   );
 
   // State for "Move to..." folder picker
@@ -325,7 +333,7 @@ function BinderInner() {
 
   /** Collect all folders in the hierarchy for the Move To picker */
   const allFolders = useCallback((): { id: string; name: string; depth: number }[] => {
-    if (!project) return [];
+    if (!hierarchy) return [];
     const result: { id: string; name: string; depth: number }[] = [];
     const walk = (nodes: TreeNode[], depth: number) => {
       for (const n of nodes) {
@@ -335,15 +343,15 @@ function BinderInner() {
         }
       }
     };
-    walk(project.hierarchy, 0);
+    walk(hierarchy, 0);
     return result;
-  }, [project]);
+  }, [hierarchy]);
 
   const handleMoveTo = useCallback(
     async (nodeId: string, targetFolderId: string) => {
-      if (!project) return;
+      if (!projectInfo) return;
       try {
-        const updated = await docCmd.moveNode(project.path, nodeId, targetFolderId);
+        const updated = await docCmd.moveNode(projectInfo.path, nodeId, targetFolderId);
         setProject(updated);
         toastSuccess("Moved");
       } catch (e) {
@@ -352,7 +360,7 @@ function BinderInner() {
       setMovingNodeId(null);
       closeMenu();
     },
-    [project, setProject, closeMenu]
+    [projectInfo, setProject, closeMenu]
   );
 
   const enterFlow = useProjectStore((s) => s.enterFlow);
@@ -360,12 +368,14 @@ function BinderInner() {
   /** Recursively collect all .md documents under a folder node, in tree order. */
   const collectFlowDocs = useCallback(
     (folderId: string): FlowDoc[] => {
-      if (!project) return [];
+      if (!hierarchy) return [];
+      const documents = useProjectStore.getState().project?.documents;
+      if (!documents) return [];
       const result: FlowDoc[] = [];
       const walk = (nodes: TreeNode[]) => {
         for (const n of nodes) {
           if (n.type === "Document" && n.path.endsWith(".md")) {
-            const doc = project.documents[n.id];
+            const doc = documents[n.id];
             if (doc) result.push({ docId: n.id, name: n.name, path: n.path });
           } else if (n.type === "Folder") {
             walk(n.children);
@@ -381,10 +391,10 @@ function BinderInner() {
           if (n.type === "Folder") findAndWalk(n.children);
         }
       };
-      findAndWalk(project.hierarchy);
+      findAndWalk(hierarchy);
       return result;
     },
-    [project]
+    [hierarchy]
   );
 
   const handleFolderFlow = useCallback(
@@ -411,45 +421,47 @@ function BinderInner() {
   );
 
   const handleFlowStart = useCallback(() => {
-    if (!project || flowSelected.size < 2) return;
+    if (!hierarchy || flowSelected.size < 2) return;
+    const documents = useProjectStore.getState().project?.documents;
+    if (!documents) return;
     const docs: FlowDoc[] = [];
     for (const id of flowSelected) {
-      const doc = project.documents[id];
+      const doc = documents[id];
       if (doc) docs.push({ docId: id, name: doc.name, path: doc.path });
     }
     if (docs.length > 1) {
       enterFlow(docs);
       setFlowSelected(new Set());
     }
-  }, [project, flowSelected, enterFlow]);
+  }, [hierarchy, flowSelected, enterFlow]);
 
   // Wire drag-and-drop handler
   const drag = useDrag();
   useEffect(() => {
     drag.setOnDrop(async (dragId: string, targetId: string, position: "before" | "after" | "into") => {
-      if (!project) return;
+      if (!projectInfo || !hierarchy) return;
       try {
         let updated;
         if (position === "into") {
-          updated = await docCmd.moveNode(project.path, dragId, targetId);
+          updated = await docCmd.moveNode(projectInfo.path, dragId, targetId);
         } else {
           // Reorder relative to a target. The target's parent is what we
           // want — without it the backend reorders inside the dragged
           // item's *current* parent, which silently strands cross-folder
           // drops.
-          const found = findNodeIndex(project.hierarchy, targetId);
+          const found = findNodeIndex(hierarchy, targetId);
           if (!found) return;
           const newIndex = position === "before" ? found.index : found.index + 1;
-          updated = await docCmd.moveNode(project.path, dragId, found.parentId ?? undefined, newIndex);
+          updated = await docCmd.moveNode(projectInfo.path, dragId, found.parentId ?? undefined, newIndex);
         }
         setProject(updated);
       } catch (e) {
         toastError(`Move failed: ${e}`);
       }
     });
-  }, [project, drag, setProject]);
+  }, [projectInfo, hierarchy, drag, setProject]);
 
-  if (!project) return null;
+  if (!projectInfo || !hierarchy) return null;
 
   return (
     <nav
@@ -471,7 +483,7 @@ function BinderInner() {
       tabIndex={0}
     >
       <div className="binder-header">
-        <span className="binder-title">{project.name}</span>
+        <span className="binder-title">{projectInfo.name}</span>
         <div className="binder-header-actions">
           {flowSelected.size > 1 && (
             <button
@@ -499,14 +511,14 @@ function BinderInner() {
         </div>
       </div>
       <div className="binder-tree">
-        {project.hierarchy.map((node) => (
+        {hierarchy.map((node) => (
           <TreeItem
             key={node.id}
             node={node}
             depth={0}
             activeId={activeDocId}
             selectedId={selectedId}
-            projectId={project.id}
+            projectId={projectInfo.id}
             onSelect={selectDocument}
             onSelectNode={setSelectedId}
             onContextMenu={handleContextMenu}
@@ -519,7 +531,7 @@ function BinderInner() {
         <EntitySection
           kind="character"
           label="Characters"
-          project={project}
+          projectPath={projectInfo.path}
           activeDocId={activeDocId}
           onSelect={selectDocument}
           onCreated={setProject}
@@ -527,7 +539,7 @@ function BinderInner() {
         <EntitySection
           kind="location"
           label="Locations"
-          project={project}
+          projectPath={projectInfo.path}
           activeDocId={activeDocId}
           onSelect={selectDocument}
           onCreated={setProject}
@@ -540,7 +552,7 @@ function BinderInner() {
           y={contextMenu.y}
           nodeId={contextMenu.nodeId}
           nodeType={contextMenu.nodeType}
-          hierarchy={project.hierarchy}
+          hierarchy={hierarchy}
           onNewDoc={handleNewDoc}
           onNewFolder={handleNewFolder}
           onDelete={handleDelete}
@@ -555,20 +567,22 @@ function BinderInner() {
             closeMenu();
           }}
           onEmptyTrash={async () => {
-            if (!project || !trashId) return;
+            if (!projectInfo || !trashId) return;
             if (!(await dialogConfirm("Permanently delete everything in Trash?"))) return;
             // Delete all children of Trash
-            const trashFolder = project.hierarchy.find(
+            const trashFolder = hierarchy.find(
               (n) => n.type === "Folder" && n.id === trashId
             );
             if (trashFolder && trashFolder.type === "Folder") {
-              let latest = project;
+              let latest: Project | null = null;
+              let latestPath = projectInfo.path;
               for (const child of [...trashFolder.children]) {
                 try {
-                  latest = await docCmd.deleteNode(latest.path, child.id);
+                  latest = await docCmd.deleteNode(latestPath, child.id);
+                  latestPath = latest.path;
                 } catch { /* continue */ }
               }
-              setProject(latest);
+              if (latest) setProject(latest);
               toastSuccess("Trash emptied");
             }
             closeMenu();
@@ -621,26 +635,33 @@ function BinderInner() {
 }
 
 function ThreadDots({ docId }: { docId: string }) {
-  const project = useProjectStore((s) => s.project);
-  if (!project) return null;
-  const doc = project.documents[docId];
-  const ids = doc?.fields?.threads;
-  if (!Array.isArray(ids) || ids.length === 0) return null;
-  const threads = (project.threads ?? []).reduce((map, t) => map.set(t.id, t), new Map<string, { color?: string | null }>());
+  const { ids, threads } = useProjectStore(useShallow((s) => {
+    const project = s.project;
+    const ids = project?.documents[docId]?.fields?.threads;
+    return {
+      ids: Array.isArray(ids) ? ids : null,
+      threads: project?.threads ?? null,
+    };
+  }));
+  const dots = useMemo(() => {
+    if (!ids || ids.length === 0) return [];
+    const colors = new Map((threads ?? []).map((t) => [t.id, t.color || "#888"]));
+    return ids
+      .slice(0, 4)
+      .filter((id): id is string => typeof id === "string")
+      .map((id) => ({ id, color: colors.get(id) || "#888" }));
+  }, [ids, threads]);
+  if (dots.length === 0) return null;
   return (
     <span className="binder-thread-dots">
-      {ids.slice(0, 4).map((id, i) => {
-        if (typeof id !== "string") return null;
-        const t = threads.get(id);
-        return (
-          <span
-            key={`${id}-${i}`}
-            className="binder-thread-dot"
-            style={{ backgroundColor: t?.color || "#888" }}
-            title={id}
-          />
-        );
-      })}
+      {dots.map((dot, i) => (
+        <span
+          key={`${dot.id}-${i}`}
+          className="binder-thread-dot"
+          style={{ backgroundColor: dot.color }}
+          title={dot.id}
+        />
+      ))}
     </span>
   );
 }
@@ -648,25 +669,37 @@ function ThreadDots({ docId }: { docId: string }) {
 function EntitySection({
   kind,
   label,
-  project,
+  projectPath,
   activeDocId,
   onSelect,
   onCreated,
 }: {
   kind: "character" | "location";
   label: string;
-  project: Project;
+  projectPath: string;
   activeDocId: string | null;
   onSelect: (id: string) => void;
   onCreated: (project: Project) => void;
 }) {
   const prefix = kind === "character" ? "characters/" : "locations/";
+  const entitySignature = useProjectStore((s) => {
+    const docs = s.project?.documents;
+    if (!docs) return "";
+    return Object.values(docs)
+      .filter((d) => d.path.startsWith(prefix))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((d) => `${d.id}\u0000${d.name}`)
+      .join("\u0001");
+  });
   const entities = useMemo(
     () =>
-      Object.values(project.documents)
-        .filter((d) => d.path.startsWith(prefix))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [project.documents, prefix]
+      entitySignature
+        ? entitySignature.split("\u0001").map((entry) => {
+            const [id, name] = entry.split("\u0000");
+            return { id, name };
+          })
+        : [],
+    [entitySignature]
   );
   const [open, setOpen] = useState(true);
 
@@ -674,12 +707,12 @@ function EntitySection({
     const name = await dialogPrompt(`New ${kind} name:`);
     if (!name?.trim()) return;
     try {
-      const updated = await docCmd.createEntity(project.path, name.trim(), kind);
+      const updated = await docCmd.createEntity(projectPath, name.trim(), kind);
       onCreated(updated);
     } catch (e) {
       toastError(`Failed to create ${kind}: ${e}`);
     }
-  }, [project, kind, onCreated]);
+  }, [projectPath, kind, onCreated]);
 
   return (
     <div className="binder-entity-section">
