@@ -38,9 +38,10 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 
 ### C-1: Scrivener importer — UUID path traversal `[~]`
 - **What**: `BinderItem.uuid` is raw XML data; `Path::join(uuid)` with an absolute or `..`-bearing UUID reads arbitrary host files into the imported project as document content. Arbitrary-read primitive.
+- **Branch**: `fix/c-1-scrivener-uuid-validation`
 - **Files**: `crates/core/src/scrivener/parser/scrivx.rs:50` (uuid field), `:181-196` (`get_rtf_path`/`get_media_path`); `crates/core/src/scrivener/converter/mod.rs:381` (callsite).
-- **Approach**: _(GPT to fill in)_ — added `validate_scrivener_uuid` at scrivx.rs:186.
-- **Tests added**: _(GPT to fill in)_
+- **Approach**: Added strict hyphenated UUID validation before `get_rtf_path`/`get_media_path` join `Files/Data/<uuid>/...`; absolute paths, parent dirs, prefixes, separators, empty values, and non-UUID-like values now return `ChiknError::InvalidFormat`. `converter/mod.rs` was touched only to propagate those fallible path helper errors and to exercise rejection through the real importer.
+- **Tests added**: Parser helper tests for valid sample UUIDs plus absolute/parent-dir/media UUID rejection; importer tests proving absolute and parent-dir UUIDs fail before resolving/writing escaped content.
 - **Reviewer comments**:
 
 ### C-2: Scrivener importer — `<FileExtension>` sanitization `[~]`
