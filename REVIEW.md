@@ -73,14 +73,16 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 
 ### C-5: AI streaming writes to wrong document after navigation `[~]`
 - **What**: `Toolbar.tsx` closure captures `editor` at stream start; Tiptap reuses the same instance across docs, so chunks for doc A land in doc B's buffer if the user navigates mid-stream. No cancellation.
+- **Branch**: `fix/c-5-ai-stream-doc-routing`
 - **Files**: `ui/src/components/editor/Toolbar.tsx:327-385` (stream handlers); `src-tauri/src/commands/ai.rs:62-109` (thread spawn, no registry).
 - **Notes for GPT**:
   1. Stamp each stream with the originating `docId` at start.
   2. On each chunk, compare to `useProjectStore.getState().activeDocId` — if it has changed, drop the chunk (and emit an abort signal to backend if possible).
   3. Add a backend cancellation channel: thread checks an `Arc<AtomicBool>` between chunks; frontend can signal cancel.
   4. Bonus: `editor.commands.insertContentAt(currentEnd, delta)` (append-only) instead of the current O(n²) re-select/re-insert pattern.
-- **Approach**: frontend stamps stream requests with the active project/doc/flow context and refuses to apply chunks after navigation; backend now tracks request ids in a Tauri-managed cancellation registry and streaming loops check an `Arc<AtomicBool>` between chunks. The UI sends `cancel_ai_transform_stream` as soon as context changes, and pre-registration cancellation is remembered to avoid a lost-cancel race.
-- **Tests added**: Tauri unit tests for registered cancellation and pre-registration cancellation. UI verified by lint/build.
+- **Approach**: frontend stamps each stream with the active project path plus a context key (`doc:<activeDocId>` or `flow:<ordered doc ids>`), verifies the live store context before every chunk/done/error handler, and cancels/aborts the stream when navigation changes that context. Backend tracks request ids in a Tauri-managed cancellation registry and provider streaming loops check an `Arc<AtomicBool>` before work, between reads, and before chunk emission.
+- **Tests added**: Tauri unit tests for registered cancellation and pre-registration cancellation. UI verified by lint/build; no UI stream navigation harness exists.
+- **Touched files**: `src-tauri/src/commands/ai.rs`, `src-tauri/src/main.rs`, `ui/src/commands/ai.ts`, `ui/src/components/editor/Toolbar.tsx`, `.review/findings/C-5.md`, `REVIEW.md`.
 
 ---
 

@@ -25,7 +25,12 @@ import {
 } from "lucide-react";
 import { useCallback } from "react";
 import { dialogPrompt } from "../shared/Dialog";
-import { aiTransformStream, type AiOperation } from "../../commands/ai";
+import {
+  aiTransformStream,
+  cancelAiTransformStream,
+  createAiStreamId,
+  type AiOperation,
+} from "../../commands/ai";
 import { toastError, toastSuccess } from "../shared/Toast";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useProjectStore } from "../../stores/projectStore";
@@ -325,6 +330,23 @@ function AiMenu({ editor }: { editor: Editor }) {
   const [working, setWorking] = useState(false);
 
   const handleOp = useCallback(async (op: AiOperation) => {
+    const aiContextKey = (state: ReturnType<typeof useProjectStore.getState>) => {
+      if (state.activeDocId) return `doc:${state.activeDocId}`;
+      if (state.flowDocs) {
+        return `flow:${state.flowDocs.map((doc) => doc.docId).join(",")}`;
+      }
+      return null;
+    };
+
+    const origin = useProjectStore.getState();
+    const originProjectPath = origin.project?.path ?? null;
+    const originContextKey = aiContextKey(origin);
+    if (!originContextKey || !originProjectPath) {
+      toastError("Open a document before using AI");
+      setOpen(false);
+      return;
+    }
+
     const { from, to } = editor.state.selection;
     if (from === to) {
       toastError("Select some text first");
@@ -335,8 +357,35 @@ function AiMenu({ editor }: { editor: Editor }) {
     setWorking(true);
     setOpen(false);
 
-    let buffer = "";
+    const requestId = createAiStreamId();
+    const abortController = new AbortController();
+    let cancelledForContext = false;
+    const stillOnOriginDoc = () => {
+      if (cancelledForContext) return false;
+      const current = useProjectStore.getState();
+      const matches =
+        aiContextKey(current) === originContextKey &&
+        current.project?.path === originProjectPath;
+      if (!matches) cancelledForContext = true;
+      return matches;
+    };
+
+    let unsubscribe: (() => void) | null = null;
+    unsubscribe = useProjectStore.subscribe((state) => {
+      if (
+        aiContextKey(state) !== originContextKey ||
+        state.project?.path !== originProjectPath
+      ) {
+        cancelledForContext = true;
+        cancelAiTransformStream(requestId).catch(() => {});
+        abortController.abort();
+        unsubscribe?.();
+      }
+    });
+
     try {
+      if (!stillOnOriginDoc()) return;
+
       if (op === "brainstorm") {
         // Brainstorm: stream results into a blockquote AFTER the selection
         // so the user keeps their original passage.
@@ -347,20 +396,24 @@ function AiMenu({ editor }: { editor: Editor }) {
           .insertContent("\n\n> ")
           .run();
         const insertPos = editor.state.selection.from;
-        await aiTransformStream(selectedText, op, (delta) => {
-          buffer += delta;
-          // Replace from insertPos to end of buffer with current text
-          editor
-            .chain()
-            .focus()
-            .setTextSelection({ from: insertPos, to: insertPos + buffer.length - delta.length })
-            .insertContent(buffer.replace(/\n/g, "\n> "))
-            .run();
-        });
+        let currentEnd = insertPos;
+        await aiTransformStream(
+          selectedText,
+          op,
+          (delta) => {
+            const chunk = delta.replace(/\n/g, "\n> ");
+            editor.commands.insertContentAt(currentEnd, chunk);
+            currentEnd += chunk.length;
+          },
+          {
+            requestId,
+            shouldContinue: stillOnOriginDoc,
+            abortSignal: abortController.signal,
+          }
+        );
       } else {
         // Polish/expand/simplify: stream replacement into the original range.
-        // We delete the selection first, then keep replacing the inserted
-        // span as more chunks arrive.
+        // We delete the selection first, then append chunks into that span.
         editor
           .chain()
           .focus()
@@ -368,20 +421,29 @@ function AiMenu({ editor }: { editor: Editor }) {
           .deleteSelection()
           .run();
         const insertPos = editor.state.selection.from;
-        await aiTransformStream(selectedText, op, (delta) => {
-          buffer += delta;
-          editor
-            .chain()
-            .focus()
-            .setTextSelection({ from: insertPos, to: insertPos + buffer.length - delta.length })
-            .insertContent(buffer)
-            .run();
-        });
+        let currentEnd = insertPos;
+        await aiTransformStream(
+          selectedText,
+          op,
+          (delta) => {
+            editor.commands.insertContentAt(currentEnd, delta);
+            currentEnd += delta.length;
+          },
+          {
+            requestId,
+            shouldContinue: stillOnOriginDoc,
+            abortSignal: abortController.signal,
+          }
+        );
       }
     } catch (e) {
-      toastError(`AI failed: ${e}`);
+      if (!cancelledForContext) {
+        toastError(`AI failed: ${e}`);
+      }
+    } finally {
+      unsubscribe?.();
+      setWorking(false);
     }
-    setWorking(false);
   }, [editor]);
 
   return (

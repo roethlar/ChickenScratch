@@ -1,4 +1,9 @@
 use chickenscratch_core::ChiknError;
+use std::collections::HashMap;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 
 use super::settings::{get_app_settings, get_app_settings_hydrated, AiSettings};
 
@@ -33,6 +38,49 @@ pub fn save_ai_settings(ai: AiSettings) -> Result<(), ChiknError> {
     super::settings::save_app_settings(settings)
 }
 
+#[derive(Clone, Default)]
+pub struct AiStreamRegistry {
+    cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+}
+
+impl AiStreamRegistry {
+    fn register(&self, request_id: &str) -> Arc<AtomicBool> {
+        let mut cancellations = self
+            .cancellations
+            .lock()
+            .expect("AI stream registry poisoned");
+        let flag = cancellations
+            .remove(request_id)
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+        cancellations.insert(request_id.to_string(), Arc::clone(&flag));
+        flag
+    }
+
+    fn cancel(&self, request_id: &str) {
+        let mut cancellations = self
+            .cancellations
+            .lock()
+            .expect("AI stream registry poisoned");
+        let flag = cancellations
+            .entry(request_id.to_string())
+            .or_insert_with(|| Arc::new(AtomicBool::new(false)));
+        flag.store(true, Ordering::SeqCst);
+    }
+
+    fn unregister(&self, request_id: &str, flag: &Arc<AtomicBool>) {
+        let mut cancellations = self
+            .cancellations
+            .lock()
+            .expect("AI stream registry poisoned");
+        if cancellations
+            .get(request_id)
+            .is_some_and(|current| Arc::ptr_eq(current, flag))
+        {
+            cancellations.remove(request_id);
+        }
+    }
+}
+
 #[tauri::command]
 pub fn ai_summarize(content: String) -> Result<String, ChiknError> {
     let settings = get_app_settings_hydrated();
@@ -63,6 +111,7 @@ pub fn ai_summarize(content: String) -> Result<String, ChiknError> {
 #[tauri::command]
 pub fn ai_transform_stream(
     app: tauri::AppHandle,
+    registry: tauri::State<'_, AiStreamRegistry>,
     content: String,
     operation: String,
     request_id: String,
@@ -74,9 +123,14 @@ pub fn ai_transform_stream(
         ));
     }
 
+    let cancel_flag = registry.register(&request_id);
+
     let plain = strip_comment_spans(&content);
     if plain.trim().is_empty() {
-        let _ = emit_done(&app, &request_id);
+        if !is_cancelled(&cancel_flag) {
+            let _ = emit_done(&app, &request_id);
+        }
+        registry.unregister(&request_id, &cancel_flag);
         return Ok(());
     }
 
@@ -88,26 +142,49 @@ pub fn ai_transform_stream(
     // Run the streaming request on a worker thread so the command returns
     // immediately and the event loop stays responsive.
     let app_clone = app.clone();
+    let registry = registry.inner().clone();
     let ai = settings.ai.clone();
     let req_id = request_id.clone();
     std::thread::spawn(move || {
+        if is_cancelled(&cancel_flag) {
+            registry.unregister(&req_id, &cancel_flag);
+            return;
+        }
         let result = match ai.provider.as_str() {
-            "ollama" => stream_ollama(&app_clone, &ai, &prompt, &req_id),
-            "anthropic" => stream_anthropic(&app_clone, &ai, &prompt, max_tokens, &req_id),
-            "openai" => stream_openai(&app_clone, &ai, &prompt, max_tokens, &req_id),
+            "ollama" => stream_ollama(&app_clone, &ai, &prompt, &req_id, &cancel_flag),
+            "anthropic" => {
+                stream_anthropic(&app_clone, &ai, &prompt, max_tokens, &req_id, &cancel_flag)
+            }
+            "openai" => stream_openai(&app_clone, &ai, &prompt, max_tokens, &req_id, &cancel_flag),
             other => Err(format!("Unknown AI provider: {}", other)),
         };
-        match result {
-            Ok(()) => {
-                let _ = emit_done(&app_clone, &req_id);
-            }
-            Err(msg) => {
-                let _ = emit_error(&app_clone, &req_id, &msg);
+        if !is_cancelled(&cancel_flag) {
+            match result {
+                Ok(()) => {
+                    let _ = emit_done(&app_clone, &req_id);
+                }
+                Err(msg) => {
+                    let _ = emit_error(&app_clone, &req_id, &msg);
+                }
             }
         }
+        registry.unregister(&req_id, &cancel_flag);
     });
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn cancel_ai_transform_stream(
+    registry: tauri::State<'_, AiStreamRegistry>,
+    request_id: String,
+) -> Result<(), ChiknError> {
+    registry.cancel(&request_id);
+    Ok(())
+}
+
+fn is_cancelled(cancel_flag: &AtomicBool) -> bool {
+    cancel_flag.load(Ordering::SeqCst)
 }
 
 fn instruction_for(op: &str) -> &'static str {
@@ -122,10 +199,7 @@ fn instruction_for(op: &str) -> &'static str {
 
 fn emit_chunk(app: &tauri::AppHandle, id: &str, delta: &str) {
     use tauri::Emitter;
-    let _ = app.emit(
-        "ai:chunk",
-        serde_json::json!({ "id": id, "delta": delta }),
-    );
+    let _ = app.emit("ai:chunk", serde_json::json!({ "id": id, "delta": delta }));
 }
 fn emit_done(app: &tauri::AppHandle, id: &str) -> Result<(), tauri::Error> {
     use tauri::Emitter;
@@ -133,10 +207,7 @@ fn emit_done(app: &tauri::AppHandle, id: &str) -> Result<(), tauri::Error> {
 }
 fn emit_error(app: &tauri::AppHandle, id: &str, msg: &str) -> Result<(), tauri::Error> {
     use tauri::Emitter;
-    app.emit(
-        "ai:error",
-        serde_json::json!({ "id": id, "message": msg }),
-    )
+    app.emit("ai:error", serde_json::json!({ "id": id, "message": msg }))
 }
 
 fn stream_ollama(
@@ -144,8 +215,12 @@ fn stream_ollama(
     settings: &AiSettings,
     prompt: &str,
     req_id: &str,
+    cancel_flag: &AtomicBool,
 ) -> Result<(), String> {
     use std::io::{BufRead, BufReader};
+    if is_cancelled(cancel_flag) {
+        return Ok(());
+    }
     let endpoint = settings
         .endpoint
         .as_deref()
@@ -170,7 +245,13 @@ fn stream_ollama(
     }
     let reader = BufReader::new(resp);
     for line in reader.lines() {
+        if is_cancelled(cancel_flag) {
+            break;
+        }
         let line = line.map_err(|e| format!("Stream read: {}", e))?;
+        if is_cancelled(cancel_flag) {
+            break;
+        }
         if line.trim().is_empty() {
             continue;
         }
@@ -179,7 +260,7 @@ fn stream_ollama(
             Err(_) => continue,
         };
         if let Some(s) = json.get("response").and_then(|v| v.as_str()) {
-            if !s.is_empty() {
+            if !s.is_empty() && !is_cancelled(cancel_flag) {
                 emit_chunk(app, req_id, s);
             }
         }
@@ -196,8 +277,12 @@ fn stream_anthropic(
     prompt: &str,
     max_tokens: u32,
     req_id: &str,
+    cancel_flag: &AtomicBool,
 ) -> Result<(), String> {
     use std::io::{BufRead, BufReader};
+    if is_cancelled(cancel_flag) {
+        return Ok(());
+    }
     let api_key = settings
         .api_key
         .as_deref()
@@ -228,7 +313,13 @@ fn stream_anthropic(
     }
     let reader = BufReader::new(resp);
     for line in reader.lines() {
+        if is_cancelled(cancel_flag) {
+            break;
+        }
         let line = line.map_err(|e| format!("Stream read: {}", e))?;
+        if is_cancelled(cancel_flag) {
+            break;
+        }
         // SSE lines look like: `data: {...}` or `event: foo`. Skip non-data.
         let payload = match line.strip_prefix("data: ") {
             Some(p) => p,
@@ -240,11 +331,8 @@ fn stream_anthropic(
         };
         let kind = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
         if kind == "content_block_delta" {
-            if let Some(text) = json
-                .pointer("/delta/text")
-                .and_then(|v| v.as_str())
-            {
-                if !text.is_empty() {
+            if let Some(text) = json.pointer("/delta/text").and_then(|v| v.as_str()) {
+                if !text.is_empty() && !is_cancelled(cancel_flag) {
                     emit_chunk(app, req_id, text);
                 }
             }
@@ -268,8 +356,12 @@ fn stream_openai(
     prompt: &str,
     max_tokens: u32,
     req_id: &str,
+    cancel_flag: &AtomicBool,
 ) -> Result<(), String> {
     use std::io::{BufRead, BufReader};
+    if is_cancelled(cancel_flag) {
+        return Ok(());
+    }
     let api_key = settings
         .api_key
         .as_deref()
@@ -299,7 +391,13 @@ fn stream_openai(
     }
     let reader = BufReader::new(resp);
     for line in reader.lines() {
+        if is_cancelled(cancel_flag) {
+            break;
+        }
         let line = line.map_err(|e| format!("Stream read: {}", e))?;
+        if is_cancelled(cancel_flag) {
+            break;
+        }
         let payload = match line.strip_prefix("data: ") {
             Some(p) => p,
             None => continue,
@@ -315,7 +413,7 @@ fn stream_openai(
             .pointer("/choices/0/delta/content")
             .and_then(|v| v.as_str())
         {
-            if !text.is_empty() {
+            if !text.is_empty() && !is_cancelled(cancel_flag) {
                 emit_chunk(app, req_id, text);
             }
         }
@@ -568,6 +666,26 @@ mod tests {
         assert_eq!(truncated, s);
         let truncated = truncate_chars(&s, n - 1);
         assert!(truncated.chars().count() == n - 1);
+    }
+
+    #[test]
+    fn ai_stream_registry_cancels_registered_stream() {
+        let registry = AiStreamRegistry::default();
+        let flag = registry.register("stream-1");
+
+        assert!(!is_cancelled(&flag));
+        registry.cancel("stream-1");
+        assert!(is_cancelled(&flag));
+    }
+
+    #[test]
+    fn ai_stream_registry_remembers_pre_registration_cancellation() {
+        let registry = AiStreamRegistry::default();
+
+        registry.cancel("stream-2");
+        let flag = registry.register("stream-2");
+
+        assert!(is_cancelled(&flag));
     }
 
     #[test]
