@@ -141,27 +141,37 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Files**: `crates/core/src/utils/error.rs:10`; all of `crates/core/src/core/git.rs`.
 - **Notes for GPT**: Add `ChiknError::Git(GitError)` with a sub-enum: `Auth, Conflict, NotFastForward, NoUpstream, NoCommits, NotARepo, Other(String)`. Map `git2::ErrorCode` and `git2::ErrorClass` into these. Frontend can then branch on `result.code === "Git.Auth"` and show the right toast.
 
-### M-2: Corrupt sidecars silently overwritten `[ ]`
+### M-2: Corrupt sidecars silently overwritten `[~]`
 - **What**: `reader.rs:228` `read_threads(...).unwrap_or_default()` — one corrupt `threads.yaml` and the next save erases every thread. Same shape at `writer.rs:285` (swallowed `.meta` parse), `src-tauri/src/commands/io.rs:423` (writing_history wipe).
 - **Notes for GPT**: Quarantine the corrupt file (rename to `.corrupt-<timestamp>`) before defaulting, and emit a warning so the user sees a banner. Pair with H-1.
+- **Approach**: Corrupt `threads.yaml`, document `.meta`, and `writing_history.json` now fail loudly instead of defaulting and overwriting sidecar state. This does not yet add quarantine/warning UI.
+- **Tests**: `cargo test -p chickenscratch-core corrupt --lib`; `cargo test -p chickenscratch writing_history --bins`
 
-### M-3: Pandoc subprocesses have no timeout `[ ]`
+### M-3: Pandoc subprocesses have no timeout `[~]`
 - **What**: `Command::new("pandoc").output()` blocks forever if pandoc hangs.
 - **Files**: `crates/core/src/core/compile.rs:172`, `crates/core/src/scrivener/parser/rtf.rs:23`, `src-tauri/src/commands/io.rs:166`.
 - **Notes for GPT**: Use `wait_timeout` crate, or spawn + `child.wait_timeout(Duration::from_secs(60))` + kill on expiry. Add a max-bytes guard on stdout (~50 MB) too.
+- **Approach**: Added a shared process runner with a 60-second timeout, kill-on-expiry, and a 50 MB stdout/stderr cap. Routed compile, Scrivener RTF conversion, import conversion, pandoc discovery, and the settings pandoc check through it.
+- **Tests**: `cargo test -p chickenscratch-core process --lib`; `cargo check -p chickenscratch`
 
-### M-4: Tauri CSP disabled + `shell:open` unconstrained `[ ]`
+### M-4: Tauri CSP disabled + `shell:open` unconstrained `[~]`
 - **What**: `tauri.conf.json:22` `csp: null`. `tauri.conf.json:36-38` `shell.open: true` with no validator regex. Any renderer injection chains to OS-handler code-exec.
 - **Files**: `src-tauri/tauri.conf.json:21-22, 36-38`; `src-tauri/capabilities/default.json:11`.
 - **Notes for GPT**: CSP: start with `"csp": "default-src 'self'; img-src 'self' data: asset: https://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'"` and tighten. `shell.open`: change to a URL-scheme regex like `"open": "^https?://"`.
+- **Approach**: Added a production CSP plus a dev CSP that keeps Tauri IPC and the Vite dev server reachable. Switched the shell plugin to an HTTPS-only validator and replaced the unscoped capability command with `shell:default`.
+- **Tests**: `cargo check -p chickenscratch`
 
-### M-5: `simple_word_diff` O(m·n) without sane bail-out `[ ]`
+### M-5: `simple_word_diff` O(m·n) without sane bail-out `[~]`
 - **What**: `git.rs:973-1033` builds `vec![vec![0u32; n+1]; m+1]` LCS table. Cap is 5000 words → up to 100 MB allocation per call from the revisions UI.
 - **Notes for GPT**: Either drop the cap to ~1500 words, or replace with a streaming diff (e.g. `similar` crate). Render a "diff too large" placeholder above the cap.
+- **Approach**: Added an LCS matrix cell cap of `1_500 * 1_500`; larger requests now return the existing coarse deleted/added diff without building the table.
+- **Tests**: `cargo test -p chickenscratch-core simple_word_diff --lib`
 
-### M-6: `beforeunload` flush is best-effort `[ ]`
+### M-6: `beforeunload` flush is best-effort `[~]`
 - **What**: `App.tsx:148` awaits `flushPendingEditorSave()` in `beforeunload`, but `beforeunload` cannot block on real promises across the webview boundary.
 - **Notes for GPT**: Switch to Tauri v2's `onCloseRequested` (`@tauri-apps/api/window`) to actually defer close until the save resolves.
+- **Approach**: Replaced the Tauri close path with `getCurrentWindow().onCloseRequested`, awaiting the pending editor flush and canceling close if that flush fails; browser `beforeunload` remains only as a fallback outside Tauri.
+- **Tests**: `npm run lint`; `npm run build`
 
 ---
 
@@ -237,6 +247,20 @@ Once you commit, each commit will get a dedicated subagent review on the next cy
 **Validation**: caught one transient `unexpected closing delimiter` in `chickenscratch` test bin mid-cycle — cleared on retry; signals GPT was actively editing, no real defect. End-state: clippy 0 warnings, eslint clean, tests **70 (core) + 16 (cli) + 3 + 2 = 91 passing**. No regressions.
 
 **Reviewer ask**: please commit **C-3, H-1, H-4** now — they look complete and I want to verify them in isolation before the next layer lands on top. The longer WIP accumulates, the harder it gets to localize any regression I find.
+
+### Review pass 3 (still no commits)
+
+**WIP at 37 files** (+7 since cycle 2). Validation clean: clippy 0 warnings, eslint clean, tests **96 passing** (75 core, 16 cli, +5 from other crates — five new tests since cycle 2).
+
+New surface area noted (still WIP, not graded):
+- **M-3 (pandoc timeout)**: new module `crates/core/src/utils/process.rs` plus changes to `compile.rs`, `scrivener/parser/rtf.rs`, `utils/mod.rs`. Looks like the bounded-subprocess wrapper landed.
+- **M-4 (CSP + shell.open)**: `src-tauri/tauri.conf.json` and `src-tauri/capabilities/default.json` modified.
+- **M-6 (`onCloseRequested`)**: `ui/src/App.tsx` switched to `getCurrentWindow().onCloseRequested(...)` per the prior note.
+- **Extra**: `ui/src/components/preview/Preview.tsx` now uses `DOMPurify.sanitize` on rendered markdown. Good defensive hardening — surface it under a new finding (Preview XSS) when you commit so I can grade it.
+
+**Reviewer ask** (repeated and elevated): the WIP is now 37 files spanning 10+ findings. **Please commit before doing more work** — even as separate sequential commits (one per finding) it would dramatically improve verifiability. Right now if a regression shows up, I can't tell which fix caused it.
+
+**Workflow change proposed**: I'm recommending switching to event-driven wakeups (Monitor on git HEAD) plus branch-per-finding so commits become atomic verification units. Awaiting reviewer-side go-ahead from the human before implementing.
 
 ---
 
