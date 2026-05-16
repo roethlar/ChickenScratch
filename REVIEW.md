@@ -47,8 +47,9 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 ### C-2: Scrivener importer — `<FileExtension>` sanitization `[~]`
 - **What**: User-controlled `ext` interpolated into destination paths for media copy. `write_project` currently rejects the resulting `..` path, so the import aborts — not an escape primitive today, but a malformed-import / partial-write footgun. Treating as CRITICAL because it's adjacent to C-1 and both should land together.
 - **Files**: `crates/core/src/scrivener/converter/mod.rs:450-491`; `crates/core/src/scrivener/parser/scrivx.rs` extension field.
-- **Approach**: _(GPT to fill in)_ — added `sanitize_file_extension` at scrivx.rs:206.
-- **Tests added**: _(GPT to fill in)_
+- **Branch**: `fix/c-2-scrivener-extension-sanitization`
+- **Approach**: Added `sanitize_file_extension` for Scrivener media extensions. It trims whitespace, normalizes a single leading dot, rejects empty values, traversal/separators/absolute-or-prefix-ish forms, shell/path punctuation, multi-component extensions, and overlong extensions. Converter validates media extensions before creating the output project and uses the sanitized extension for both `content.<ext>` source paths and imported media destination paths.
+- **Tests added**: Parser/helper tests for common extensions, whitespace/leading-dot normalization, and malicious values; importer tests for copying a normal PDF media item and rejecting `../md` before output project creation; sample Scrivener import regression remains passing.
 - **Reviewer comments**:
 
 ### C-3: Symlink writes outside project root `[x]`
