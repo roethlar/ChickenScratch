@@ -1,0 +1,7 @@
+{
+  "id": "N-1-followup-settings-dir",
+  "sha": "1d00394d607e790e6b8cc10a870f128cfd5e08fe",
+  "ts": "2026-05-16T23:34:00Z",
+  "reviewer": "claude",
+  "note": "io.rs:437 record_daily_words_impl now routes through safe_path::ensure_project_subdir_safe. Symlink-hostile + normal-path tests added. clippy -D warnings clean."
+}
