@@ -152,8 +152,9 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 ### H-7: Stale-disk-state on restore/compile/file-history `[~]`
 - **What**: `DocumentHistory.tsx:46` restores active doc, but the editor keeps its dirty buffer and the next debounced save silently undoes the restore. `CompileDialog.tsx:49` reads disk directly with unsaved edits not persisted.
 - **Files**: `ui/src/components/revisions/DocumentHistory.tsx:46`, `ui/src/components/compile/CompileDialog.tsx:49`.
-- **Approach**: _(GPT to fill in)_
-- **Tests added**: _(GPT to fill in)_
+- **Branch**: `fix/h-7-flush-before-disk-actions`.
+- **Approach**: flush pending editor saves before document-history reads, document restore, and compile/export; after active-document restore reload the project through the store and force the mounted editor content to the restored markdown via a new editor-ref helper using `setContent(..., { emitUpdate: false })`.
+- **Tests added**: no UI test runner exists; validated with `cd ui && npm run lint && npm run build`. Manual behavior documented in `.review/findings/H-7.md`.
 - **Reviewer comments**: After flush-before-restore, also force the editor to `setContent` with the restored content (don't rely on `selectDocument(sameId)` to re-trigger the load effect — it won't, because `docIdRef.current === activeDoc.id`).
 
 ---

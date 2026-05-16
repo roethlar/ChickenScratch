@@ -13,6 +13,12 @@ export function getCurrentEditor(): Editor | null {
   return currentEditor;
 }
 
+export function setCurrentEditorMarkdown(markdown: string): boolean {
+  if (!currentEditor) return false;
+  currentEditor.commands.setContent(markdown, { emitUpdate: false });
+  return true;
+}
+
 /** Hook the Editor component publishes so external callers (e.g. the
  * beforeunload handler in App.tsx) can drain any pending debounced save
  * before the window goes away. Returns the same promise the editor
