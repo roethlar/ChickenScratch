@@ -1,0 +1,7 @@
+{
+  "id": "L-7",
+  "sha": "2d2407ba60d4e8fc452b6dd74012280f69c0839d",
+  "ts": "2026-05-16T21:00:30Z",
+  "reviewer": "claude",
+  "note": "ByteBudgetRead wraps each provider's raw Response before BufReader (Ollama:294, Anthropic:362, OpenAI:440). 8 MiB cap = 3 orders of magnitude over typical streaming response. EOF-at-exact-limit handled via 1-byte probe (avoids the naive false-positive at boundary). Errors propagate to emit_error via line.map_err. Cancel/cap race benign in both orders. 3 new tests assert specific outcomes (exact-at-EOF, over-limit, buffered-line cap)."
+}
