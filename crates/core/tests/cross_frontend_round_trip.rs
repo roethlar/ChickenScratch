@@ -12,6 +12,39 @@ use chickenscratch_core::core::project::reader::read_project;
 use std::fs;
 use tempfile::TempDir;
 
+#[test]
+fn verify_cross_frontend_harness_project_from_env() {
+    let Ok(path) = std::env::var("CHIKN_CROSS_FRONTEND_VERIFY") else {
+        eprintln!("skipping: CHIKN_CROSS_FRONTEND_VERIFY is not set");
+        return;
+    };
+
+    let project = read_project(std::path::Path::new(&path)).expect("Rust reader loads project");
+    assert!(
+        !project.documents.is_empty(),
+        "cross-frontend harness project should contain documents"
+    );
+
+    if let Ok(marker) = std::env::var("CHIKN_CROSS_FRONTEND_EXPECT_FIELD") {
+        let found = project
+            .documents
+            .values()
+            .any(|doc| doc.fields.contains_key(&marker));
+        assert!(
+            found,
+            "expected at least one document to contain fields.{marker}"
+        );
+    }
+
+    println!(
+        "rust-reader: loaded \"{}\" ({} docs, {} top-level nodes, {} threads)",
+        project.name,
+        project.documents.len(),
+        project.hierarchy.len(),
+        project.threads.len()
+    );
+}
+
 /// Build a project on disk using the wire forms a Windows-style writer
 /// produces:
 /// * canonical "Yes"/"No" string for `include_in_compile`
@@ -19,7 +52,13 @@ use tempfile::TempDir;
 ///   keys `project.documents` by the same id the hierarchy points at.
 fn write_windows_style_project(root: &std::path::Path) {
     // Required by `validate_project_structure` before repair runs (see F-012).
-    for sub in ["manuscript", "research", "templates", "settings", "characters"] {
+    for sub in [
+        "manuscript",
+        "research",
+        "templates",
+        "settings",
+        "characters",
+    ] {
         fs::create_dir_all(root.join(sub)).unwrap();
     }
 
@@ -234,6 +273,12 @@ hierarchy: []
 
     let project = read_project(&root).expect("project should self-heal");
     assert_eq!(project.name, "Healing");
-    assert!(root.join("research").is_dir(), "research/ should be created");
-    assert!(root.join("templates").is_dir(), "templates/ should be created");
+    assert!(
+        root.join("research").is_dir(),
+        "research/ should be created"
+    );
+    assert!(
+        root.join("templates").is_dir(),
+        "templates/ should be created"
+    );
 }
