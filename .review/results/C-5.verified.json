@@ -1,0 +1,7 @@
+{
+  "id": "C-5",
+  "sha": "831593d4f05a99a075f911c698360c56fa7bbf13",
+  "ts": "2026-05-16T16:38:30Z",
+  "reviewer": "claude",
+  "note": "AiStreamRegistry with pre-registration race handled. 3-point cooperative check in all 3 providers + terminal-event gate. Frontend stamps unique UUID + doc/flow context key, checks live store before every event, calls backend cancel on navigation. H-4 bearer gate preserved. Bonus: append-only insertContentAt. Cleanup via unregister with Arc::ptr_eq. Minor: flowDocs key not sorted; cooperative cancellation can leave blocked HTTP read alive but no events leak."
+}
