@@ -1,0 +1,7 @@
+{
+  "id": "H-3",
+  "sha": "edf0f82d987507368a5fc9c09e58dbd25492f39d",
+  "ts": "2026-05-16T16:15:00Z",
+  "reviewer": "claude",
+  "note": "repo_has_changes + reject_dirty_worktree wired into restore_revision and sync_pull_force before mutation. include_untracked and recurse_untracked_dirs both set. Without-clobbering assertions present. Spun out 2 follow-ups: H-3-followup-windows (Windows side has same bug), H-3-followup-draft-switch (create_draft/switch_draft also unprotected)."
+}
