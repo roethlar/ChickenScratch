@@ -1,7 +1,7 @@
 use chickenscratch_core::core::compile;
 use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::hierarchy;
-use chickenscratch_core::core::project::{reader, writer};
+use chickenscratch_core::core::project::{reader, safe_path, writer};
 use chickenscratch_core::utils::process::{
     output_bounded, PANDOC_OUTPUT_LIMIT_BYTES, PANDOC_TIMEOUT,
 };
@@ -434,8 +434,8 @@ pub fn record_daily_words(
 }
 
 fn record_daily_words_impl(project_path: String, words: usize) -> Result<(), ChiknError> {
-    let dir = Path::new(&project_path).join("settings");
-    fs::create_dir_all(&dir)?;
+    let dir =
+        safe_path::ensure_project_subdir_safe(Path::new(&project_path), Path::new("settings"))?;
     let path = dir.join("writing-history.json");
 
     let mut history: WritingHistory = if path.exists() {
@@ -620,5 +620,40 @@ mod tests {
         let result = get_session_progress(project_path.to_string_lossy().to_string());
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn record_daily_words_writes_safe_settings_dir() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("SafeHistory.chikn");
+        chickenscratch_core::core::project::writer::create_project(&project_path, "Safe History")
+            .unwrap();
+
+        record_daily_words_impl(project_path.to_string_lossy().to_string(), 1234).unwrap();
+
+        assert!(project_path.join("settings/writing-history.json").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn record_daily_words_rejects_symlink_settings_dir() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("HostileHistory.chikn");
+        let outside_path = temp_dir.path().join("outside");
+        fs::create_dir(&outside_path).unwrap();
+        chickenscratch_core::core::project::writer::create_project(
+            &project_path,
+            "Hostile History",
+        )
+        .unwrap();
+        fs::remove_dir(project_path.join("settings")).unwrap();
+        unix_fs::symlink(&outside_path, project_path.join("settings")).unwrap();
+
+        let result = record_daily_words_impl(project_path.to_string_lossy().to_string(), 1234);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        assert!(fs::read_dir(&outside_path).unwrap().next().is_none());
     }
 }
