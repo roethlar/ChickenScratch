@@ -142,10 +142,14 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 
 ## MEDIUM
 
-### M-1: `ChiknError::Unknown` swallows all git errors `[ ]`
+### M-1: `ChiknError::Unknown` swallows all git errors `[~]`
 - **What**: 128/128 git error sites collapse into stringly-typed `Unknown(format!(...))`. UI can't branch on auth-vs-conflict-vs-no-remote-vs-not-fast-forward.
+- **Branch**: `fix/m-1-git-error-taxonomy`
 - **Files**: `crates/core/src/utils/error.rs:10`; all of `crates/core/src/core/git.rs`.
 - **Notes for GPT**: Add `ChiknError::Git(GitError)` with a sub-enum: `Auth, Conflict, NotFastForward, NoUpstream, NoCommits, NotARepo, Other(String)`. Map `git2::ErrorCode` and `git2::ErrorClass` into these. Frontend can then branch on `result.code === "Git.Auth"` and show the right toast.
+- **Approach**: reused the git-specific `ChiknError::Git(GitError)` taxonomy present on current `master`, added a conservative git2 classifier in `core/git.rs`, and routed only high-value restore/current-branch/remote sync/pull/push/force-pull/merge-draft paths through it while keeping `ChiknError` string serialization unchanged.
+- **Tests added**: `remote_sync` coverage for no commits, missing remote tracking ref, missing remote/repo, and not-fast-forward push.
+- **Touched files**: `crates/core/src/core/git.rs`, `crates/core/src/lib.rs`, `crates/core/tests/remote_sync.rs`, `.review/findings/M-1.md`, `REVIEW.md`.
 
 ### M-2: Corrupt sidecars silently overwritten `[~]`
 - **What**: `reader.rs:228` `read_threads(...).unwrap_or_default()` — one corrupt `threads.yaml` and the next save erases every thread. Same shape at `writer.rs:285` (swallowed `.meta` parse), `src-tauri/src/commands/io.rs:423` (writing_history wipe).

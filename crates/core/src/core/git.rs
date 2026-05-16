@@ -90,8 +90,10 @@ fn git_kind_from_error(error: &git2::Error) -> GitErrorKind {
                 "repository not found",
                 "not found",
                 "could not read from remote repository",
+                "failed to resolve path",
                 "failed to connect",
                 "connection refused",
+                "no such file or directory",
                 "not a git repository",
             ],
         ) =>
@@ -667,15 +669,15 @@ fn ensure_sync_remote<'a>(repo: &'a Repository, url: &str) -> Result<git2::Remot
         Ok(existing) => {
             if existing.url() != Some(url) {
                 repo.remote_set_url(SYNC_REMOTE, url).map_err(|e| {
-                    ChiknError::Unknown(format!("Failed to update sync remote URL: {}", e))
+                    classified_git_error("Failed to update sync remote URL", e)
                 })?;
             }
             repo.find_remote(SYNC_REMOTE)
-                .map_err(|e| ChiknError::Unknown(format!("Failed to load sync remote: {}", e)))
+                .map_err(|e| classified_git_error("Failed to load sync remote", e))
         }
         Err(_) => repo
             .remote(SYNC_REMOTE, url)
-            .map_err(|e| ChiknError::Unknown(format!("Failed to add sync remote: {}", e))),
+            .map_err(|e| classified_git_error("Failed to add sync remote", e)),
     }
 }
 
@@ -712,16 +714,16 @@ fn build_callbacks(auth: &RemoteAuth) -> RemoteCallbacks<'_> {
 fn current_branch_name(repo: &Repository) -> Result<String, ChiknError> {
     let head = repo
         .head()
-        .map_err(|e| ChiknError::Unknown(format!("No HEAD: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NoCommits, "No HEAD", e))?;
     head.shorthand()
         .map(str::to_owned)
-        .ok_or_else(|| ChiknError::Unknown("HEAD is detached".to_string()))
+        .ok_or_else(|| git_error(GitErrorKind::DetachedHead, "HEAD is detached"))
 }
 
 /// Push the current branch to the configured remote.
 pub fn push_remote(project_path: &Path, url: &str, auth: &RemoteAuth) -> Result<(), ChiknError> {
     let repo = Repository::open(project_path)
-        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     let mut remote = ensure_sync_remote(&repo, url)?;
 
     let branch = current_branch_name(&repo)?;
@@ -732,14 +734,14 @@ pub fn push_remote(project_path: &Path, url: &str, auth: &RemoteAuth) -> Result<
 
     remote
         .push(&[&refspec], Some(&mut opts))
-        .map_err(|e| ChiknError::Unknown(format!("Push failed: {}", e)))?;
+        .map_err(|e| classified_git_error("Push failed", e))?;
     Ok(())
 }
 
 /// Fetch the current branch from the configured remote. Does not merge.
 pub fn fetch_remote(project_path: &Path, url: &str, auth: &RemoteAuth) -> Result<(), ChiknError> {
     let repo = Repository::open(project_path)
-        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     let mut remote = ensure_sync_remote(&repo, url)?;
 
     let branch = current_branch_name(&repo)?;
@@ -750,7 +752,7 @@ pub fn fetch_remote(project_path: &Path, url: &str, auth: &RemoteAuth) -> Result
 
     remote
         .fetch(&[&refspec], Some(&mut opts), None)
-        .map_err(|e| ChiknError::Unknown(format!("Fetch failed: {}", e)))?;
+        .map_err(|e| classified_git_error("Fetch failed", e))?;
     Ok(())
 }
 
@@ -782,19 +784,25 @@ pub fn sync_pull(
     fetch_remote(project_path, url, auth)?;
 
     let repo = Repository::open(project_path)
-        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     let branch = current_branch_name(&repo)?;
     let remote_ref = format!("refs/remotes/{SYNC_REMOTE}/{branch}");
     let remote_oid = repo
         .refname_to_id(&remote_ref)
-        .map_err(|e| ChiknError::Unknown(format!("No remote tracking ref ({}): {}", remote_ref, e)))?;
+        .map_err(|e| {
+            classified_git_error_as(
+                GitErrorKind::NoUpstream,
+                &format!("No remote tracking ref ({remote_ref})"),
+                e,
+            )
+        })?;
     let remote_commit = repo
         .find_annotated_commit(remote_oid)
-        .map_err(|e| ChiknError::Unknown(format!("Annotated commit failed: {}", e)))?;
+        .map_err(|e| classified_git_error("Annotated commit failed", e))?;
 
     let (analysis, _) = repo
         .merge_analysis(&[&remote_commit])
-        .map_err(|e| ChiknError::Unknown(format!("Merge analysis: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Merge analysis", e))?;
 
     if analysis.is_up_to_date() {
         return Ok(PullResult::UpToDate);
@@ -804,22 +812,22 @@ pub fn sync_pull(
         // Move local branch to remote OID and check out
         let mut reference = repo
             .find_reference(&format!("refs/heads/{branch}"))
-            .map_err(|e| ChiknError::Unknown(format!("Branch ref: {}", e)))?;
+            .map_err(|e| classified_git_error_as(GitErrorKind::NoUpstream, "Branch ref", e))?;
         reference
             .set_target(remote_oid, "fast-forward via sync_pull")
-            .map_err(|e| ChiknError::Unknown(format!("Set ref: {}", e)))?;
+            .map_err(|e| classified_git_error("Set ref", e))?;
         repo.set_head(&format!("refs/heads/{branch}"))
-            .map_err(|e| ChiknError::Unknown(format!("Set HEAD: {}", e)))?;
+            .map_err(|e| classified_git_error("Set HEAD", e))?;
         let mut co = git2::build::CheckoutBuilder::new();
         co.force();
         repo.checkout_head(Some(&mut co))
-            .map_err(|e| ChiknError::Unknown(format!("Checkout: {}", e)))?;
+            .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Checkout", e))?;
         return Ok(PullResult::FastForward);
     }
 
     // Normal merge — attempt three-way
     repo.merge(&[&remote_commit], None, None)
-        .map_err(|e| ChiknError::Unknown(format!("Merge failed: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Merge failed", e))?;
 
     let index = repo
         .index()
@@ -827,7 +835,7 @@ pub fn sync_pull(
     if index.has_conflicts() {
         let files: Vec<String> = index
             .conflicts()
-            .map_err(|e| ChiknError::Unknown(format!("Conflicts iter: {}", e)))?
+            .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Conflicts iter", e))?
             .filter_map(|c| {
                 c.ok()
                     .and_then(|c| c.our.or(c.their).or(c.ancestor))
@@ -876,17 +884,17 @@ pub fn sync_pull(
 /// Restores the working tree to the pre-merge state.
 pub fn sync_abort_pull(project_path: &Path) -> Result<(), ChiknError> {
     let repo = Repository::open(project_path)
-        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     let head = repo
         .head()
         .and_then(|h| h.peel_to_commit())
-        .map_err(|e| ChiknError::Unknown(format!("Head: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NoCommits, "Head", e))?;
     let mut co = git2::build::CheckoutBuilder::new();
     co.force().remove_untracked(false);
     repo.reset(head.as_object(), git2::ResetType::Hard, Some(&mut co))
-        .map_err(|e| ChiknError::Unknown(format!("Reset: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Reset", e))?;
     repo.cleanup_state()
-        .map_err(|e| ChiknError::Unknown(format!("Cleanup: {}", e)))?;
+        .map_err(|e| classified_git_error("Cleanup", e))?;
     Ok(())
 }
 
@@ -899,20 +907,20 @@ pub fn sync_pull_force(
 ) -> Result<(), ChiknError> {
     fetch_remote(project_path, url, auth)?;
     let repo = Repository::open(project_path)
-        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     let branch = current_branch_name(&repo)?;
     let remote_oid = repo
         .refname_to_id(&format!("refs/remotes/{SYNC_REMOTE}/{branch}"))
-        .map_err(|e| ChiknError::Unknown(format!("No remote tracking ref: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NoUpstream, "No remote tracking ref", e))?;
     let remote_obj = repo
         .find_object(remote_oid, None)
-        .map_err(|e| ChiknError::Unknown(format!("Find object: {}", e)))?;
+        .map_err(|e| classified_git_error("Find object", e))?;
     let mut co = git2::build::CheckoutBuilder::new();
     co.force();
     repo.reset(&remote_obj, git2::ResetType::Hard, Some(&mut co))
-        .map_err(|e| ChiknError::Unknown(format!("Reset: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Reset", e))?;
     repo.cleanup_state()
-        .map_err(|e| ChiknError::Unknown(format!("Cleanup: {}", e)))?;
+        .map_err(|e| classified_git_error("Cleanup", e))?;
     Ok(())
 }
 
@@ -920,7 +928,7 @@ pub fn sync_pull_force(
 /// Call `fetch_remote` first for the numbers to be current.
 pub fn sync_status(project_path: &Path) -> Result<SyncStatus, ChiknError> {
     let repo = Repository::open(project_path)
-        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+        .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     let branch = current_branch_name(&repo)?;
 
     let has_remote = repo.find_remote(SYNC_REMOTE).is_ok();
