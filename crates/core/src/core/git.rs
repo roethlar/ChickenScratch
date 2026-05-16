@@ -19,8 +19,9 @@ const SIMPLE_WORD_DIFF_LCS_CELL_CAP: usize = 1_500 * 1_500;
 fn git_kind_from_error(error: &git2::Error) -> GitErrorKind {
     let message = error.message().to_ascii_lowercase();
     match (error.code(), error.class()) {
-        (ErrorCode::Auth | ErrorCode::Certificate, _)
-        | (_, ErrorClass::Ssh | ErrorClass::Ssl) => GitErrorKind::Auth,
+        (ErrorCode::Auth | ErrorCode::Certificate, _) | (_, ErrorClass::Ssh | ErrorClass::Ssl) => {
+            GitErrorKind::Auth
+        }
         (ErrorCode::NotFastForward, _) => GitErrorKind::NotFastForward,
         (ErrorCode::UnbornBranch, _) => GitErrorKind::NoCommits,
         (ErrorCode::Conflict | ErrorCode::Unmerged | ErrorCode::MergeConflict, _)
@@ -274,10 +275,7 @@ pub fn list_revisions(path: &Path) -> Result<Vec<Revision>, ChiknError> {
 /// List revisions that touched a single document (paths relative to project root).
 /// `git log -- <doc_path>` semantics: a commit is included iff that path's
 /// blob differs from at least one parent.
-pub fn document_history(
-    project_path: &Path,
-    doc_path: &str,
-) -> Result<Vec<Revision>, ChiknError> {
+pub fn document_history(project_path: &Path, doc_path: &str) -> Result<Vec<Revision>, ChiknError> {
     let repo = Repository::open(project_path)
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
     let head = match repo.head() {
@@ -349,16 +347,14 @@ pub fn restore_document(
     let tree = commit
         .tree()
         .map_err(|e| ChiknError::Unknown(format!("Tree: {}", e)))?;
-    let entry = tree
-        .get_path(std::path::Path::new(doc_path))
-        .map_err(|e| {
-            ChiknError::Unknown(format!(
-                "File '{}' not in commit {}: {}",
-                doc_path,
-                &commit_id[..8.min(commit_id.len())],
-                e
-            ))
-        })?;
+    let entry = tree.get_path(std::path::Path::new(doc_path)).map_err(|e| {
+        ChiknError::Unknown(format!(
+            "File '{}' not in commit {}: {}",
+            doc_path,
+            &commit_id[..8.min(commit_id.len())],
+            e
+        ))
+    })?;
     let blob = repo
         .find_blob(entry.id())
         .map_err(|e| ChiknError::Unknown(format!("Blob: {}", e)))?;
@@ -406,11 +402,12 @@ pub fn restore_revision(path: &Path, commit_id: &str) -> Result<Revision, ChiknE
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     reject_dirty_worktree(&repo, "restore this revision")?;
 
-    let oid = Oid::from_str(commit_id)
-        .map_err(|e| classified_git_error_as(GitErrorKind::InvalidRevision, "Invalid revision ID", e))?;
-    let commit = repo
-        .find_commit(oid)
-        .map_err(|e| classified_git_error_as(GitErrorKind::InvalidRevision, "Revision not found", e))?;
+    let oid = Oid::from_str(commit_id).map_err(|e| {
+        classified_git_error_as(GitErrorKind::InvalidRevision, "Invalid revision ID", e)
+    })?;
+    let commit = repo.find_commit(oid).map_err(|e| {
+        classified_git_error_as(GitErrorKind::InvalidRevision, "Revision not found", e)
+    })?;
     let tree = commit
         .tree()
         .map_err(|e| classified_git_error("Failed to get tree", e))?;
@@ -694,9 +691,8 @@ fn ensure_sync_remote<'a>(repo: &'a Repository, url: &str) -> Result<git2::Remot
     match repo.find_remote(SYNC_REMOTE) {
         Ok(existing) => {
             if existing.url() != Some(url) {
-                repo.remote_set_url(SYNC_REMOTE, url).map_err(|e| {
-                    classified_git_error("Failed to update sync remote URL", e)
-                })?;
+                repo.remote_set_url(SYNC_REMOTE, url)
+                    .map_err(|e| classified_git_error("Failed to update sync remote URL", e))?;
             }
             repo.find_remote(SYNC_REMOTE)
                 .map_err(|e| classified_git_error("Failed to load sync remote", e))
@@ -813,15 +809,13 @@ pub fn sync_pull(
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     let branch = current_branch_name(&repo)?;
     let remote_ref = format!("refs/remotes/{SYNC_REMOTE}/{branch}");
-    let remote_oid = repo
-        .refname_to_id(&remote_ref)
-        .map_err(|e| {
-            classified_git_error_as(
-                GitErrorKind::NoUpstream,
-                &format!("No remote tracking ref ({remote_ref})"),
-                e,
-            )
-        })?;
+    let remote_oid = repo.refname_to_id(&remote_ref).map_err(|e| {
+        classified_git_error_as(
+            GitErrorKind::NoUpstream,
+            &format!("No remote tracking ref ({remote_ref})"),
+            e,
+        )
+    })?;
     let remote_commit = repo
         .find_annotated_commit(remote_oid)
         .map_err(|e| classified_git_error("Annotated commit failed", e))?;
@@ -939,7 +933,9 @@ pub fn sync_pull_force(
     let branch = current_branch_name(&repo)?;
     let remote_oid = repo
         .refname_to_id(&format!("refs/remotes/{SYNC_REMOTE}/{branch}"))
-        .map_err(|e| classified_git_error_as(GitErrorKind::NoUpstream, "No remote tracking ref", e))?;
+        .map_err(|e| {
+            classified_git_error_as(GitErrorKind::NoUpstream, "No remote tracking ref", e)
+        })?;
     let remote_obj = repo
         .find_object(remote_oid, None)
         .map_err(|e| classified_git_error("Find object", e))?;
@@ -986,9 +982,9 @@ pub fn sync_status(project_path: &Path) -> Result<SyncStatus, ChiknError> {
 
     let remote_ref = format!("refs/remotes/{SYNC_REMOTE}/{branch}");
     let (ahead, behind) = match repo.refname_to_id(&remote_ref) {
-        Ok(remote_oid) => repo.graph_ahead_behind(local_oid, remote_oid).map_err(|e| {
-            ChiknError::Unknown(format!("Failed to compute ahead/behind: {}", e))
-        })?,
+        Ok(remote_oid) => repo
+            .graph_ahead_behind(local_oid, remote_oid)
+            .map_err(|e| ChiknError::Unknown(format!("Failed to compute ahead/behind: {}", e)))?,
         // No fetch has ever happened — every commit is "ahead", nothing "behind".
         Err(_) => {
             let mut walk = repo
@@ -1228,7 +1224,8 @@ pub fn compare_drafts(
             .and_then(|p| p.to_str())
             .unwrap_or("")
             .to_string();
-        if path_str == "project.yaml" || path_str.starts_with(".git") || path_str.ends_with(".meta") {
+        if path_str == "project.yaml" || path_str.starts_with(".git") || path_str.ends_with(".meta")
+        {
             continue;
         }
         let status = match delta.status() {
@@ -1337,7 +1334,9 @@ mod tests {
     use super::*;
 
     fn words(text: &str) -> Vec<String> {
-        text.split_whitespace().map(|word| word.to_string()).collect()
+        text.split_whitespace()
+            .map(|word| word.to_string())
+            .collect()
     }
 
     fn numbered_words(prefix: &str, count: usize) -> Vec<String> {

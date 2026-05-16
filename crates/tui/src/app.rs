@@ -751,7 +751,11 @@ impl<'a> App<'a> {
             .map(|item| item.id.clone())
     }
 
-    fn create_document_in_project(&mut self, name: String, parent_id: Option<String>) -> Result<()> {
+    fn create_document_in_project(
+        &mut self,
+        name: String,
+        parent_id: Option<String>,
+    ) -> Result<()> {
         let s = slug::unique_slug(&name, "manuscript/", &self.project.documents);
         let doc_path = format!("manuscript/{}.md", s);
         let now = chrono::Utc::now().to_rfc3339();
@@ -769,7 +773,11 @@ impl<'a> App<'a> {
         };
         self.project.documents.insert(doc_id.clone(), document);
 
-        let node = TreeNode::Document { id: doc_id, name: name.clone(), path: doc_path };
+        let node = TreeNode::Document {
+            id: doc_id,
+            name: name.clone(),
+            path: doc_path,
+        };
         match parent_id {
             Some(pid) => hierarchy::add_child_to_folder(&mut self.project.hierarchy, &pid, node)
                 .map_err(|e| anyhow!("Add to folder failed: {:?}", e))?,
@@ -784,7 +792,11 @@ impl<'a> App<'a> {
 
     fn create_folder_in_project(&mut self, name: String, parent_id: Option<String>) -> Result<()> {
         let folder_id = uuid::Uuid::new_v4().to_string();
-        let node = TreeNode::Folder { id: folder_id.clone(), name: name.clone(), children: Vec::new() };
+        let node = TreeNode::Folder {
+            id: folder_id.clone(),
+            name: name.clone(),
+            children: Vec::new(),
+        };
         match parent_id {
             Some(pid) => hierarchy::add_child_to_folder(&mut self.project.hierarchy, &pid, node)
                 .map_err(|e| anyhow!("Add to folder failed: {:?}", e))?,

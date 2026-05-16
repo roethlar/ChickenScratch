@@ -29,10 +29,20 @@ pub fn render(f: &mut Frame, app: &mut App) {
         render_prompt(f, area, "Save revision with message:", &app.prompt_input);
     }
     if app.mode == Mode::NewDocPrompt {
-        render_prompt(f, area, "New document name (Enter to create, Esc to cancel):", &app.prompt_input);
+        render_prompt(
+            f,
+            area,
+            "New document name (Enter to create, Esc to cancel):",
+            &app.prompt_input,
+        );
     }
     if app.mode == Mode::NewFolderPrompt {
-        render_prompt(f, area, "New folder name (Enter to create, Esc to cancel):", &app.prompt_input);
+        render_prompt(
+            f,
+            area,
+            "New folder name (Enter to create, Esc to cancel):",
+            &app.prompt_input,
+        );
     }
     if app.mode == Mode::Confirm {
         render_prompt(f, area, "Unsaved changes. Quit anyway?", "[y/N]");

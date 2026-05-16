@@ -189,9 +189,7 @@ pub fn sync_pull_force(
 fn remote_from_settings() -> Result<(String, git::RemoteAuth), ChiknError> {
     let settings = super::settings::get_app_settings_hydrated();
     let url = settings.remote.url.clone().ok_or_else(|| {
-        ChiknError::Unknown(
-            "No remote URL configured. Set one in Settings > Remote.".to_string(),
-        )
+        ChiknError::Unknown("No remote URL configured. Set one in Settings > Remote.".to_string())
     })?;
     let auth = git::RemoteAuth {
         username: settings.remote.username.clone(),

@@ -93,7 +93,11 @@ mod ffi {
         fn create_project(self: Pin<&mut AppController>, path: QString, name: QString) -> QString;
 
         #[qinvokable]
-        fn new_document(self: Pin<&mut AppController>, name: QString, parent_id: QString) -> QString;
+        fn new_document(
+            self: Pin<&mut AppController>,
+            name: QString,
+            parent_id: QString,
+        ) -> QString;
 
         #[qinvokable]
         fn new_folder(self: Pin<&mut AppController>, name: QString, parent_id: QString) -> QString;
@@ -142,11 +146,7 @@ mod ffi {
         fn delete_comment(self: Pin<&mut AppController>, comment_id: QString) -> QString;
 
         #[qinvokable]
-        fn add_footnote(
-            self: Pin<&mut AppController>,
-            body: QString,
-            cursor_pos: i32,
-        ) -> QString;
+        fn add_footnote(self: Pin<&mut AppController>, body: QString, cursor_pos: i32) -> QString;
 
         #[qinvokable]
         fn comment_anchor_range(self: &AppController, comment_id: QString) -> QString;
@@ -315,7 +315,8 @@ impl ffi::AppController {
 
         self.as_mut().set_active_doc_id(QString::from(&id_str));
         self.as_mut().set_active_doc_name(QString::from(&doc.name));
-        self.as_mut().set_active_doc_content(QString::from(&doc.content));
+        self.as_mut()
+            .set_active_doc_content(QString::from(&doc.content));
         self.as_mut()
             .set_doc_synopsis(QString::from(doc.synopsis.as_deref().unwrap_or("")));
         self.as_mut()
@@ -323,7 +324,8 @@ impl ffi::AppController {
         self.as_mut()
             .set_doc_status(QString::from(doc.status.as_deref().unwrap_or("")));
         self.as_mut().set_doc_keywords(QString::from(&keywords_csv));
-        self.as_mut().set_doc_include_in_compile(doc.include_in_compile);
+        self.as_mut()
+            .set_doc_include_in_compile(doc.include_in_compile);
         self.as_mut()
             .set_doc_word_count_target(doc.word_count_target as i32);
         self.as_mut().set_doc_modified(QString::from(&doc.modified));
@@ -537,7 +539,8 @@ impl ffi::AppController {
 
                 let project_path_str = path_trimmed.to_string();
                 self.as_mut().set_project_title(QString::from(&title));
-                self.as_mut().set_project_path(QString::from(&project_path_str));
+                self.as_mut()
+                    .set_project_path(QString::from(&project_path_str));
                 self.as_mut().set_active_doc_id(QString::default());
                 self.as_mut().set_active_doc_name(QString::default());
                 self.as_mut().set_active_doc_content(QString::default());
@@ -903,7 +906,8 @@ impl ffi::AppController {
         self.as_mut().set_binder_depths(to_qstring_list(&depths));
         self.as_mut()
             .set_binder_has_children(to_qstring_list(&has_children));
-        self.as_mut().set_binder_expanded(to_qstring_list(&expanded));
+        self.as_mut()
+            .set_binder_expanded(to_qstring_list(&expanded));
     }
 
     fn clear_doc_fields(mut self: Pin<&mut Self>) {
@@ -1030,10 +1034,7 @@ impl ffi::AppController {
         }
     }
 
-    pub fn delete_comment(
-        mut self: Pin<&mut Self>,
-        comment_id: QString,
-    ) -> QString {
+    pub fn delete_comment(mut self: Pin<&mut Self>, comment_id: QString) -> QString {
         let id = self.as_ref().active_doc_id().to_string();
         if id.is_empty() {
             return QString::from("No document selected");
@@ -1075,11 +1076,7 @@ impl ffi::AppController {
         }
     }
 
-    pub fn add_footnote(
-        mut self: Pin<&mut Self>,
-        body: QString,
-        cursor_pos: i32,
-    ) -> QString {
+    pub fn add_footnote(mut self: Pin<&mut Self>, body: QString, cursor_pos: i32) -> QString {
         let id = self.as_ref().active_doc_id().to_string();
         if id.is_empty() {
             return QString::from("No document selected");
@@ -1144,11 +1141,10 @@ impl ffi::AppController {
             return QString::from(&format!("Failed to save: {}", e));
         }
         // Push derived properties so the live UI updates immediately
-        let normalized =
-            serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| "{}".to_string());
+        let normalized = serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| "{}".to_string());
+        self.as_mut().set_settings_json(QString::from(&normalized));
         self.as_mut()
-            .set_settings_json(QString::from(&normalized));
-        self.as_mut().set_theme(QString::from(&parsed.general.theme));
+            .set_theme(QString::from(&parsed.general.theme));
         self.as_mut()
             .set_editor_font_family(QString::from(&parsed.writing.font_family));
         self.as_mut().set_editor_font_size(parsed.writing.font_size);
@@ -1219,7 +1215,11 @@ impl ffi::AppController {
         let separator_string = section_separator.to_string();
         let opts = CompileOptions {
             font: non_empty(font_string),
-            font_size: if font_size > 0.0 { Some(font_size) } else { None },
+            font_size: if font_size > 0.0 {
+                Some(font_size)
+            } else {
+                None
+            },
             line_spacing: if line_spacing > 0.0 {
                 Some(line_spacing)
             } else {
@@ -1273,11 +1273,7 @@ impl ffi::AppController {
         let json = {
             let pinned = self.as_ref();
             let rust_ref = pinned.rust();
-            match rust_ref
-                .project
-                .as_ref()
-                .and_then(|p| p.documents.get(&id))
-            {
+            match rust_ref.project.as_ref().and_then(|p| p.documents.get(&id)) {
                 Some(doc) => build_comments_json(&doc.content, &doc.comments),
                 None => "[]".to_string(),
             }
@@ -1451,11 +1447,7 @@ fn flatten_hierarchy(nodes: &[TreeNode], collapsed: &HashSet<String>) -> Flatten
     ) {
         for node in nodes {
             match node {
-                TreeNode::Folder {
-                    id,
-                    name,
-                    children,
-                } => {
+                TreeNode::Folder { id, name, children } => {
                     let is_collapsed = collapsed.contains(id);
                     ids.push(id.clone());
                     names.push(name.clone());
@@ -1811,10 +1803,7 @@ fn insert_footnote_at(content: &str, char_pos: usize, body: &str) -> Option<Stri
     }
     let byte_pos = char_to_byte(content, char_pos);
     let escaped = html_attr_escape(body.trim());
-    let marker = format!(
-        r#"<sup class="footnote" data-body="{}">●</sup>"#,
-        escaped
-    );
+    let marker = format!(r#"<sup class="footnote" data-body="{}">●</sup>"#, escaped);
     let mut out = String::with_capacity(content.len() + marker.len());
     out.push_str(&content[..byte_pos]);
     out.push_str(&marker);
@@ -1846,7 +1835,10 @@ mod tests {
     #[test]
     fn wrap_selection_full() {
         let out = wrap_selection_with_comment("foo", 0, 3, "x").unwrap();
-        assert_eq!(out, r#"<span class="comment" data-comment-id="x">foo</span>"#);
+        assert_eq!(
+            out,
+            r#"<span class="comment" data-comment-id="x">foo</span>"#
+        );
     }
 
     #[test]
@@ -1879,7 +1871,8 @@ mod tests {
         assert!(out.contains(r#"<sup class="footnote""#));
         // Pull body back out via the helper
         let marker_start = out.find("<sup").unwrap();
-        let marker_end = out[marker_start..].find("</sup>").unwrap() + "</sup>".len() + marker_start;
+        let marker_end =
+            out[marker_start..].find("</sup>").unwrap() + "</sup>".len() + marker_start;
         let recovered = footnote_body_from_marker(&out[marker_start..marker_end]).unwrap();
         assert_eq!(recovered, body);
     }
