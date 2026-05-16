@@ -87,6 +87,55 @@ function setFolderState(projectId: string, folderId: string, open: boolean) {
   localStorage.setItem(`cs-folders-${projectId}`, JSON.stringify(state));
 }
 
+interface VisibleTreeNode {
+  id: string;
+  type: "Document" | "Folder";
+  depth: number;
+  parentId: string | null;
+  hasChildren: boolean;
+}
+
+function buildOpenFolderState(projectId: string, nodes: TreeNode[]): Record<string, boolean> {
+  const saved = getFolderState(projectId);
+  const state: Record<string, boolean> = {};
+  const walk = (items: TreeNode[]) => {
+    for (const item of items) {
+      if (item.type !== "Folder") continue;
+      state[item.id] = saved[item.id] !== undefined ? saved[item.id] : true;
+      walk(item.children);
+    }
+  };
+  walk(nodes);
+  return state;
+}
+
+function flattenVisibleTreeNodes(
+  nodes: TreeNode[],
+  openFolders: Record<string, boolean>,
+  depth = 0,
+  parentId: string | null = null,
+): VisibleTreeNode[] {
+  const result: VisibleTreeNode[] = [];
+  for (const node of nodes) {
+    const isFolder = node.type === "Folder";
+    result.push({
+      id: node.id,
+      type: node.type,
+      depth,
+      parentId,
+      hasChildren: isFolder && node.children.length > 0,
+    });
+    if (isFolder && (openFolders[node.id] ?? true)) {
+      result.push(...flattenVisibleTreeNodes(node.children, openFolders, depth + 1, node.id));
+    }
+  }
+  return result;
+}
+
+function binderTreeItemDomId(nodeId: string): string {
+  return `binder-treeitem-${encodeURIComponent(nodeId)}`;
+}
+
 export function Binder() {
   return (
     <DragProvider>
@@ -113,6 +162,8 @@ function BinderInner() {
 
   // Selected node — determines where + adds items. Separate from activeDocId (editing).
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
+  const openFoldersProjectRef = useRef<string | null>(null);
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -135,6 +186,35 @@ function BinderInner() {
   );
 
   const closeMenu = useCallback(() => setContextMenu(null), []);
+
+  useEffect(() => {
+    if (!projectInfo || !hierarchy) return;
+    setOpenFolders((current) => {
+      const base = buildOpenFolderState(projectInfo.id, hierarchy);
+      if (openFoldersProjectRef.current !== projectInfo.id) {
+        openFoldersProjectRef.current = projectInfo.id;
+        return base;
+      }
+
+      const next: Record<string, boolean> = {};
+      for (const [id, open] of Object.entries(base)) {
+        next[id] = current[id] ?? open;
+      }
+      return next;
+    });
+  }, [projectInfo, hierarchy]);
+
+  const handleToggleFolder = useCallback(
+    (folderId: string) => {
+      if (!projectInfo) return;
+      setOpenFolders((current) => {
+        const nextOpen = !(current[folderId] ?? true);
+        setFolderState(projectInfo.id, folderId, nextOpen);
+        return { ...current, [folderId]: nextOpen };
+      });
+    },
+    [projectInfo]
+  );
 
   /** Find what type a node is in the hierarchy */
   const findNodeType = useCallback(
@@ -448,6 +528,141 @@ function BinderInner() {
     }
   }, [hierarchy, flowSelected, enterFlow]);
 
+  const visibleTreeNodes = useMemo(
+    () => hierarchy ? flattenVisibleTreeNodes(hierarchy, openFolders) : [],
+    [hierarchy, openFolders]
+  );
+  const visibleNodeIds = useMemo(
+    () => new Set(visibleTreeNodes.map((node) => node.id)),
+    [visibleTreeNodes]
+  );
+  const focusedNodeId = (
+    selectedId && visibleNodeIds.has(selectedId)
+      ? selectedId
+      : activeDocId && visibleNodeIds.has(activeDocId)
+        ? activeDocId
+        : visibleTreeNodes[0]?.id ?? null
+  );
+
+  const moveTreeFocus = useCallback((node: VisibleTreeNode | undefined) => {
+    if (!node) return;
+    setSelectedId(node.id);
+    document
+      .getElementById(binderTreeItemDomId(node.id))
+      ?.scrollIntoView({ block: "nearest" });
+  }, []);
+
+  const handleTreeKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (visibleTreeNodes.length === 0) return;
+
+      const index = Math.max(
+        0,
+        visibleTreeNodes.findIndex((node) => node.id === focusedNodeId)
+      );
+      const focusedNode = visibleTreeNodes[index];
+      if (!focusedNode) return;
+
+      const openFocusedFolder = () => {
+        if (focusedNode.type !== "Folder") return false;
+        if (!focusedNode.hasChildren) return true;
+        if (openFolders[focusedNode.id] ?? true) return false;
+        handleToggleFolder(focusedNode.id);
+        setSelectedId(focusedNode.id);
+        return true;
+      };
+
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          e.stopPropagation();
+          moveTreeFocus(visibleTreeNodes[Math.min(index + 1, visibleTreeNodes.length - 1)]);
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          e.stopPropagation();
+          moveTreeFocus(visibleTreeNodes[Math.max(index - 1, 0)]);
+          break;
+        case "Home":
+          e.preventDefault();
+          e.stopPropagation();
+          moveTreeFocus(visibleTreeNodes[0]);
+          break;
+        case "End":
+          e.preventDefault();
+          e.stopPropagation();
+          moveTreeFocus(visibleTreeNodes[visibleTreeNodes.length - 1]);
+          break;
+        case "ArrowRight": {
+          e.preventDefault();
+          e.stopPropagation();
+          if (openFocusedFolder()) break;
+          const child = visibleTreeNodes[index + 1];
+          if (focusedNode.type === "Folder" && child?.parentId === focusedNode.id) {
+            moveTreeFocus(child);
+          }
+          break;
+        }
+        case "ArrowLeft":
+          e.preventDefault();
+          e.stopPropagation();
+          if (
+            focusedNode.type === "Folder" &&
+            focusedNode.hasChildren &&
+            (openFolders[focusedNode.id] ?? true)
+          ) {
+            handleToggleFolder(focusedNode.id);
+            setSelectedId(focusedNode.id);
+          } else if (focusedNode.parentId) {
+            moveTreeFocus(visibleTreeNodes.find((node) => node.id === focusedNode.parentId));
+          }
+          break;
+        case "Enter":
+        case " ":
+          e.preventDefault();
+          e.stopPropagation();
+          setSelectedId(focusedNode.id);
+          if (focusedNode.type === "Document") {
+            selectDocument(focusedNode.id);
+          } else if (focusedNode.hasChildren) {
+            handleToggleFolder(focusedNode.id);
+          }
+          break;
+        case "ContextMenu":
+        case "F10": {
+          if (e.key === "F10" && !e.shiftKey) break;
+          e.preventDefault();
+          e.stopPropagation();
+          const rect = document
+            .getElementById(binderTreeItemDomId(focusedNode.id))
+            ?.getBoundingClientRect();
+          setSelectedId(focusedNode.id);
+          setContextMenu({
+            x: rect ? rect.left + 16 : 0,
+            y: rect ? rect.bottom : 0,
+            nodeId: focusedNode.id,
+            nodeType: focusedNode.type,
+          });
+          break;
+        }
+        case "Escape":
+          e.preventDefault();
+          e.stopPropagation();
+          setSelectedId(null);
+          useProjectStore.setState({ activeDocId: null, activeDoc: null });
+          break;
+      }
+    },
+    [
+      visibleTreeNodes,
+      focusedNodeId,
+      openFolders,
+      handleToggleFolder,
+      moveTreeFocus,
+      selectDocument,
+    ]
+  );
+
   // Wire drag-and-drop handler
   const drag = useDrag();
   useEffect(() => {
@@ -482,18 +697,15 @@ function BinderInner() {
       onContextMenu={(e) => handleContextMenu(e, null, null)}
       onClick={(e) => {
         // Click empty space to deselect
-        if ((e.target as HTMLElement).classList.contains("binder-tree")) {
+        const target = e.target as HTMLElement;
+        if (
+          target.classList.contains("binder-tree") ||
+          target.classList.contains("binder-outline")
+        ) {
           setSelectedId(null);
           useProjectStore.setState({ activeDocId: null, activeDoc: null });
         }
       }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          setSelectedId(null);
-          useProjectStore.setState({ activeDocId: null, activeDoc: null });
-        }
-      }}
-      tabIndex={0}
     >
       <div className="binder-header">
         <span className="binder-title">{projectInfo.name}</span>
@@ -524,22 +736,41 @@ function BinderInner() {
         </div>
       </div>
       <div className="binder-tree">
-        {hierarchy.map((node) => (
-          <TreeItem
-            key={node.id}
-            node={node}
-            depth={0}
-            activeId={activeDocId}
-            selectedId={selectedId}
-            projectId={projectInfo.id}
-            onSelect={selectDocument}
-            onSelectNode={setSelectedId}
-            onContextMenu={handleContextMenu}
-            flowSelected={flowSelected}
-            onFlowToggle={handleFlowToggle}
-            onFlowFolder={handleFolderFlow}
-          />
-        ))}
+        <div
+          className="binder-outline"
+          role="tree"
+          aria-label="Project binder"
+          aria-activedescendant={
+            focusedNodeId ? binderTreeItemDomId(focusedNodeId) : undefined
+          }
+          tabIndex={0}
+          onKeyDown={handleTreeKeyDown}
+          onFocus={() => {
+            const activeDocIsVisible = !!activeDocId && visibleNodeIds.has(activeDocId);
+            if (focusedNodeId && selectedId !== focusedNodeId && !activeDocIsVisible) {
+              setSelectedId(focusedNodeId);
+            }
+          }}
+        >
+          {hierarchy.map((node) => (
+            <TreeItem
+              key={node.id}
+              node={node}
+              depth={0}
+              activeId={activeDocId}
+              selectedId={selectedId}
+              projectId={projectInfo.id}
+              openFolders={openFolders}
+              onSelect={selectDocument}
+              onSelectNode={setSelectedId}
+              onToggleFolder={handleToggleFolder}
+              onContextMenu={handleContextMenu}
+              flowSelected={flowSelected}
+              onFlowToggle={handleFlowToggle}
+              onFlowFolder={handleFolderFlow}
+            />
+          ))}
+        </div>
 
         <EntitySection
           kind="character"
@@ -792,8 +1023,10 @@ function TreeItem({
   activeId,
   selectedId,
   projectId,
+  openFolders,
   onSelect,
   onSelectNode,
+  onToggleFolder,
   onContextMenu,
   flowSelected,
   onFlowToggle,
@@ -804,24 +1037,23 @@ function TreeItem({
   activeId: string | null;
   selectedId: string | null;
   projectId: string;
+  openFolders: Record<string, boolean>;
   onSelect: (id: string) => void;
   onSelectNode: (id: string) => void;
+  onToggleFolder: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, nodeId: string, nodeType: "Document" | "Folder") => void;
   flowSelected?: Set<string>;
   onFlowToggle?: (docId: string) => void;
   onFlowFolder?: (folderId: string) => void;
 }) {
-  const savedState = node.type === "Folder" ? getFolderState(projectId)[node.id] : undefined;
-  const [open, setOpen] = useState(savedState !== undefined ? savedState : true);
+  const open = node.type === "Folder" ? openFolders[node.id] ?? true : false;
   const drag = useDrag();
   const itemRef = useRef<HTMLDivElement>(null);
   const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
 
   const toggleFolder = useCallback(() => {
-    const next = !open;
-    setOpen(next);
-    setFolderState(projectId, node.id, next);
-  }, [open, projectId, node.id]);
+    onToggleFolder(node.id);
+  }, [onToggleFolder, node.id]);
 
   // Mouse-based drag: start tracking on mousedown, start drag if moved > 5px
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -886,6 +1118,7 @@ function TreeItem({
   const isDragging = drag.draggingId === node.id;
   const isDropTarget = drag.dropTargetId === node.id;
   const dropClass = isDropTarget ? `drop-${drag.dropPosition}` : "";
+  const hasChildren = node.type === "Folder" && node.children.length > 0;
 
   if (node.type === "Document") {
     const isActive = node.id === activeId;
@@ -894,6 +1127,11 @@ function TreeItem({
 
     return (
       <div
+        id={binderTreeItemDomId(node.id)}
+        role="treeitem"
+        aria-level={depth + 1}
+        aria-selected={node.id === (selectedId ?? activeId)}
+        aria-label={node.name}
         ref={itemRef}
         className={`binder-item ${isActive ? "active" : ""} ${isSelected && !isActive ? "selected" : ""} ${dropClass} ${isDragging ? "dragging" : ""}`}
         style={{ paddingLeft: `${12 + depth * 24}px` }}
@@ -906,7 +1144,10 @@ function TreeItem({
             onSelect(node.id);
           }
         }}
-        onContextMenu={(e) => onContextMenu(e, node.id, "Document")}
+        onContextMenu={(e) => {
+          e.stopPropagation();
+          onContextMenu(e, node.id, "Document");
+        }}
         onMouseDown={handleMouseDown}
         onMouseEnter={handleMouseEnter}
         onMouseMove={handleMouseMove}
@@ -918,6 +1159,7 @@ function TreeItem({
         <ThreadDots docId={node.id} />
         <span
           className="binder-more"
+          aria-hidden="true"
           onClick={(e) => { e.stopPropagation(); onContextMenu(e, node.id, "Document"); }}
         >...</span>
       </div>
@@ -925,8 +1167,14 @@ function TreeItem({
   }
 
   return (
-    <div>
+    <div role="none">
       <div
+        id={binderTreeItemDomId(node.id)}
+        role="treeitem"
+        aria-level={depth + 1}
+        aria-expanded={hasChildren ? open : undefined}
+        aria-selected={node.id === selectedId}
+        aria-label={node.name}
         ref={itemRef}
         className={`binder-item folder ${node.id === selectedId ? "selected" : ""} ${dropClass} ${isDragging ? "dragging" : ""}`}
         style={{ paddingLeft: `${12 + depth * 24}px` }}
@@ -935,20 +1183,25 @@ function TreeItem({
           if (e.ctrlKey || e.metaKey) {
             onFlowFolder?.(node.id);
           } else {
-            toggleFolder();
+            if (hasChildren) toggleFolder();
             onSelectNode(node.id);
           }
         }}
-        onContextMenu={(e) => onContextMenu(e, node.id, "Folder")}
+        onContextMenu={(e) => {
+          e.stopPropagation();
+          onContextMenu(e, node.id, "Folder");
+        }}
         onMouseDown={handleMouseDown}
         onMouseEnter={handleMouseEnter}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       >
-        {open ? (
+        {hasChildren && open ? (
           <ChevronDown size={14} className="binder-chevron" />
-        ) : (
+        ) : hasChildren ? (
           <ChevronRight size={14} className="binder-chevron" />
+        ) : (
+          <span className="binder-chevron" aria-hidden="true" />
         )}
         {node.name === "Manuscript" ? (
           <BookText size={14} className="binder-icon" />
@@ -962,11 +1215,12 @@ function TreeItem({
         <span className="binder-label">{node.name}</span>
         <span
           className="binder-more"
+          aria-hidden="true"
           onClick={(e) => { e.stopPropagation(); onContextMenu(e, node.id, "Folder"); }}
         >...</span>
       </div>
       {open && node.children.length > 0 && (
-        <div className="binder-children">
+        <div className="binder-children" role="group">
           {node.children.map((child) => (
             <TreeItem
               key={child.id}
@@ -975,8 +1229,10 @@ function TreeItem({
               activeId={activeId}
               selectedId={selectedId}
               projectId={projectId}
+              openFolders={openFolders}
               onSelect={onSelect}
               onSelectNode={onSelectNode}
+              onToggleFolder={onToggleFolder}
               onContextMenu={onContextMenu}
               flowSelected={flowSelected}
               onFlowToggle={onFlowToggle}

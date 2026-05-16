@@ -254,8 +254,12 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Known gaps**: No automated keyboard-navigation harness exists for these interactions; validation is lint/build plus focused code review.
 - **Reviewer verdict**: VERIFIED (commit `7e00c59`). `useModalFocusTrap` in `Dialog.tsx:57-105` auto-focuses initialFocusRef → first focusable → container, restores `previousFocus` on cleanup with `document.contains` guard, intercepts Tab/Shift+Tab to wrap inside the modal, handles the escaped-focus edge case (`!dialog.contains(active)` re-routes back), Escape calls `onClose`, `stopPropagation` on every key prevents leak to `App.tsx:143` window-level shortcuts. All 9 modal overlays have `role="dialog"` + `aria-modal="true"` + accessible name + `tabIndex={-1}` + wired focus trap. Icon-only close buttons carry `aria-label`. CompileDialog inputs have `<label htmlFor>` associations. CommandPalette Escape explicitly `stopPropagation`s. CommentsPanel correctly stays non-modal with `role="complementary"` + `aria-labelledby`. **Non-blocking nit**: Settings focuses the X button on open — WCAG-compliant but some UX guidance prefers focusing a primary action.
 
-### L-4: Binder is not a keyboard tree `[ ]`
-- **Files**: `ui/src/components/binder/Binder.tsx`. No `role="tree"`/`role="treeitem"`, no arrow-key nav, no `aria-expanded`/`aria-selected`.
+### L-4: Binder is not a keyboard tree `[~]`
+- **Branch**: `fix/l-4-binder-keyboard-tree`
+- **Files**: `ui/src/components/binder/Binder.tsx`, `ui/src/editor.css`.
+- **Approach**: Scoped `role="tree"` to the hierarchy, added treeitem roles and ARIA state, lifted folder open state for a visible-node model, and added keyboard navigation for arrow keys, Home/End, Enter/Space, Escape, and keyboard context menu access.
+- **Tests**: `cd ui && npm run lint && npm run build` (passed); `git diff --check` (passed); two subagent review passes completed and their findings were fixed.
+- **Known gaps**: The row `...` affordance remains mouse-only; keyboard users can open the node context menu with ContextMenu or Shift+F10.
 
 ### L-5: Swift uses literal folder IDs vs Rust UUIDs `[x]`
 - **What**: `macos/Sources/ChiknKit/Writer.swift:24-27` writes `TreeNode(id: "manuscript", ...)`; Rust writer.rs:147-160 writes `uuid::Uuid::new_v4()`. No exploit today but a footgun if any code hardcodes the id shape.
