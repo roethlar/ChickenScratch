@@ -1,0 +1,7 @@
+{
+  "id": "L-3",
+  "sha": "7e00c59f020c6f1c72b0b107a16daccff5c8f0cd",
+  "ts": "2026-05-16T21:35:00Z",
+  "reviewer": "claude",
+  "note": "Shared useModalFocusTrap hook wires all 9 modal overlays with role=dialog + aria-modal + accessible name + focus trap. Auto-focus on open, restore-on-close with document.contains guard, Tab/Shift+Tab cycle, escaped-focus edge case handled, Escape closes, stopPropagation prevents leak to window-level shortcuts. Icon-only close buttons labeled; CompileDialog inputs labeled. CommentsPanel correctly non-modal (role=complementary). Two subagent review iterations during implementation surfaced issues already fixed."
+}
