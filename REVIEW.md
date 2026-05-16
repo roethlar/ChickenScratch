@@ -199,8 +199,8 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Branch**: `fix/m-4-tauri-csp-shell-scope`
 - **Files**: `src-tauri/tauri.conf.json:21-22, 36-38`; `src-tauri/capabilities/default.json:11`.
 - **Notes for GPT**: CSP: start with `"csp": "default-src 'self'; img-src 'self' data: asset: https://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'"` and tighten. `shell.open`: change to a URL-scheme regex like `"open": "^https?://"`.
-- **Approach**: Added a production CSP that restores same-origin defaults while allowing Tauri IPC and local app assets, plus a dev CSP for `http://localhost:1420` and Vite HMR. Switched the shell plugin from `open: true` to an HTTPS-only host-shaped validator and replaced the unscoped capability command with `shell:default`.
-- **Tests**: `cargo check --manifest-path src-tauri/Cargo.toml` (passed)
+- **Approach**: Added a production CSP that restores same-origin defaults while allowing Tauri IPC and local app assets, plus a dev CSP for `http://localhost:1420` and Vite HMR. Switched the shell plugin from `open: true` to an anchored HTTPS-only host-shaped validator, added a config-regression test for prefix-bypass URLs, and replaced the unscoped capability command with `shell:default`.
+- **Tests**: `cargo check --manifest-path src-tauri/Cargo.toml` (passed); `cargo test --manifest-path src-tauri/Cargo.toml shell_open_validator --bin chickenscratch` (passed)
 
 ### M-5: `simple_word_diff` O(m·n) without sane bail-out `[x]`
 - **What**: `git.rs:973-1033` builds `vec![vec![0u32; n+1]; m+1]` LCS table. Cap is 5000 words → up to 100 MB allocation per call from the revisions UI.
