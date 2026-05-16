@@ -4,6 +4,7 @@ import { useProjectStore } from "../../stores/projectStore";
 import { compileProject } from "../../commands/io";
 import { save } from "@tauri-apps/plugin-dialog";
 import { toastSuccess, toastError } from "../shared/Toast";
+import { flushPendingEditorSave } from "../editor/editorRef";
 
 interface CompileDialogProps {
   open: boolean;
@@ -46,6 +47,7 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
     setCompiling(true);
     const ext = outputPath.split(".").pop() || "docx";
     try {
+      await flushPendingEditorSave();
       await compileProject(project.path, outputPath, ext, title || undefined, author || undefined, {
         sectionSeparator: separator,
         includeTitlePage: titlePage,

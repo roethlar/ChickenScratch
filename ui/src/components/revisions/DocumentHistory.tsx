@@ -5,6 +5,7 @@ import { useProjectStore } from "../../stores/projectStore";
 import { dialogConfirm } from "../shared/Dialog";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { X, RotateCcw } from "lucide-react";
+import { flushPendingEditorSave, setCurrentEditorMarkdown } from "../editor/editorRef";
 
 interface Props {
   open: boolean;
@@ -14,7 +15,6 @@ interface Props {
 
 export function DocumentHistory({ open, docId, onClose }: Props) {
   const project = useProjectStore((s) => s.project);
-  const setProject = useProjectStore.setState;
   const doc = docId && project ? project.documents[docId] : null;
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [busy, setBusy] = useState(false);
@@ -27,10 +27,15 @@ export function DocumentHistory({ open, docId, onClose }: Props) {
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRevisions([]);
-    gitCmd
-      .documentHistory(project.path, doc.path)
-      .then((r) => { if (!cancelled) setRevisions(r); })
-      .catch(() => { if (!cancelled) setRevisions([]); });
+    (async () => {
+      try {
+        await flushPendingEditorSave();
+        const r = await gitCmd.documentHistory(project.path, doc.path);
+        if (!cancelled) setRevisions(r);
+      } catch {
+        if (!cancelled) setRevisions([]);
+      }
+    })();
     return () => { cancelled = true; };
   }, [open, project, doc]);
 
@@ -43,13 +48,18 @@ export function DocumentHistory({ open, docId, onClose }: Props) {
       ))) return;
       setBusy(true);
       try {
+        await flushPendingEditorSave();
         await gitCmd.restoreDocument(project.path, doc.path, rev.id);
-        // Reload the project so the editor picks up the restored content
+        // Reload the project and explicitly replace the editor buffer for
+        // same-doc restores; selecting the same id won't re-run Editor's load
+        // effect, so relying on selection can leave stale text queued to save.
         const Project = await import("../../commands/project");
         const reloaded = await Project.loadProject(project.path);
-        setProject({ project: reloaded });
-        // Re-select the restored doc to refresh the editor buffer
-        useProjectStore.getState().selectDocument(doc.id);
+        useProjectStore.getState().setProject(reloaded);
+        const restoredDoc = reloaded.documents[doc.id];
+        if (useProjectStore.getState().activeDocId === doc.id && restoredDoc) {
+          setCurrentEditorMarkdown(restoredDoc.content || "");
+        }
         toastSuccess("Document restored.");
         onClose();
       } catch (e) {
@@ -57,7 +67,7 @@ export function DocumentHistory({ open, docId, onClose }: Props) {
       }
       setBusy(false);
     },
-    [project, doc, setProject, onClose]
+    [project, doc, onClose]
   );
 
   if (!open || !doc) return null;
