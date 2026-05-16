@@ -1,4 +1,9 @@
 use chickenscratch_core::ChiknError;
+use std::collections::HashMap;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 
 use super::settings::{get_app_settings, get_app_settings_hydrated, AiSettings};
 
@@ -33,6 +38,40 @@ pub fn save_ai_settings(ai: AiSettings) -> Result<(), ChiknError> {
     super::settings::save_app_settings(settings)
 }
 
+#[derive(Clone, Default)]
+pub struct AiStreamRegistry {
+    cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+}
+
+impl AiStreamRegistry {
+    fn register(&self, request_id: &str) -> Arc<AtomicBool> {
+        let mut cancellations = self.cancellations.lock().expect("AI stream registry poisoned");
+        let flag = cancellations
+            .remove(request_id)
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+        cancellations.insert(request_id.to_string(), Arc::clone(&flag));
+        flag
+    }
+
+    fn cancel(&self, request_id: &str) {
+        let mut cancellations = self.cancellations.lock().expect("AI stream registry poisoned");
+        let flag = cancellations
+            .entry(request_id.to_string())
+            .or_insert_with(|| Arc::new(AtomicBool::new(false)));
+        flag.store(true, Ordering::SeqCst);
+    }
+
+    fn unregister(&self, request_id: &str, flag: &Arc<AtomicBool>) {
+        let mut cancellations = self.cancellations.lock().expect("AI stream registry poisoned");
+        if cancellations
+            .get(request_id)
+            .is_some_and(|current| Arc::ptr_eq(current, flag))
+        {
+            cancellations.remove(request_id);
+        }
+    }
+}
+
 #[tauri::command]
 pub fn ai_summarize(content: String) -> Result<String, ChiknError> {
     let settings = get_app_settings_hydrated();
@@ -63,6 +102,7 @@ pub fn ai_summarize(content: String) -> Result<String, ChiknError> {
 #[tauri::command]
 pub fn ai_transform_stream(
     app: tauri::AppHandle,
+    registry: tauri::State<'_, AiStreamRegistry>,
     content: String,
     operation: String,
     request_id: String,
@@ -84,21 +124,63 @@ pub fn ai_transform_stream(
     let instruction = instruction_for(&operation);
     let prompt = format!("{}\n\n{}", instruction, excerpt);
     let max_tokens: u32 = 2000;
+    let cancel_flag = registry.register(&request_id);
 
     // Run the streaming request on a worker thread so the command returns
     // immediately and the event loop stays responsive.
     let app_clone = app.clone();
+    let registry = registry.inner().clone();
     let ai = settings.ai.clone();
     let req_id = request_id.clone();
     std::thread::spawn(move || {
+        if cancel_flag.load(Ordering::SeqCst) {
+            registry.unregister(&req_id, &cancel_flag);
+            return;
+        }
         let result = match ai.provider.as_str() {
-            "ollama" => stream_ollama(&app_clone, &ai, &prompt, &req_id),
-            "anthropic" => stream_anthropic(&app_clone, &ai, &prompt, max_tokens, &req_id),
-            "openai" => stream_openai(&app_clone, &ai, &prompt, max_tokens, &req_id),
+            "ollama" => stream_ollama(&app_clone, &ai, &prompt, &req_id, &cancel_flag),
+            "anthropic" => {
+                stream_anthropic(&app_clone, &ai, &prompt, max_tokens, &req_id, &cancel_flag)
+            }
+            "openai" => stream_openai(&app_clone, &ai, &prompt, max_tokens, &req_id, &cancel_flag),
             other => Err(format!("Unknown AI provider: {}", other)),
         };
-        match result {
-            Ok(()) => {
+        if !cancel_flag.load(Ordering::SeqCst) {
+            match result {
+                Ok(()) => {
+                    let _ = emit_done(&app_clone, &req_id);
+                }
+                Err(msg) => {
+                    let _ = emit_error(&app_clone, &req_id, &msg);
+                }
+            }
+        }
+        registry.unregister(&req_id, &cancel_flag);
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cancel_ai_transform_stream(
+    registry: tauri::State<'_, AiStreamRegistry>,
+    request_id: String,
+) -> Result<(), ChiknError> {
+    registry.cancel(&request_id);
+    Ok(())
+}
+
+fn is_cancelled(cancel_flag: &AtomicBool) -> bool {
+    cancel_flag.load(Ordering::SeqCst)
+}
+
+fn finish_if_cancelled(cancel_flag: &AtomicBool) -> Result<(), String> {
+    if is_cancelled(cancel_flag) {
+        Ok(())
+    } else {
+        Err(String::new())
+    }
+}
                 let _ = emit_done(&app_clone, &req_id);
             }
             Err(msg) => {

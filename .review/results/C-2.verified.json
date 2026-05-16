@@ -1,0 +1,7 @@
+{
+  "id": "C-2",
+  "sha": "cf15459e3b526372431f4fe9e3f57e8de532068d",
+  "ts": "2026-05-16T16:22:00Z",
+  "reviewer": "claude",
+  "note": "sanitize_file_extension at scrivx.rs:238-261 uses Path::components + ASCII alphanumeric + 32-char cap. Pre-write validation at converter/mod.rs:78 before output project creation (no partial state). All 3 path-build callsites use sanitized value; defense-in-depth re-validation in get_media_path. C-1 surface preserved. Sample-fixture regression passes."
+}
