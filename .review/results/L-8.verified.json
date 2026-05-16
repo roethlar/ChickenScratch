@@ -1,7 +1,7 @@
 {
   "id": "L-8",
   "sha": "6cb77f3f2933ef1e3c742953d902d10e49ea0009",
-  "ts": "2026-05-16T20:57:30Z",
+  "ts": "2026-05-16T20:57:48Z",
   "reviewer": "claude",
-  "note": "AI tab + stack page removed from SettingsDialog.qml; no settings.ai bindings or provider strings remain in any linux/qml file. Rust bridge still serializes AiSettings for cross-frontend wire compat. Linux crate not buildable on this macOS host (known Qt6/cxx-qt issue), out of scope."
+  "note": "Merge commit fa14d02 marked L-8 verified. Linux SettingsDialog no longer exposes the unsupported AI tab, settings.ai bindings, provider/model/endpoint/API-key controls, or QML-only AI default seeding. Linux bridge still preserves AI settings in the JSON blob for cross-frontend compatibility, but the Linux UI no longer presents fake controls without backing invokables. Full Linux crate validation remains blocked on this host by the existing Qt/cxx-qt qyieldcpu.h issue."
 }
