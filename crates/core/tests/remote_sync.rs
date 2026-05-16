@@ -26,6 +26,25 @@ fn assert_git_kind<T>(result: Result<T, ChiknError>, expected: GitErrorKind) {
     }
 }
 
+fn assert_git_kind_with_message<T>(
+    result: Result<T, ChiknError>,
+    expected: GitErrorKind,
+    message_fragment: &str,
+) {
+    match result {
+        Err(ChiknError::Git(err)) => {
+            assert_eq!(err.kind, expected, "{}", err.message);
+            assert!(
+                err.message.contains(message_fragment),
+                "expected message to contain {message_fragment:?}, got {:?}",
+                err.message
+            );
+        }
+        Err(err) => panic!("expected git error {expected:?}, got {err:?}"),
+        Ok(_) => panic!("expected git error {expected:?}, got ok"),
+    }
+}
+
 fn init_bare_repo(path: &Path) -> bool {
     let status = Command::new("git")
         .args(["init", "--bare"])
@@ -33,6 +52,60 @@ fn init_bare_repo(path: &Path) -> bool {
         .status()
         .expect("need system git");
     status.success()
+}
+
+#[test]
+fn restore_revision_rejects_dirty_worktree_without_clobbering_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("Novel.chikn");
+    fs::create_dir_all(&project).unwrap();
+    git::init_repo(&project).expect("init repo");
+
+    let manuscript = project.join("manuscript/one.md");
+    fs::create_dir_all(manuscript.parent().unwrap()).unwrap();
+    fs::write(&manuscript, "# Chapter 1\n\nOriginal.\n").unwrap();
+    let original = git::save_revision(&project, "Original").expect("original revision");
+
+    fs::write(&manuscript, "# Chapter 1\n\nCommitted rewrite.\n").unwrap();
+    git::save_revision(&project, "Rewrite").expect("rewrite revision");
+
+    let dirty_content = "# Chapter 1\n\nUnsaved typing.\n";
+    fs::write(&manuscript, dirty_content).unwrap();
+
+    assert_git_kind_with_message(
+        git::restore_revision(&project, &original.id),
+        GitErrorKind::Conflict,
+        "unsaved changes",
+    );
+    assert_eq!(fs::read_to_string(&manuscript).unwrap(), dirty_content);
+}
+
+#[test]
+fn restore_revision_clean_worktree_restores_and_commits_forward() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("Novel.chikn");
+    fs::create_dir_all(&project).unwrap();
+    git::init_repo(&project).expect("init repo");
+
+    let manuscript = project.join("manuscript/one.md");
+    fs::create_dir_all(manuscript.parent().unwrap()).unwrap();
+    fs::write(&manuscript, "# Chapter 1\n\nOriginal.\n").unwrap();
+    let original = git::save_revision(&project, "Original").expect("original revision");
+
+    fs::write(&manuscript, "# Chapter 1\n\nCommitted rewrite.\n").unwrap();
+    git::save_revision(&project, "Rewrite").expect("rewrite revision");
+
+    let restored = git::restore_revision(&project, &original.id).expect("restore revision");
+
+    assert_eq!(
+        fs::read_to_string(&manuscript).unwrap(),
+        "# Chapter 1\n\nOriginal.\n"
+    );
+    assert_ne!(
+        restored.id, original.id,
+        "restore should create a new commit"
+    );
+    assert!(!git::has_changes(&project).expect("clean worktree"));
 }
 
 #[test]
@@ -209,4 +282,105 @@ fn ahead_count_increases_after_new_revision() {
     let s2 = git::sync_status(&project).expect("status");
     assert_eq!(s2.ahead, 0);
     assert_eq!(s2.behind, 0);
+}
+
+#[test]
+fn force_pull_rejects_dirty_worktree_without_clobbering_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project_a = tmp.path().join("A.chikn");
+    fs::create_dir_all(&project_a).unwrap();
+    init_test_repo(&project_a);
+
+    let remote = tmp.path().join("remote.git");
+    if !init_bare_repo(&remote) {
+        return;
+    }
+
+    let url = file_url(&remote);
+    let auth = git::RemoteAuth::default();
+    git::push_remote(&project_a, &url, &auth).expect("initial push should succeed");
+
+    let project_b = tmp.path().join("B.chikn");
+    let branch = git2::Repository::open(&project_a)
+        .unwrap()
+        .head()
+        .unwrap()
+        .shorthand()
+        .unwrap()
+        .to_string();
+    git2::build::RepoBuilder::new()
+        .branch(&branch)
+        .clone(&url, &project_b)
+        .expect("clone project");
+
+    fs::write(
+        project_b.join("manuscript/one.md"),
+        "# Chapter 1\n\nRemote rewrite.\n",
+    )
+    .unwrap();
+    git::save_revision(&project_b, "Remote rewrite").unwrap();
+    git::push_remote(&project_b, &url, &auth).expect("remote push should succeed");
+
+    let dirty_content = "# Chapter 1\n\nUnsaved local typing.\n";
+    fs::write(project_a.join("manuscript/one.md"), dirty_content).unwrap();
+
+    assert_git_kind_with_message(
+        git::sync_pull_force(&project_a, &url, &auth),
+        GitErrorKind::Conflict,
+        "unsaved changes",
+    );
+    assert_eq!(
+        fs::read_to_string(project_a.join("manuscript/one.md")).unwrap(),
+        dirty_content
+    );
+}
+
+#[test]
+fn force_pull_clean_worktree_overwrites_with_remote() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project_a = tmp.path().join("A.chikn");
+    fs::create_dir_all(&project_a).unwrap();
+    init_test_repo(&project_a);
+
+    let remote = tmp.path().join("remote.git");
+    if !init_bare_repo(&remote) {
+        return;
+    }
+
+    let url = file_url(&remote);
+    let auth = git::RemoteAuth::default();
+    git::push_remote(&project_a, &url, &auth).expect("initial push should succeed");
+
+    let project_b = tmp.path().join("B.chikn");
+    let branch = git2::Repository::open(&project_a)
+        .unwrap()
+        .head()
+        .unwrap()
+        .shorthand()
+        .unwrap()
+        .to_string();
+    git2::build::RepoBuilder::new()
+        .branch(&branch)
+        .clone(&url, &project_b)
+        .expect("clone project");
+
+    let remote_content = "# Chapter 1\n\nRemote rewrite.\n";
+    fs::write(project_b.join("manuscript/one.md"), remote_content).unwrap();
+    git::save_revision(&project_b, "Remote rewrite").unwrap();
+    git::push_remote(&project_b, &url, &auth).expect("remote push should succeed");
+
+    fs::write(
+        project_a.join("manuscript/one.md"),
+        "# Chapter 1\n\nCommitted local rewrite.\n",
+    )
+    .unwrap();
+    git::save_revision(&project_a, "Local rewrite").unwrap();
+
+    git::sync_pull_force(&project_a, &url, &auth).expect("force pull should succeed");
+
+    assert_eq!(
+        fs::read_to_string(project_a.join("manuscript/one.md")).unwrap(),
+        remote_content
+    );
+    assert!(!git::has_changes(&project_a).expect("clean worktree"));
 }
