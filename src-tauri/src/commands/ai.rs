@@ -1,5 +1,6 @@
 use chickenscratch_core::ChiknError;
 use std::collections::HashMap;
+use std::io::{self, Read};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -8,6 +9,7 @@ use std::sync::{
 use super::settings::{get_app_settings, get_app_settings_hydrated, AiSettings};
 
 const DEFAULT_OPENAI_CHAT_COMPLETIONS_URL: &str = "https://api.openai.com/v1/chat/completions";
+const MAX_AI_STREAM_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Truncate `s` at a UTF-8 boundary so it fits within `max_chars` codepoints.
 ///
@@ -187,6 +189,52 @@ fn is_cancelled(cancel_flag: &AtomicBool) -> bool {
     cancel_flag.load(Ordering::SeqCst)
 }
 
+struct ByteBudgetRead<R> {
+    inner: R,
+    consumed: u64,
+    limit: u64,
+}
+
+impl<R> ByteBudgetRead<R> {
+    fn new(inner: R, limit: u64) -> Self {
+        Self {
+            inner,
+            consumed: 0,
+            limit,
+        }
+    }
+}
+
+impl<R: Read> Read for ByteBudgetRead<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        let remaining = self.limit.saturating_sub(self.consumed);
+        if remaining == 0 {
+            let mut probe = [0_u8; 1];
+            return match self.inner.read(&mut probe) {
+                Ok(0) => Ok(0),
+                Ok(_) => Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("AI stream response exceeded {} byte limit", self.limit),
+                )),
+                Err(e) => Err(e),
+            };
+        }
+
+        let max_read = remaining.min(buf.len() as u64) as usize;
+        let read = self.inner.read(&mut buf[..max_read])?;
+        self.consumed += read as u64;
+        Ok(read)
+    }
+}
+
+fn budgeted_stream_reader<R: Read>(reader: R) -> ByteBudgetRead<R> {
+    ByteBudgetRead::new(reader, MAX_AI_STREAM_RESPONSE_BYTES)
+}
+
 fn instruction_for(op: &str) -> &'static str {
     match op {
         "polish" => "Improve the writing quality of this text. Fix grammar, improve word choice, and enhance clarity. Keep the same meaning and tone. Return only the improved text, no commentary.",
@@ -243,7 +291,7 @@ fn stream_ollama(
     if !resp.status().is_success() {
         return Err(format!("Ollama HTTP {}", resp.status()));
     }
-    let reader = BufReader::new(resp);
+    let reader = BufReader::new(budgeted_stream_reader(resp));
     for line in reader.lines() {
         if is_cancelled(cancel_flag) {
             break;
@@ -311,7 +359,7 @@ fn stream_anthropic(
         let body = resp.text().unwrap_or_default();
         return Err(format!("Anthropic HTTP {}: {}", status, body));
     }
-    let reader = BufReader::new(resp);
+    let reader = BufReader::new(budgeted_stream_reader(resp));
     for line in reader.lines() {
         if is_cancelled(cancel_flag) {
             break;
@@ -389,7 +437,7 @@ fn stream_openai(
         let body = resp.text().unwrap_or_default();
         return Err(format!("OpenAI HTTP {}: {}", status, body));
     }
-    let reader = BufReader::new(resp);
+    let reader = BufReader::new(budgeted_stream_reader(resp));
     for line in reader.lines() {
         if is_cancelled(cancel_flag) {
             break;
@@ -639,6 +687,7 @@ fn invalid_openai_endpoint_message() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{BufRead, BufReader};
 
     #[test]
     fn truncate_chars_handles_emoji_at_boundary() {
@@ -686,6 +735,42 @@ mod tests {
         let flag = registry.register("stream-2");
 
         assert!(is_cancelled(&flag));
+    }
+
+    #[test]
+    fn byte_budget_reader_allows_exact_limit_at_eof() {
+        let input = std::io::Cursor::new(b"abcd".to_vec());
+        let mut reader = ByteBudgetRead::new(input, 4);
+        let mut output = String::new();
+
+        reader.read_to_string(&mut output).unwrap();
+
+        assert_eq!(output, "abcd");
+    }
+
+    #[test]
+    fn byte_budget_reader_rejects_data_after_limit() {
+        let input = std::io::Cursor::new(b"abcde".to_vec());
+        let mut reader = ByteBudgetRead::new(input, 4);
+        let mut output = Vec::new();
+
+        let err = reader.read_to_end(&mut output).unwrap_err();
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(output, b"abcd");
+    }
+
+    #[test]
+    fn byte_budget_reader_caps_buffered_lines() {
+        let input = std::io::Cursor::new(b"data: one\nxx".to_vec());
+        let mut reader = BufReader::new(ByteBudgetRead::new(input, 10));
+        let mut line = String::new();
+
+        reader.read_line(&mut line).unwrap();
+        let err = reader.read_line(&mut line).unwrap_err();
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(line, "data: one\n");
     }
 
     #[test]

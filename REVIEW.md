@@ -259,8 +259,11 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Known gaps**: Core/CLI Scrivener helpers still use PATH when non-Tauri callers pass no Pandoc path.
 - **Reviewer verdict**: VERIFIED (commit `6f02674`). `resolve_pandoc` (`settings.rs:603-622`) checks user path first via `normalize_pandoc_path` (absolute-only) then iterates absolute standard candidates. Standard candidates list (`settings.rs:567-583`) covers Windows (`C:\Program Files\Pandoc\pandoc.exe`, `C:\Program Files (x86)\Pandoc\pandoc.exe`) and Unix (`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `/opt/local/bin`, `/snap/bin`). `Command::new(absolute_path)` in `pandoc_version` (`:585-601`) doesn't trigger PATH lookup (Rust stdlib semantics). Settings save-time validation (`:550-564`) rejects relative paths with actionable message. All 3 Tauri callsites (`io.rs:30 compile`, `io.rs:198-201 find_pandoc`, `project.rs:51 import_scrivener`) route through the resolver — no legacy fallback list anywhere. `docs/USER_GUIDE.md:198, 334` documents absolute-path requirement with platform examples. Core/CLI Scrivener helpers still accept `None` → use PATH; out of scope per L-6's stated Known Gap (CLI dev path, not Tauri user surface). **Minor non-blocking UX**: a typo absolute path (e.g. `/usr/local/bin/pamdoc`) is neither rejected at save nor surfaced at use — it silently falls through to standard candidates; user wouldn't know their custom path is being ignored.
 
-### L-7: AI SSE streams no max-bytes guard `[ ]`
+### L-7: AI SSE streams no max-bytes guard `[~]`
 - **Files**: `src-tauri/src/commands/ai.rs:170-188, 228-260, 302-323`. Malicious endpoint = unbounded memory.
+- **Approach**: Added an 8 MiB raw response-body byte budget for AI streaming readers before provider-specific SSE/JSON parsing. The shared reader wrapper allows exactly-at-limit EOF, rejects any additional byte, and is used by Ollama, Anthropic, and OpenAI streaming loops without changing cancellation or document-routing event behavior.
+- **Tests added**: Focused unit tests for exact-limit EOF, over-limit rejection, and buffered line accounting in `src-tauri/src/commands/ai.rs`.
+- **Touched files**: `src-tauri/src/commands/ai.rs`, `.review/findings/L-7.md`, `REVIEW.md`.
 
 ### L-8: `linux/qml/SettingsDialog.qml` exposes AI tab without backing invokable `[x]`
 - **Files**: `linux/qml/SettingsDialog.qml:78, 233`. Fake-tab footgun.
