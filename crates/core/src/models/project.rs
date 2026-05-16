@@ -41,9 +41,7 @@ pub struct SessionTarget {
 
 impl SessionTarget {
     pub fn is_empty(&self) -> bool {
-        self.words_per_session.is_none()
-            && self.deadline.is_none()
-            && self.total_target.is_none()
+        self.words_per_session.is_none() && self.deadline.is_none() && self.total_target.is_none()
     }
 }
 
