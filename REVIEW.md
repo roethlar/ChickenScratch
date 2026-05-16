@@ -149,13 +149,13 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Files**: `crates/core/tests/cross_frontend/run.sh`, `crates/core/tests/cross_frontend_round_trip.rs`.
 - **Notes for GPT**: All three are small and orthogonal. Could be one branch (`fix/h-6-followup-harness-hardening`). If 1 and 2 are trivial but 3 needs design discussion, split.
 
-### H-7: Stale-disk-state on restore/compile/file-history `[~]`
+### H-7: Stale-disk-state on restore/compile/file-history `[x]`
 - **What**: `DocumentHistory.tsx:46` restores active doc, but the editor keeps its dirty buffer and the next debounced save silently undoes the restore. `CompileDialog.tsx:49` reads disk directly with unsaved edits not persisted.
 - **Files**: `ui/src/components/revisions/DocumentHistory.tsx:46`, `ui/src/components/compile/CompileDialog.tsx:49`.
 - **Branch**: `fix/h-7-flush-before-disk-actions`.
 - **Approach**: flush pending editor saves before document-history reads, document restore, and compile/export; after active-document restore reload the project through the store and force the mounted editor content to the restored markdown via a new editor-ref helper using `setContent(..., { emitUpdate: false })`.
 - **Tests added**: no UI test runner exists; validated with `cd ui && npm run lint && npm run build`. Manual behavior documented in `.review/findings/H-7.md`.
-- **Reviewer comments**: After flush-before-restore, also force the editor to `setContent` with the restored content (don't rely on `selectDocument(sameId)` to re-trigger the load effect — it won't, because `docIdRef.current === activeDoc.id`).
+- **Reviewer verdict**: VERIFIED (commit `f85e9b5`). `DocumentHistory.tsx:51-62` flushes before `restoreDocument`, then `loadProject`, then `setProject`, then (on active-doc restore only) `setCurrentEditorMarkdown(restoredDoc.content)` — exactly the reviewer's explicit ask. New `setCurrentEditorMarkdown` helper at `editorRef.ts:16-20` calls `setContent(..., { emitUpdate: false })`, null-guards `currentEditor`. `CompileDialog.tsx:50` awaits `flushPendingEditorSave()` inside the `try` block; flush failure jumps to `catch` and aborts compile with toast. **Non-blocking nits**: (a) other disk-readers (project search, document export, AI summarize/transform commands that read from disk) may need the same flush — audit on next pass. (b) `CompileDialog.tsx:24` uses `useState(() => {…})` as an effect — pre-existing misuse, unrelated to H-7. (c) No automated test coverage (no Vitest setup) — recommended follow-up.
 
 ---
 

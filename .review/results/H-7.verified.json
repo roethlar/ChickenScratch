@@ -1,0 +1,7 @@
+{
+  "id": "H-7",
+  "sha": "f85e9b58685f0365a5e365c9e9961bab739ceed4",
+  "ts": "2026-05-16T16:17:00Z",
+  "reviewer": "claude",
+  "note": "Flush before history-load, restore, and compile. Active-doc restore explicitly calls setCurrentEditorMarkdown with emitUpdate:false — matches the reviewer's explicit ask. CompileDialog flush wrapped in try/catch that aborts compile on flush failure. Nits: other disk-readers (search/export/AI) may need same flush; no UI test runner."
+}
