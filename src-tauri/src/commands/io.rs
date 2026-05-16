@@ -437,8 +437,17 @@ pub fn get_writing_history(project_path: String) -> Result<WritingHistory, Chikn
         return Ok(WritingHistory::default());
     }
     let data = fs::read_to_string(&path)?;
-    let history: WritingHistory = serde_json::from_str(&data).unwrap_or_default();
-    Ok(history)
+    parse_writing_history(&path, &data)
+}
+
+fn parse_writing_history(path: &Path, data: &str) -> Result<WritingHistory, ChiknError> {
+    serde_json::from_str(data).map_err(|e| {
+        ChiknError::InvalidFormat(format!(
+            "Failed to parse writing history at {}: {}",
+            path.display(),
+            e
+        ))
+    })
 }
 
 #[tauri::command]
@@ -458,7 +467,7 @@ fn record_daily_words_impl(project_path: String, words: usize) -> Result<(), Chi
 
     let mut history: WritingHistory = if path.exists() {
         let data = fs::read_to_string(&path)?;
-        serde_json::from_str(&data).unwrap_or_default()
+        parse_writing_history(&path, &data)?
     } else {
         WritingHistory::default()
     };
@@ -521,10 +530,8 @@ pub fn get_session_progress(project_path: String) -> Result<SessionProgress, Chi
         .join("writing-history.json");
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let today_words: i64 = if history_path.exists() {
-        let history: WritingHistory = fs::read_to_string(&history_path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+        let data = fs::read_to_string(&history_path)?;
+        let history = parse_writing_history(&history_path, &data)?;
         history
             .entries
             .iter()
@@ -594,4 +601,51 @@ pub fn get_project_stats(project_path: String) -> Result<ProjectStats, ChiknErro
         total_docs: docs.len(),
         docs,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writing_history_parser_rejects_corrupt_json() {
+        let path = Path::new("/tmp/writing-history.json");
+        let result = parse_writing_history(path, "{\"entries\":[");
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn writing_history_parser_accepts_valid_json() {
+        let path = Path::new("/tmp/writing-history.json");
+        let history = parse_writing_history(
+            path,
+            r#"{"entries":[{"date":"2026-05-16","words":1200,"start_words":900}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(history.entries.len(), 1);
+        assert_eq!(history.entries[0].date, "2026-05-16");
+        assert_eq!(history.entries[0].words, 1200);
+        assert_eq!(history.entries[0].start_words, Some(900));
+    }
+
+    #[test]
+    fn session_progress_rejects_corrupt_writing_history() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("CorruptHistory.chikn");
+        chickenscratch_core::core::project::writer::create_project(
+            &project_path,
+            "Corrupt History",
+        )
+        .unwrap();
+
+        let settings_path = project_path.join("settings");
+        fs::create_dir_all(&settings_path).unwrap();
+        fs::write(settings_path.join("writing-history.json"), "{\"entries\":[").unwrap();
+
+        let result = get_session_progress(project_path.to_string_lossy().to_string());
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
 }
