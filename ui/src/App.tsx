@@ -11,7 +11,8 @@ import { Settings } from "./components/settings/Settings";
 import { StatsPanel } from "./components/stats/StatsPanel";
 import { CommentsPanel } from "./components/comments/CommentsPanel";
 import { getCurrentEditor, flushPendingEditorSave } from "./components/editor/editorRef";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as gitCmd from "./commands/git";
 import {
   PenLine,
@@ -145,27 +146,16 @@ export default function App() {
 
   // Auto-backup on close and warn if unsaved
   useEffect(() => {
-    const handler = async () => {
+    const flushAndBackupOnClose = async (): Promise<boolean> => {
       // Flush any pending debounced editor save FIRST. Without this,
       // typing-then-quitting would leave the last 2s of edits in
-      // memory only — `backup_on_close` auto-commits whatever is on
-      // disk, which wouldn't include them. `beforeunload` does not
-      // formally await async work (the WebView can tear down before
-      // the promise resolves), but the synchronous parts of this
-      // chain — clearing the timer and calling the Tauri command —
-      // still race to completion in practice and dramatically
-      // shorten the data-loss window.
-      let flushed = true;
+      // memory only, and `backup_on_close` would auto-commit whatever
+      // was on disk before those edits landed.
       try {
         await flushPendingEditorSave();
       } catch {
-        flushed = false;
+        return false;
       }
-      // Skip the backup commit when the flush failed. backup_on_close
-      // auto-commits whatever's on disk; running it after a failed
-      // flush would freeze the pre-flush state into git history while
-      // the user thought their edits had landed.
-      if (!flushed) return;
       const store = useProjectStore.getState();
       if (store.project) {
         try {
@@ -174,6 +164,41 @@ export default function App() {
           // Don't block close on backup failure
         }
       }
+      return true;
+    };
+
+    if (isTauri()) {
+      let unlisten: (() => void) | null = null;
+      let disposed = false;
+
+      getCurrentWindow().onCloseRequested(async (event) => {
+        const flushed = await flushAndBackupOnClose();
+        if (!flushed) {
+          event.preventDefault();
+          toastError(
+            "Close canceled because the latest editor changes could not be saved. Please retry, or check the editor for errors."
+          );
+        }
+      }).then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      }).catch((err) => {
+        // If close-listener registration fails, keep the browser
+        // fallback below out of the Tauri path instead of adding a
+        // misleading best-effort handler.
+        console.warn("onCloseRequested registration failed", err);
+      });
+
+      return () => {
+        disposed = true;
+        unlisten?.();
+      };
+    }
+
+    const handler = () => {
+      // Browser-only fallback. `beforeunload` cannot reliably await
+      // promises, so the Tauri app uses `onCloseRequested` above.
+      flushAndBackupOnClose().catch(() => {});
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
