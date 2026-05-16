@@ -250,13 +250,14 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **What**: `macos/Sources/ChiknKit/Writer.swift:24-27` writes `TreeNode(id: "manuscript", ...)`; Rust writer.rs:147-160 writes `uuid::Uuid::new_v4()`. No exploit today but a footgun if any code hardcodes the id shape.
 - **Notes for GPT**: Align Swift to UUIDs.
 
-### L-6: Pandoc resolved via $PATH `[~]`
+### L-6: Pandoc resolved via $PATH `[x]`
 - **Files**: `src-tauri/src/commands/io.rs:188-222`. Hijackable if a writable dir is ahead of `/usr/local/bin`.
 - **Notes for GPT**: Document the requirement in `docs/USER_GUIDE.md` and prefer absolute paths in the candidates list.
 - **Branch**: `fix/l-6-pandoc-path-hardening`
 - **Approach**: Added a shared Tauri `resolve_pandoc` helper that rejects non-empty relative custom paths, checks absolute standard install locations, and returns an absolute executable path. Tauri compile, file import, Scrivener import, and `check_pandoc` now use that resolver. Documented the absolute-path requirement in `docs/USER_GUIDE.md`.
 - **Tests**: `cargo test --manifest-path src-tauri/Cargo.toml settings::tests --bin chickenscratch` (passed); `cargo check --manifest-path src-tauri/Cargo.toml` (passed); `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` (passed); `git diff --check` (passed)
 - **Known gaps**: Core/CLI Scrivener helpers still use PATH when non-Tauri callers pass no Pandoc path.
+- **Reviewer verdict**: VERIFIED (commit `6f02674`). `resolve_pandoc` (`settings.rs:603-622`) checks user path first via `normalize_pandoc_path` (absolute-only) then iterates absolute standard candidates. Standard candidates list (`settings.rs:567-583`) covers Windows (`C:\Program Files\Pandoc\pandoc.exe`, `C:\Program Files (x86)\Pandoc\pandoc.exe`) and Unix (`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `/opt/local/bin`, `/snap/bin`). `Command::new(absolute_path)` in `pandoc_version` (`:585-601`) doesn't trigger PATH lookup (Rust stdlib semantics). Settings save-time validation (`:550-564`) rejects relative paths with actionable message. All 3 Tauri callsites (`io.rs:30 compile`, `io.rs:198-201 find_pandoc`, `project.rs:51 import_scrivener`) route through the resolver — no legacy fallback list anywhere. `docs/USER_GUIDE.md:198, 334` documents absolute-path requirement with platform examples. Core/CLI Scrivener helpers still accept `None` → use PATH; out of scope per L-6's stated Known Gap (CLI dev path, not Tauri user surface). **Minor non-blocking UX**: a typo absolute path (e.g. `/usr/local/bin/pamdoc`) is neither rejected at save nor surfaced at use — it silently falls through to standard candidates; user wouldn't know their custom path is being ignored.
 
 ### L-7: AI SSE streams no max-bytes guard `[ ]`
 - **Files**: `src-tauri/src/commands/ai.rs:170-188, 228-260, 302-323`. Malicious endpoint = unbounded memory.

@@ -1,0 +1,7 @@
+{
+  "id": "L-6",
+  "sha": "6f02674535365d446153c6af00005bf483da2204",
+  "ts": "2026-05-16T20:54:30Z",
+  "reviewer": "claude",
+  "note": "resolve_pandoc helper checks absolute user path first then absolute standard candidates per OS. Settings save validates relative paths rejected with actionable message. All 3 Tauri callsites routed through resolver, no PATH-based bare-binary fallback. User guide documents absolute-path requirement. Core/CLI scope boundary acknowledged (out of scope per Known Gap). Minor UX: typo absolute path silently falls through to standard candidates without warning."
+}
