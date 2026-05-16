@@ -1,0 +1,7 @@
+{
+  "id": "L-8",
+  "sha": "6cb77f3f2933ef1e3c742953d902d10e49ea0009",
+  "ts": "2026-05-16T20:57:30Z",
+  "reviewer": "claude",
+  "note": "AI tab + stack page removed from SettingsDialog.qml; no settings.ai bindings or provider strings remain in any linux/qml file. Rust bridge still serializes AiSettings for cross-frontend wire compat. Linux crate not buildable on this macOS host (known Qt6/cxx-qt issue), out of scope."
+}

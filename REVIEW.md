@@ -262,11 +262,12 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 ### L-7: AI SSE streams no max-bytes guard `[ ]`
 - **Files**: `src-tauri/src/commands/ai.rs:170-188, 228-260, 302-323`. Malicious endpoint = unbounded memory.
 
-### L-8: `linux/qml/SettingsDialog.qml` exposes AI tab without backing invokable `[~]`
+### L-8: `linux/qml/SettingsDialog.qml` exposes AI tab without backing invokable `[x]`
 - **Files**: `linux/qml/SettingsDialog.qml:78, 233`. Fake-tab footgun.
 - **Approach**: Removed the Linux settings AI tab and its QML-only default seeding because the Linux bridge only round-trips the settings blob and exposes no AI invokables that consume those fields.
 - **Tests added**: Focused static validation that `SettingsDialog.qml` no longer contains an AI tab, `settings.ai` bindings, or provider/API key controls. Attempted `cargo test -p chickenscratch-linux settings_default_round_trip`, but this macOS host fails compiling `cxx-qt` against Homebrew Qt before the test binary is built (`qyieldcpu.h` implicit `__yield` under `-Werror`).
 - **Touched files**: `linux/qml/SettingsDialog.qml`, `.review/findings/L-8.md`, `REVIEW.md`.
+- **Reviewer verdict**: VERIFIED (commit `6cb77f3`). Five tabs only in `SettingsDialog.qml` (General/Writing/Backup/Compile/Remote at `:74-78`), five matching stack pages. Zero `settings.ai` references and zero OpenAI/Anthropic/Ollama/api_key strings across all `linux/qml/*.qml`. Rust bridge symmetry preserved: `linux/src/bridge.rs:1527, 1611-1618` still serializes `AiSettings` for cross-frontend wire compat (a Linux user opening a Tauri/Windows-touched project still round-trips the `ai` JSON cleanly). No other Linux QML dialogs expose AI features. `cargo test -p chickenscratch-linux` not runnable on this macOS host due to the documented Qt6/cxx-qt issue — out of scope for L-8.
 
 ### L-9: Pandoc stdout unbounded buffer on import `[ ]`
 - **Files**: `src-tauri/src/commands/io.rs:166-185, 254-323`. Cap at 50 MB.
