@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
 import { X, FolderOpen } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
@@ -9,6 +9,7 @@ import {
 } from "../../commands/settings";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { toastSuccess, toastError } from "../shared/Toast";
+import { useModalFocusTrap } from "../shared/Dialog";
 
 type Tab = "general" | "writing" | "backup" | "remote" | "ai" | "compile" | "shortcuts";
 
@@ -39,6 +40,13 @@ export function Settings({
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [tab, setTab] = useState<Tab>("general");
   const [pandocVersion, setPandocVersion] = useState<string | null>(null);
+  const titleId = useId();
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const { dialogRef, onDialogKeyDown } = useModalFocusTrap<HTMLDivElement>(
+    open && !!settings,
+    onClose,
+    closeButtonRef
+  );
   // Settings are applied via loadSettings() in the store on save
 
   useEffect(() => {
@@ -102,10 +110,24 @@ export function Settings({
 
   return (
     <div className="settings-overlay" onClick={onClose}>
-      <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="settings-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={onDialogKeyDown}
+      >
         <div className="settings-header">
-          <h2>Settings</h2>
-          <button className="settings-close" onClick={onClose}>
+          <h2 id={titleId}>Settings</h2>
+          <button
+            ref={closeButtonRef}
+            className="settings-close"
+            onClick={onClose}
+            aria-label="Close settings dialog"
+          >
             <X size={18} />
           </button>
         </div>

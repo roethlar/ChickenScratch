@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
 import * as gitCmd from "../../commands/git";
 import type { Revision } from "../../commands/git";
 import { useProjectStore } from "../../stores/projectStore";
-import { dialogConfirm } from "../shared/Dialog";
+import { dialogConfirm, useModalFocusTrap } from "../shared/Dialog";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { X, RotateCcw } from "lucide-react";
 import { flushPendingEditorSave, setCurrentEditorMarkdown } from "../editor/editorRef";
@@ -18,6 +18,13 @@ export function DocumentHistory({ open, docId, onClose }: Props) {
   const doc = docId && project ? project.documents[docId] : null;
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [busy, setBusy] = useState(false);
+  const titleId = useId();
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const { dialogRef, onDialogKeyDown } = useModalFocusTrap<HTMLDivElement>(
+    open && !!doc,
+    onClose,
+    closeButtonRef
+  );
 
   // Loading revisions from git is an external-system query — an effect is
   // the right boundary, and the synchronous setRevisions([]) clears stale
@@ -74,10 +81,24 @@ export function DocumentHistory({ open, docId, onClose }: Props) {
 
   return (
     <div className="doc-history-overlay" onClick={onClose}>
-      <div className="doc-history-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="doc-history-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={onDialogKeyDown}
+      >
         <div className="doc-history-header">
-          <span className="doc-history-title">File History — {doc.name}</span>
-          <button className="doc-history-close" onClick={onClose}>
+          <span className="doc-history-title" id={titleId}>File History — {doc.name}</span>
+          <button
+            ref={closeButtonRef}
+            className="doc-history-close"
+            onClick={onClose}
+            aria-label="Close file history dialog"
+          >
             <X size={16} />
           </button>
         </div>

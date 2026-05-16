@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Search } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
 import { searchProject, type SearchResult } from "../../commands/search";
+import { useModalFocusTrap } from "../shared/Dialog";
 
 export function ProjectSearch({
   open,
@@ -17,6 +18,11 @@ export function ProjectSearch({
   const [searching, setSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { dialogRef, onDialogKeyDown } = useModalFocusTrap<HTMLDivElement>(
+    open,
+    onClose,
+    inputRef
+  );
 
   // Reset state when opening (React's "adjust state on prop change" pattern)
   const [lastOpen, setLastOpen] = useState(open);
@@ -70,17 +76,32 @@ export function ProjectSearch({
 
   return (
     <div className="palette-overlay" onClick={onClose}>
-      <div className="palette" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Project search"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={onDialogKeyDown}
+      >
         <div className="search-input-row">
           <Search size={16} className="search-icon" />
           <input
             ref={inputRef}
             className="palette-input search-input"
+            aria-label="Search across all documents"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Escape") onClose();
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose();
+              }
               if (e.key === "Enter" && results.length > 0) {
+                e.preventDefault();
                 handleSelect(results[0].doc_id);
               }
             }}
