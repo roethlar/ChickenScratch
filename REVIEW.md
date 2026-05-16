@@ -142,7 +142,7 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 
 ## MEDIUM
 
-### M-1: `ChiknError::Unknown` swallows all git errors `[~]`
+### M-1: `ChiknError::Unknown` swallows all git errors `[x]`
 - **What**: 128/128 git error sites collapse into stringly-typed `Unknown(format!(...))`. UI can't branch on auth-vs-conflict-vs-no-remote-vs-not-fast-forward.
 - **Branch**: `fix/m-1-git-error-taxonomy`
 - **Files**: `crates/core/src/utils/error.rs:10`; all of `crates/core/src/core/git.rs`.
@@ -150,6 +150,7 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Approach**: reused the git-specific `ChiknError::Git(GitError)` taxonomy present on current `master`, added a conservative git2 classifier in `core/git.rs`, and routed only high-value restore/current-branch/remote sync/pull/push/force-pull/merge-draft paths through it while keeping `ChiknError` string serialization unchanged.
 - **Tests added**: `remote_sync` coverage for no commits, missing remote tracking ref, missing remote/repo, and not-fast-forward push.
 - **Touched files**: `crates/core/src/core/git.rs`, `crates/core/src/lib.rs`, `crates/core/tests/remote_sync.rs`, `.review/findings/M-1.md`, `REVIEW.md`.
+- **Reviewer verdict**: VERIFIED (commit `6a8c6bb`). Classifier at `git.rs:18-106` maps `UnbornBranch → NoCommits`, `NotFound + Reference → NoUpstream`, `Net|Http → RemoteUnavailable`, `NotFastForward`, and `Merge|Checkout → Conflict`; auth path present (Code + Class + message fallback) but untested per acknowledged gap. 4 new tests pattern-match on `GitErrorKind` variants (not just `is_err`). 84 `Unknown` sites remain in `git.rs` (intentional per Known Gaps — index/commit plumbing not user-actionable). Tauri serialization unchanged (string passthrough via `serialize_str`), so frontend wire compat preserved.
 
 ### M-2: Corrupt sidecars silently overwritten `[~]`
 - **What**: `reader.rs:228` `read_threads(...).unwrap_or_default()` — one corrupt `threads.yaml` and the next save erases every thread. Same shape at `writer.rs:285` (swallowed `.meta` parse), `src-tauri/src/commands/io.rs:423` (writing_history wipe).

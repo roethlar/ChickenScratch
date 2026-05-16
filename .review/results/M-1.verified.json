@@ -1,0 +1,7 @@
+{
+  "id": "M-1",
+  "sha": "6a8c6bb278ab42b24e5f0d1b7619a65e67a6f776",
+  "ts": "2026-05-16T15:47:00Z",
+  "reviewer": "claude",
+  "note": "Conservative classifier at git.rs:18-106 covers user-actionable paths (restore, current_branch, remote ops, merge-draft). 4 new variant-pattern-matching tests. 84 Unknown sites remain (intentional, plumbing). Auth path present but untested per acknowledged gap. Frontend serialization preserved."
+}
