@@ -6,4 +6,5 @@
 pub mod format;
 pub mod hierarchy;
 pub mod reader;
+pub mod safe_path;
 pub mod writer;

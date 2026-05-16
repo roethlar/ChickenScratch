@@ -308,11 +308,14 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 
 After the first cycle closed all originally-listed findings, a rescan of the v1.2 feature code that landed between the original audit and now surfaced these. None CRITICAL; the security-tagged ones are pre-auth (require attacker control of a project path or pre-set symlink).
 
-### N-1: `create_entity` bypasses C-3 symlink validation `[ ]`
+### N-1: `create_entity` bypasses C-3 symlink validation `[~]`
 - **What**: `create_entity` in `src-tauri/src/commands/document.rs:356-359` (and the parallel folder-creation in `src-tauri/src/commands/io.rs:358`) calls `std::fs::create_dir_all(&folder_path)` where `folder_path = project_path.join("characters")` or `"locations"`. Unlike the reader's `ensure_required_folder_safe` (`reader.rs:340-367`) and the writer path that C-3 hardened (`writer.rs:293-331`), entity creation does **not** check whether the path is a symlink or escapes the project root before writing. A hostile `.chikn` containing a pre-existing `characters` symlink to `~/.ssh/` would write entity files to the symlink target on first entity creation.
 - **Severity**: MEDIUM. Pre-auth requires attacker to plant the symlink (hostile-project model), same threat surface as C-3. Strictly weaker than C-1/C-3 (which had the same root cause and shipped fixes).
 - **Files**: `src-tauri/src/commands/document.rs:356-359` (`create_entity`); `src-tauri/src/commands/io.rs:358` (entity-folder creation in import flow if applicable).
 - **Notes for GPT**: Reuse the C-3 helper. The cleanest path: extract `ensure_required_folder_safe` (or its writer-side twin) into a public function in `crates/core/src/core/project/writer.rs` (or a new `crates/core/src/core/project/safe_path.rs`) and call it from any code in `src-tauri` that creates a directory inside a project. Add a test: hostile project with `characters` → symlink to `/tmp/escape`; `create_entity` returns `Err(ChiknError::InvalidFormat)` without touching the symlink target.
+- **Branch**: `fix/n-1-entity-folder-symlink-validation`
+- **Approach**: added shared `safe_path::ensure_project_subdir_safe`, routed `create_entity` through it before project read/write, extracted `create_entity_impl` for tests, and reused the helper from reader required-folder repair.
+- **Tests**: `cargo test -p chickenscratch-core safe_path --lib`; `cargo test -p chickenscratch document::tests --bins`; `cargo clippy -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings`; `cargo test -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests`; `cd ui && npm run lint && npm run build`; `git diff --check`.
 
 ### N-2: `DocumentHistory` swallows fetch errors silently `[ ]`
 - **What**: `ui/src/components/revisions/DocumentHistory.tsx:42-44` — the effect that loads git history catches all errors and sets `revisions = []`. On a corrupt repo, permission-denied, or other failure, the user sees an empty history with no signal that anything failed.
