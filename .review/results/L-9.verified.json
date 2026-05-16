@@ -1,0 +1,7 @@
+{
+  "id": "L-9",
+  "sha": "41614c5387d36f301788649342d2214624ed8255",
+  "ts": "2026-05-16T21:34:00Z",
+  "reviewer": "claude",
+  "note": "Closed as duplicate of M-3. Confirmed io.rs:155 convert_to_markdown_via_pandoc routes through output_bounded at :183 with PANDOC_OUTPUT_LIMIT_BYTES (50 MiB combined cap). No new code needed."
+}
