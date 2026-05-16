@@ -1,0 +1,7 @@
+{
+  "id": "C-4",
+  "sha": "6151be80b3a92ebb91c42f23b886d7821a32b59e",
+  "ts": "2026-05-16T16:32:30Z",
+  "reviewer": "claude",
+  "note": "Two-tier ProjectWriteLocks (Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>) with outer map lock released before inner. 21 write_project callsites + all git mutators + backup_on_close all wrapped. Reads inside the closure (not before) so read-modify-write is fully serialized. No re-entrancy via command-to-command calls. 2 new tests use real threads with timing assertions to prove same-project serialization and cross-project independence. Minor: project_lock_key doesn't canonicalize non-existent paths (concurrent create_project on same target via different path shapes — pathological)."
+}
