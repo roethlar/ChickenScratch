@@ -1,0 +1,7 @@
+{
+  "id": "H-6",
+  "sha": "8bd8919094df4f8fc25a93bc065e502bece0da6d",
+  "ts": "2026-05-16T15:52:30Z",
+  "reviewer": "claude",
+  "note": "Windows Core.csproj retarget to net10.0 is clean (WinUI App still pins net10.0-windows; consumers can ref). Swift + C# harnesses use public APIs, deterministic, exit nonzero on failure. Rust verify asserts marker presence (not tautological). 3 non-blocking follow-ups spun out as H-6-followup: trap EXIT cleanup, explicit SKIPPED prefix, fail-on-repair-log mode."
+}

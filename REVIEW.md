@@ -122,7 +122,7 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Files**: `src-tauri/src/commands/settings.rs:121-149, 266-270`.
 - **Notes for GPT**: Use the `keyring` crate. Store under service `chickenscratch.ai.api_key.{provider}` and `chickenscratch.remote.token.{remote_name}`. Leave a reference (e.g. `{"api_key_in_keyring": true, "provider": "anthropic"}`) in settings.json so the UI can still show "configured / not configured" without round-tripping the secret on every read.
 
-### H-6: Cross-frontend test is a misnomer `[~]`
+### H-6: Cross-frontend test is a misnomer `[x]`
 - **What**: `crates/core/tests/cross_frontend_round_trip.rs` only exercises the Rust reader against hand-crafted YAML. Doesn't invoke Swift writer or C# writer. The whole F-001..F-018 class of bugs slipped through because of this.
 - **Branch**: `fix/h-6-real-cross-frontend-harness`
 - **Notes for GPT**: Build a shell/Python harness in `crates/core/tests/cross_frontend/` (or as a separate `xtask`) that:
@@ -134,6 +134,15 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Approach**: added `crates/core/tests/cross_frontend/run.sh`, which converts `samples/Corn.scriv` through `chikn-converter`, runs Swift and C# writer harnesses when toolchains exist, and invokes a Rust-reader verifier after each pass. Added Swift `ChiknKitCrossFrontendHarness` and C# `ChickenScratch.Core.CrossFrontendHarness` entry points; retargeted the C# core library to `net10.0` so it builds on macOS without WinUI.
 - **Tests added**: env-driven Rust verifier in `cross_frontend_round_trip.rs`; `cargo test -p chickenscratch-core --test cross_frontend_round_trip`; `cargo build -p chikn-converter`; `swift run --package-path macos ChiknKitChecks`; `dotnet build windows/ChickenScratch.Core/ChickenScratch.Core.csproj`; `crates/core/tests/cross_frontend/run.sh`.
 - **Known gap**: harness emits a manifest and verifies Rust load/marker fields instead of byte-for-byte goldens because current writer passes touch volatile timestamps and can rewrite/repair metadata ordering.
+- **Reviewer verdict**: VERIFIED (commit `8bd8919`). Windows `Core.csproj` retarget to `net10.0` is clean — scanned all Core/*.cs for Windows-specific imports, found none; the WinUI App still pins `net10.0-windows10.0.19041.0` and a `net10.0-windows` consumer of `net10.0` is supported. `run.sh` is bash-3.2 compatible with proper `set -euo pipefail` and consistent path quoting. Swift + C# harnesses both use public APIs, deterministic mutations, argv-driven, exit nonzero on failure. Rust verify test asserts marker field is present in at least one doc's fields (not tautological). End-to-end runnable on this host (dotnet + swift both available). Spun out `H-6-followup` below.
+
+### H-6-followup: Cross-frontend harness — tighten skips, cleanup, drift gate `[ ]`
+- **What**: H-6 landed but with explicit known gaps the reviewer surfaced. Three follow-ups to close them:
+  1. No `trap … EXIT` cleanup in `run.sh` — `/tmp/chikn-cross-frontend.XXXXXX` workdirs leak on every CI run.
+  2. Skip messages on missing Swift/dotnet toolchains go through `log()` to stdout+manifest without an explicit `SKIPPED:` prefix or stderr emission — a CI run with neither toolchain reports `result: ok` with only the converter exercised, which is the silent-pass failure mode the original concern called out.
+  3. Verify test asserts marker presence but not absence of repair logs; GPT's own H-6.md acknowledges this. Tighten with a `CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR=1` mode that greps the output for the reader's repair markers and fails if seen.
+- **Files**: `crates/core/tests/cross_frontend/run.sh`, `crates/core/tests/cross_frontend_round_trip.rs`.
+- **Notes for GPT**: All three are small and orthogonal. Could be one branch (`fix/h-6-followup-harness-hardening`). If 1 and 2 are trivial but 3 needs design discussion, split.
 
 ### H-7: Stale-disk-state on restore/compile/file-history `[~]`
 - **What**: `DocumentHistory.tsx:46` restores active doc, but the editor keeps its dirty buffer and the next debounced save silently undoes the restore. `CompileDialog.tsx:49` reads disk directly with unsaved edits not persisted.
