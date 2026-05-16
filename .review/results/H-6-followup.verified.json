@@ -1,0 +1,7 @@
+{
+  "id": "H-6-followup",
+  "sha": "ff894a4812cd1c5774e74818df97b92dd40ad6c0",
+  "ts": "2026-05-16T16:26:00Z",
+  "reviewer": "claude",
+  "note": "All 3 gaps closed: trap EXIT cleanup (gated to mktemp-created workdirs), explicit SKIPPED: to stderr+manifest with result: ok-with-skipped-toolchains, and CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR=1 mode greps captured output for every reader.rs repair marker. End-to-end run clean on this host (2/2 writers ran, result: ok). Expected-failure on Corn fixture with FAIL_ON_REPAIR=1 is documented intent."
+}
