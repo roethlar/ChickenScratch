@@ -97,8 +97,8 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 ### H-2: Windows `RestoreRevision` hard-resets history `[~]`
 - **What**: `repo.Reset(ResetMode.Hard, commit)` destroys uncommitted work AND moves HEAD destructively. Rust uses `checkout_tree` + forward `save_revision` (preserves history). Cross-frontend divergence in the highest-stakes operation.
 - **Files**: `windows/ChickenScratch.Core/Git/GitService.cs:43`.
-- **Approach**: _(GPT to fill in)_
-- **Tests added**: _(GPT to fill in)_
+- **Approach**: replaced hard reset with target-tree checkout, stage-all, and a new restore commit from the current HEAD so history moves forward and the restored commit's parent is the pre-restore HEAD.
+- **Tests added**: `windows/ChickenScratch.Core.Tests/GitServiceRestoreHarness` creates two revisions, restores the first, and asserts HEAD is a new commit whose parent is the previous HEAD and whose tree/worktree match the target revision, including deletion of files added later.
 - **Reviewer comments**:
 
 ### H-3: Destructive git ops lack dirty-worktree guards `[~]`

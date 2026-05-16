@@ -40,8 +40,13 @@ public static class GitService
         var commit = repo.Lookup<Commit>(commitId)
             ?? throw new InvalidOperationException($"Commit {commitId} not found");
 
-        repo.Reset(ResetMode.Hard, commit);
+        repo.Checkout(
+            commit.Tree,
+            null,
+            new CheckoutOptions { CheckoutModifiers = CheckoutModifiers.Force });
+
         var sig = new Signature(Author.Name, Author.Email, DateTimeOffset.UtcNow);
+        Commands.Stage(repo, "*");
         var restored = repo.Commit($"Restored to: {commit.MessageShort}", sig, sig,
             new CommitOptions { AllowEmptyCommit = true });
         return ToRevision(restored);
