@@ -14,6 +14,11 @@ interface TimelineScene {
   threads: string[];
 }
 
+interface TimelineData {
+  scenes: TimelineScene[];
+  invalidStoryTimes: number;
+}
+
 function parseStoryTime(raw: unknown): { time: number; display: string } {
   const str = String(raw ?? "").trim();
   if (!str) return { time: NaN, display: "" };
@@ -37,10 +42,17 @@ function parseStoryTime(raw: unknown): { time: number; display: string } {
   return { time: NaN, display: str };
 }
 
-function extractScenes(project: NonNullable<ReturnType<typeof useProjectStore.getState>["project"]>): TimelineScene[] {
+function hasStoryTime(raw: unknown): boolean {
+  return String(raw ?? "").trim().length > 0;
+}
+
+function extractTimelineData(project: NonNullable<ReturnType<typeof useProjectStore.getState>["project"]>): TimelineData {
   const scenes: TimelineScene[] = [];
+  let invalidStoryTimes = 0;
   for (const doc of Object.values(project.documents)) {
     const fields = doc.fields ?? {};
+    if (!hasStoryTime(fields.story_time)) continue;
+
     const st = parseStoryTime(fields.story_time);
     if (!isNaN(st.time)) {
       const dur = typeof fields.duration_minutes === "number" ? fields.duration_minutes : 0;
@@ -49,9 +61,11 @@ function extractScenes(project: NonNullable<ReturnType<typeof useProjectStore.ge
         ? fields.threads.filter((t): t is string => typeof t === "string")
         : [];
       scenes.push({ doc, time: st.time, duration: dur, displayTime: st.display, pov, threads });
+    } else {
+      invalidStoryTimes += 1;
     }
   }
-  return scenes.sort((a, b) => a.time - b.time);
+  return { scenes: scenes.sort((a, b) => a.time - b.time), invalidStoryTimes };
 }
 
 type LaneMode = "pov" | "thread" | "single";
@@ -61,7 +75,8 @@ export function TimelineView() {
   const selectDocument = useProjectStore((s) => s.selectDocument);
   const [laneMode, setLaneMode] = useState<LaneMode>("pov");
 
-  const scenes = useMemo(() => (project ? extractScenes(project) : []), [project]);
+  const timelineData = useMemo(() => (project ? extractTimelineData(project) : { scenes: [], invalidStoryTimes: 0 }), [project]);
+  const { scenes, invalidStoryTimes } = timelineData;
 
   const allThreads: Thread[] = project?.threads ?? [];
 
@@ -114,6 +129,11 @@ export function TimelineView() {
     return ((t - timeRange.min) / (timeRange.max - timeRange.min)) * 100;
   };
 
+  const durationWidth = (duration: number) => {
+    if (duration <= 0 || timeRange.max === timeRange.min) return undefined;
+    return `${Math.max(2, (duration / Math.max(1, timeRange.max - timeRange.min)) * 100)}%`;
+  };
+
   const threadColor = (id: string) => {
     const t = allThreads.find((x) => x.id === id || x.name === id);
     return t?.color || "#888";
@@ -132,6 +152,14 @@ export function TimelineView() {
   }
 
   if (scenes.length === 0) {
+    if (invalidStoryTimes > 0) {
+      return (
+        <div className="timeline-empty">
+          <p>No valid Story Time values yet.</p>
+        </div>
+      );
+    }
+
     return (
       <div className="timeline-empty">
         <p>No scenes with a Story Time yet.</p>
@@ -174,7 +202,7 @@ export function TimelineView() {
                   className="timeline-chip"
                   style={{
                     left: `${scale(s.time)}%`,
-                    width: s.duration > 0 ? `${Math.max(2, (s.duration / Math.max(1, timeRange.max - timeRange.min || 1)) * 100)}%` : undefined,
+                    width: durationWidth(s.duration),
                   }}
                   onClick={() => handleSceneClick(s.doc.id)}
                   title={`${s.doc.name}\n${s.displayTime}\n${s.doc.synopsis || ""}`}

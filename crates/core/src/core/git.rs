@@ -198,7 +198,13 @@ pub fn init_repo(path: &Path) -> Result<Repository, ChiknError> {
                 &gitignore,
                 "revs/\n.DS_Store\nThumbs.db\n*.tmp\n*.swp\n*~\n",
             )
-            .ok();
+            .map_err(|e| {
+                ChiknError::Unknown(format!(
+                    "Failed to write gitignore at {}: {}",
+                    gitignore.display(),
+                    e
+                ))
+            })?;
         }
 
         Ok(repo)
@@ -637,7 +643,13 @@ pub fn push_backup(project_path: &Path, backup_dir: &Path) -> Result<(), ChiknEr
 
     // Create bare repo if it doesn't exist
     if !bare_path.exists() {
-        std::fs::create_dir_all(&bare_path).ok();
+        std::fs::create_dir_all(&bare_path).map_err(|e| {
+            ChiknError::Unknown(format!(
+                "Failed to create backup directory at {}: {}",
+                bare_path.display(),
+                e
+            ))
+        })?;
         Repository::init_bare(&bare_path)
             .map_err(|e| ChiknError::Unknown(format!("Failed to create backup repo: {}", e)))?;
     }
@@ -1370,6 +1382,23 @@ mod tests {
                 ("deleted".to_string(), old.join(" ")),
                 ("added".to_string(), new.join(" ")),
             ]
+        );
+    }
+
+    #[test]
+    fn push_backup_reports_backup_directory_create_failure() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("BackupFailure.chikn");
+        std::fs::create_dir(&project_path).unwrap();
+        init_repo(&project_path).unwrap();
+
+        let backup_file = temp_dir.path().join("not-a-dir");
+        std::fs::write(&backup_file, "not a directory").unwrap();
+
+        let result = push_backup(&project_path, &backup_file);
+
+        assert!(
+            matches!(result, Err(ChiknError::Unknown(message)) if message.contains("Failed to create backup directory"))
         );
     }
 }

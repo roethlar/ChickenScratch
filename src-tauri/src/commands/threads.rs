@@ -5,6 +5,7 @@
 use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::{ChiknError, Project, Thread};
 use serde::Serialize;
+use std::collections::HashSet;
 use std::path::Path;
 use tauri::State;
 
@@ -20,37 +21,24 @@ pub struct DanglingRef {
     pub missing_id: String,
 }
 
+const MAX_ENTITIES_PER_TYPE: usize = 1024;
+const MAX_ENTITY_PATH_DEPTH: usize = 8;
+
 /// Walk every document's `fields` map and report references to entities or
 /// threads that don't exist. Non-fatal — UIs surface this as a soft warning.
+///
+/// This validates only the novelist convention reference keys documented in
+/// `docs/UI_CONVENTIONS_NOVELIST.md`: `pov_character`,
+/// `characters_in_scene`, `location`, and `threads`. Other custom `fields`
+/// keys are preserved as opaque UI-owned data and are not interpreted here.
 #[tauri::command]
 pub fn validate_references(project_path: String) -> Result<Vec<DanglingRef>, ChiknError> {
     let project = reader::read_project(Path::new(&project_path))?;
 
     // Build slug → name lookups. Slug = filename stem under the entity folder.
-    let character_slugs: std::collections::HashSet<String> = project
-        .documents
-        .values()
-        .filter(|d| d.path.starts_with("characters/"))
-        .filter_map(|d| {
-            std::path::Path::new(&d.path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(String::from)
-        })
-        .collect();
-    let location_slugs: std::collections::HashSet<String> = project
-        .documents
-        .values()
-        .filter(|d| d.path.starts_with("locations/"))
-        .filter_map(|d| {
-            std::path::Path::new(&d.path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(String::from)
-        })
-        .collect();
-    let thread_ids: std::collections::HashSet<String> =
-        project.threads.iter().map(|t| t.id.clone()).collect();
+    let character_slugs = collect_entity_slugs(&project, "characters")?;
+    let location_slugs = collect_entity_slugs(&project, "locations")?;
+    let thread_ids: HashSet<String> = project.threads.iter().map(|t| t.id.clone()).collect();
 
     let mut dangling = Vec::new();
     for doc in project.documents.values() {
@@ -97,6 +85,40 @@ pub fn validate_references(project_path: String) -> Result<Vec<DanglingRef>, Chi
         }
     }
     Ok(dangling)
+}
+
+fn collect_entity_slugs(project: &Project, folder: &str) -> Result<HashSet<String>, ChiknError> {
+    let prefix = format!("{folder}/");
+    let mut slugs = HashSet::new();
+    let mut count = 0usize;
+
+    for doc in project
+        .documents
+        .values()
+        .filter(|doc| doc.path.starts_with(&prefix))
+    {
+        count += 1;
+        if count > MAX_ENTITIES_PER_TYPE {
+            return Err(ChiknError::InvalidFormat(format!(
+                "Too many {folder} entities; limit is {MAX_ENTITIES_PER_TYPE}"
+            )));
+        }
+
+        let path = Path::new(&doc.path);
+        let depth_under_folder = path.components().skip(1).count();
+        if depth_under_folder > MAX_ENTITY_PATH_DEPTH {
+            return Err(ChiknError::InvalidFormat(format!(
+                "{folder} entity path is too deep: {}",
+                doc.path
+            )));
+        }
+
+        if let Some(slug) = path.file_stem().and_then(|s| s.to_str()) {
+            slugs.insert(slug.to_string());
+        }
+    }
+
+    Ok(slugs)
 }
 
 #[tauri::command]
@@ -222,5 +244,68 @@ fn unique_thread_id(name: &str, existing: &[Thread]) -> String {
             return candidate;
         }
         n += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chickenscratch_core::Document;
+    use std::collections::HashMap;
+
+    fn project_with_documents(paths: impl IntoIterator<Item = String>) -> Project {
+        let mut documents = HashMap::new();
+        for path in paths {
+            let id = path.clone();
+            documents.insert(
+                id.clone(),
+                Document {
+                    id,
+                    name: path.clone(),
+                    path,
+                    ..Default::default()
+                },
+            );
+        }
+
+        Project {
+            id: "project".to_string(),
+            name: "Project".to_string(),
+            path: String::new(),
+            hierarchy: Vec::new(),
+            documents,
+            created: String::new(),
+            modified: String::new(),
+            metadata: Default::default(),
+            threads: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn collect_entity_slugs_rejects_too_many_entities() {
+        let paths = (0..=MAX_ENTITIES_PER_TYPE)
+            .map(|idx| format!("characters/character-{idx}.md"))
+            .collect::<Vec<_>>();
+        let project = project_with_documents(paths);
+
+        let result = collect_entity_slugs(&project, "characters");
+
+        assert!(
+            matches!(result, Err(ChiknError::InvalidFormat(message)) if message.contains("Too many characters entities"))
+        );
+    }
+
+    #[test]
+    fn collect_entity_slugs_rejects_too_deep_entity_path() {
+        let project = project_with_documents([format!(
+            "characters/{}/sarah.md",
+            ["a", "b", "c", "d", "e", "f", "g", "h"].join("/")
+        )]);
+
+        let result = collect_entity_slugs(&project, "characters");
+
+        assert!(
+            matches!(result, Err(ChiknError::InvalidFormat(message)) if message.contains("entity path is too deep"))
+        );
     }
 }

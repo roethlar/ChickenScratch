@@ -337,7 +337,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Tests**: `cd ui && npm ci && npm run lint && npm run build && git diff --check`.
 - **Reviewer verdict**: VERIFIED (commit `5f85bf9`). Effect at `DocumentHistory.tsx:32-58` now wraps the work in an async IIFE so `flushPendingEditorSave()` is actually awaited (closes the race I called out alongside the toast issue). Two separate `try/catch` blocks: flush failure → toast "File history aborted — editor save failed: …" and returns; gitCmd failure → toast "Failed to load document history: …". Cancellation guards (`if (!cancelled)`) preserved on every state mutation. Lint clean.
 
-### N-3: Tightening pass — silent error swallows + perf nits `[ ]`
+### N-3: Tightening pass — silent error swallows + perf nits `[~]`
 - **What**: A bundle of small low-severity items surfaced in the rescan. Group as one branch since they're all "make this loud" / "guard this edge."
   1. `crates/core/src/core/git.rs:196-200` — `.gitignore` write uses `.ok()` swallow. Init succeeds with a missing gitignore; user has no signal. Convert to `?` or log.
   2. `crates/core/src/core/git.rs:643` — backup `create_dir_all` uses `.ok()` swallow before `Repository::init_bare()`; the subsequent init failure surfaces a less informative message. Either propagate the create_dir error or document the swallow.
@@ -346,6 +346,9 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
   5. `ui/src/components/timeline/TimelineView.tsx:17-37` — `parseStoryTime` returns `{ time: NaN, display: "" }` on parse failure; downstream filters work but the all-equal-times case at `:177` makes duration scaling uniformly 50%. Cosmetic; add a "no timeline data" empty state if all parses fail.
   6. `ui/src/components/editor/Editor.tsx:461-464` — `SessionBadge` swallows `get_session_progress` errors silently. Convert to a one-time toast or a small "session tracking unavailable" indicator.
 - **Severity**: LOW each, but they cluster as the same "make failures observable" pattern we hardened in H-1 / M-2.
+- **Branch**: `fix/n-3-tightening-pass`
+- **Approach**: propagated `.gitignore` and backup-dir filesystem errors; capped entity reference scans; documented known validated novelist keys; added invalid-story-time timeline empty state and same-time duration guard; made session-progress failures visible with a one-time toast.
+- **Tests**: `cargo test -p chickenscratch-core push_backup_reports_backup_directory_create_failure --lib`; `cargo test -p chickenscratch commands::threads::tests --bins`; `cargo clippy -p chickenscratch-core -p chickenscratch --all-targets -- -D warnings`; `cd ui && npm ci && npm run lint && npm run build`; `cargo fmt --all -- --check`; `git diff --check`.
 
 ### N-FMT: rustfmt drift in 7 files `[x]`
 - **What**: `cargo fmt --all -- --check` shows 32 diff locations across:

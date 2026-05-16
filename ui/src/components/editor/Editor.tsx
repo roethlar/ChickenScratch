@@ -453,15 +453,24 @@ function SessionBadge() {
   const [progress, setProgress] = useState<sessionCmd.SessionProgress | null>(null);
   const [hidden, setHidden] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionErrorShown = useRef(false);
 
   useEffect(() => {
     if (!project) return;
     let cancelled = false;
+    sessionErrorShown.current = false;
     const refresh = () => {
       sessionCmd
         .getSessionProgress(project.path)
         .then((p) => { if (!cancelled) setProgress(p); })
-        .catch(() => { if (!cancelled) setProgress(null); });
+        .catch((e) => {
+          if (cancelled) return;
+          setProgress(null);
+          if (!sessionErrorShown.current) {
+            sessionErrorShown.current = true;
+            toastError(`Session tracking unavailable: ${e}`);
+          }
+        });
     };
     refresh();
     const interval = setInterval(refresh, 30_000);
