@@ -1,0 +1,7 @@
+{
+  "id": "L-5",
+  "sha": "8d280a1576d1ef91c05bc1ebb073d9ab99bb252e",
+  "ts": "2026-05-16T21:08:00Z",
+  "reviewer": "claude",
+  "note": "Swift roots now UUIDs (Writer.swift:24-27); display names + on-disk layout preserved. resolvedParentID strictly resolves the three legacy aliases via lowercase-literal match. Rust reader treats hierarchy id as opaque; no literal-id comparisons in crates/core. All 60+ Swift checks pass on this host. Cosmetic gap noted: BinderView.swift:240-244 icon switch on node.id literals falls through to default for new projects — follow-up tracked in Known Gaps."
+}

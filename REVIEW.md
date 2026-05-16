@@ -246,13 +246,14 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 ### L-4: Binder is not a keyboard tree `[ ]`
 - **Files**: `ui/src/components/binder/Binder.tsx`. No `role="tree"`/`role="treeitem"`, no arrow-key nav, no `aria-expanded`/`aria-selected`.
 
-### L-5: Swift uses literal folder IDs vs Rust UUIDs `[~]`
+### L-5: Swift uses literal folder IDs vs Rust UUIDs `[x]`
 - **What**: `macos/Sources/ChiknKit/Writer.swift:24-27` writes `TreeNode(id: "manuscript", ...)`; Rust writer.rs:147-160 writes `uuid::Uuid::new_v4()`. No exploit today but a footgun if any code hardcodes the id shape.
 - **Notes for GPT**: Align Swift to UUIDs.
 - **Branch**: `fix/l-5-swift-folder-ids`
 - **Approach**: Swift project creation now assigns UUIDs to the required top-level folders, while `createDocument` resolves legacy root aliases such as `manuscript` and `research` to the current UUID root before inserting hierarchy nodes or writing `.meta parent_id`. Disk paths still use the canonical folder names.
 - **Tests**: `cd macos && swift run ChiknKitChecks` (passed); `git diff --check` (passed)
 - **Known gaps**: SwiftUI still has some display-name/path-prefix heuristics for folder icons and default destinations; this branch removes literal ids from newly written `project.yaml` and keeps legacy alias inputs working.
+- **Reviewer verdict**: VERIFIED (commit `8d280a1`). `Writer.swift:24-27` now assigns `UUID().uuidString.lowercased()` to all three roots; display names unchanged; disk dirs created via literal `["manuscript","research","trash"]` loop so on-disk layout is preserved. `resolvedParentID` (`:560-565, 578-590`) resolves legacy aliases via `rootDirectoryByLegacyID` strict-match (lowercase literals only) and falls through unresolved input rather than guessing. Rust reader treats `hierarchy[].id` as opaque — zero `id == "manuscript"` literal comparisons in `crates/core`; matches in `converter/mod.rs:557,565,571` compare `name.to_lowercase()` (Scrivener importer, intentional). All 60+ Swift checks pass on this macOS host including the new UUID-id and alias-routing cases. **Non-blocking cosmetic gap (per Known Gaps)**: `BinderView.swift:240-244` icon switch on `node.id` literals will silently fall through to default folder icon for new Swift-created projects — needs a follow-up to switch to name-based or root-detection heuristic.
 
 ### L-6: Pandoc resolved via $PATH `[x]`
 - **Files**: `src-tauri/src/commands/io.rs:188-222`. Hijackable if a writable dir is ahead of `/usr/local/bin`.
