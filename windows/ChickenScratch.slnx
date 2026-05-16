@@ -3,4 +3,5 @@
     <Platform Project="x64" />
   </Project>
   <Project Path="ChickenScratch.Core/ChickenScratch.Core.csproj" />
+  <Project Path="ChickenScratch.Core.Tests/CrossFrontendHarness/ChickenScratch.Core.CrossFrontendHarness.csproj" />
 </Solution>

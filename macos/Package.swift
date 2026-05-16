@@ -34,5 +34,10 @@ let package = Package(
             dependencies: ["ChiknKit"],
             path: "Tests/ChiknKitChecks"
         ),
+        .executableTarget(
+            name: "ChiknKitCrossFrontendHarness",
+            dependencies: ["ChiknKit"],
+            path: "Tests/ChiknKitCrossFrontendHarness"
+        ),
     ]
 )
