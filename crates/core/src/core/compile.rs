@@ -6,6 +6,7 @@
 use crate::core::project::reader;
 use crate::models::{Project, TreeNode};
 use crate::utils::error::ChiknError;
+use crate::utils::process::{output_bounded, PANDOC_OUTPUT_LIMIT_BYTES, PANDOC_TIMEOUT};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -169,8 +170,7 @@ pub fn compile(
 
     cmd.arg(&temp_md);
 
-    let output = cmd
-        .output()
+    let output = output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES)
         .map_err(|e| ChiknError::Unknown(format!("Failed to run Pandoc: {}", e)))?;
 
     let _ = fs::remove_file(&temp_md);
