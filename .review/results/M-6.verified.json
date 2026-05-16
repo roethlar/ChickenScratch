@@ -1,0 +1,7 @@
+{
+  "id": "M-6",
+  "sha": "a8723a847cdf0feebabb8a4581850737c41df07b",
+  "ts": "2026-05-16T20:30:00Z",
+  "reviewer": "claude",
+  "note": "VERIFIED after reopen. Fix-up adds toastError on flush-failure close abort at App.tsx:177-180 with the exact message from the reopen comments. Original onCloseRequested plumbing preserved (async handler, await flush before backup, preventDefault on failure, isTauri-gated beforeunload fallback, disposed-flag subscription cleanup). UI lint clean."
+}
