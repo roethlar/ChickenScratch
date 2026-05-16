@@ -21,8 +21,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::ErrorKind;
-use std::path::{Component, Path};
+use std::path::Path;
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -34,6 +33,7 @@ use super::format::{
     get_characters_path, get_document_meta_path, get_locations_path, get_manuscript_path,
     get_project_file_path, get_research_path, get_threads_path, DOCUMENT_EXTENSION,
 };
+use super::safe_path;
 use crate::models::{Document, Project, Thread, TreeNode};
 use crate::utils::error::ChiknError;
 
@@ -305,65 +305,12 @@ fn pre_repair_folders(path: &Path) {
 
 fn create_required_folder_if_safe(
     project_path: &Path,
-    project_root: &Path,
+    _project_root: &Path,
     folder: &str,
 ) -> Result<bool, ChiknError> {
-    let mut current = project_path.to_path_buf();
-    let mut created = false;
-
-    for component in Path::new(folder).components() {
-        let Component::Normal(part) = component else {
-            return Err(ChiknError::InvalidFormat(format!(
-                "Required folder path contains unsafe components: {}",
-                folder
-            )));
-        };
-        current.push(part);
-
-        match fs::symlink_metadata(&current) {
-            Ok(metadata) => {
-                ensure_required_folder_safe(&current, &metadata, project_root)?;
-            }
-            Err(e) if e.kind() == ErrorKind::NotFound => {
-                fs::create_dir(&current)?;
-                let metadata = fs::symlink_metadata(&current)?;
-                ensure_required_folder_safe(&current, &metadata, project_root)?;
-                created = true;
-            }
-            Err(e) => return Err(e.into()),
-        }
-    }
-
+    let (_, created) =
+        safe_path::ensure_project_subdir_safe_with_status(project_path, Path::new(folder))?;
     Ok(created)
-}
-
-fn ensure_required_folder_safe(
-    path: &Path,
-    metadata: &fs::Metadata,
-    project_root: &Path,
-) -> Result<(), ChiknError> {
-    if metadata.file_type().is_symlink() {
-        return Err(ChiknError::InvalidFormat(format!(
-            "Required folder is a symlink: {}",
-            path.display()
-        )));
-    }
-    if !metadata.is_dir() {
-        return Err(ChiknError::InvalidFormat(format!(
-            "Required folder path is not a directory: {}",
-            path.display()
-        )));
-    }
-
-    let canonical_path = path.canonicalize()?;
-    if !canonical_path.starts_with(project_root) {
-        return Err(ChiknError::InvalidFormat(format!(
-            "Required folder escapes project root: {}",
-            path.display()
-        )));
-    }
-
-    Ok(())
 }
 
 /// Reconciles project.yaml hierarchy with actual files on disk in memory.

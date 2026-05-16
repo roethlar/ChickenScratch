@@ -1,8 +1,8 @@
-use chickenscratch_core::core::project::{hierarchy, reader, writer};
+use chickenscratch_core::core::project::{hierarchy, reader, safe_path, writer};
 use chickenscratch_core::models::Comment;
 use chickenscratch_core::utils::slug;
 use chickenscratch_core::{ChiknError, Document, Project, TreeNode};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::State;
 
 use super::ProjectWriteLocks;
@@ -144,10 +144,7 @@ pub fn delete_comment(
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct FieldUpdates(pub std::collections::HashMap<String, serde_yaml::Value>);
 
-fn apply_field_updates(
-    doc: &mut chickenscratch_core::models::Document,
-    updates: FieldUpdates,
-) {
+fn apply_field_updates(doc: &mut chickenscratch_core::models::Document, updates: FieldUpdates) {
     use serde_yaml::Value;
     for (key, value) in updates.0 {
         let remove = match &value {
@@ -338,52 +335,57 @@ pub fn create_entity(
     name: String,
     kind: String, // "character" or "location"
 ) -> Result<Project, ChiknError> {
+    let project_path = PathBuf::from(project_path);
     write_locks.with_project_lock(&project_path, || {
-        let folder = match kind.as_str() {
-            "character" => "characters",
-            "location" => "locations",
-            other => {
-                return Err(ChiknError::InvalidFormat(format!(
-                    "Unknown entity kind: {}",
-                    other
-                )))
-            }
-        };
-
-        let mut project = reader::read_project(Path::new(&project_path))?;
-
-        // Ensure the entity folder exists on disk
-        let folder_path = Path::new(&project_path).join(folder);
-        if !folder_path.exists() {
-            std::fs::create_dir_all(&folder_path)?;
-        }
-
-        let doc_id = uuid::Uuid::new_v4().to_string();
-        let base_path = format!("{}/", folder);
-        let s = slug::unique_slug(&name, &base_path, &project.documents);
-        let doc_path = format!("{}/{}.md", folder, s);
-        let now = chrono::Utc::now().to_rfc3339();
-
-        // Tag the entity via the generic fields map so any UI can detect it
-        let mut fields = std::collections::HashMap::new();
-        fields.insert("entity_kind".to_string(), serde_yaml::Value::String(kind));
-
-        let document = Document {
-            id: doc_id.clone(),
-            name: name.clone(),
-            path: doc_path,
-            content: String::new(),
-            parent_id: None,
-            created: now.clone(),
-            modified: now,
-            fields,
-            ..Default::default()
-        };
-
-        project.documents.insert(doc_id, document);
-        writer::write_project(&mut project)?;
-        Ok(project)
+        create_entity_impl(&project_path, name, kind)
     })
+}
+
+fn create_entity_impl(
+    project_path: &Path,
+    name: String,
+    kind: String,
+) -> Result<Project, ChiknError> {
+    let folder = match kind.as_str() {
+        "character" => "characters",
+        "location" => "locations",
+        other => {
+            return Err(ChiknError::InvalidFormat(format!(
+                "Unknown entity kind: {}",
+                other
+            )))
+        }
+    };
+
+    safe_path::ensure_project_subdir_safe(project_path, Path::new(folder))?;
+
+    let mut project = reader::read_project(project_path)?;
+
+    let doc_id = uuid::Uuid::new_v4().to_string();
+    let base_path = format!("{}/", folder);
+    let s = slug::unique_slug(&name, &base_path, &project.documents);
+    let doc_path = format!("{}/{}.md", folder, s);
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Tag the entity via the generic fields map so any UI can detect it
+    let mut fields = std::collections::HashMap::new();
+    fields.insert("entity_kind".to_string(), serde_yaml::Value::String(kind));
+
+    let document = Document {
+        id: doc_id.clone(),
+        name: name.clone(),
+        path: doc_path,
+        content: String::new(),
+        parent_id: None,
+        created: now.clone(),
+        modified: now,
+        fields,
+        ..Default::default()
+    };
+
+    project.documents.insert(doc_id, document);
+    writer::write_project(&mut project)?;
+    Ok(project)
 }
 
 #[tauri::command]
@@ -496,4 +498,58 @@ pub fn move_node(
         writer::write_project(&mut project)?;
         Ok(project)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn create_entity_impl_writes_safe_entity_folder() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("Entities.chikn");
+        writer::create_project(&project_path, "Entities").unwrap();
+
+        let project = create_entity_impl(
+            &project_path,
+            "Sarah Bennett".to_string(),
+            "character".to_string(),
+        )
+        .unwrap();
+
+        assert!(project_path.join("characters/sarah-bennett.md").exists());
+        assert!(project
+            .documents
+            .values()
+            .any(|doc| doc.path == "characters/sarah-bennett.md"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn create_entity_impl_rejects_symlink_entity_folder() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("Hostile.chikn");
+        let outside_path = temp_dir.path().join("outside");
+        fs::create_dir(&outside_path).unwrap();
+
+        writer::create_project(&project_path, "Hostile").unwrap();
+        unix_fs::symlink(&outside_path, project_path.join("characters")).unwrap();
+
+        let result = create_entity_impl(
+            &project_path,
+            "Mallory".to_string(),
+            "character".to_string(),
+        );
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        assert!(fs::read_dir(&outside_path).unwrap().next().is_none());
+        assert!(fs::symlink_metadata(project_path.join("characters"))
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
 }
