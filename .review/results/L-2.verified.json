@@ -1,0 +1,7 @@
+{
+  "id": "L-2",
+  "sha": "ebd9526e3c8862c809b6e1ae411f3deb42d4933b",
+  "ts": "2026-05-16T21:37:30Z",
+  "reviewer": "claude",
+  "note": "Build artifact confirms: startup index 50 kB (was 890 kB, 94% reduction), largest chunk editor-prosemirror 330 kB (eager only because Editor is the startup view), no large-chunk warning. 11 lazy panels wired with React.lazy + Suspense + render-time gating. Vendor families chunked correctly via vite manualChunks. Marked/DOMPurify scoped to preview-markdown chunk so Preview is the only consumer that pays."
+}
