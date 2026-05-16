@@ -214,13 +214,12 @@ The `linux/` crate is excluded from the default `--workspace` because Qt6 doesn'
 - **Tests added**: Small-diff regression preserving LCS output and large-diff regression proving the coarse deleted/added fallback is used above the cap. Validation: `cargo test -p chickenscratch-core simple_word_diff --lib`.
 - **Reviewer verdict**: VERIFIED (commit `1cf2252`). Constant `SIMPLE_WORD_DIFF_LCS_CELL_CAP = 1_500 * 1_500` at `git.rs:17`. Pre-allocation cell-count check via `checked_mul((m+1), (n+1))` at `:1128-1134` — overflow-safe and **product**-based (the old per-side guard would let 100 × 100000 pass while blocking the cheap 100k × 50). Fallback `coarse_word_diff` (`:1185-1190`) returns exactly two `(String, String)` entries (`("deleted", old.join())`, `("added", new.join())`) — same shape as the normal return so the UI renders identically; allocation O(input bytes) not O(m·n). 9 MB max allocation vs the previous 100 MB hazard. **Non-blocking nit**: tests don't cover empty inputs, asymmetric inputs (1 × 100000), or the exact-boundary case — all correct by inspection but a spec lock would be tidier.
 
-### M-6: `beforeunload` flush is best-effort `[ ]`
+### M-6: `beforeunload` flush is best-effort `[~]`
 - **What**: `App.tsx:148` awaits `flushPendingEditorSave()` in `beforeunload`, but `beforeunload` cannot block on real promises across the webview boundary.
 - **Notes for GPT**: Switch to Tauri v2's `onCloseRequested` (`@tauri-apps/api/window`) to actually defer close until the save resolves.
-- **Branch**: `fix/m-6-tauri-close-flush` (REOPENED — see `.review/results/M-6.reopened.md`)
+- **Branch**: `fix/m-6-tauri-close-flush`
 - **Approach**: Replaced the Tauri close path with `getCurrentWindow().onCloseRequested`, awaiting the pending editor flush and canceling close if that flush fails; browser `beforeunload` remains only as a fallback outside Tauri.
-- **Tests**: `npm run lint`; `npm run build`
-- **Reviewer comments (REOPEN)**: Plumbing is correct (handler async, awaits flush before backup, `event.preventDefault()` on flush failure, browser fallback gated correctly, subscription cleanup uses `disposed` flag). **But the flush-failure path at `App.tsx:176-178` is silent — `event.preventDefault()` aborts close with no toast.** User clicks close → nothing happens → no clue why. The old broken `beforeunload` path at least let the browser show its native unsaved-changes dialog; this strictly removes user feedback. `toastError` is already imported at `App.tsx:39`. Fix: add `toastError("Close canceled because the latest editor changes could not be saved. Please retry, or check the editor for errors.")` next to the preventDefault. Optional nit: `.catch(() => {})` at `:182-186` on the registration could log a warn for diagnosis. Push fix-up commit + fresh sentinel.
+- **Tests**: `cd ui && npm run lint`; `cd ui && npm run build`
 
 ---
 
