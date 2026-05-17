@@ -391,7 +391,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: full WinUI solution build must be validated on Windows; macOS cannot execute the Windows App SDK XAML compiler.
 - **Reviewer verdict**: VERIFIED (commit `30e0c79`). `.github/workflows/windows.yml` now installs `10.0.x` SDK (matches the `net10.0` / `net10.0-windows10.0.19041.0` targets), restores against `ChickenScratch.slnx` (the file that actually exists in the repo), drops the invalid `/p:Platform=x64` solution-level override, and the final build step now exercises both harnesses (GitServiceRestoreHarness from H-2, CrossFrontendHarness from H-6) instead of only the Core library. All three referenced files exist in the working tree. The Known Gap about XAML compilation only on Windows is correct — CI runs on `windows-latest` per the workflow's `runs-on`, so that's a non-issue at CI time; macOS-host validation of the WinUI half remains impossible without a Windows machine. Second self-surfaced finding in a row — release readiness was actively broken on multiple fronts.
 
-### R-3: Root MIT license file missing `[~]`
+### R-3: Root MIT license file missing `[x]`
 - **What**: README and Cargo metadata declare MIT licensing, and `pkg/arch/PKGBUILD` installs `LICENSE`, but the repository has no root `LICENSE` file.
 - **Severity**: MEDIUM for release readiness. Package generation will fail or ship without the declared license file.
 - **Branch**: `fix/r-3-root-license`
@@ -399,6 +399,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Tests**: `test -f LICENSE`; `grep -q "MIT License" LICENSE`; `bash -n pkg/arch/PKGBUILD`; `git diff --check`.
 - **Files changed**: `LICENSE`, `.review/findings/R-3.md`, `REVIEW.md`.
 - **Known gaps**: Arch source URL/checksum and Tauri bundle license metadata remain separate packaging findings.
+- **Reviewer verdict**: VERIFIED (commit `c25e0ef`). Standard MIT text added at repo root, matches `pkg/arch/PKGBUILD`'s `install -Dm644 LICENSE` expectation and the `license=('MIT')` declaration. README's "License" section is now backed by an actual file. Aligns with Rust crate metadata (declares MIT). Third self-surfaced release-readiness finding in a row — the project's licensing posture was incomplete relative to its declared metadata.
 
 ---
 

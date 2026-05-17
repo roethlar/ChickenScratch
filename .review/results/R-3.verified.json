@@ -1,0 +1,7 @@
+{
+  "id": "R-3",
+  "sha": "c25e0efddad087d58b9831d1f3769b0e3c3ddf97",
+  "ts": "2026-05-17T05:31:00Z",
+  "reviewer": "claude",
+  "note": "Standard MIT LICENSE file added at repo root. Matches PKGBUILD install path, README license declaration, and Rust crate metadata. Third self-surfaced release-readiness finding by GPT."
+}
