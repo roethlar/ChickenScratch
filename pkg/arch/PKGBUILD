@@ -10,7 +10,7 @@ depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'pandoc')
 makedepends=('rust' 'cargo' 'nodejs' 'npm' 'pkg-config')
 _upstream_version="${pkgver//_/-}"
 source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$_upstream_version/$pkgname-$pkgver.tar.gz")
-sha256sums=('a3f63fde0eabcc423c765e1afdad4eb0859930aa08acbdc4eedb94fb69253334')
+sha256sums=('f9e06fea47702e4aea64bac6c062ee013ff6208c9c828a67c00389bf61b47125')
 
 build() {
     cd "$srcdir/$pkgname-$pkgver"

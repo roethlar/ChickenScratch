@@ -46,10 +46,12 @@ crates/core/tests/cross_frontend/run.sh
 macOS:
 
 ```bash
-cargo tauri build --bundles app,dmg
+CI=true cargo tauri build --bundles app,dmg
 test -d target/release/bundle/macos/ChickenScratch.app
 test -n "$(find target/release/bundle/dmg -name 'ChickenScratch_*.dmg' -print -quit)"
 ```
+
+`CI=true` makes Tauri skip Finder AppleScript DMG layout work, matching the GitHub Actions path and headless release automation.
 
 Linux:
 

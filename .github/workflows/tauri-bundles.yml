@@ -44,6 +44,8 @@ jobs:
         run: cargo install tauri-cli --version 2.11.1 --locked
 
       - name: Build macOS bundles
+        env:
+          CI: true
         run: cargo tauri build --bundles app,dmg
 
       - name: Verify macOS artifacts
