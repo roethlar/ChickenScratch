@@ -603,12 +603,13 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Files changed (anticipated)**: `ui/src/components/editor/Toolbar.tsx`, maybe `ui/src/commands/ai.ts`.
 - **Known gaps**: brainstorm mode appends after selection and is lower risk; focus replacement ops first.
 
-### R-26: Release checksum gate can be bypassed by path-filtered CI `[ ]`
+### R-26: Release checksum gate can be bypassed by path-filtered CI `[~]`
 - **What**: R-13 added source archive SHA comparison in `scripts/check-release-metadata.sh`, but `.github/workflows/validation.yml:5-35` only runs on selected paths. Tarball-included files such as `README.md`, `LICENSE`, docs, and other workflow files can change the release archive SHA without triggering the validation job that checks `pkg/arch/PKGBUILD`.
 - **Severity**: HIGH for release readiness. A docs/license/status-only PR can merge with a stale source checksum until an unrelated change happens to run validation.
-- **Approach**: remove the validation workflow path filter, or make the release-metadata job run on every PR/push that can affect `scripts/create-release-source.sh` output. Keep path filters only for jobs whose inputs are truly disjoint.
-- **Tests**: branch editing only `README.md` or `docs/ROADMAP.md` should schedule validation and fail until `pkg/arch/PKGBUILD` is re-pinned.
-- **Files changed (anticipated)**: `.github/workflows/validation.yml`, possibly `.github/workflows/tauri-bundles.yml`.
+- **Branch**: `fix/r-26-validation-path-filter`
+- **Approach**: removed the `paths:` filters from `.github/workflows/validation.yml` for both `push` and `pull_request`, so the release metadata/checksum job runs for docs, license, workflow, and any other source-archive-affecting change. Left the Tauri bundle workflow scoped to bundle inputs; this finding is about the validation/checksum gate.
+- **Tests**: `scripts/check-release-metadata.sh`; `cargo fmt --all -- --check`; `cargo clippy -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings`; `cargo test -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests`; `cd ui && npm run lint && npm run build`; `git diff --check`.
+- **Files changed**: `.github/workflows/validation.yml`, `.review/findings/R-26.md`, `REVIEW.md`.
 - **Known gaps**: release archive excludes `.review`, `REVIEW.md`, and `pkg/arch/PKGBUILD`; those can stay outside the trigger if desired.
 
 ### R-27: Rust release/package builds do not enforce `Cargo.lock` `[ ]`
