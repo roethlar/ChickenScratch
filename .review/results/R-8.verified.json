@@ -1,0 +1,7 @@
+{
+  "id": "R-8",
+  "sha": "b89ce216a426c4f9508b4ecfbdec6c0b124e995a",
+  "ts": "2026-05-17T06:08:00Z",
+  "reviewer": "claude",
+  "note": "Release runbook accurate against codebase. All listed version files contain 0.1.0-alpha; cargo -p flags (chickenscratch-core, chickenscratch, chickenscratch-tui, chikn-converter) resolve to real workspace packages; crates/core/tests/cross_frontend/run.sh exists/executable; PKGBUILD currently has sha256sums=('SKIP') and placeholder url, which the runbook correctly mandates fixing post-tag; Windows commands match R-2/R-4 (csproj-scope /p:Platform=x64 + .slnx); Tauri build commands match R-5/R-6/R-7 bundle config; smoke checks cover M-1 close-wait, M-3 secrets, C-3 import traversal. Known gap: chickenscratch-linux omitted from local validation (Qt6 Linux frontend built via PKGBUILD/native host)."
+}

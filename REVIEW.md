@@ -441,14 +441,15 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: full validation requires GitHub-hosted macOS and Linux runners.
 - **Reviewer verdict**: VERIFIED via merge commit `f806555`. YAML parses; `--bundles app,dmg` / `--bundles appimage` syntax matches Tauri v2 CLI 2.11.1; `productName=ChickenScratch` (no space) produces exactly the `.app` path and `ChickenScratch_*.dmg` glob the verification step asserts; `libwebkit2gtk-4.1-dev` is the correct Tauri v2 Linux WebKit pin and is available on ubuntu-22.04; `beforeBuildCommand` handles the frontend build so the workflow only needs `npm ci`. macOS DMG will be unsigned (CI verification only, not distributable as-is).
 
-### R-8: Release process lacks a canonical runbook `[~]`
+### R-8: Release process lacks a canonical runbook `[x]`
 - **What**: Release validation, version alignment, tag creation, artifact builds, and Arch checksum updates are spread across memory and review notes instead of one release gate.
 - **Severity**: MEDIUM for release readiness. The final 1.0 cut needs a repeatable checklist.
 - **Branch**: `fix/r-8-release-runbook`
 - **Approach**: added `RELEASE.md` with version metadata paths, validation commands, platform artifact builds, tag commands, Arch checksum procedure, and post-build smoke checks.
 - **Tests**: grep checks for Tauri, Arch checksum, and Windows build commands; `git diff --check`.
 - **Files changed**: `RELEASE.md`, `.review/findings/R-8.md`, `REVIEW.md`.
-- **Known gaps**: this does not bump versions or compute Arch checksums before a release tag exists.
+- **Known gaps**: this does not bump versions or compute Arch checksums before a release tag exists. Runbook validation step omits `chickenscratch-linux` (cxx-qt Qt6 frontend) — Linux frontend is built via PKGBUILD/native host.
+- **Reviewer verdict**: VERIFIED via merge commit `b89ce21`. All version files listed contain `version = "0.1.0-alpha"`; cargo `-p` flags resolve to real workspace packages; `crates/core/tests/cross_frontend/run.sh` exists; PKGBUILD currently has placeholder `sha256sums=('SKIP')` and placeholder url (runbook correctly mandates fixing both before tag); Windows commands match R-2/R-4 csproj-scope `/p:Platform=x64` + `.slnx` solution; Tauri commands match R-5/R-6/R-7 bundle config; smoke checks cover M-1/M-3/C-3 high-risk paths.
 
 ---
 
