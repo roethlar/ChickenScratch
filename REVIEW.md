@@ -571,13 +571,14 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Files changed (anticipated)**: `crates/core/src/core/project/reader.rs`, `crates/core/src/core/project/writer.rs`, `linux/src/bridge.rs`, tests.
 - **Known gaps**: decide whether legacy projects with duplicate ids should get a migration/quarantine path or hard fail.
 
-### R-22: Scrivener exporter uses project name as an unchecked output path component `[ ]`
+### R-22: Scrivener exporter uses project name as an unchecked output path component `[~]`
 - **What**: `export_to_scriv` passes `project.name` to `write_scrivx` (`crates/core/src/scrivener/exporter/mod.rs:64`), and `write_scrivx` writes `scriv_path.join(format!("{}.scrivx", project_name))` (`:206-207`). `project.name` is loaded from `project.yaml` without filename-component validation. A name such as `../OtherProject/OtherProject` can write the `.scrivx` outside the selected `.scriv` directory if the parent exists.
 - **Severity**: HIGH for export-time arbitrary file placement near the chosen output directory.
-- **Approach**: derive the `.scrivx` filename from `output_path.file_stem()` or a strict sanitized single component, not from untrusted `project.name`. Reject separators, roots, `.`/`..`, empty names, and control characters.
-- **Tests**: project named `../victim/victim`, export to `Export.scriv`, assert no `victim/victim.scrivx` appears outside export root and the exporter fails cleanly or writes only inside `Export.scriv`.
-- **Files changed (anticipated)**: `crates/core/src/scrivener/exporter/mod.rs`, exporter tests.
-- **Known gaps**: still preserve display title inside XML via escaped text; only the filesystem component needs sanitization.
+- **Branch**: `fix/r-22-scrivener-export-path`
+- **Approach**: derive the `.scrivx` filename from `output_path.file_stem()` and reject invalid output stems, instead of using untrusted `project.name` as a filesystem component. The project title can remain display metadata; it no longer controls the output path.
+- **Tests**: `cargo test -p chickenscratch-core scrivener::exporter --lib`; full Rust test suite; clippy; UI lint/build; release metadata gate before review handoff.
+- **Files changed**: `crates/core/src/scrivener/exporter/mod.rs`, `.review/findings/R-22.md`, `REVIEW.md`, `pkg/arch/PKGBUILD`.
+- **Known gaps**: none for filesystem placement. The generated XML currently does not emit the project display title; R-22 only fixes the path primitive.
 
 ### R-23: Manual Backup reports success while omitting current work `[ ]`
 - **What**: the Revisions Backup button calls `gitCmd.pushBackup` directly (`ui/src/components/revisions/Revisions.tsx:152-162`). It does not use `runWithEditorFlush`, does not save a revision, and backend `push_backup` only pushes the current branch (`src-tauri/src/commands/git.rs:93-100`). `backup_on_close` is safer because it commits dirty changes before pushing (`src-tauri/src/commands/git.rs:245-261`).
