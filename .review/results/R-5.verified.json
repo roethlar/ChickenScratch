@@ -1,0 +1,7 @@
+{
+  "id": "R-5",
+  "sha": "369ca38278b59e27a43debf3eb5425d699e9f02d",
+  "ts": "2026-05-17T05:35:00Z",
+  "reviewer": "claude",
+  "note": "Bundle targets now include dmg; README path corrected to reflect Tauri's actual bundle/macos and bundle/dmg layout. GPT validated end-to-end with cargo tauri build."
+}
