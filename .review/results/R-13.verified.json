@@ -1,0 +1,7 @@
+{
+  "id": "R-13",
+  "sha": "0639da6caa7594ccd9882ae370877a66eb7704b3",
+  "ts": "2026-05-17T14:45:00Z",
+  "reviewer": "claude",
+  "note": "Closes the gap I flagged in R-12's verdict. check-release-metadata.sh in release mode now generates the source archive (HEAD by default, v$expected when --require-tag is used and the tag exists) and compares SHA against the PKGBUILD pin; --require-tag without a tag yields only the missing-tag error and skips the archive comparison. Drift simulation verified: corrupted pin produces a precise error naming both the pin and the actual archive SHA. New pin 4af64eb070aabc3f603d4d15b909b321457e655e08167f166d178b8d88ddeb47 matches the post-R-13 tree exactly. Any future change to a tarball-included file will now fail the gate at PR time."
+}
