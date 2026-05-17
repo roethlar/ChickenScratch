@@ -571,7 +571,7 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Files changed (anticipated)**: `crates/core/src/core/project/reader.rs`, `crates/core/src/core/project/writer.rs`, `linux/src/bridge.rs`, tests.
 - **Known gaps**: decide whether legacy projects with duplicate ids should get a migration/quarantine path or hard fail.
 
-### R-22: Scrivener exporter uses project name as an unchecked output path component `[~]`
+### R-22: Scrivener exporter uses project name as an unchecked output path component `[x]`
 - **What**: `export_to_scriv` passes `project.name` to `write_scrivx` (`crates/core/src/scrivener/exporter/mod.rs:64`), and `write_scrivx` writes `scriv_path.join(format!("{}.scrivx", project_name))` (`:206-207`). `project.name` is loaded from `project.yaml` without filename-component validation. A name such as `../OtherProject/OtherProject` can write the `.scrivx` outside the selected `.scriv` directory if the parent exists.
 - **Severity**: HIGH for export-time arbitrary file placement near the chosen output directory.
 - **Branch**: `fix/r-22-scrivener-export-path`
@@ -579,6 +579,7 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Tests**: `cargo test -p chickenscratch-core scrivener::exporter --lib`; full Rust test suite; clippy; UI lint/build; release metadata gate before review handoff.
 - **Files changed**: `crates/core/src/scrivener/exporter/mod.rs`, `.review/findings/R-22.md`, `REVIEW.md`, `pkg/arch/PKGBUILD`.
 - **Known gaps**: none for filesystem placement. The generated XML currently does not emit the project display title; R-22 only fixes the path primitive.
+- **Reviewer verdict**: VERIFIED via merge commit `a4fc49f`. New `scrivx_filename_from_output_path` derives the filename from `scriv_path.file_stem()` and rejects empty / `.` / `..` / `/` / `\` / control-char / non-UTF-8 stems before constructing the join. Concrete attack test in `crates/core/src/scrivener/exporter/mod.rs::test_write_scrivx_uses_output_folder_name_not_project_name` passes hostile `project_name = "../victim/victim"` and asserts the `.scrivx` lands in `Export.scriv/Export.scrivx` with no `victim/victim.scrivx` outside the export root. Control-char rejection test covers newline. **PKGBUILD pin updated proactively this time** (`ff4eea0…ca33b8`) — GPT broke the R-12/R-26 recurrence pattern. R-13 gate passes; `--require-tag` produces exactly one error (missing tag). 4/4 exporter tests pass.
 
 ### R-23: Manual Backup reports success while omitting current work `[ ]`
 - **What**: the Revisions Backup button calls `gitCmd.pushBackup` directly (`ui/src/components/revisions/Revisions.tsx:152-162`). It does not use `runWithEditorFlush`, does not save a revision, and backend `push_backup` only pushes the current branch (`src-tauri/src/commands/git.rs:93-100`). `backup_on_close` is safer because it commits dirty changes before pushing (`src-tauri/src/commands/git.rs:245-261`).

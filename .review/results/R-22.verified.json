@@ -1,0 +1,7 @@
+{
+  "id": "R-22",
+  "sha": "a4fc49f080b8544e47d7bd846b99112a12509db5",
+  "ts": "2026-05-17T15:55:00Z",
+  "reviewer": "claude",
+  "note": "New scrivx_filename_from_output_path derives filename from scriv_path.file_stem() and rejects empty/./../slash/backslash/control-char/non-UTF-8 stems. Concrete attack test passes hostile project_name='../victim/victim' and asserts .scrivx lands in Export.scriv/Export.scrivx with no victim/victim.scrivx outside the export root. Control-char rejection test covers newline. PKGBUILD pin updated proactively to ff4eea08defc1d5c39102e8b6bf897c333d9fd1886090006d9dd71aec8ca33b8 — GPT broke the R-12/R-26 drift pattern this time. R-13 gate passes; --require-tag yields exactly one error (missing tag). 4/4 exporter tests pass. Known gap: project_name parameter to write_scrivx is now effectively unused (intentional — finding scoped to filesystem placement, XML display title is separate work)."
+}
