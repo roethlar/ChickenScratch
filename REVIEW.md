@@ -421,6 +421,15 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: full WinUI app build still requires a Windows host.
 - **Reviewer verdict**: VERIFIED (commit `7000435`). README's .NET prereq corrected to 10 (matches R-2 CI fix). Build command now targets the App csproj directly with `/p:Platform=x64`, which works because the App project explicitly declares x64 — same root cause as R-2's solution-level `Platform=x64` rejection (MSB4126). Documentation now matches CI behavior.
 
+### R-6: Linux AppImage target is documented but not configured `[~]`
+- **What**: README promises Linux AppImage output, but the Tauri bundle config now requests macOS artifacts by default and has no Linux-specific AppImage override.
+- **Severity**: MEDIUM for release readiness. Linux release builds should request the documented artifact.
+- **Branch**: `fix/r-6-linux-appimage-config`
+- **Approach**: added `src-tauri/tauri.linux.conf.json` to override bundle targets to `["appimage"]` on Linux.
+- **Tests**: JSON parse check; `grep -q '"appimage"' src-tauri/tauri.linux.conf.json`; `git diff --check`.
+- **Files changed**: `src-tauri/tauri.linux.conf.json`, `.review/findings/R-6.md`, `REVIEW.md`.
+- **Known gaps**: AppImage packaging still needs validation on a Linux host.
+
 ---
 
 ## Recently landed (awaiting reviewer verification)
