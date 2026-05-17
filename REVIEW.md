@@ -431,6 +431,15 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: AppImage packaging still needs validation on a Linux host.
 - **Reviewer verdict**: VERIFIED via merge commit `d136898`; stale sentinel/bookkeeping completed after the merge left `.review/ready/R-6.json` in place. Linux-specific Tauri config now overrides bundle targets to `["appimage"]`, leaving the macOS app/dmg targets scoped to the default macOS path.
 
+### R-7: Tauri release artifacts lack CI coverage `[~]`
+- **What**: macOS `.app`/`.dmg` and Linux AppImage packaging are now configured, but no CI job exercises those release artifact paths.
+- **Severity**: HIGH for release readiness. Release artifacts need native-runner build verification before 1.0.
+- **Branch**: `fix/r-7-tauri-bundle-ci`
+- **Approach**: added a GitHub Actions workflow with native macOS and Ubuntu jobs that install frontend/Rust/Tauri prerequisites, build the documented Tauri artifacts, verify the outputs exist, and upload them.
+- **Tests**: YAML parse check; greps for macOS/Linux build commands and Linux WebKit dependency; `git diff --check`.
+- **Files changed**: `.github/workflows/tauri-bundles.yml`, `.review/findings/R-7.md`, `REVIEW.md`.
+- **Known gaps**: full validation requires GitHub-hosted macOS and Linux runners.
+
 ---
 
 ## Recently landed (awaiting reviewer verification)
