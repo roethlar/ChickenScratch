@@ -451,6 +451,15 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: this does not bump versions or compute Arch checksums before a release tag exists. Runbook validation step omits `chickenscratch-linux` (cxx-qt Qt6 frontend) — Linux frontend is built via PKGBUILD/native host.
 - **Reviewer verdict**: VERIFIED via merge commit `b89ce21`. All version files listed contain `version = "0.1.0-alpha"`; cargo `-p` flags resolve to real workspace packages; `crates/core/tests/cross_frontend/run.sh` exists; PKGBUILD currently has placeholder `sha256sums=('SKIP')` and placeholder url (runbook correctly mandates fixing both before tag); Windows commands match R-2/R-4 csproj-scope `/p:Platform=x64` + `.slnx` solution; Tauri commands match R-5/R-6/R-7 bundle config; smoke checks cover M-1/M-3/C-3 high-risk paths.
 
+### R-9: Core release validation lacks CI coverage `[~]`
+- **What**: `RELEASE.md` defines local Rust/UI/cross-frontend validation gates, but no CI workflow runs them on source changes.
+- **Severity**: HIGH for release readiness. 1.0 needs continuous validation separate from packaging artifact builds.
+- **Branch**: `fix/r-9-core-validation-ci`
+- **Approach**: added a macOS GitHub Actions validation workflow for Rust fmt/clippy/tests, UI lint/build, and the cross-frontend harness with Swift and .NET 10 present.
+- **Tests**: YAML parse check; greps for fmt/clippy and cross-frontend coverage assertion; `git diff --check`.
+- **Files changed**: `.github/workflows/validation.yml`, `.review/findings/R-9.md`, `REVIEW.md`.
+- **Known gaps**: Linux Qt frontend remains outside the root validation suite because it requires Qt/cxx-qt native dependencies.
+
 ---
 
 ## Recently landed (awaiting reviewer verification)
