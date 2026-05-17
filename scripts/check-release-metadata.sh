@@ -7,10 +7,11 @@ Usage:
   scripts/check-release-metadata.sh
   scripts/check-release-metadata.sh --release <version> [--require-tag]
 
-Default mode validates the current prerelease metadata layout and allows a
-placeholder Arch checksum. Release mode validates that all version metadata
-matches <version>, that the Arch checksum is pinned, and optionally that the
-local git tag exists.
+Default mode validates the current metadata and infers prerelease versus release
+rules from the version string. Prerelease versions allow a placeholder Arch
+checksum; release versions require a pinned checksum. Explicit release mode also
+validates that all version metadata matches <version> and can optionally require
+the local git tag.
 EOF
 }
 
@@ -72,7 +73,7 @@ fi
 
 arch_expected="${expected//-/_}"
 release_mode=0
-if [[ -n "$release_version" ]]; then
+if [[ -n "$release_version" || "$expected" != *-* ]]; then
   release_mode=1
 fi
 
@@ -117,6 +118,7 @@ expected_source='source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$_ups
 grep -Fxq "$expected_source" pkg/arch/PKGBUILD || fail "pkg/arch/PKGBUILD source must use the release source archive URL"
 
 grep -Fxq "pkg/arch/PKGBUILD export-ignore" .gitattributes || fail ".gitattributes must export-ignore pkg/arch/PKGBUILD"
+grep -Fxq "REVIEW.md export-ignore" .gitattributes || fail ".gitattributes must export-ignore REVIEW.md"
 
 sha_line=$(grep -E "^sha256sums=\(" pkg/arch/PKGBUILD || true)
 if [[ $release_mode -eq 1 ]]; then

@@ -2,7 +2,7 @@
 
 A cross-platform writing app for fiction writers. Open-source Scrivener alternative with git-native revision control.
 
-**Status:** Alpha (v0.1.0-alpha) — functional, seeking feedback from writers
+**Status:** v1.0.0 release target — Tauri desktop is the primary supported build
 
 For usage instructions, see the [User Guide](docs/USER_GUIDE.md).
 
@@ -10,11 +10,11 @@ For usage instructions, see the [User Guide](docs/USER_GUIDE.md).
 
 | Platform | Implementation | Status |
 |----------|---------------|--------|
-| macOS / Linux | Tauri + Rust + React | Alpha — fullest feature set |
+| macOS / Linux | Tauri + Rust + React | 1.0 release target — fullest feature set |
 | macOS (native) | SwiftUI + Liquid Glass (macOS 26+) | Early scaffold — writing + revisions |
-| Windows | WinUI 3 (Windows App SDK) + C# | Alpha — packaging (.msi) pending |
+| Windows | WinUI 3 (Windows App SDK) + C# | Preview — packaging (.msi) pending |
 | Linux (native) | Qt6 Wayland + cxx-qt | Early scaffold — binder + editor + inspector |
-| TUI (any OS) | Ratatui + Rust (`chikn` binary) | Alpha |
+| TUI (any OS) | Ratatui + Rust (`chikn` binary) | Preview |
 
 ## Build
 

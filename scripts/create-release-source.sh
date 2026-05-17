@@ -35,8 +35,9 @@ cd "$root"
 
 mkdir -p "$output_dir"
 archive_path="$output_dir/$archive_name"
+archive_tree=$(git rev-parse --verify "$ref^{tree}")
 
-git archive --worktree-attributes --format=tar --prefix="$pkgname-$pkgver/" "$ref" | gzip -n > "$archive_path"
+git archive --worktree-attributes --mtime="1970-01-01 00:00:00 +0000" --format=tar --prefix="$pkgname-$pkgver/" "$archive_tree" | gzip -n > "$archive_path"
 
 if command -v sha256sum >/dev/null 2>&1; then
   sha256sum "$archive_path"
