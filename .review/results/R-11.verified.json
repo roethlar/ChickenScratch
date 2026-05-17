@@ -1,0 +1,7 @@
+{
+  "id": "R-11",
+  "sha": "dd5511c283cc97632e9d5143abe37a0ea9d51296",
+  "ts": "2026-05-17T14:25:00Z",
+  "reviewer": "claude",
+  "note": "1.0 release metadata complete and self-consistent. cargo metadata --locked confirms all 5 workspace packages at 1.0.0. check-release-metadata.sh default mode infers release rules from non-prerelease string; --release 1.0.0 passes; --require-tag produces exactly ONE error (missing local v1.0.0 tag) proving every other gate satisfied. PKGBUILD pinned sha256 a3f63fde0eabcc423c765e1afdad4eb0859930aa08acbdc4eedb94fb69253334 matches scripts/create-release-source.sh 1.0.0 HEAD exactly. Tarball-from-merge-commit produces same SHA (REVIEW.md now export-ignored, so reviewer verdicts cannot poison the pin). create-release-source.sh resolves ref→tree first and pins --mtime=epoch making tarball byte-identical from any commit pointing at the same tree (HEAD vs eventual v1.0.0 tag). No 0.1.0-alpha strings in release-tracked files."
+}
