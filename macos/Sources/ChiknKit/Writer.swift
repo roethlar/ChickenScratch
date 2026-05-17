@@ -51,11 +51,14 @@ public enum Writer {
         project.documents[id] = doc
         project.modified = Date()
 
-        let docURL = project.path.appendingPathComponent(doc.relativePath)
-        let metaURL = docURL.deletingPathExtension().appendingPathExtension("meta")
+        let urls = try SafeProjectPath.documentURLs(
+            projectURL: project.path,
+            relativePath: doc.relativePath,
+            createParentDirectories: true
+        )
 
         var metaMap: [String: Any] = [:]
-        if let existing = try? loadYaml(metaURL) { metaMap = existing ?? [:] }
+        if let existing = try? loadYaml(urls.meta) { metaMap = existing }
         if let v = meta.synopsis          { metaMap["synopsis"] = v }              else { metaMap.removeValue(forKey: "synopsis") }
         if let v = meta.label             { metaMap["label"] = v }                 else { metaMap.removeValue(forKey: "label") }
         if let v = meta.status            { metaMap["status"] = v }                else { metaMap.removeValue(forKey: "status") }
@@ -76,7 +79,7 @@ public enum Writer {
         }
 
         metaMap["modified"] = iso8601Now()
-        try writeYaml(metaMap, to: metaURL)
+        try writeYaml(metaMap, to: urls.meta)
 
         try writeProjectYaml(project)
         return project
@@ -85,11 +88,14 @@ public enum Writer {
     /// Write a document's content back to disk. Updates the .meta modified
     /// timestamp and the project's modified timestamp.
     public static func saveDocument(_ document: Document, in project: Project) throws {
-        let documentURL = project.path.appendingPathComponent(document.relativePath)
-        try document.content.write(to: documentURL, atomically: true, encoding: .utf8)
+        let urls = try SafeProjectPath.documentURLs(
+            projectURL: project.path,
+            relativePath: document.relativePath,
+            createParentDirectories: true
+        )
+        try document.content.write(to: urls.document, atomically: true, encoding: .utf8)
 
-        let metaURL = documentURL.deletingPathExtension().appendingPathExtension("meta")
-        try touchMeta(metaURL)
+        try touchMeta(urls.meta)
         try touchProject(project)
     }
 
@@ -224,14 +230,15 @@ public enum Writer {
             doc.name = trimmed
             project.documents[id] = doc
 
-            let metaURL = project.path
-                .appendingPathComponent(doc.relativePath)
-                .deletingPathExtension()
-                .appendingPathExtension("meta")
-            if var metaMap = try loadYaml(metaURL) {
+            let urls = try SafeProjectPath.documentURLs(
+                projectURL: project.path,
+                relativePath: doc.relativePath,
+                createParentDirectories: false
+            )
+            if var metaMap = try loadYaml(urls.meta) {
                 metaMap["name"] = trimmed
                 metaMap["modified"] = iso8601Now()
-                try writeYaml(metaMap, to: metaURL)
+                try writeYaml(metaMap, to: urls.meta)
             }
         }
 
@@ -337,10 +344,13 @@ public enum Writer {
         switch node.kind {
         case .document:
             if let doc = project.documents[node.id] {
-                let docURL = project.path.appendingPathComponent(doc.relativePath)
-                let metaURL = docURL.deletingPathExtension().appendingPathExtension("meta")
-                try removeIfExists(at: docURL)
-                try removeIfExists(at: metaURL)
+                let urls = try SafeProjectPath.documentURLs(
+                    projectURL: project.path,
+                    relativePath: doc.relativePath,
+                    createParentDirectories: false
+                )
+                try removeIfExists(at: urls.document)
+                try removeIfExists(at: urls.meta)
                 project.documents.removeValue(forKey: node.id)
             }
         case .folder:

@@ -142,9 +142,17 @@ public enum Reader {
         for root in documentRoots {
             let rootURL = projectURL.appendingPathComponent(root)
             guard fm.fileExists(atPath: rootURL.path) else { continue }
-            guard let enumerator = fm.enumerator(at: rootURL, includingPropertiesForKeys: nil) else { continue }
-            for case let fileURL as URL in enumerator where fileURL.pathExtension == "md" {
-                if let doc = readDocument(at: fileURL, projectURL: projectURL) {
+            guard let enumerator = fm.enumerator(
+                at: rootURL,
+                includingPropertiesForKeys: [.isSymbolicLinkKey],
+                options: []
+            ) else { continue }
+            for case let fileURL as URL in enumerator {
+                if (try? fileURL.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+                    throw ChiknError.invalidDocumentPath("Project document path is a symlink: \(fileURL.path)")
+                }
+                guard fileURL.pathExtension == "md" else { continue }
+                if let doc = try readDocument(at: fileURL, projectURL: projectURL) {
                     out[doc.id] = doc
                 }
             }
@@ -152,34 +160,25 @@ public enum Reader {
         return out
     }
 
-    private static func readDocument(at fileURL: URL, projectURL: URL) -> Document? {
-        let metaURL = fileURL.deletingPathExtension().appendingPathExtension("meta")
+    private static func readDocument(at fileURL: URL, projectURL: URL) throws -> Document? {
+        guard let relative = try SafeProjectPath.relativeDocumentPath(for: fileURL, in: projectURL) else {
+            throw ChiknError.invalidDocumentPath("Document path not within project: \(fileURL.path)")
+        }
+        let urls = try SafeProjectPath.documentURLs(
+            projectURL: projectURL,
+            relativePath: relative,
+            createParentDirectories: false
+        )
+        let metaURL = urls.meta
         guard let metaMap = readMetaMap(at: metaURL),
               let id = metaMap["id"] as? String
         else { return nil }
 
-        let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-        let relative = relativePath(of: fileURL, in: projectURL)
+        let content = (try? String(contentsOf: urls.document, encoding: .utf8)) ?? ""
         let name = (metaMap["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-                ?? fileURL.deletingPathExtension().lastPathComponent
+                ?? urls.document.deletingPathExtension().lastPathComponent
         let meta = decodeDocumentMeta(metaMap)
         return Document(id: id, name: name, relativePath: relative, content: content, meta: meta)
-    }
-
-    private static func relativePath(of fileURL: URL, in projectURL: URL) -> String {
-        // Resolve symlinks on both sides before stripping. macOS's
-        // `temporaryDirectory` returns `/var/folders/...` (a symlink to
-        // `/private/var/folders/...`) while `FileManager.enumerator` gives
-        // back URLs with the resolved path — without normalizing, the prefix
-        // strip silently fails and the document carries an absolute path
-        // forever, which the writer then concatenates onto the project root.
-        let absFile = fileURL.standardizedFileURL.resolvingSymlinksInPath().path
-        let absProject = projectURL.standardizedFileURL.resolvingSymlinksInPath().path
-        let prefix = absProject.hasSuffix("/") ? absProject : absProject + "/"
-        if absFile.hasPrefix(prefix) {
-            return String(absFile.dropFirst(prefix.count))
-        }
-        return absFile
     }
 
     private static func readMetaMap(at url: URL) -> [String: Any]? {

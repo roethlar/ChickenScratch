@@ -8,6 +8,7 @@ public static class ProjectWriter
     public static void WriteProject(Project project)
     {
         project.Modified = DateTime.UtcNow;
+        SafeProjectPath.ValidateAllDocumentTargets(project.Path, project.Documents.Values.Select(d => d.Path));
 
         var root = new ProjectYamlRoot
         {
@@ -53,8 +54,11 @@ public static class ProjectWriter
 
     public static void WriteDocument(string projectPath, Document doc)
     {
-        var contentPath = Path.Combine(projectPath, doc.Path);
-        Directory.CreateDirectory(Path.GetDirectoryName(contentPath)!);
+        var contentPath = SafeProjectPath.GetDocumentContentPath(
+            projectPath,
+            doc.Path,
+            createParentDirectories: true);
+        SafeProjectPath.GetExistingDocumentSidecarPaths(projectPath, doc.Path);
         File.WriteAllText(contentPath, doc.Content);
 
         var meta = new DocumentMetaYaml
