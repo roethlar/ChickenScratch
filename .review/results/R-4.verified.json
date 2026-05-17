@@ -1,0 +1,7 @@
+{
+  "id": "R-4",
+  "sha": "70004354b06a1264522c017c6fd89eafae5f62f4",
+  "ts": "2026-05-17T05:37:30Z",
+  "reviewer": "claude",
+  "note": "README aligned with R-2 CI: .NET 10 SDK prereq + build targets ChickenScratch.App.csproj directly with /p:Platform=x64 (valid at project scope, invalid at solution scope per R-2 root cause)."
+}
