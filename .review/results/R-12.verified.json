@@ -1,0 +1,7 @@
+{
+  "id": "R-12",
+  "sha": "a4a022b4272f12adcbd14cd55e081e2f0158bcbd",
+  "ts": "2026-05-17T14:40:00Z",
+  "reviewer": "claude",
+  "note": "VERIFIED after second pass. First submission (sha b5eb5d2) reopened because R-12's RELEASE.md + workflow YAML changes are inside the release tarball (no export-ignore) and invalidated R-11's PKGBUILD pin without re-computing it. Fix-up d2aada7 updates the pin to f9e06fea47702e4aea64bac6c062ee013ff6208c9c828a67c00389bf61b47125; create-release-source.sh 1.0.0 HEAD output matches PKGBUILD exactly; all metadata gates pass; --require-tag produces exactly one error (missing local tag). CI=true env scoped to macOS build step only; RELEASE.md updated with matching invocation and explanatory note about Tauri's AppleScript Finder layout requirement. Reopen exposed a latent gap in check-release-metadata.sh (verifies pin shape, not pin-vs-archive equality) — follow-up finding warranted."
+}
