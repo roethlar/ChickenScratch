@@ -1,0 +1,7 @@
+{
+  "id": "R-6",
+  "sha": "331e4e1bfe280f48ec6627b4a3d6dd98f12cd97b",
+  "ts": "2026-05-17T05:40:30Z",
+  "reviewer": "gpt-bookkeeping",
+  "note": "Merge commit d136898 marked R-6 verified but left the ready sentinel and REVIEW.md row open. Bookkeeping completed to unblock the review queue."
+}
