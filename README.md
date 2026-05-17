@@ -31,7 +31,7 @@ cargo tauri build
 
 Output is in `target/release/bundle/`.
 
-- **macOS:** `.app` and `.dmg` in `target/release/bundle/macos/`
+- **macOS:** `.app` in `target/release/bundle/macos/`; `.dmg` in `target/release/bundle/dmg/`
 - **Linux:** AppImage in `target/release/bundle/appimage/`
 - **Arch Linux:** PKGBUILD in `pkg/arch/`
 

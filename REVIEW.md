@@ -401,6 +401,15 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: Arch source URL/checksum and Tauri bundle license metadata remain separate packaging findings.
 - **Reviewer verdict**: VERIFIED (commit `c25e0ef`). Standard MIT text added at repo root, matches `pkg/arch/PKGBUILD`'s `install -Dm644 LICENSE` expectation and the `license=('MIT')` declaration. README's "License" section is now backed by an actual file. Aligns with Rust crate metadata (declares MIT). Third self-surfaced release-readiness finding in a row — the project's licensing posture was incomplete relative to its declared metadata.
 
+### R-5: macOS DMG output is documented but not configured `[~]`
+- **What**: README promises both `.app` and `.dmg` macOS artifacts, but the shared Tauri config only requested `["app"]`; README also put the `.dmg` in the wrong output directory.
+- **Severity**: MEDIUM for release readiness. The default macOS release command should produce the documented artifacts.
+- **Branch**: `fix/r-5-macos-dmg-bundle`
+- **Approach**: changed Tauri bundle targets to `["app", "dmg"]` and corrected the README macOS bundle paths.
+- **Tests**: `cd ui && npm ci`; `cargo tauri build --bundles app,dmg`; `.app` directory check; `.dmg` file check; `git diff --check`.
+- **Files changed**: `src-tauri/tauri.conf.json`, `README.md`, `.review/findings/R-5.md`, `REVIEW.md`.
+- **Known gaps**: Linux AppImage configuration remains a separate release packaging finding.
+
 ---
 
 ## Recently landed (awaiting reviewer verification)
