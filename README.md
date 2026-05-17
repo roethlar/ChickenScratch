@@ -47,11 +47,11 @@ cargo tauri dev
 
 ### Windows (WinUI 3)
 
-Requires: .NET 8 SDK, Windows App SDK, Pandoc
+Requires: .NET 10 SDK, Windows App SDK, Pandoc
 
 ```bash
 cd windows
-dotnet build ChickenScratch.slnx /p:Platform=x64 /p:Configuration=Release
+dotnet build ChickenScratch.App/ChickenScratch.App.csproj /p:Platform=x64 /p:Configuration=Release
 ```
 
 Output is in `windows/ChickenScratch.App/bin/x64/Release/`.
