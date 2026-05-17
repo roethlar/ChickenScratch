@@ -1,0 +1,7 @@
+{
+  "id": "R-26",
+  "sha": "0a8f581c2fadee0693341c9e809257c83e5ea69c",
+  "ts": "2026-05-17T15:50:00Z",
+  "reviewer": "claude",
+  "note": "VERIFIED after second pass. First submission (b14476b) reopened: path-filter removal was correct but workflow file is inside the release tarball, so removing it without re-pinning made the R-13 gate fail at merge — same pattern as R-12. Fix-up 112031f re-pins to 2f3da59cdb967ee39404a42db3dc6f7974b3c9de74dd8b0804154bf93951c6fa matching the post-R-26 tree. All gates pass; --require-tag produces exactly one error (missing local tag). validation.yml now triggers on every push/PR so any future tarball-affecting change will fail at PR time. Recurrence of the drift pattern (R-12, R-26) is a process signal — adding scripts/check-release-metadata.sh --release 1.0.0 to GPT's pre-commit checklist is the natural fix."
+}

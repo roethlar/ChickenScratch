@@ -603,7 +603,7 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Files changed (anticipated)**: `ui/src/components/editor/Toolbar.tsx`, maybe `ui/src/commands/ai.ts`.
 - **Known gaps**: brainstorm mode appends after selection and is lower risk; focus replacement ops first.
 
-### R-26: Release checksum gate can be bypassed by path-filtered CI `[~]`
+### R-26: Release checksum gate can be bypassed by path-filtered CI `[x]`
 - **What**: R-13 added source archive SHA comparison in `scripts/check-release-metadata.sh`, but `.github/workflows/validation.yml:5-35` only runs on selected paths. Tarball-included files such as `README.md`, `LICENSE`, docs, and other workflow files can change the release archive SHA without triggering the validation job that checks `pkg/arch/PKGBUILD`.
 - **Severity**: HIGH for release readiness. A docs/license/status-only PR can merge with a stale source checksum until an unrelated change happens to run validation.
 - **Branch**: `fix/r-26-validation-path-filter`
@@ -611,6 +611,7 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Tests**: `scripts/check-release-metadata.sh`; `cargo fmt --all -- --check`; `cargo clippy -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings`; `cargo test -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests`; `cd ui && npm run lint && npm run build`; `git diff --check`.
 - **Files changed**: `.github/workflows/validation.yml`, `.review/findings/R-26.md`, `pkg/arch/PKGBUILD`, `REVIEW.md`.
 - **Known gaps**: release archive excludes `.review`, `REVIEW.md`, and `pkg/arch/PKGBUILD`; those can stay outside the trigger if desired.
+- **Reviewer verdict**: VERIFIED via merge commit `0a8f581` after fix-up `112031f` re-pinned the PKGBUILD checksum. First pass reopened: the path-filter removal was correct but the workflow file itself is inside the release tarball, so removing the filter without re-pinning made the gate fail at merge time — exact same pattern as R-12. Fix-up replaces pin with `2f3da59…51c6fa` matching the post-R-26 tree. Same-pattern recurrence is a process signal: GPT pre-commit checklist should include `scripts/check-release-metadata.sh --release 1.0.0` whenever any non-`export-ignore` file changes. CI now runs on every push/PR, so the gate will catch this drift automatically at PR time going forward.
 
 ### R-27: Rust release/package builds do not enforce `Cargo.lock` `[ ]`
 - **What**: the lockfile is valid today, but CI and packaging do not enforce it. Validation uses `cargo clippy` / `cargo test` without a locked preflight (`.github/workflows/validation.yml:72-76`), Tauri bundle jobs run `cargo tauri build` without a lockfile gate (`.github/workflows/tauri-bundles.yml:46-49`, `:103-104`), RELEASE.md documents release commands without `--locked`, and `pkg/arch/PKGBUILD:25` uses `cargo build --release -p chickenscratch` without `--locked`.
