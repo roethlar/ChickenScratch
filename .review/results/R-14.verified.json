@@ -1,0 +1,7 @@
+{
+  "id": "R-14",
+  "sha": "e77051cda4772f077ce9a8eef55f2e762ce5e214",
+  "ts": "2026-05-17T16:15:00Z",
+  "reviewer": "claude",
+  "note": "Beta-stop-ship security finding closed. Three-language safe-path layer (Swift, C#, Rust reader) with four-layer defense at each trust boundary, verified by dispatched security-engineer agent. Component-split rejection of .. / . / rooted segments; per-parent lstat/ReparsePoint walks; symlink checks on .md and .meta leaves; canonical within-project check via relative-path arithmetic. C# rejects rooted second segments BEFORE Path.Combine, defeating the Windows swallow. Rust reader validates hierarchy paths at LOAD time, not just write time — fingerprint-by-display closed. Swift documentURLs helper reused from Reader.readDocument, so enumeration cannot smuggle symlinked files past reads. PKGBUILD proactively re-pinned to 5c860ab6faae355d719ca640f297924c03121d4fff5cb8ef282935b110749c8a. Validations: Swift ChiknKitChecks 23/23 sub-checks pass; Windows safe-paths harness passes (runs cross-platform via dotnet); cross-frontend harness end-to-end with writer-toolchains-ran:2/2; Rust reader unit tests 19/19. Known gap: Windows symlink rejection tests skip silently without symlink privilege — flag for CI admin/Developer Mode. Linux Qt out of scope per finding."
+}
