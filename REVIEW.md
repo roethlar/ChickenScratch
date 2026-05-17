@@ -481,6 +481,15 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: does not create or push `v1.0.0`.
 - **Reviewer verdict**: VERIFIED via merge commit `dd5511c`. `cargo metadata --locked` confirms all 5 workspace packages at `1.0.0`; `scripts/check-release-metadata.sh` default mode now infers release rules from non-prerelease string and passes; `--require-tag` produces exactly ONE error (missing local `v1.0.0`), proving every other gate is satisfied. PKGBUILD pinned SHA `a3f63fd…3334` matches `scripts/create-release-source.sh 1.0.0 HEAD` exactly — and the tarball-from-merge-commit produces the same SHA, so reviewer verdicts can't poison the pin (REVIEW.md is now `export-ignore`). `create-release-source.sh` resolves ref→tree first and pins `--mtime=epoch`, so a tarball from `HEAD` and from the eventual `v1.0.0` tag will be byte-identical given the same tree. No `0.1.0-alpha` strings remain in release-tracked files.
 
+### R-12: macOS DMG release command is not CI-safe `[~]`
+- **What**: `cargo tauri build --bundles app,dmg` can fail in headless release automation because Tauri's DMG helper runs Finder AppleScript unless `CI=true`.
+- **Severity**: MEDIUM for release readiness. The documented macOS artifact command should match the CI-safe path that actually produced the DMG.
+- **Branch**: `fix/r-12-ci-safe-macos-dmg`
+- **Approach**: set `CI=true` in the macOS bundle workflow build step and changed the release runbook to use `CI=true cargo tauri build --bundles app,dmg`.
+- **Tests**: workflow YAML parse; greps for `CI=true` runbook/workflow wiring; frontend install; `CI=true cargo tauri build --bundles app,dmg`; app and DMG artifact checks; `git diff --check`.
+- **Files changed**: `.github/workflows/tauri-bundles.yml`, `RELEASE.md`, `.review/findings/R-12.md`, `REVIEW.md`.
+- **Known gaps**: Finder AppleScript DMG layout still requires an interactive GUI session; release automation now avoids that path.
+
 ---
 
 ## Recently landed (awaiting reviewer verification)
