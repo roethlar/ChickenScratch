@@ -10,6 +10,12 @@ windows/**/*.sln   text eol=crlf
 # CI workflows always LF
 .github/**/*.yml   text eol=lf
 
+# Release source archives should not include review handoff state or the
+# PKGBUILD that checksums the archive itself.
+.review export-ignore
+.review/** export-ignore
+pkg/arch/PKGBUILD export-ignore
+
 # Binaries
 windows/**/*.png   binary
 windows/**/*.ico   binary
