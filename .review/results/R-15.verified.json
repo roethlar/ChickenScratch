@@ -1,0 +1,7 @@
+{
+  "id": "R-15",
+  "sha": "50b86e85610741b5dbef96f1580e2b53a716562e",
+  "ts": "2026-05-17T16:50:00Z",
+  "reviewer": "claude",
+  "note": "atomic_write_file (writer.rs:584) implements same-directory tempfile + sync + persist + parent-dir fsync via tempfile crate — atomic on Unix (rename) and Windows (MoveFileExW REPLACE_EXISTING). Auto-cleanup on early return; permission preservation; serialize-meta-before-write order so a serialization failure leaves both .md and .meta untouched. Corrupt-meta quarantine renames to .meta.corrupt-<uuid> (reader.rs:851) and continues loading with hierarchy id/name preserved — closes D-8 from data integrity audit. Tests: reader 21/21 (+2 new for quarantine + identity preservation), writer 26/26 (+6 new for atomicity, no-temp-leak, replace-failure, corrupt-meta rejection), cross-frontend 2/2, Windows --atomic-writes harness passes. tempfile crate moved from dev-dependencies to runtime dependency (necessary, small). Known gap (acknowledged): no portable two-file transaction across .md+.meta. PKGBUILD pre-pinned a06ebdcd1252667452154cfc2b452a062d9067b9d3452383c9e85071c6b0c741. Closes the second of three beta stop-ship findings (R-14 closed R-22; R-15 closes data-integrity; only R-15 had a partial overlap with R-19 native parity work which remains open)."
+}
