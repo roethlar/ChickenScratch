@@ -505,7 +505,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 
 ## Beta-readiness audit (2026-05-17)
 
-After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (data integrity / security / quality / UX) surfaced three stop-ship items for a 0.1.0 beta with real writers. These are *app-level* gaps, distinct from the release scaffolding work above.
+After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (data integrity / security / quality / UX) surfaced three stop-ship items for a 0.1.0 beta with real writers. A follow-up four-agent pass added the remaining open items below. These are *app-level* and release-readiness gaps, distinct from the already-verified remediation work above.
 
 ### R-14: Cross-frontend path validation drift — macOS Swift and Windows C# writers bypass Rust safe_path `[ ]`
 - **What**: The Rust core's `crates/core/src/core/project/safe_path.rs` hardening (component-by-component validation, symlink rejection, canonicalize-under-root) is reached only by Tauri commands. `macos/Sources/ChiknKit/Writer.swift:88-89` does `project.path.appendingPathComponent(document.relativePath)` + `content.write(to:)` with no `..`/symlink check. `windows/ChickenScratch.Core/IO/ProjectWriter.cs:54-58` does `Path.Combine(projectPath, doc.Path)` + `File.WriteAllText` — `Path.Combine` with a rooted second segment discards the project root, and `..` is not stripped.
@@ -530,6 +530,118 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Tests**: the new integration test itself. Run via `cargo test -p chickenscratch-core --test compile_roundtrip`; should also pass under the existing validation.yml CI step.
 - **Files changed (anticipated)**: `crates/core/tests/compile_roundtrip.rs` (new), possibly small refactors to `crates/core/src/core/compile.rs` to expose intermediate state for assertions, plus any sample manuscript additions under `samples/` if needed.
 - **Known gaps**: does not cover PDF rendering fidelity (would need a Pandoc/LaTeX runtime in CI — out of scope); structural invariants are the bar.
+
+### R-17: Remaining git mutation paths bypass dirty-worktree, safe-path, and atomic-write protections `[ ]`
+- **What**: H-3 guarded `restore_revision` and `sync_pull_force`, but other git paths still mutate the worktree without the same protections. `crates/core/src/core/git.rs:341-390` restores one document via raw `project_path.join(doc_path)` + `std::fs::write` for `.md` and `.meta`, bypassing writer symlink/path validation and R-15's planned atomic writes. `create_draft` / `switch_draft` / `merge_draft` fast-forward / `sync_pull` fast-forward still force-checkout at `git.rs:455`, `:498`, `:565-568`, and `:853-856` without `reject_dirty_worktree`. The UI flushes pending editor edits before these operations, but a flush creates dirty files, not a revision.
+- **Severity**: HIGH for beta data integrity and targeted overwrite risk. A symlinked restored document can write outside the project, and draft/pull operations can discard uncommitted but freshly flushed prose.
+- **Approach**: route document restore through shared safe-path + symlink rejection and atomic document/meta write helpers. Add dirty-worktree guards or an explicit auto-revision policy before every force checkout/fast-forward path that can overwrite working-tree files.
+- **Tests**: symlink restore test proving an outside file is untouched; dirty-worktree rejection tests for restore_document, create_draft, switch_draft, merge_draft fast-forward, and sync_pull fast-forward.
+- **Files changed (anticipated)**: `crates/core/src/core/git.rs`, `crates/core/src/core/project/writer.rs` or shared helpers, `src-tauri/src/commands/git.rs`, `crates/core/tests/remote_sync.rs`, possibly UI error handling in `ui/src/components/revisions/Revisions.tsx`.
+- **Known gaps**: force-pull intentionally discards local state after confirmation; keep that behavior but ensure stale editor buffers cannot autosave over the pulled state.
+
+### R-18: Cross-frontend hierarchy tag drift is still hidden by a permissive harness `[ ]`
+- **What**: Rust serializes `TreeNode` with canonical `type: Folder` / `type: Document` (`crates/core/src/models/hierarchy.rs:16-25`) and only aliases lowercase on read. Swift accepts only lowercase raw values in `macos/Sources/ChiknKit/Reader.swift:64-70`, then rewrites `project.yaml` from whatever hierarchy it decoded (`Writer.swift:643-648`, `:740-749`). In a live harness run, Rust loaded Corn with 3 top-level nodes; after Swift wrote metadata, Rust had to repair 16 orphaned docs and add standard folders. The default CI harness still passes because `crates/core/tests/cross_frontend_round_trip.rs:27-31` only asserts that documents exist, and `.github/workflows/validation.yml:86-92` does not set `CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR=1`.
+- **Severity**: HIGH for cross-frontend data integrity. A Swift metadata save can erase the Rust-authored binder structure from `project.yaml` while the harness reports success.
+- **Approach**: make Swift decode hierarchy tags case-insensitively or accept both canonical and lowercase wire forms. Make the default cross-frontend CI path fail on repair markers and assert hierarchy document ids/paths survive each writer pass.
+- **Tests**: Swift fixture opening a Rust-written project with `type: Folder` / `type: Document`, saving metadata, then asserting hierarchy structure is preserved. Update `crates/core/tests/cross_frontend/run.sh` or validation workflow so repair markers fail CI.
+- **Files changed (anticipated)**: `macos/Sources/ChiknKit/Reader.swift`, `macos/Tests/ChiknKitChecks/main.swift`, `crates/core/tests/cross_frontend/run.sh`, `crates/core/tests/cross_frontend_round_trip.rs`, `.github/workflows/validation.yml`.
+- **Known gaps**: Windows currently writes lowercase but Rust accepts it; the immediate failure is Swift reading Rust canonical output.
+
+### R-19: Native readers still persist destructive repair/malformed document loss `[ ]`
+- **What**: Rust reader repair no longer persists missing-file pruning, but native readers still do. Windows removes missing hierarchy nodes in `windows/ChickenScratch.Core/IO/ProjectReader.cs:68-75` and `:286-296`, and native operations commonly `ReadProject` then `WriteProject`, which persists the smaller manifest. Swift silently drops `.md` files whose `.meta` is missing/corrupt/lacks `id` (`macos/Sources/ChiknKit/Reader.swift:155-159`) and turns content read errors into empty content (`:161`); the writer can then serialize document nodes with missing paths from `Writer.swift:740-746`.
+- **Severity**: HIGH for beta data integrity. A sync blip, corrupt sidecar, or transient missing file can become permanent project.yaml damage after an unrelated native save.
+- **Approach**: port Rust's non-destructive missing-file semantics to Swift and Windows. For corrupt/missing meta, either fail load cleanly or quarantine according to R-15; do not silently drop docs or rewrite document nodes with null/empty paths.
+- **Tests**: fixture with a valid hierarchy entry whose `.md` is temporarily renamed; opening and performing a native write must preserve the old hierarchy entry or fail before writing. Swift corrupt-meta fixture should fail/quarantine rather than drop the document.
+- **Files changed (anticipated)**: `macos/Sources/ChiknKit/Reader.swift`, `macos/Sources/ChiknKit/Writer.swift`, `windows/ChickenScratch.Core/IO/ProjectReader.cs`, `windows/ChickenScratch.Core/IO/ProjectWriter.cs`, native harness tests.
+- **Known gaps**: exact quarantine policy should match R-15 so all frontends converge.
+
+### R-20: Linux native delete removes manifest entries only; deleted files resurrect on reload `[ ]`
+- **What**: `linux/src/bridge.rs:670-687` removes a node from hierarchy, removes its id from `project.documents`, then calls `writer::write_project`. It never calls `writer::delete_document`; the helper at `bridge.rs:1391-1399` only mutates the hierarchy vector. On next load, Rust reader sees the still-on-disk `.md` as an orphan and repairs it back into the hierarchy.
+- **Severity**: HIGH for Linux native data integrity. Delete appears to work, but prose remains on disk and can reappear, producing misleading git history.
+- **Approach**: mirror the Tauri recursive delete path: capture the removed subtree, delete every `.md` and `.meta` with writer safety checks, remove document map entries only after file deletion succeeds, and abort on filesystem errors.
+- **Tests**: Linux bridge/core test that creates a doc, calls `delete_node`, asserts `.md` and `.meta` are gone, then re-reads the project and confirms the id/path does not return.
+- **Files changed (anticipated)**: `linux/src/bridge.rs`, possibly shared recursive-delete helpers in `crates/core`.
+- **Known gaps**: folders need recursive document deletion, not just direct child deletion.
+
+### R-21: Duplicate document IDs/paths silently alias or overwrite content `[ ]`
+- **What**: `Project.documents` is a `HashMap<String, Document>` (`crates/core/src/models/project.rs:90-91`), and reader inserts by `.meta` id at `reader.rs:573-574`, so duplicate ids silently overwrite earlier docs. Writer path validation in `writer.rs:247-289` checks each target independently but not uniqueness; `write_all_documents` writes all map values (`writer.rs:237-242`) and duplicate `Document.path` entries race by map iteration order. Linux also generates new paths with plain `make_slug` and no collision check (`linux/src/bridge.rs:568-615`), unlike Tauri's `unique_slug`.
+- **Severity**: HIGH for data integrity. Duplicate ids or paths from sync conflicts, hand edits, malicious projects, or Linux duplicate-title creation can hide documents or overwrite content unpredictably.
+- **Approach**: validate unique document ids and unique normalized document paths on load and before write. Reject hierarchy nodes whose id/path do not match exactly one document. Use `chickenscratch_core::utils::slug::unique_slug` in the Linux bridge.
+- **Tests**: reader fixture with two `.meta` files sharing one id must fail. Writer test with two docs sharing one path must return `InvalidFormat` before writing. Linux duplicate-title test should produce `chapter-one.md` and `chapter-one-1.md`.
+- **Files changed (anticipated)**: `crates/core/src/core/project/reader.rs`, `crates/core/src/core/project/writer.rs`, `linux/src/bridge.rs`, tests.
+- **Known gaps**: decide whether legacy projects with duplicate ids should get a migration/quarantine path or hard fail.
+
+### R-22: Scrivener exporter uses project name as an unchecked output path component `[ ]`
+- **What**: `export_to_scriv` passes `project.name` to `write_scrivx` (`crates/core/src/scrivener/exporter/mod.rs:64`), and `write_scrivx` writes `scriv_path.join(format!("{}.scrivx", project_name))` (`:206-207`). `project.name` is loaded from `project.yaml` without filename-component validation. A name such as `../OtherProject/OtherProject` can write the `.scrivx` outside the selected `.scriv` directory if the parent exists.
+- **Severity**: HIGH for export-time arbitrary file placement near the chosen output directory.
+- **Approach**: derive the `.scrivx` filename from `output_path.file_stem()` or a strict sanitized single component, not from untrusted `project.name`. Reject separators, roots, `.`/`..`, empty names, and control characters.
+- **Tests**: project named `../victim/victim`, export to `Export.scriv`, assert no `victim/victim.scrivx` appears outside export root and the exporter fails cleanly or writes only inside `Export.scriv`.
+- **Files changed (anticipated)**: `crates/core/src/scrivener/exporter/mod.rs`, exporter tests.
+- **Known gaps**: still preserve display title inside XML via escaped text; only the filesystem component needs sanitization.
+
+### R-23: Manual Backup reports success while omitting current work `[ ]`
+- **What**: the Revisions Backup button calls `gitCmd.pushBackup` directly (`ui/src/components/revisions/Revisions.tsx:152-162`). It does not use `runWithEditorFlush`, does not save a revision, and backend `push_backup` only pushes the current branch (`src-tauri/src/commands/git.rs:93-100`). `backup_on_close` is safer because it commits dirty changes before pushing (`src-tauri/src/commands/git.rs:245-261`).
+- **Severity**: HIGH for user trust and data recovery. A writer can click Backup, see "Backup complete", and still have neither pending debounce edits nor already-flushed uncommitted edits in the backup repo.
+- **Approach**: route manual backup through the same flush + auto-revision + push flow as close/periodic backup, or block with a clear prompt until the user saves a revision.
+- **Tests**: commit baseline, edit a doc, trigger manual backup, clone the backup repo, and assert the edited text is present after the fix.
+- **Files changed (anticipated)**: `ui/src/components/revisions/Revisions.tsx`, `src-tauri/src/commands/git.rs`, tests or harness coverage.
+- **Known gaps**: decide whether manual backup should create an auto revision message or require the user to name it.
+
+### R-24: Document/flow switches do not await failed flushes before replacing buffers and clearing dirty state `[ ]`
+- **What**: `flushPendingSave` throws on failed disk writes (`ui/src/components/editor/Editor.tsx:152-214`), but the document-load effect calls it without `await` before replacing editor content for flow entry/exit and single-doc switches (`Editor.tsx:280-349`). It then calls `setDirtyTracked(false)` after loading the new buffer. The Flow exit toolbar catches flush failure but exits flow anyway (`ui/src/components/editor/Toolbar.tsx:304-310`).
+- **Severity**: HIGH for dirty-editor data loss under disk-full, permission, path-validation, or write failure conditions.
+- **Approach**: make navigation/flow transitions await the flush and block buffer replacement/dirty clear on failure. Centralize document selection/flow exit through async guarded actions rather than synchronous `selectDocument`.
+- **Tests**: mock `update_document_content` to reject, edit doc A, select doc B, and assert doc A remains visible/dirty or navigation is blocked. Repeat for flow exit.
+- **Files changed (anticipated)**: `ui/src/components/editor/Editor.tsx`, `ui/src/components/editor/Toolbar.tsx`, `ui/src/stores/projectStore.ts`, callers that invoke `selectDocument`.
+- **Known gaps**: this may require a small UI state for "navigation blocked by save failure" rather than only a toast.
+
+### R-25: AI replacement deletes selected prose before the stream succeeds `[ ]`
+- **What**: for polish/expand/simplify, `Toolbar.tsx:417-430` deletes the selected range first and then inserts streaming chunks. On `ai:error`, network failure, invalid key, or context cancellation, the catch at `Toolbar.tsx:439-442` only toasts; it does not restore the original `selectedText`. Autosave can persist the deletion as ordinary editor content.
+- **Severity**: HIGH for AI-assisted editing data loss.
+- **Approach**: keep the original selection until the first successful replacement is ready, or insert into a temporary transaction that can roll back. On stream failure/cancellation, restore `selectedText` and selection, and avoid autosaving a failed transform as a deletion.
+- **Tests**: configure a failing endpoint, select text, run Polish, assert the original selected text remains. Repeat for navigation abort during replacement.
+- **Files changed (anticipated)**: `ui/src/components/editor/Toolbar.tsx`, maybe `ui/src/commands/ai.ts`.
+- **Known gaps**: brainstorm mode appends after selection and is lower risk; focus replacement ops first.
+
+### R-26: Release checksum gate can be bypassed by path-filtered CI `[ ]`
+- **What**: R-13 added source archive SHA comparison in `scripts/check-release-metadata.sh`, but `.github/workflows/validation.yml:5-35` only runs on selected paths. Tarball-included files such as `README.md`, `LICENSE`, docs, and other workflow files can change the release archive SHA without triggering the validation job that checks `pkg/arch/PKGBUILD`.
+- **Severity**: HIGH for release readiness. A docs/license/status-only PR can merge with a stale source checksum until an unrelated change happens to run validation.
+- **Approach**: remove the validation workflow path filter, or make the release-metadata job run on every PR/push that can affect `scripts/create-release-source.sh` output. Keep path filters only for jobs whose inputs are truly disjoint.
+- **Tests**: branch editing only `README.md` or `docs/ROADMAP.md` should schedule validation and fail until `pkg/arch/PKGBUILD` is re-pinned.
+- **Files changed (anticipated)**: `.github/workflows/validation.yml`, possibly `.github/workflows/tauri-bundles.yml`.
+- **Known gaps**: release archive excludes `.review`, `REVIEW.md`, and `pkg/arch/PKGBUILD`; those can stay outside the trigger if desired.
+
+### R-27: Rust release/package builds do not enforce `Cargo.lock` `[ ]`
+- **What**: the lockfile is valid today, but CI and packaging do not enforce it. Validation uses `cargo clippy` / `cargo test` without a locked preflight (`.github/workflows/validation.yml:72-76`), Tauri bundle jobs run `cargo tauri build` without a lockfile gate (`.github/workflows/tauri-bundles.yml:46-49`, `:103-104`), RELEASE.md documents release commands without `--locked`, and `pkg/arch/PKGBUILD:25` uses `cargo build --release -p chickenscratch` without `--locked`.
+- **Severity**: HIGH for reproducible releases and clean-checkout confidence.
+- **Approach**: add `cargo metadata --locked` to release metadata validation and run package/release Cargo builds in locked mode where supported. Keep `npm ci` as-is for the UI.
+- **Tests**: stale `Cargo.lock` after a manifest change must fail validation, Tauri bundle CI, and Arch package build before any release artifact is produced.
+- **Files changed (anticipated)**: `scripts/check-release-metadata.sh`, `.github/workflows/validation.yml`, `.github/workflows/tauri-bundles.yml`, `pkg/arch/PKGBUILD`, `RELEASE.md`.
+- **Known gaps**: use a preflight if a wrapper command cannot forward `--locked` directly.
+
+### R-28: Native Swift and Windows dependency resolution is not locked `[ ]`
+- **What**: SwiftPM dependency `Yams` is declared as `from: "5.1.3"` and `macos/Package.resolved` is ignored by `.gitignore:25`, so clean CI can resolve a different package than local development. Windows uses floating package versions such as `Microsoft.WindowsAppSDK` `1.8.*` in `windows/ChickenScratch.App/ChickenScratch.App.csproj`, with no tracked `packages.lock.json` and no NuGet locked-mode restore in `.github/workflows/windows.yml:25-31`.
+- **Severity**: HIGH for native build reproducibility and cross-frontend harness confidence.
+- **Approach**: track `macos/Package.resolved`, stop ignoring it, pin Windows package versions exactly, enable NuGet lock files, and restore with locked mode in CI. Add checks that no package reference uses wildcard versions.
+- **Tests**: clean checkout CI should fail if SwiftPM/NuGet lock files are missing or stale.
+- **Files changed (anticipated)**: `.gitignore`, `macos/Package.resolved`, `windows/**/*.csproj`, `windows/**/packages.lock.json`, `.github/workflows/validation.yml`, `.github/workflows/windows.yml`.
+- **Known gaps**: decide whether app-only Windows packages need separate lock treatment from core harness packages.
+
+### R-29: macOS DMG release path has no signing/notarization gate `[ ]`
+- **What**: Tauri config builds app/dmg artifacts (`src-tauri/tauri.conf.json:26-36`), and `.github/workflows/tauri-bundles.yml:46-62` uploads them, but there is no signing identity, hardened runtime, entitlements, notarytool credentials, notarization step, or verification. `RELEASE.md` documents artifact existence checks only, and `docs/ROADMAP.md` still lists macOS code signing as future work.
+- **Severity**: HIGH for public macOS distribution; MEDIUM if CI artifacts are explicitly internal-only.
+- **Approach**: add a release-only signing/notarization path with GitHub Actions secrets and verify with `codesign --verify --deep --strict`, `spctl --assess`, and `xcrun stapler validate`. If unsigned artifacts remain for CI smoke, separate smoke builds from distributable release builds in docs/workflows.
+- **Tests**: release workflow should fail if the `.app` or `.dmg` is unsigned, unnotarized, or unstapled.
+- **Files changed (anticipated)**: `.github/workflows/tauri-bundles.yml` or a release workflow, `src-tauri/tauri.conf.json`, signing assets/entitlements if needed, `RELEASE.md`.
+- **Known gaps**: requires Apple Developer credentials; cannot be fully validated on local non-release runs.
+
+### R-30: Subprocess timeout can still hang on child process trees that keep pipes open `[ ]`
+- **What**: `output_bounded` returns from its polling loop when the direct child exits (`crates/core/src/utils/process.rs:112-114`) and then joins stdout/stderr reader threads without a join deadline (`:160-161`, `:209-213`). On timeout/output cap it kills only the direct child (`:117`, `:130`, `:140`). A wrapper/Pandoc process can spawn a child that inherits stdout/stderr, exits or is killed, and leaves the reader threads blocked forever.
+- **Severity**: MEDIUM. M-3 bounded the common case, but process trees can still hang compile/import/Pandoc checks indefinitely.
+- **Approach**: run subprocesses in a killable process group/job object and kill the whole group on timeout/cap. Keep a deadline while joining readers or use nonblocking reads that can be abandoned after process-tree kill.
+- **Tests**: Unix helper test with `sh -c '(sleep 3600) &'` and a short timeout should return promptly. Add Windows job-object equivalent if possible.
+- **Files changed (anticipated)**: `crates/core/src/utils/process.rs`, platform-specific tests.
+- **Known gaps**: Windows process-tree handling needs Job Objects or an equivalent crate.
 
 ---
 
