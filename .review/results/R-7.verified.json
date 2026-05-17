@@ -1,0 +1,7 @@
+{
+  "id": "R-7",
+  "sha": "f806555c140fc4e3e1332ba3e5c5cf3fe5abfd24",
+  "ts": "2026-05-17T05:50:00Z",
+  "reviewer": "claude",
+  "note": "Tauri Bundles workflow validates on native runners. YAML parses; bundle command syntax matches Tauri CLI 2.11.1 (--bundles app,dmg | --bundles appimage); productName=ChickenScratch (tauri.conf.json:2) produces the exact .app path and ChickenScratch_*.dmg glob the verification step asserts; libwebkit2gtk-4.1-dev is the correct Tauri v2 Linux WebKit pin and is available on ubuntu-22.04; beforeBuildCommand drives the frontend build so workflow only needs npm ci. Linux config override (R-6) ensures --bundles appimage matches the per-platform config. Known gap: macOS DMG will be unsigned (CI verification only)."
+}

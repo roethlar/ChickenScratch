@@ -431,7 +431,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: AppImage packaging still needs validation on a Linux host.
 - **Reviewer verdict**: VERIFIED via merge commit `d136898`; stale sentinel/bookkeeping completed after the merge left `.review/ready/R-6.json` in place. Linux-specific Tauri config now overrides bundle targets to `["appimage"]`, leaving the macOS app/dmg targets scoped to the default macOS path.
 
-### R-7: Tauri release artifacts lack CI coverage `[~]`
+### R-7: Tauri release artifacts lack CI coverage `[x]`
 - **What**: macOS `.app`/`.dmg` and Linux AppImage packaging are now configured, but no CI job exercises those release artifact paths.
 - **Severity**: HIGH for release readiness. Release artifacts need native-runner build verification before 1.0.
 - **Branch**: `fix/r-7-tauri-bundle-ci`
@@ -439,6 +439,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Tests**: YAML parse check; greps for macOS/Linux build commands and Linux WebKit dependency; `git diff --check`.
 - **Files changed**: `.github/workflows/tauri-bundles.yml`, `.review/findings/R-7.md`, `REVIEW.md`.
 - **Known gaps**: full validation requires GitHub-hosted macOS and Linux runners.
+- **Reviewer verdict**: VERIFIED via merge commit `f806555`. YAML parses; `--bundles app,dmg` / `--bundles appimage` syntax matches Tauri v2 CLI 2.11.1; `productName=ChickenScratch` (no space) produces exactly the `.app` path and `ChickenScratch_*.dmg` glob the verification step asserts; `libwebkit2gtk-4.1-dev` is the correct Tauri v2 Linux WebKit pin and is available on ubuntu-22.04; `beforeBuildCommand` handles the frontend build so the workflow only needs `npm ci`. macOS DMG will be unsigned (CI verification only, not distributable as-is).
 
 ---
 
