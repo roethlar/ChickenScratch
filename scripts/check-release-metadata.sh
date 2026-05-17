@@ -131,8 +131,26 @@ else
   [[ "$sha_line" == "sha256sums=('SKIP')" ]] || fail "prerelease pkg/arch/PKGBUILD should keep sha256sums=('SKIP') until a release source archive exists"
 fi
 
+archive_ref="HEAD"
+can_compare_archive=1
 if [[ $require_tag -eq 1 ]]; then
-  git rev-parse -q --verify "refs/tags/v$expected" >/dev/null || fail "local tag v$expected does not exist"
+  if git rev-parse -q --verify "refs/tags/v$expected" >/dev/null; then
+    archive_ref="v$expected"
+  else
+    can_compare_archive=0
+    fail "local tag v$expected does not exist"
+  fi
+fi
+
+if [[ $release_mode -eq 1 && -n "${sha_value:-}" && $can_compare_archive -eq 1 ]]; then
+  archive_tmp=$(mktemp -d)
+  if archive_output=$(scripts/create-release-source.sh "$expected" "$archive_ref" "$archive_tmp" 2>&1); then
+    archive_sha=$(printf '%s\n' "$archive_output" | awk 'NR == 1 { print $1 }')
+    [[ "$archive_sha" == "$sha_value" ]] || fail "pkg/arch/PKGBUILD sha256sums is '$sha_value', but $archive_ref source archive is '$archive_sha'"
+  else
+    fail "could not create release source archive from $archive_ref: $archive_output"
+  fi
+  rm -rf "$archive_tmp"
 fi
 
 if [[ $errors -gt 0 ]]; then
