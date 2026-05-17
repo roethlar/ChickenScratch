@@ -79,6 +79,34 @@ fn create_scriv_structure(scriv_path: &Path) -> Result<(), ChiknError> {
     Ok(())
 }
 
+fn scrivx_filename_from_output_path(scriv_path: &Path) -> Result<String, ChiknError> {
+    let stem = scriv_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .ok_or_else(|| {
+            ChiknError::InvalidFormat(format!(
+                "Scrivener output path must have a valid UTF-8 filename: {}",
+                scriv_path.display()
+            ))
+        })?;
+
+    let stem = stem.trim();
+    if stem.is_empty()
+        || stem == "."
+        || stem == ".."
+        || stem.contains('/')
+        || stem.contains('\\')
+        || stem.chars().any(char::is_control)
+    {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Invalid Scrivener output filename: {}",
+            scriv_path.display()
+        )));
+    }
+
+    Ok(format!("{}.scrivx", stem))
+}
+
 /// Converts .chikn hierarchy to Scrivener BinderItems
 fn convert_to_binder_items(
     hierarchy: &[TreeNode],
@@ -203,7 +231,7 @@ fn write_scrivx(
         generate_binder_xml(binder_items, 2)
     );
 
-    let scrivx_path = scriv_path.join(format!("{}.scrivx", project_name));
+    let scrivx_path = scriv_path.join(scrivx_filename_from_output_path(scriv_path)?);
     fs::write(&scrivx_path, xml)?;
 
     Ok(())
@@ -313,5 +341,31 @@ mod tests {
         assert!(scriv_path.join("Files/Data").exists());
         assert!(scriv_path.join("Settings").exists());
         assert!(scriv_path.join("Files/version.txt").exists());
+    }
+
+    #[test]
+    fn test_write_scrivx_uses_output_folder_name_not_project_name() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Export.scriv");
+        let victim_dir = temp_dir.path().join("victim");
+        fs::create_dir_all(&scriv_path).unwrap();
+        fs::create_dir_all(&victim_dir).unwrap();
+
+        let result = write_scrivx(&scriv_path, "../victim/victim", &[]);
+        assert!(result.is_ok());
+
+        assert!(scriv_path.join("Export.scrivx").exists());
+        assert!(!victim_dir.join("victim.scrivx").exists());
+    }
+
+    #[test]
+    fn test_scrivx_filename_rejects_control_characters() {
+        let path = Path::new("Bad\nName.scriv");
+
+        let result = scrivx_filename_from_output_path(path);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
     }
 }
