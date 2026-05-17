@@ -187,9 +187,10 @@ public static class DocumentService
         {
             if (project.Documents.TryGetValue(dn.Id, out var doc))
             {
-                var contentPath = Path.Combine(projectPath, doc.Path);
+                var (contentPath, metaPath) = SafeProjectPath.GetExistingDocumentSidecarPaths(
+                    projectPath,
+                    doc.Path);
                 if (File.Exists(contentPath)) File.Delete(contentPath);
-                var metaPath = Path.ChangeExtension(contentPath, ".meta");
                 if (File.Exists(metaPath)) File.Delete(metaPath);
                 project.Documents.Remove(dn.Id);
             }

@@ -108,10 +108,7 @@ public static class ProjectReader
 
         foreach (var root in DocumentRoots)
         {
-            var rootPath = Path.Combine(projectPath, root);
-            if (!Directory.Exists(rootPath)) continue;
-
-            foreach (var mdFile in Directory.EnumerateFiles(rootPath, "*.md", SearchOption.AllDirectories))
+            foreach (var mdFile in SafeProjectPath.EnumerateMarkdownFiles(projectPath, root))
             {
                 var doc = ReadDocument(mdFile, projectPath, hierarchyByPath);
                 if (doc != null)
@@ -137,12 +134,22 @@ public static class ProjectReader
         Dictionary<string, DocumentNode> hierarchyByPath)
     {
         var relPath = NormalizePath(System.IO.Path.GetRelativePath(projectPath, mdAbsolutePath));
+        SafeProjectPath.EnsureExistingAbsoluteDocumentPathSafe(
+            projectPath,
+            mdAbsolutePath,
+            relPath,
+            "document file");
         var content = File.Exists(mdAbsolutePath) ? File.ReadAllText(mdAbsolutePath) : string.Empty;
 
         var metaPath = System.IO.Path.ChangeExtension(mdAbsolutePath, ".meta");
         DocumentMetaYaml? meta = null;
         bool? legacyIncludeBool = null;
 
+        SafeProjectPath.EnsureExistingAbsoluteDocumentPathSafe(
+            projectPath,
+            metaPath,
+            relPath,
+            "document metadata");
         if (File.Exists(metaPath))
         {
             var metaText = File.ReadAllText(metaPath);
@@ -289,7 +296,11 @@ public static class ProjectReader
         {
             if (nodes[i] is DocumentNode dn)
             {
-                if (!File.Exists(Path.Combine(projectPath, dn.Path)))
+                var contentPath = SafeProjectPath.GetDocumentContentPath(
+                    projectPath,
+                    dn.Path,
+                    createParentDirectories: false);
+                if (!File.Exists(contentPath))
                 {
                     docs.Remove(dn.Id);
                     nodes.RemoveAt(i);

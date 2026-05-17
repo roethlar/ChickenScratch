@@ -303,6 +303,7 @@ public enum YAMLValue: Sendable, Equatable {
 public enum ChiknError: Error, LocalizedError {
     case notAChiknFolder(URL)
     case invalidProjectYaml(String)
+    case invalidDocumentPath(String)
     case documentMissing(String)
     case io(Error)
 
@@ -310,6 +311,7 @@ public enum ChiknError: Error, LocalizedError {
         switch self {
         case .notAChiknFolder(let url): "Not a .chikn project: \(url.path)"
         case .invalidProjectYaml(let msg): "project.yaml is invalid: \(msg)"
+        case .invalidDocumentPath(let msg): "Document path is invalid: \(msg)"
         case .documentMissing(let path): "Document missing on disk: \(path)"
         case .io(let err): err.localizedDescription
         }

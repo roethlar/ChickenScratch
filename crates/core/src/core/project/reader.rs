@@ -21,12 +21,11 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::io::ErrorKind;
+use std::path::{Component, Path, PathBuf};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-#[cfg(test)]
-use std::path::PathBuf;
 use uuid::Uuid;
 
 use super::format::{
@@ -212,6 +211,7 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
 
     // Read project.yaml
     let metadata = read_project_metadata(path)?;
+    validate_hierarchy_document_paths(&metadata.hierarchy)?;
 
     // Read all documents from manuscript and research folders
     let documents = read_all_documents(path)?;
@@ -261,6 +261,13 @@ fn validate_project_root(path: &Path) -> Result<(), ChiknError> {
         return Err(ChiknError::InvalidFormat(format!(
             "Missing required file: {}",
             super::format::PROJECT_FILE
+        )));
+    }
+    let metadata = fs::symlink_metadata(&project_file)?;
+    if metadata.file_type().is_symlink() {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Project metadata is a symlink: {}",
+            project_file.display()
         )));
     }
     Ok(())
@@ -461,6 +468,16 @@ fn missing_hierarchy_paths(hierarchy: &[TreeNode], project_path: &Path) -> Vec<S
     result
 }
 
+fn validate_hierarchy_document_paths(hierarchy: &[TreeNode]) -> Result<(), ChiknError> {
+    for node in hierarchy {
+        match node {
+            TreeNode::Document { path, .. } => validate_relative_document_path(path)?,
+            TreeNode::Folder { children, .. } => validate_hierarchy_document_paths(children)?,
+        }
+    }
+    Ok(())
+}
+
 /// Counts total Document nodes in a hierarchy.
 #[cfg(test)]
 fn count_hierarchy_docs(hierarchy: &[TreeNode]) -> usize {
@@ -497,6 +514,8 @@ fn collect_paths_inner(hierarchy: &[TreeNode], paths: &mut std::collections::Has
 /// Reads project.yaml and parses into ProjectMetadata
 fn read_project_metadata(path: &Path) -> Result<ProjectMetadata, ChiknError> {
     let project_file = get_project_file_path(path);
+    let project_root = canonical_project_root(path)?;
+    ensure_existing_read_file_safe(&project_file, &project_root, "project metadata")?;
 
     let content = fs::read_to_string(&project_file).map_err(ChiknError::Io)?;
 
@@ -509,29 +528,32 @@ fn read_project_metadata(path: &Path) -> Result<ProjectMetadata, ChiknError> {
 /// Reads all documents from manuscript and research folders
 fn read_all_documents(project_path: &Path) -> Result<HashMap<String, Document>, ChiknError> {
     let mut documents = HashMap::new();
+    let project_root = canonical_project_root(project_path)?;
 
     // Read from manuscript folder (recursively)
     let manuscript_path = get_manuscript_path(project_path);
-    if manuscript_path.exists() {
-        read_documents_from_folder(&manuscript_path, project_path, &mut documents)?;
-    }
+    read_optional_document_root(
+        &manuscript_path,
+        project_path,
+        &project_root,
+        &mut documents,
+    )?;
 
     // Read from research folder (recursively)
     let research_path = get_research_path(project_path);
-    if research_path.exists() {
-        read_documents_from_folder(&research_path, project_path, &mut documents)?;
-    }
+    read_optional_document_root(&research_path, project_path, &project_root, &mut documents)?;
 
     // Read from characters/locations folders if present (novelist convention).
     // Optional — projects without these folders are still valid.
     let characters_path = get_characters_path(project_path);
-    if characters_path.exists() {
-        read_documents_from_folder(&characters_path, project_path, &mut documents)?;
-    }
+    read_optional_document_root(
+        &characters_path,
+        project_path,
+        &project_root,
+        &mut documents,
+    )?;
     let locations_path = get_locations_path(project_path);
-    if locations_path.exists() {
-        read_documents_from_folder(&locations_path, project_path, &mut documents)?;
-    }
+    read_optional_document_root(&locations_path, project_path, &project_root, &mut documents)?;
 
     Ok(documents)
 }
@@ -539,7 +561,8 @@ fn read_all_documents(project_path: &Path) -> Result<HashMap<String, Document>, 
 /// Reads `threads.yaml` if present. Missing file → empty vec (no error).
 fn read_threads(project_path: &Path) -> Result<Vec<Thread>, ChiknError> {
     let path = get_threads_path(project_path);
-    if !path.exists() {
+    let project_root = canonical_project_root(project_path)?;
+    if !ensure_optional_read_file_safe(&path, &project_root, "threads metadata")? {
         return Ok(Vec::new());
     }
     let body = fs::read_to_string(&path)?;
@@ -555,28 +578,54 @@ fn read_threads(project_path: &Path) -> Result<Vec<Thread>, ChiknError> {
     Ok(parsed.threads)
 }
 
+fn read_optional_document_root(
+    folder_path: &Path,
+    project_path: &Path,
+    project_root: &Path,
+    documents: &mut HashMap<String, Document>,
+) -> Result<(), ChiknError> {
+    match fs::symlink_metadata(folder_path) {
+        Ok(metadata) => {
+            ensure_read_directory_metadata_safe(folder_path, &metadata, project_root)?;
+            read_documents_from_folder(folder_path, project_path, project_root, documents)
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Reads all documents from a folder recursively
 fn read_documents_from_folder(
     folder_path: &Path,
     project_path: &Path,
+    project_root: &Path,
     documents: &mut HashMap<String, Document>,
 ) -> Result<(), ChiknError> {
+    let metadata = fs::symlink_metadata(folder_path)?;
+    ensure_read_directory_metadata_safe(folder_path, &metadata, project_root)?;
+
     // Iterate through all entries in the folder
     for entry in fs::read_dir(folder_path)? {
         let entry = entry?;
         let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)?;
 
-        if path.is_file() {
+        if metadata.file_type().is_symlink() {
+            return Err(ChiknError::InvalidFormat(format!(
+                "Project document path is a symlink: {}",
+                path.display()
+            )));
+        } else if metadata.is_file() {
             // Process .md files
             if let Some(extension) = path.extension() {
                 if extension == DOCUMENT_EXTENSION {
-                    let doc = read_document(&path, project_path)?;
+                    let doc = read_document_with_root(&path, project_path, project_root)?;
                     documents.insert(doc.id.clone(), doc);
                 }
             }
-        } else if path.is_dir() {
+        } else if metadata.is_dir() {
             // Recursively process subdirectories
-            read_documents_from_folder(&path, project_path, documents)?;
+            read_documents_from_folder(&path, project_path, project_root, documents)?;
         }
     }
 
@@ -584,7 +633,19 @@ fn read_documents_from_folder(
 }
 
 /// Reads a single document (content + metadata)
+#[cfg(test)]
 fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, ChiknError> {
+    let project_root = canonical_project_root(project_path)?;
+    read_document_with_root(content_path, project_path, &project_root)
+}
+
+fn read_document_with_root(
+    content_path: &Path,
+    _project_path: &Path,
+    project_root: &Path,
+) -> Result<Document, ChiknError> {
+    ensure_existing_read_file_safe(content_path, project_root, "document file")?;
+
     // Read content (.md file)
     let content = fs::read_to_string(content_path)?;
 
@@ -608,7 +669,8 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
     })?;
 
     let meta_path = get_document_meta_path(folder_path, file_stem);
-    let metadata = if meta_path.exists() {
+    let metadata = if ensure_optional_read_file_safe(&meta_path, project_root, "document metadata")?
+    {
         let meta_content = fs::read_to_string(&meta_path)?;
         serde_yaml::from_str::<DocumentMetadata>(&meta_content)?
     } else {
@@ -635,8 +697,9 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
     };
 
     // Compute relative path from project root
-    let relative_path = content_path
-        .strip_prefix(project_path)
+    let canonical_content_path = content_path.canonicalize()?;
+    let relative_path = canonical_content_path
+        .strip_prefix(project_root)
         .map_err(|_| {
             ChiknError::InvalidFormat(format!(
                 "Document path not within project: {}",
@@ -644,6 +707,7 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
             ))
         })?
         .to_string_lossy()
+        .replace('\\', "/")
         .to_string();
 
     // Use display name from metadata if available, otherwise use filename
@@ -668,6 +732,138 @@ fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, C
         comments: metadata.comments,
         fields: metadata.fields,
     })
+}
+
+fn validate_relative_document_path(document_path: &str) -> Result<(), ChiknError> {
+    let path = Path::new(document_path);
+    let mut has_normal_component = false;
+
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => has_normal_component = true,
+            Component::CurDir => {
+                return Err(invalid_document_path(
+                    document_path,
+                    "current-directory components are not allowed",
+                ));
+            }
+            Component::ParentDir => {
+                return Err(invalid_document_path(
+                    document_path,
+                    "parent-directory components are not allowed",
+                ));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(invalid_document_path(
+                    document_path,
+                    "absolute paths are not allowed",
+                ));
+            }
+        }
+    }
+
+    if !has_normal_component {
+        return Err(invalid_document_path(
+            document_path,
+            "path must contain a file name",
+        ));
+    }
+
+    Ok(())
+}
+
+fn invalid_document_path(document_path: &str, reason: &str) -> ChiknError {
+    ChiknError::InvalidFormat(format!(
+        "Document path must be relative and within project ({}): {}",
+        reason, document_path
+    ))
+}
+
+fn canonical_project_root(project_path: &Path) -> Result<PathBuf, ChiknError> {
+    let project_root = project_path.canonicalize()?;
+    if !project_root.is_dir() {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Project path is not a directory: {}",
+            project_path.display()
+        )));
+    }
+    Ok(project_root)
+}
+
+fn ensure_read_directory_metadata_safe(
+    path: &Path,
+    metadata: &fs::Metadata,
+    project_root: &Path,
+) -> Result<(), ChiknError> {
+    if metadata.file_type().is_symlink() {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Project directory is a symlink: {}",
+            path.display()
+        )));
+    }
+    if !metadata.is_dir() {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Project path is not a directory: {}",
+            path.display()
+        )));
+    }
+    ensure_canonical_read_path_within_project(path, project_root)
+}
+
+fn ensure_existing_read_file_safe(
+    path: &Path,
+    project_root: &Path,
+    kind: &str,
+) -> Result<(), ChiknError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(ChiknError::InvalidFormat(format!(
+                    "Project {} is a symlink: {}",
+                    kind,
+                    path.display()
+                )));
+            }
+            if !metadata.is_file() {
+                return Err(ChiknError::InvalidFormat(format!(
+                    "Project {} is not a file: {}",
+                    kind,
+                    path.display()
+                )));
+            }
+            ensure_canonical_read_path_within_project(path, project_root)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn ensure_optional_read_file_safe(
+    path: &Path,
+    project_root: &Path,
+    kind: &str,
+) -> Result<bool, ChiknError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => {
+            ensure_existing_read_file_safe(path, project_root, kind)?;
+            Ok(true)
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn ensure_canonical_read_path_within_project(
+    path: &Path,
+    project_root: &Path,
+) -> Result<(), ChiknError> {
+    let canonical_path = path.canonicalize()?;
+    if !canonical_path.starts_with(project_root) {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Project path escapes project root: {}",
+            path.display()
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -772,6 +968,106 @@ modified: "2025-01-01T00:00:00Z"
         let documents = result.unwrap();
         assert_eq!(documents.len(), 1);
         assert!(documents.contains_key("doc1"));
+    }
+
+    #[test]
+    fn test_read_project_rejects_parent_dir_hierarchy_path() {
+        let (_temp, project_path) = create_test_project();
+        let project_yaml = format!(
+            r#"id: "{}"
+name: "Bad Path"
+created: "2025-01-01T00:00:00Z"
+modified: "2025-01-01T00:00:00Z"
+hierarchy:
+  - type: Document
+    id: "doc1"
+    name: "Chapter 1"
+    path: "../outside.md"
+"#,
+            generate_id()
+        );
+        fs::write(project_path.join(PROJECT_FILE), project_yaml).unwrap();
+
+        let result = read_project(&project_path);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_read_project_rejects_symlink_document_file() {
+        use std::os::unix::fs as unix_fs;
+
+        let (temp, project_path) = create_test_project();
+        let outside = temp.path().join("outside.md");
+        fs::write(&outside, "outside content").unwrap();
+        unix_fs::symlink(
+            &outside,
+            project_path.join(MANUSCRIPT_FOLDER).join("linked.md"),
+        )
+        .unwrap();
+
+        let result = read_project(&project_path);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_read_project_rejects_symlink_document_meta() {
+        use std::os::unix::fs as unix_fs;
+
+        let (temp, project_path) = create_test_project();
+        let outside = temp.path().join("outside.meta");
+        fs::write(
+            &outside,
+            r#"id: "outside"
+created: "2025-01-01T00:00:00Z"
+modified: "2025-01-01T00:00:00Z"
+"#,
+        )
+        .unwrap();
+        let meta_path = project_path.join(MANUSCRIPT_FOLDER).join("chapter-01.meta");
+        fs::remove_file(&meta_path).unwrap();
+        unix_fs::symlink(&outside, &meta_path).unwrap();
+
+        let result = read_project(&project_path);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_read_project_rejects_symlink_document_folder() {
+        use std::os::unix::fs as unix_fs;
+
+        let (temp, project_path) = create_test_project();
+        let outside = temp.path().join("outside-folder");
+        fs::create_dir(&outside).unwrap();
+        unix_fs::symlink(
+            &outside,
+            project_path.join(MANUSCRIPT_FOLDER).join("linked-folder"),
+        )
+        .unwrap();
+
+        let result = read_project(&project_path);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_read_project_rejects_symlink_threads_file() {
+        use std::os::unix::fs as unix_fs;
+
+        let (temp, project_path) = create_test_project();
+        let outside = temp.path().join("threads.yaml");
+        fs::write(&outside, "threads: []\n").unwrap();
+        unix_fs::symlink(&outside, project_path.join("threads.yaml")).unwrap();
+
+        let result = read_project(&project_path);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
     }
 
     #[test]

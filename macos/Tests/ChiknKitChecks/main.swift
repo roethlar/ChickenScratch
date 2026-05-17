@@ -44,6 +44,16 @@ func topLevelFolderID(named name: String, in project: Project) -> String? {
     project.hierarchy.first { $0.kind == .folder && $0.name == name }?.id
 }
 
+@MainActor
+func checkThrows(_ label: String, _ body: () throws -> Void) {
+    do {
+        try body()
+        check(false, label)
+    } catch {
+        check(true, label)
+    }
+}
+
 // MARK: - Cases
 
 runCase("createProject uses UUID IDs for required folders") {
@@ -264,6 +274,203 @@ runCase("created entities are loaded by the reader") {
     let loc = reread.documents[locDoc.id]
     check(loc?.relativePath == "locations/motel-room-12.md", "location path")
     check(loc?.meta.fields["entity_kind"]?.asString == "location", "location entity_kind tag")
+}
+
+runCase("document writes reject absolute and traversal paths") {
+    let url = makeTempProjectURL()
+    defer { cleanup(url) }
+
+    let project = try Writer.createProject(at: url, name: "SafePaths")
+    let absolute = Document(
+        id: "absolute",
+        name: "Absolute",
+        relativePath: "/tmp/chikn-escape.md",
+        content: "nope",
+        meta: DocumentMeta()
+    )
+    checkThrows("absolute document path rejected") {
+        try Writer.saveDocument(absolute, in: project)
+    }
+
+    let traversal = Document(
+        id: "traversal",
+        name: "Traversal",
+        relativePath: "manuscript/../../escape.md",
+        content: "nope",
+        meta: DocumentMeta()
+    )
+    checkThrows("parent traversal path rejected") {
+        try Writer.saveDocument(traversal, in: project)
+    }
+    check(!FileManager.default.fileExists(atPath: url.deletingLastPathComponent().appendingPathComponent("escape.md").path),
+          "traversal write did not escape project")
+}
+
+runCase("document writes reject symlinked ancestors and file targets") {
+    let url = makeTempProjectURL()
+    defer { cleanup(url) }
+    let outside = url.deletingLastPathComponent().appendingPathComponent("outside-\(UUID().uuidString.lowercased())")
+    defer { cleanup(outside) }
+
+    let project = try Writer.createProject(at: url, name: "SymlinkWrites")
+    try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+
+    let linkDir = url.appendingPathComponent("manuscript/link")
+    try FileManager.default.createSymbolicLink(at: linkDir, withDestinationURL: outside)
+    let viaLink = Document(
+        id: "bad-link-parent",
+        name: "Bad Link Parent",
+        relativePath: "manuscript/link/pwned.md",
+        content: "must not write outside",
+        meta: DocumentMeta()
+    )
+    checkThrows("symlinked ancestor rejected on write") {
+        try Writer.saveDocument(viaLink, in: project)
+    }
+    check(!FileManager.default.fileExists(atPath: outside.appendingPathComponent("pwned.md").path),
+          "symlinked ancestor target untouched")
+
+    let outsideFile = outside.appendingPathComponent("outside.md")
+    try "original".write(to: outsideFile, atomically: true, encoding: .utf8)
+    let linkedMD = url.appendingPathComponent("manuscript/linked.md")
+    try FileManager.default.createSymbolicLink(at: linkedMD, withDestinationURL: outsideFile)
+    let linkedDoc = Document(
+        id: "bad-link-file",
+        name: "Bad Link File",
+        relativePath: "manuscript/linked.md",
+        content: "must not overwrite",
+        meta: DocumentMeta()
+    )
+    checkThrows("symlinked .md target rejected on write") {
+        try Writer.saveDocument(linkedDoc, in: project)
+    }
+    check((try? String(contentsOf: outsideFile, encoding: .utf8)) == "original",
+          "symlinked .md target untouched")
+
+    let linkedMetaDoc = Document(
+        id: "bad-link-meta",
+        name: "Bad Link Meta",
+        relativePath: "manuscript/meta-linked.md",
+        content: "body",
+        meta: DocumentMeta()
+    )
+    let outsideMeta = outside.appendingPathComponent("outside.meta")
+    try "id: outside\n".write(to: outsideMeta, atomically: true, encoding: .utf8)
+    let linkedMeta = url.appendingPathComponent("manuscript/meta-linked.meta")
+    try FileManager.default.createSymbolicLink(at: linkedMeta, withDestinationURL: outsideMeta)
+    checkThrows("symlinked .meta target rejected on write") {
+        try Writer.saveDocument(linkedMetaDoc, in: project)
+    }
+    check((try? String(contentsOf: outsideMeta, encoding: .utf8)) == "id: outside\n",
+          "symlinked .meta target untouched")
+}
+
+runCase("delete rejects symlinked document targets") {
+    let url = makeTempProjectURL()
+    defer { cleanup(url) }
+    let outside = url.deletingLastPathComponent().appendingPathComponent("outside-delete-\(UUID().uuidString.lowercased())")
+    defer { cleanup(outside) }
+
+    var project = try Writer.createProject(at: url, name: "SymlinkDelete")
+    try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+    let outsideFile = outside.appendingPathComponent("outside.md")
+    try "do not delete".write(to: outsideFile, atomically: true, encoding: .utf8)
+    try FileManager.default.createSymbolicLink(
+        at: url.appendingPathComponent("manuscript/linked.md"),
+        withDestinationURL: outsideFile
+    )
+
+    let doc = Document(
+        id: "linked-delete",
+        name: "Linked Delete",
+        relativePath: "manuscript/linked.md",
+        content: "",
+        meta: DocumentMeta()
+    )
+    project.documents[doc.id] = doc
+    project.hierarchy[0].children.append(TreeNode(id: doc.id, name: doc.name, kind: .document))
+
+    checkThrows("symlinked .md target rejected on delete") {
+        _ = try Writer.deleteNode(id: doc.id, in: project)
+    }
+    check(FileManager.default.fileExists(atPath: outsideFile.path), "outside delete target untouched")
+    check((try? FileManager.default.destinationOfSymbolicLink(atPath: url.appendingPathComponent("manuscript/linked.md").path)) != nil,
+          "project symlink remains in place")
+}
+
+runCase("reader rejects symlinked document targets") {
+    let url = makeTempProjectURL()
+    defer { cleanup(url) }
+    let outside = url.deletingLastPathComponent().appendingPathComponent("outside-read-\(UUID().uuidString.lowercased())")
+    defer { cleanup(outside) }
+
+    _ = try Writer.createProject(at: url, name: "ReaderSymlinks")
+    try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+
+    let outsideDoc = outside.appendingPathComponent("outside.md")
+    let outsideMeta = outside.appendingPathComponent("outside.meta")
+    try "outside".write(to: outsideDoc, atomically: true, encoding: .utf8)
+    try "id: outside\nname: Outside\n".write(to: outsideMeta, atomically: true, encoding: .utf8)
+    try FileManager.default.createSymbolicLink(
+        at: url.appendingPathComponent("manuscript/linked.md"),
+        withDestinationURL: outsideDoc
+    )
+    try FileManager.default.createSymbolicLink(
+        at: url.appendingPathComponent("manuscript/linked.meta"),
+        withDestinationURL: outsideMeta
+    )
+
+    try FileManager.default.createDirectory(at: outside.appendingPathComponent("dir"), withIntermediateDirectories: true)
+    try "via dir".write(to: outside.appendingPathComponent("dir/through.md"), atomically: true, encoding: .utf8)
+    try "id: through\nname: Through\n".write(to: outside.appendingPathComponent("dir/through.meta"), atomically: true, encoding: .utf8)
+    try FileManager.default.createSymbolicLink(
+        at: url.appendingPathComponent("manuscript/linkdir"),
+        withDestinationURL: outside.appendingPathComponent("dir")
+    )
+
+    checkThrows("reader rejects symlinked .md target") {
+        _ = try Reader.readProject(at: url)
+    }
+}
+
+runCase("reader rejects symlinked metadata targets") {
+    let url = makeTempProjectURL()
+    defer { cleanup(url) }
+    let outside = url.deletingLastPathComponent().appendingPathComponent("outside-meta-\(UUID().uuidString.lowercased())")
+    defer { cleanup(outside) }
+
+    _ = try Writer.createProject(at: url, name: "ReaderMetaSymlink")
+    try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+    try "normal".write(to: url.appendingPathComponent("manuscript/normal.md"), atomically: true, encoding: .utf8)
+    let outsideMeta = outside.appendingPathComponent("normal.meta")
+    try "id: normal\nname: Normal\n".write(to: outsideMeta, atomically: true, encoding: .utf8)
+    try FileManager.default.createSymbolicLink(
+        at: url.appendingPathComponent("manuscript/normal.meta"),
+        withDestinationURL: outsideMeta
+    )
+
+    checkThrows("reader rejects symlinked .meta target") {
+        _ = try Reader.readProject(at: url)
+    }
+}
+
+runCase("safe nested document write still succeeds") {
+    let url = makeTempProjectURL()
+    defer { cleanup(url) }
+
+    let project = try Writer.createProject(at: url, name: "SafeNormal")
+    let doc = Document(
+        id: "nested",
+        name: "Nested",
+        relativePath: "manuscript/part-one/chapter..01.md",
+        content: "Nested body.",
+        meta: DocumentMeta()
+    )
+
+    try Writer.saveDocument(doc, in: project)
+    let writtenURL = url.appendingPathComponent("manuscript/part-one/chapter..01.md")
+    check((try? String(contentsOf: writtenURL, encoding: .utf8)) == "Nested body.",
+          "safe nested path writes normally")
 }
 
 // MARK: - Slice B: drafts, per-doc history, dangling refs
