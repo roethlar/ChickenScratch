@@ -1,0 +1,7 @@
+{
+  "id": "R-2",
+  "sha": "30e0c79835e67dbb115aa26e6dde17cc7e8fd8df",
+  "ts": "2026-05-17T05:28:00Z",
+  "reviewer": "claude",
+  "note": "Windows CI workflow now installs .NET 10 SDK, restores/builds the existing ChickenScratch.slnx (not the missing .sln), drops invalid solution-level Platform=x64 override, and builds both H-2 and H-6 harnesses in the final step. All referenced csproj files exist in the working tree. CI runs on windows-latest so XAML compiler is available; macOS-host limitation only affects local validation, not CI."
+}

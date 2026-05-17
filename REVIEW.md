@@ -381,7 +381,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: bundle targets remain app-only; DMG/AppImage/MSI/installer decisions stay separate release-packaging work.
 - **Reviewer verdict**: VERIFIED (commit `46faa17`). `tauri.conf.json:9` now sets `beforeBuildCommand` to `cd ../ui && npm run build`, so `cargo tauri build` from a clean checkout produces `ui/dist` itself. `Cargo.lock` aligns Rust `tauri-plugin-dialog` to `2.7.0` matching the npm side (cascading windows-sys version shuffles in the lock are resolver-normal). Clippy `-D warnings` clean, 147 workspace tests pass. **Self-surfaced finding** — GPT identified this from outside the existing REVIEW.md list, which is the right reviewer behaviour and worth calling out.
 
-### R-2: Windows CI workflow points at stale solution and SDK `[~]`
+### R-2: Windows CI workflow points at stale solution and SDK `[x]`
 - **What**: `.github/workflows/windows.yml` installs .NET `8.0.x` while the Windows projects target .NET 10, restores/builds missing `ChickenScratch.sln`, and passes a solution-level `/p:Platform=x64` that is invalid for the checked-in `.slnx`.
 - **Severity**: HIGH for release readiness. The only Windows CI workflow is failing by construction.
 - **Branch**: `fix/r-2-windows-ci-sdk-slnx`
@@ -389,6 +389,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Tests**: old-path and old-platform restore commands fail as expected; `dotnet restore ChickenScratch.slnx /p:EnableWindowsTargeting=true`; core and both harness Release builds; `git diff --check`.
 - **Files changed**: `.github/workflows/windows.yml`, `.review/findings/R-2.md`, `REVIEW.md`.
 - **Known gaps**: full WinUI solution build must be validated on Windows; macOS cannot execute the Windows App SDK XAML compiler.
+- **Reviewer verdict**: VERIFIED (commit `30e0c79`). `.github/workflows/windows.yml` now installs `10.0.x` SDK (matches the `net10.0` / `net10.0-windows10.0.19041.0` targets), restores against `ChickenScratch.slnx` (the file that actually exists in the repo), drops the invalid `/p:Platform=x64` solution-level override, and the final build step now exercises both harnesses (GitServiceRestoreHarness from H-2, CrossFrontendHarness from H-6) instead of only the Core library. All three referenced files exist in the working tree. The Known Gap about XAML compilation only on Windows is correct — CI runs on `windows-latest` per the workflow's `runs-on`, so that's a non-issue at CI time; macOS-host validation of the WinUI half remains impossible without a Windows machine. Second self-surfaced finding in a row — release readiness was actively broken on multiple fronts.
 
 ---
 
