@@ -6,11 +6,11 @@ This runbook is the release gate for a public desktop build. It records the comm
 
 Use one canonical version string everywhere.
 
-Current pre-release value:
+Current release value:
 
-- `0.1.0-alpha`
+- `1.0.0`
 
-Files that must be updated for a 1.0 release:
+Files that must be updated for each release:
 
 - `README.md`
 - `src-tauri/Cargo.toml`
@@ -21,7 +21,7 @@ Files that must be updated for a 1.0 release:
 - `linux/Cargo.toml`
 - `pkg/arch/PKGBUILD`
 
-Do not tag until `rg '0\.1\.0-alpha|Alpha|alpha'` has been reviewed and any remaining alpha text is intentional.
+Do not tag until `scripts/check-release-metadata.sh --release <version>` passes and any remaining `rg '0\.1\.0-alpha|Alpha|alpha'` matches have been reviewed as intentional.
 
 ## 2. Required Local Validation
 

@@ -471,6 +471,15 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: does not bump to `1.0.0`, create a tag, or pin the final Arch checksum.
 - **Reviewer verdict**: VERIFIED via merge commit `afafa7e`. Prerelease check passes for current `0.1.0-alpha` state; `--release 1.0.0` produces 11 actionable errors covering every Cargo.toml version, tauri.conf.json, README status, PKGBUILD pkgver/SKIP/64-char-sha check; `--require-tag` adds a 12th error for missing local tag. Source archive correctly includes `pkg/arch/chickenscratch.desktop` and excludes `pkg/arch/PKGBUILD` (chicken-and-egg) and `.review/` via `.gitattributes export-ignore`. PKGBUILD now uses Arch-safe `pkgver=0.1.0_alpha` with `_upstream_version="${pkgver//_/-}"` to drive the GitHub release-asset URL. `validation.yml` step `Release metadata` runs the prerelease check on every push. `RELEASE.md` restructured into Stage 4 (prepare archive + pin checksum before tag) → Stage 5 (cut tag → regenerate archive from tag → `--require-tag` confirmation), which works because `git archive` is deterministic for the same tree.
 
+### R-11: Final 1.0 release metadata is still alpha `[~]`
+- **What**: All package/app versions and public status text still advertise `0.1.0-alpha`, and the Arch package checksum is still `SKIP`.
+- **Severity**: HIGH for release readiness. The repository cannot be the base of a `v1.0.0` tag until version metadata and package checksum are final.
+- **Branch**: `fix/r-11-version-1-0-release-metadata`
+- **Approach**: bumped release metadata to `1.0.0`, updated README/RELEASE wording, extended the metadata checker so default mode enforces release rules for non-prerelease versions, excluded `REVIEW.md` from source archives, and pinned the deterministic source archive SHA-256 in `pkg/arch/PKGBUILD`.
+- **Tests**: locked cargo metadata; release metadata checks; expected `--require-tag` failure for missing local tag; source archive checksum/export-ignore check; stale alpha version grep; `git diff --check`.
+- **Files changed**: `.gitattributes`, `Cargo.lock`, `README.md`, `RELEASE.md`, `crates/core/Cargo.toml`, `crates/cli/Cargo.toml`, `crates/tui/Cargo.toml`, `linux/Cargo.toml`, `pkg/arch/PKGBUILD`, `scripts/check-release-metadata.sh`, `scripts/create-release-source.sh`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `.review/findings/R-11.md`, `REVIEW.md`.
+- **Known gaps**: does not create or push `v1.0.0`.
+
 ---
 
 ## Recently landed (awaiting reviewer verification)

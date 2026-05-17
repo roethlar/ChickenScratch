@@ -1,6 +1,6 @@
 # Maintainer: Michael Coelho
 pkgname=chickenscratch
-pkgver=0.1.0_alpha
+pkgver=1.0.0
 pkgrel=1
 pkgdesc="Cross-platform writing app — Scrivener alternative with git-native revision control"
 arch=('x86_64' 'aarch64')
@@ -10,7 +10,7 @@ depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'pandoc')
 makedepends=('rust' 'cargo' 'nodejs' 'npm' 'pkg-config')
 _upstream_version="${pkgver//_/-}"
 source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$_upstream_version/$pkgname-$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('a3f63fde0eabcc423c765e1afdad4eb0859930aa08acbdc4eedb94fb69253334')
 
 build() {
     cd "$srcdir/$pkgname-$pkgver"
