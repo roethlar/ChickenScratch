@@ -1,14 +1,15 @@
 # Maintainer: Michael Coelho
 pkgname=chickenscratch
-pkgver=0.1.0
+pkgver=0.1.0_alpha
 pkgrel=1
 pkgdesc="Cross-platform writing app — Scrivener alternative with git-native revision control"
 arch=('x86_64' 'aarch64')
-url="https://github.com/your-org/chickenscratch"
+url="https://github.com/roethlar/ChickenScratch"
 license=('MIT')
 depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'pandoc')
 makedepends=('rust' 'cargo' 'nodejs' 'npm' 'pkg-config')
-source=("$pkgname-$pkgver.tar.gz")
+_upstream_version="${pkgver//_/-}"
+source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$_upstream_version/$pkgname-$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 build() {

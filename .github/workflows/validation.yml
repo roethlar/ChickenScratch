@@ -10,9 +10,12 @@ on:
       - 'windows/ChickenScratch.Core/**'
       - 'windows/ChickenScratch.Core.Tests/**'
       - 'samples/**'
+      - 'pkg/arch/**'
+      - 'scripts/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'RELEASE.md'
+      - '.gitattributes'
       - '.github/workflows/validation.yml'
   pull_request:
     paths:
@@ -23,9 +26,12 @@ on:
       - 'windows/ChickenScratch.Core/**'
       - 'windows/ChickenScratch.Core.Tests/**'
       - 'samples/**'
+      - 'pkg/arch/**'
+      - 'scripts/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'RELEASE.md'
+      - '.gitattributes'
       - '.github/workflows/validation.yml'
 
 jobs:
@@ -59,6 +65,9 @@ jobs:
 
       - name: Rust format
         run: cargo fmt --all -- --check
+
+      - name: Release metadata
+        run: scripts/check-release-metadata.sh
 
       - name: Rust clippy
         run: cargo clippy -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
