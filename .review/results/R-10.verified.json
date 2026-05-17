@@ -1,0 +1,7 @@
+{
+  "id": "R-10",
+  "sha": "afafa7edc5fa611b2eed51054275812f3efe1727",
+  "ts": "2026-05-17T14:10:00Z",
+  "reviewer": "claude",
+  "note": "Release metadata preflight tooling validated end-to-end. Prerelease check passes on current 0.1.0-alpha; --release 1.0.0 fails with 11 specific errors covering every Cargo.toml version, tauri.conf.json, README status, PKGBUILD pkgver/SKIP/64-char-sha; --require-tag adds tag-existence check. Source archive script produces tarball including pkg/arch/chickenscratch.desktop and excluding pkg/arch/PKGBUILD (chicken-and-egg) and .review/ via .gitattributes export-ignore. PKGBUILD uses Arch-safe pkgver=0.1.0_alpha with _upstream_version=${pkgver//_/-} driving GitHub release-asset URL. validation.yml runs the prerelease check on every push. RELEASE.md correctly restructures into Stage 4 (prepare + pin checksum before tag) → Stage 5 (cut tag → regenerate archive → --require-tag confirm), which is sound because git archive is deterministic for the same tree."
+}

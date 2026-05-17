@@ -461,7 +461,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Known gaps**: Linux Qt frontend remains outside the root validation suite because it requires Qt/cxx-qt native dependencies.
 - **Reviewer verdict**: VERIFIED via merge commit `283ef00`. YAML parses; cargo `-p` flags resolve to real workspace packages; `crates/core/tests/cross_frontend/run.sh` honors `CHIKN_CROSS_FRONTEND_WORKDIR` (line 5-6) and emits `writer-toolchains-ran:2/2` (line 176); the harness ran locally end-to-end with the workflow's grep assertion passing; macOS runner is correct (Swift writer requires it; .NET 10 installs cleanly via setup-dotnet@v4); Node 24 and .NET 10 align with R-2/R-7 fixes; trigger paths cover all surfaces named in `RELEASE.md`. Covers the non-packaging RELEASE.md gates exactly.
 
-### R-10: Release metadata lacks a deterministic tag and checksum preflight `[~]`
+### R-10: Release metadata lacks a deterministic tag and checksum preflight `[x]`
 - **What**: The Arch package still used placeholder upstream/source metadata and the release process had no executable guard for final version/tag/checksum drift.
 - **Severity**: HIGH for release readiness. A 1.0 tag should not be cut while package source URLs or checksums are still placeholders.
 - **Branch**: `fix/r-10-release-metadata-preflight`
@@ -469,6 +469,7 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 - **Tests**: prerelease metadata check; expected-failure release-mode check for current 1.0 blockers; script syntax checks; workflow YAML parse; source archive export-ignore check; `git diff --check`.
 - **Files changed**: `.gitattributes`, `.github/workflows/validation.yml`, `RELEASE.md`, `pkg/arch/PKGBUILD`, `scripts/check-release-metadata.sh`, `scripts/create-release-source.sh`, `.review/findings/R-10.md`, `REVIEW.md`.
 - **Known gaps**: does not bump to `1.0.0`, create a tag, or pin the final Arch checksum.
+- **Reviewer verdict**: VERIFIED via merge commit `afafa7e`. Prerelease check passes for current `0.1.0-alpha` state; `--release 1.0.0` produces 11 actionable errors covering every Cargo.toml version, tauri.conf.json, README status, PKGBUILD pkgver/SKIP/64-char-sha check; `--require-tag` adds a 12th error for missing local tag. Source archive correctly includes `pkg/arch/chickenscratch.desktop` and excludes `pkg/arch/PKGBUILD` (chicken-and-egg) and `.review/` via `.gitattributes export-ignore`. PKGBUILD now uses Arch-safe `pkgver=0.1.0_alpha` with `_upstream_version="${pkgver//_/-}"` to drive the GitHub release-asset URL. `validation.yml` step `Release metadata` runs the prerelease check on every push. `RELEASE.md` restructured into Stage 4 (prepare archive + pin checksum before tag) → Stage 5 (cut tag → regenerate archive from tag → `--require-tag` confirmation), which works because `git archive` is deterministic for the same tree.
 
 ---
 
