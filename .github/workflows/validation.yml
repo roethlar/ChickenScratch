@@ -2,37 +2,7 @@ name: Validation
 
 on:
   push:
-    paths:
-      - 'crates/**'
-      - 'src-tauri/**'
-      - 'ui/**'
-      - 'macos/**'
-      - 'windows/ChickenScratch.Core/**'
-      - 'windows/ChickenScratch.Core.Tests/**'
-      - 'samples/**'
-      - 'pkg/arch/**'
-      - 'scripts/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'RELEASE.md'
-      - '.gitattributes'
-      - '.github/workflows/validation.yml'
   pull_request:
-    paths:
-      - 'crates/**'
-      - 'src-tauri/**'
-      - 'ui/**'
-      - 'macos/**'
-      - 'windows/ChickenScratch.Core/**'
-      - 'windows/ChickenScratch.Core.Tests/**'
-      - 'samples/**'
-      - 'pkg/arch/**'
-      - 'scripts/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'RELEASE.md'
-      - '.gitattributes'
-      - '.github/workflows/validation.yml'
 
 jobs:
   validate:
