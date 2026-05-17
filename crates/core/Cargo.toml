@@ -16,6 +16,4 @@ anyhow = "1.0"
 quick-xml = { version = "0.36", features = ["serialize"] }
 regex = "1.10"
 git2 = "0.19"
-
-[dev-dependencies]
 tempfile = "3.8"

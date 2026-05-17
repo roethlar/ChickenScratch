@@ -137,6 +137,12 @@ pub struct DocumentMetadata {
     pub fields: std::collections::HashMap<String, serde_yaml::Value>,
 }
 
+#[derive(Clone, Debug)]
+struct HierarchyDocumentIdentity {
+    id: String,
+    name: String,
+}
+
 /// Helper function to generate a new UUID
 fn generate_id() -> String {
     Uuid::new_v4().to_string()
@@ -214,7 +220,8 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
     validate_hierarchy_document_paths(&metadata.hierarchy)?;
 
     // Read all documents from manuscript and research folders
-    let documents = read_all_documents(path)?;
+    let hierarchy_identities = collect_hierarchy_document_identities(&metadata.hierarchy);
+    let documents = read_all_documents(path, &hierarchy_identities)?;
 
     let mut project = Project {
         id: metadata.id,
@@ -511,6 +518,35 @@ fn collect_paths_inner(hierarchy: &[TreeNode], paths: &mut std::collections::Has
     }
 }
 
+fn collect_hierarchy_document_identities(
+    hierarchy: &[TreeNode],
+) -> HashMap<String, HierarchyDocumentIdentity> {
+    let mut identities = HashMap::new();
+    collect_hierarchy_document_identities_inner(hierarchy, &mut identities);
+    identities
+}
+
+fn collect_hierarchy_document_identities_inner(
+    hierarchy: &[TreeNode],
+    identities: &mut HashMap<String, HierarchyDocumentIdentity>,
+) {
+    for node in hierarchy {
+        match node {
+            TreeNode::Document { id, name, path } => {
+                identities
+                    .entry(path.clone())
+                    .or_insert_with(|| HierarchyDocumentIdentity {
+                        id: id.clone(),
+                        name: name.clone(),
+                    });
+            }
+            TreeNode::Folder { children, .. } => {
+                collect_hierarchy_document_identities_inner(children, identities);
+            }
+        }
+    }
+}
+
 /// Reads project.yaml and parses into ProjectMetadata
 fn read_project_metadata(path: &Path) -> Result<ProjectMetadata, ChiknError> {
     let project_file = get_project_file_path(path);
@@ -526,7 +562,10 @@ fn read_project_metadata(path: &Path) -> Result<ProjectMetadata, ChiknError> {
 }
 
 /// Reads all documents from manuscript and research folders
-fn read_all_documents(project_path: &Path) -> Result<HashMap<String, Document>, ChiknError> {
+fn read_all_documents(
+    project_path: &Path,
+    hierarchy_identities: &HashMap<String, HierarchyDocumentIdentity>,
+) -> Result<HashMap<String, Document>, ChiknError> {
     let mut documents = HashMap::new();
     let project_root = canonical_project_root(project_path)?;
 
@@ -536,12 +575,19 @@ fn read_all_documents(project_path: &Path) -> Result<HashMap<String, Document>, 
         &manuscript_path,
         project_path,
         &project_root,
+        hierarchy_identities,
         &mut documents,
     )?;
 
     // Read from research folder (recursively)
     let research_path = get_research_path(project_path);
-    read_optional_document_root(&research_path, project_path, &project_root, &mut documents)?;
+    read_optional_document_root(
+        &research_path,
+        project_path,
+        &project_root,
+        hierarchy_identities,
+        &mut documents,
+    )?;
 
     // Read from characters/locations folders if present (novelist convention).
     // Optional — projects without these folders are still valid.
@@ -550,10 +596,17 @@ fn read_all_documents(project_path: &Path) -> Result<HashMap<String, Document>, 
         &characters_path,
         project_path,
         &project_root,
+        hierarchy_identities,
         &mut documents,
     )?;
     let locations_path = get_locations_path(project_path);
-    read_optional_document_root(&locations_path, project_path, &project_root, &mut documents)?;
+    read_optional_document_root(
+        &locations_path,
+        project_path,
+        &project_root,
+        hierarchy_identities,
+        &mut documents,
+    )?;
 
     Ok(documents)
 }
@@ -582,12 +635,19 @@ fn read_optional_document_root(
     folder_path: &Path,
     project_path: &Path,
     project_root: &Path,
+    hierarchy_identities: &HashMap<String, HierarchyDocumentIdentity>,
     documents: &mut HashMap<String, Document>,
 ) -> Result<(), ChiknError> {
     match fs::symlink_metadata(folder_path) {
         Ok(metadata) => {
             ensure_read_directory_metadata_safe(folder_path, &metadata, project_root)?;
-            read_documents_from_folder(folder_path, project_path, project_root, documents)
+            read_documents_from_folder(
+                folder_path,
+                project_path,
+                project_root,
+                hierarchy_identities,
+                documents,
+            )
         }
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e.into()),
@@ -599,6 +659,7 @@ fn read_documents_from_folder(
     folder_path: &Path,
     project_path: &Path,
     project_root: &Path,
+    hierarchy_identities: &HashMap<String, HierarchyDocumentIdentity>,
     documents: &mut HashMap<String, Document>,
 ) -> Result<(), ChiknError> {
     let metadata = fs::symlink_metadata(folder_path)?;
@@ -619,13 +680,24 @@ fn read_documents_from_folder(
             // Process .md files
             if let Some(extension) = path.extension() {
                 if extension == DOCUMENT_EXTENSION {
-                    let doc = read_document_with_root(&path, project_path, project_root)?;
+                    let doc = read_document_with_root(
+                        &path,
+                        project_path,
+                        project_root,
+                        hierarchy_identities,
+                    )?;
                     documents.insert(doc.id.clone(), doc);
                 }
             }
         } else if metadata.is_dir() {
             // Recursively process subdirectories
-            read_documents_from_folder(&path, project_path, project_root, documents)?;
+            read_documents_from_folder(
+                &path,
+                project_path,
+                project_root,
+                hierarchy_identities,
+                documents,
+            )?;
         }
     }
 
@@ -636,13 +708,14 @@ fn read_documents_from_folder(
 #[cfg(test)]
 fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, ChiknError> {
     let project_root = canonical_project_root(project_path)?;
-    read_document_with_root(content_path, project_path, &project_root)
+    read_document_with_root(content_path, project_path, &project_root, &HashMap::new())
 }
 
 fn read_document_with_root(
     content_path: &Path,
     _project_path: &Path,
     project_root: &Path,
+    hierarchy_identities: &HashMap<String, HierarchyDocumentIdentity>,
 ) -> Result<Document, ChiknError> {
     ensure_existing_read_file_safe(content_path, project_root, "document file")?;
 
@@ -669,34 +742,6 @@ fn read_document_with_root(
     })?;
 
     let meta_path = get_document_meta_path(folder_path, file_stem);
-    let metadata = if ensure_optional_read_file_safe(&meta_path, project_root, "document metadata")?
-    {
-        let meta_content = fs::read_to_string(&meta_path)?;
-        serde_yaml::from_str::<DocumentMetadata>(&meta_content)?
-    } else {
-        // Create default metadata if .meta file doesn't exist
-        DocumentMetadata {
-            id: generate_id(),
-            name: None,
-            created: current_timestamp(),
-            modified: current_timestamp(),
-            parent_id: None,
-            label: None,
-            status: None,
-            keywords: None,
-            synopsis: None,
-            section_type: None,
-            include_in_compile: None,
-            scrivener_uuid: None,
-            links: None,
-            word_count_target: 0,
-            compile_order: 0,
-            comments: Vec::new(),
-            fields: std::collections::HashMap::new(),
-        }
-    };
-
-    // Compute relative path from project root
     let canonical_content_path = content_path.canonicalize()?;
     let relative_path = canonical_content_path
         .strip_prefix(project_root)
@@ -709,6 +754,8 @@ fn read_document_with_root(
         .to_string_lossy()
         .replace('\\', "/")
         .to_string();
+    let fallback_identity = hierarchy_identities.get(&relative_path);
+    let metadata = read_document_metadata_or_default(&meta_path, project_root, fallback_identity)?;
 
     // Use display name from metadata if available, otherwise use filename
     let display_name = metadata.name.unwrap_or_else(|| file_stem.to_string());
@@ -732,6 +779,78 @@ fn read_document_with_root(
         comments: metadata.comments,
         fields: metadata.fields,
     })
+}
+
+fn read_document_metadata_or_default(
+    meta_path: &Path,
+    project_root: &Path,
+    fallback_identity: Option<&HierarchyDocumentIdentity>,
+) -> Result<DocumentMetadata, ChiknError> {
+    if !ensure_optional_read_file_safe(meta_path, project_root, "document metadata")? {
+        return Ok(default_document_metadata(fallback_identity));
+    }
+
+    let meta_content = fs::read_to_string(meta_path)?;
+    match serde_yaml::from_str::<DocumentMetadata>(&meta_content) {
+        Ok(metadata) => Ok(metadata),
+        Err(e) => {
+            let quarantine_path = quarantine_corrupt_document_metadata(meta_path)?;
+            eprintln!(
+                "Corrupt document metadata quarantined: {} -> {} ({})",
+                meta_path.display(),
+                quarantine_path.display(),
+                e
+            );
+            Ok(default_document_metadata(fallback_identity))
+        }
+    }
+}
+
+fn default_document_metadata(
+    fallback_identity: Option<&HierarchyDocumentIdentity>,
+) -> DocumentMetadata {
+    DocumentMetadata {
+        id: fallback_identity
+            .map(|identity| identity.id.clone())
+            .unwrap_or_else(generate_id),
+        name: fallback_identity.map(|identity| identity.name.clone()),
+        created: current_timestamp(),
+        modified: current_timestamp(),
+        parent_id: None,
+        label: None,
+        status: None,
+        keywords: None,
+        synopsis: None,
+        section_type: None,
+        include_in_compile: None,
+        scrivener_uuid: None,
+        links: None,
+        word_count_target: 0,
+        compile_order: 0,
+        comments: Vec::new(),
+        fields: std::collections::HashMap::new(),
+    }
+}
+
+fn quarantine_corrupt_document_metadata(meta_path: &Path) -> Result<PathBuf, ChiknError> {
+    let parent = meta_path.parent().ok_or_else(|| {
+        ChiknError::InvalidFormat(format!(
+            "Document metadata has no parent folder: {}",
+            meta_path.display()
+        ))
+    })?;
+    let file_name = meta_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| {
+            ChiknError::InvalidFormat(format!(
+                "Invalid document metadata filename: {}",
+                meta_path.display()
+            ))
+        })?;
+    let quarantine_path = parent.join(format!("{}.corrupt-{}", file_name, uuid::Uuid::new_v4()));
+    fs::rename(meta_path, &quarantine_path)?;
+    Ok(quarantine_path)
 }
 
 fn validate_relative_document_path(document_path: &str) -> Result<(), ChiknError> {
@@ -922,6 +1041,15 @@ modified: "2025-01-01T00:00:00Z"
         (temp_dir, project_path)
     }
 
+    fn count_corrupt_meta_quarantines(project_path: &Path) -> usize {
+        fs::read_dir(project_path.join(MANUSCRIPT_FOLDER))
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with("chapter-01.meta.corrupt-"))
+            .count()
+    }
+
     #[test]
     fn test_read_project_success() {
         let (_temp, project_path) = create_test_project();
@@ -962,7 +1090,7 @@ modified: "2025-01-01T00:00:00Z"
     #[test]
     fn test_read_all_documents() {
         let (_temp, project_path) = create_test_project();
-        let result = read_all_documents(&project_path);
+        let result = read_all_documents(&project_path, &HashMap::new());
 
         assert!(result.is_ok());
         let documents = result.unwrap();
@@ -1113,7 +1241,7 @@ hierarchy: []
         fs::write(project_path.join(PROJECT_FILE), project_yaml).unwrap();
 
         // Read all documents (should find nested)
-        let documents = read_all_documents(&project_path).unwrap();
+        let documents = read_all_documents(&project_path, &HashMap::new()).unwrap();
 
         assert_eq!(documents.len(), 1);
         assert!(documents.contains_key("nested-doc1"));
@@ -1201,6 +1329,42 @@ hierarchy: []
             original_project_yaml,
             "load-time repair must not rewrite project.yaml"
         );
+    }
+
+    #[test]
+    fn test_read_project_quarantines_corrupt_document_meta_and_keeps_hierarchy_identity() {
+        let (_temp, project_path) = create_test_project();
+        let project_file = project_path.join(PROJECT_FILE);
+        let project_yaml_before = fs::read_to_string(&project_file).unwrap();
+        let meta_path = project_path.join("manuscript/chapter-01.meta");
+        fs::write(&meta_path, "id: [").unwrap();
+
+        let project = read_project(&project_path).unwrap();
+
+        let document = project.documents.get("doc1").unwrap();
+        assert_eq!(document.id, "doc1");
+        assert_eq!(document.name, "Chapter 1");
+        assert_eq!(document.path, "manuscript/chapter-01.md");
+        assert!(!meta_path.exists());
+        assert_eq!(count_corrupt_meta_quarantines(&project_path), 1);
+        assert_eq!(
+            fs::read_to_string(&project_file).unwrap(),
+            project_yaml_before,
+            "quarantining corrupt metadata must not rewrite project.yaml"
+        );
+    }
+
+    #[test]
+    fn test_missing_document_meta_uses_hierarchy_identity() {
+        let (_temp, project_path) = create_test_project();
+        fs::remove_file(project_path.join("manuscript/chapter-01.meta")).unwrap();
+
+        let project = read_project(&project_path).unwrap();
+
+        let document = project.documents.get("doc1").unwrap();
+        assert_eq!(document.id, "doc1");
+        assert_eq!(document.name, "Chapter 1");
+        assert_eq!(document.path, "manuscript/chapter-01.md");
     }
 
     #[test]
