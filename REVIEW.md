@@ -609,7 +609,7 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Branch**: `fix/r-26-validation-path-filter`
 - **Approach**: removed the `paths:` filters from `.github/workflows/validation.yml` for both `push` and `pull_request`, so the release metadata/checksum job runs for docs, license, workflow, and any other source-archive-affecting change. Left the Tauri bundle workflow scoped to bundle inputs; this finding is about the validation/checksum gate.
 - **Tests**: `scripts/check-release-metadata.sh`; `cargo fmt --all -- --check`; `cargo clippy -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings`; `cargo test -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests`; `cd ui && npm run lint && npm run build`; `git diff --check`.
-- **Files changed**: `.github/workflows/validation.yml`, `.review/findings/R-26.md`, `REVIEW.md`.
+- **Files changed**: `.github/workflows/validation.yml`, `.review/findings/R-26.md`, `pkg/arch/PKGBUILD`, `REVIEW.md`.
 - **Known gaps**: release archive excludes `.review`, `REVIEW.md`, and `pkg/arch/PKGBUILD`; those can stay outside the trigger if desired.
 
 ### R-27: Rust release/package builds do not enforce `Cargo.lock` `[ ]`
