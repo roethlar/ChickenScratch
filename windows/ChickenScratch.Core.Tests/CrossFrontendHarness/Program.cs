@@ -6,10 +6,16 @@ if (args.Length == 1 && args[0] == "--safe-paths")
     return RunSafePathHarness();
 }
 
+if (args.Length == 1 && args[0] == "--atomic-writes")
+{
+    return RunAtomicWritesHarness();
+}
+
 if (args.Length != 1)
 {
     Console.Error.WriteLine("usage: dotnet run --project windows/ChickenScratch.Core.Tests/CrossFrontendHarness <project.chikn>");
     Console.Error.WriteLine("       dotnet run --project windows/ChickenScratch.Core.Tests/CrossFrontendHarness -- --safe-paths");
+    Console.Error.WriteLine("       dotnet run --project windows/ChickenScratch.Core.Tests/CrossFrontendHarness -- --atomic-writes");
     return 1;
 }
 
@@ -94,6 +100,64 @@ static int RunSafePathHarness()
         RunSymlinkCases(tempRoot);
 
         Console.WriteLine("ChickenScratch.Core.CrossFrontendHarness safe-paths: passed");
+        return 0;
+    }
+    finally
+    {
+        if (Directory.Exists(tempRoot))
+            Directory.Delete(tempRoot, recursive: true);
+    }
+}
+
+static int RunAtomicWritesHarness()
+{
+    var tempRoot = Path.Combine(Path.GetTempPath(), "chickenscratch-atomic-writes-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(tempRoot);
+
+    try
+    {
+        var projectPath = CreateProjectRoot(tempRoot, "atomic");
+        var nestedDirectory = Path.Combine(projectPath, "manuscript", "nested");
+        Directory.CreateDirectory(nestedDirectory);
+
+        var existingContentPath = Path.Combine(nestedDirectory, "existing.md");
+        var existingMetaPath = Path.Combine(nestedDirectory, "existing.meta");
+        File.WriteAllText(existingContentPath, "old content");
+        File.WriteAllText(existingMetaPath, "id: old\nname: Old\n");
+
+        ProjectWriter.WriteDocument(projectPath, new Document
+        {
+            Id = "existing",
+            Name = "Existing",
+            ParentId = "manuscript",
+            Path = "manuscript/nested/existing.md",
+            Content = "new content\n",
+            IncludeInCompile = false,
+            Keywords = ["atomic", "replace"],
+        });
+
+        AssertEqual("new content\n", File.ReadAllText(existingContentPath), "existing .md should be replaced");
+        AssertContains(File.ReadAllText(existingMetaPath), "id: existing", "existing .meta should be replaced");
+        AssertNoAtomicTempFiles(nestedDirectory, "existing.md");
+        AssertNoAtomicTempFiles(nestedDirectory, "existing.meta");
+
+        var newContentPath = Path.Combine(projectPath, "manuscript", "created", "new.md");
+        var newMetaPath = Path.Combine(projectPath, "manuscript", "created", "new.meta");
+        ProjectWriter.WriteDocument(projectPath, new Document
+        {
+            Id = "new",
+            Name = "New",
+            ParentId = "manuscript",
+            Path = "manuscript/created/new.md",
+            Content = "created content\n",
+        });
+
+        AssertEqual("created content\n", File.ReadAllText(newContentPath), "new .md should be moved into place");
+        AssertContains(File.ReadAllText(newMetaPath), "id: new", "new .meta should be moved into place");
+        AssertNoAtomicTempFiles(Path.GetDirectoryName(newContentPath)!, "new.md");
+        AssertNoAtomicTempFiles(Path.GetDirectoryName(newMetaPath)!, "new.meta");
+
+        Console.WriteLine("ChickenScratch.Core.CrossFrontendHarness atomic-writes: passed");
         return 0;
     }
     finally
@@ -263,4 +327,23 @@ static void AssertRejects(string name, Action action)
     }
 
     throw new InvalidOperationException($"{name}: expected InvalidOperationException");
+}
+
+static void AssertEqual<T>(T expected, T actual, string message)
+{
+    if (!EqualityComparer<T>.Default.Equals(expected, actual))
+        throw new InvalidOperationException($"{message}. Expected: {expected}; actual: {actual}");
+}
+
+static void AssertContains(string actual, string expectedSubstring, string message)
+{
+    if (!actual.Contains(expectedSubstring, StringComparison.Ordinal))
+        throw new InvalidOperationException($"{message}. Expected to find: {expectedSubstring}; actual: {actual}");
+}
+
+static void AssertNoAtomicTempFiles(string directory, string finalFileName)
+{
+    var tempFiles = Directory.EnumerateFiles(directory, $".{finalFileName}.*.tmp").ToList();
+    if (tempFiles.Count > 0)
+        throw new InvalidOperationException($"atomic temp files were not cleaned up: {string.Join(", ", tempFiles)}");
 }

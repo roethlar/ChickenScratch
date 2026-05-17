@@ -58,8 +58,7 @@ public static class ProjectWriter
             projectPath,
             doc.Path,
             createParentDirectories: true);
-        SafeProjectPath.GetExistingDocumentSidecarPaths(projectPath, doc.Path);
-        File.WriteAllText(contentPath, doc.Content);
+        var (_, metaPath) = SafeProjectPath.GetExistingDocumentSidecarPaths(projectPath, doc.Path);
 
         var meta = new DocumentMetaYaml
         {
@@ -99,8 +98,66 @@ public static class ProjectWriter
             Fields = doc.Fields.Count > 0 ? doc.Fields : null,
         };
 
-        var metaPath = Path.ChangeExtension(contentPath, ".meta");
-        File.WriteAllText(metaPath, YamlHelper.Serialize(meta));
+        var metaYaml = YamlHelper.Serialize(meta);
+        string? contentTempPath = null;
+        string? metaTempPath = null;
+
+        try
+        {
+            contentTempPath = WriteTempTextFile(contentPath, doc.Content);
+            metaTempPath = WriteTempTextFile(metaPath, metaYaml);
+
+            ReplaceOrMoveTempFile(contentTempPath, contentPath);
+            contentTempPath = null;
+
+            ReplaceOrMoveTempFile(metaTempPath, metaPath);
+            metaTempPath = null;
+        }
+        finally
+        {
+            DeleteTempFileIfPresent(contentTempPath);
+            DeleteTempFileIfPresent(metaTempPath);
+        }
+    }
+
+    private static string WriteTempTextFile(string finalPath, string contents)
+    {
+        var directory = Path.GetDirectoryName(finalPath)
+            ?? throw new InvalidOperationException($"Path has no parent directory: {finalPath}");
+        var fileName = Path.GetFileName(finalPath);
+        var tempPath = Path.Combine(directory, $".{fileName}.{Guid.NewGuid():N}.tmp");
+
+        using (var stream = new FileStream(
+            tempPath,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 4096,
+            FileOptions.WriteThrough))
+        using (var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
+        {
+            writer.Write(contents);
+        }
+
+        return tempPath;
+    }
+
+    private static void ReplaceOrMoveTempFile(string tempPath, string finalPath)
+    {
+        if (File.Exists(finalPath))
+        {
+            File.Replace(tempPath, finalPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+        }
+        else
+        {
+            File.Move(tempPath, finalPath);
+        }
+    }
+
+    private static void DeleteTempFileIfPresent(string? tempPath)
+    {
+        if (tempPath != null && File.Exists(tempPath))
+            File.Delete(tempPath);
     }
 
     public static Project CreateProject(string projectPath, string name)

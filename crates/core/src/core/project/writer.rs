@@ -24,6 +24,7 @@
 use chrono::Utc;
 use std::fs;
 use std::io::ErrorKind;
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use super::format::{
@@ -105,9 +106,7 @@ fn write_threads_if_any(project: &Project) -> Result<(), ChiknError> {
         threads: &project.threads,
     };
     let yaml = serde_yaml::to_string(&payload)?;
-    let temp = path.with_extension("yaml.tmp");
-    fs::write(&temp, yaml)?;
-    fs::rename(&temp, &path)?;
+    atomic_write_file(&path, yaml.as_bytes())?;
     Ok(())
 }
 
@@ -225,10 +224,7 @@ fn write_project_metadata(project: &Project) -> Result<(), ChiknError> {
 
     let yaml_content = serde_yaml::to_string(&metadata)?;
 
-    // Atomic write: write to temp file, then rename
-    let temp_file = project_file.with_extension("yaml.tmp");
-    fs::write(&temp_file, yaml_content)?;
-    fs::rename(&temp_file, &project_file)?;
+    atomic_write_file(&project_file, yaml_content.as_bytes())?;
 
     Ok(())
 }
@@ -576,12 +572,54 @@ fn write_document(
         fields: document.fields.clone(),
     };
 
-    // Write content (.md file)
-    fs::write(&full_content_path, &document.content)?;
-
     let meta_content = serde_yaml::to_string(&metadata)?;
-    fs::write(&meta_path, meta_content)?;
 
+    // Write content (.md file)
+    atomic_write_file(&full_content_path, document.content.as_bytes())?;
+    atomic_write_file(&meta_path, meta_content.as_bytes())?;
+
+    Ok(())
+}
+
+fn atomic_write_file(path: &Path, contents: &[u8]) -> Result<(), ChiknError> {
+    let parent = path.parent().ok_or_else(|| {
+        ChiknError::InvalidFormat(format!(
+            "Cannot write path without parent: {}",
+            path.display()
+        ))
+    })?;
+    let file_name = path.file_name().ok_or_else(|| {
+        ChiknError::InvalidFormat(format!(
+            "Cannot write path without file name: {}",
+            path.display()
+        ))
+    })?;
+    let existing_permissions = fs::metadata(path)
+        .ok()
+        .map(|metadata| metadata.permissions());
+
+    let prefix = format!(".{}.tmp-", file_name.to_string_lossy());
+    let mut temp_file = tempfile::Builder::new()
+        .prefix(&prefix)
+        .tempfile_in(parent)?;
+    temp_file.write_all(contents)?;
+    if let Some(permissions) = existing_permissions {
+        temp_file.as_file().set_permissions(permissions)?;
+    }
+    temp_file.as_file().sync_all()?;
+    let _persisted = temp_file.persist(path).map_err(std::io::Error::from)?;
+    sync_parent_directory(parent)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn sync_parent_directory(parent: &Path) -> Result<(), ChiknError> {
+    fs::File::open(parent)?.sync_all()?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn sync_parent_directory(_parent: &Path) -> Result<(), ChiknError> {
     Ok(())
 }
 
@@ -1321,8 +1359,10 @@ mod tests {
         write_project(&mut project).unwrap();
 
         let meta_path = get_manuscript_path(&project_path).join("stable.meta");
+        let content_path = get_manuscript_path(&project_path).join("stable.md");
         fs::write(&meta_path, "id: [").unwrap();
         let project_yaml_before = fs::read_to_string(project_path.join("project.yaml")).unwrap();
+        let content_before = fs::read_to_string(&content_path).unwrap();
 
         project
             .documents
@@ -1335,9 +1375,80 @@ mod tests {
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert_eq!(fs::read_to_string(&meta_path).unwrap(), "id: [");
+        assert_eq!(fs::read_to_string(&content_path).unwrap(), content_before);
         assert_eq!(
             fs::read_to_string(project_path.join("project.yaml")).unwrap(),
             project_yaml_before
+        );
+    }
+
+    #[test]
+    fn test_atomic_write_file_replaces_existing_file_and_removes_temp() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("chapter.md");
+        fs::write(&target, "old complete content").unwrap();
+
+        atomic_write_file(&target, b"new complete content").unwrap();
+
+        assert_eq!(fs::read_to_string(&target).unwrap(), "new complete content");
+        assert_no_atomic_temp_files(temp_dir.path());
+    }
+
+    #[test]
+    fn test_atomic_write_file_removes_temp_after_replace_failure() {
+        let temp_dir = TempDir::new().unwrap();
+        let directory_target = temp_dir.path().join("chapter.md");
+        fs::create_dir(&directory_target).unwrap();
+
+        let result = atomic_write_file(&directory_target, b"content");
+
+        assert!(matches!(result, Err(ChiknError::Io(_))));
+        assert!(directory_target.is_dir());
+        assert_no_atomic_temp_files(temp_dir.path());
+    }
+
+    #[test]
+    fn test_write_document_leaves_no_atomic_temp_files_after_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("AtomicTempCleanup.chikn");
+
+        let mut project = create_project(&project_path, "Atomic Temp Cleanup").unwrap();
+        let doc = Document {
+            id: "doc1".to_string(),
+            name: "Stable".to_string(),
+            path: "manuscript/stable.md".to_string(),
+            content: "initial".to_string(),
+            parent_id: None,
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        project.documents.insert(doc.id.clone(), doc);
+        write_project(&mut project).unwrap();
+
+        project
+            .documents
+            .get_mut("doc1")
+            .unwrap()
+            .content
+            .push_str("\nupdated");
+        write_project(&mut project).unwrap();
+
+        assert_no_atomic_temp_files(&project_path);
+        assert_no_atomic_temp_files(&get_manuscript_path(&project_path));
+    }
+
+    fn assert_no_atomic_temp_files(directory: &Path) {
+        let leftovers: Vec<_> = fs::read_dir(directory)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with('.') && name.contains(".tmp-"))
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "unexpected atomic temp files in {}: {leftovers:?}",
+            directory.display()
         );
     }
 
