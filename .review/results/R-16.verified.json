@@ -1,0 +1,7 @@
+{
+  "id": "R-16",
+  "sha": "f4bdec230c47f9f0bfe5ff6e77a634a785737b09",
+  "ts": "2026-05-17T16:20:00Z",
+  "reviewer": "claude",
+  "note": "Compile/export pipeline now has integration coverage via crates/core/tests/compile_roundtrip.rs (264 lines, 3 tests, all pass). Pandoc-shim approach (fake binary that logs args + copies input to output) lets the test assert ChickenScratch's compile contract without requiring pandoc in CI. Tests cover: (1) happy path — title page, author, word count, \\newpage, compile_order, *** separator, include_in_compile=false exclusion, non-manuscript exclusion, pandoc args (-f markdown, -t html, -o path, --standalone), metadata args (title, author); (2) format mapping — every advertised format loops through with correct pandoc target including epub → epub3; (3) empty manuscript — ChiknError::InvalidFormat with specific message AND no partial output file written (the silent-failure mode is closed). PKGBUILD pre-pinned to 0dc0360b04d127f7edc44bc176550342b415ee2c758ff72d2219a0e2482d1d8d. Closes the riskiest untested surface for beta."
+}
