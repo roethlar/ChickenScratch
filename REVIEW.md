@@ -503,6 +503,36 @@ After the first cycle closed all originally-listed findings, a rescan of the v1.
 
 ---
 
+## Beta-readiness audit (2026-05-17)
+
+After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (data integrity / security / quality / UX) surfaced three stop-ship items for a 0.1.0 beta with real writers. These are *app-level* gaps, distinct from the release scaffolding work above.
+
+### R-14: Cross-frontend path validation drift — macOS Swift and Windows C# writers bypass Rust safe_path `[ ]`
+- **What**: The Rust core's `crates/core/src/core/project/safe_path.rs` hardening (component-by-component validation, symlink rejection, canonicalize-under-root) is reached only by Tauri commands. `macos/Sources/ChiknKit/Writer.swift:88-89` does `project.path.appendingPathComponent(document.relativePath)` + `content.write(to:)` with no `..`/symlink check. `windows/ChickenScratch.Core/IO/ProjectWriter.cs:54-58` does `Path.Combine(projectPath, doc.Path)` + `File.WriteAllText` — `Path.Combine` with a rooted second segment discards the project root, and `..` is not stripped.
+- **Severity**: HIGH for beta security. A shared/cloud-sync'd `.chikn` whose `project.yaml` has `path: "../../etc/launchd.conf"` (mac) or `path: "..\\..\\Users\\victim\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\go.bat"` (Windows) overwrites the target on first edit-save in the native UI. Symlinks already on disk in `manuscript/` would similarly redirect saves. Beta testers swapping projects with each other is the threat model.
+- **Approach**: replicate the Rust `writer::ensure_safe_directory_path` logic in Swift and C# writers: reject relative paths containing `..`, reject absolute paths, reject symlinked targets, canonicalize-under-root. Also sanity-check `Document.path` at *read* time in `crates/core/src/core/project/reader.rs::read_project` and equivalents in Swift/C# readers, so even a read-then-display flow can't fingerprint files outside the project.
+- **Tests**: a malicious `samples/path-traversal/project.yaml` fixture (with `..`, absolute path, and symlink-target document entries) loaded by each frontend — assert the load is rejected with a clean error. Also assert a write to a sanitized in-project path still succeeds. Existing Rust path-traversal tests in `converter/mod.rs` are the model.
+- **Files changed (anticipated)**: `macos/Sources/ChiknKit/Writer.swift`, `macos/Sources/ChiknKit/Reader.swift`, `windows/ChickenScratch.Core/IO/ProjectWriter.cs`, `windows/ChickenScratch.Core/IO/ProjectReader.cs` (or equivalent), plus reader-side validation in `crates/core/src/core/project/reader.rs`, plus fixtures + tests.
+- **Known gaps**: Linux Qt frontend is out of scope for the validation suite; flag the same hardening as a future task if it grows beyond scaffold.
+
+### R-15: Document `.md` and `.meta` writes are not atomic `[ ]`
+- **What**: `crates/core/src/core/project/writer.rs:580` (content) and `:583` (meta) use bare `fs::write` (truncate+write). Only `project.yaml` (`:230-231`) and `threads.yaml` (`:108-110`) use temp+rename. A power cut or OS kill during save leaves a truncated `.md` (silent prose loss) or partial `.meta` — and a corrupt `.meta` fails the entire project load (`reader.rs:613` propagates the YAML parse error). Combined with `writer.rs:237-245` rewriting every document on every save (`write_project` walks the full map), the crash window covers every document, not just the active one.
+- **Severity**: HIGH for beta data integrity. Single-fault path can render a project unloadable, with content recoverable only via terminal `git log`.
+- **Approach**: route per-document content/meta writes through the same temp+rename helper as `project.yaml` (write to `<path>.tmp`, fsync, rename over target). Make `reader.rs` tolerant of a single unparseable `.meta` (quarantine the bad file with a backup suffix and continue load) so one bad save is recoverable.
+- **Tests**: kill-during-write integration test that interrupts a save partway through and asserts the project still loads with consistent prior state; corruption-tolerance test that hand-corrupts a `.meta` and verifies quarantine + recoverable load. Existing tests at `writer.rs` end (`#[cfg(test)]` block) are the model.
+- **Files changed (anticipated)**: `crates/core/src/core/project/writer.rs`, `crates/core/src/core/project/reader.rs`, plus tests.
+- **Known gaps**: does not implement delta-write (only-changed-docs); that's a larger architectural change deferred. After R-15 lands, the integrity window shrinks to the active doc, which is acceptable for beta.
+
+### R-16: Compile/export pipeline has zero test coverage `[ ]`
+- **What**: `crates/core/src/core/compile.rs` (224 lines, `pub fn compile` at `:43`) has no inline tests and no integration tests in `crates/core/tests/`. For a writing app, "compile manuscript to .docx/.md/.pdf" is the day-one validation a writer runs against an imported project. A silent regression here is the most likely cause of a "ChickenScratch corrupted my book" support ticket.
+- **Severity**: HIGH for beta confidence. Riskiest untested surface in the codebase; closes the scariest unknown for beta release.
+- **Approach**: add `crates/core/tests/compile_roundtrip.rs` integration test that loads `samples/Corn.chikn`, compiles to each supported output format, and asserts structural invariants — non-empty output, heading count matches input, word count within tolerance, attached media survives, scene boundaries preserved. Optionally add a hostile-input case (truncated doc, missing referenced media) and assert a graceful `ChiknError` rather than panic.
+- **Tests**: the new integration test itself. Run via `cargo test -p chickenscratch-core --test compile_roundtrip`; should also pass under the existing validation.yml CI step.
+- **Files changed (anticipated)**: `crates/core/tests/compile_roundtrip.rs` (new), possibly small refactors to `crates/core/src/core/compile.rs` to expose intermediate state for assertions, plus any sample manuscript additions under `samples/` if needed.
+- **Known gaps**: does not cover PDF rendering fidelity (would need a Pandoc/LaTeX runtime in CI — out of scope); structural invariants are the bar.
+
+---
+
 ## Recently landed (awaiting reviewer verification)
 
 _GPT: add commit SHA + short summary here when you commit. Reviewer will scan and update statuses above._
