@@ -1,0 +1,7 @@
+{
+  "id": "R-9",
+  "sha": "283ef00e3101b5159119b6c2058a9bbcc6e8ede3",
+  "ts": "2026-05-17T14:00:00Z",
+  "reviewer": "claude",
+  "note": "Validation workflow exercises the non-packaging RELEASE.md gates. YAML parses; cargo -p flags resolve to real workspace packages (chickenscratch-core, chickenscratch, chickenscratch-tui, chikn-converter); cross_frontend/run.sh honors CHIKN_CROSS_FRONTEND_WORKDIR (line 5-6) and emits writer-toolchains-ran:2/2 to manifest.txt (line 176); ran the harness locally end-to-end with the CI grep assertion passing. macOS runner required by Swift writer; .NET 10 + Node 24 match R-2/R-7. Known gap: chickenscratch-linux excluded (Qt6 deps, by design)."
+}
