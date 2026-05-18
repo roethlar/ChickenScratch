@@ -6,6 +6,7 @@ import { aiSummarize } from "../../commands/ai";
 import * as docCmd from "../../commands/document";
 import { toastError, toastSuccess } from "../shared/Toast";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { selectDocumentWithEditorFlush } from "../editor/navigationGuards";
 
 type GroupBy = "none" | "label" | "status" | "keyword";
 
@@ -20,7 +21,6 @@ function flattenDocs(nodes: TreeNode[]): string[] {
 
 export function Corkboard() {
   const project = useProjectStore((s) => s.project);
-  const selectDocument = useProjectStore((s) => s.selectDocument);
   // Re-derive activeDoc on each project update so the inspector and
   // other panels see the fresh metadata after AI summaries / linking.
   const setProject = useProjectStore((s) => s.setProject);
@@ -106,9 +106,9 @@ export function Corkboard() {
       }
       setLinking(null);
     } else {
-      selectDocument(docId);
+      void selectDocumentWithEditorFlush(docId);
     }
-  }, [linking, project, selectDocument, setProject]);
+  }, [linking, project, setProject]);
 
   // Escape to cancel linking
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

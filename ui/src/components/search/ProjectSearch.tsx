@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
 import { searchProject, type SearchResult } from "../../commands/search";
 import { useModalFocusTrap } from "../shared/Dialog";
+import { flushEditorBeforeNavigation } from "../editor/navigationGuards";
 
 export function ProjectSearch({
   open,
@@ -12,7 +13,6 @@ export function ProjectSearch({
   onClose: () => void;
 }) {
   const project = useProjectStore((s) => s.project);
-  const selectDocument = useProjectStore((s) => s.selectDocument);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -66,9 +66,10 @@ export function ProjectSearch({
     };
   }, [query, project]);
 
-  const handleSelect = (docId: string) => {
+  const handleSelect = async (docId: string) => {
+    if (!(await flushEditorBeforeNavigation())) return;
     useProjectStore.setState({ searchHighlight: query.trim() });
-    selectDocument(docId);
+    useProjectStore.getState().selectDocument(docId);
     onClose();
   };
 
@@ -102,7 +103,7 @@ export function ProjectSearch({
               }
               if (e.key === "Enter" && results.length > 0) {
                 e.preventDefault();
-                handleSelect(results[0].doc_id);
+                void handleSelect(results[0].doc_id);
               }
             }}
             placeholder="Search across all documents..."
@@ -114,7 +115,7 @@ export function ProjectSearch({
             <button
               key={r.doc_id}
               className="palette-item"
-              onClick={() => handleSelect(r.doc_id)}
+              onClick={() => { void handleSelect(r.doc_id); }}
             >
               <div className="search-result-info">
                 <span className="search-result-name">{r.doc_name}</span>
