@@ -1,0 +1,7 @@
+{
+  "id": "R-28",
+  "sha": "4486c9140ece47e95c1d491aac8c20ccc42420a5",
+  "ts": "2026-05-18T04:42:00Z",
+  "reviewer": "claude",
+  "note": "SwiftPM: macos/Package.resolved checked in, .gitignore line removed, harness uses --disable-automatic-resolution, swift package resolve produces no diff (lock in sync). NuGet: WindowsAppSDK 1.8.* → 1.8.260508005 pinned; 4 packages.lock.json (app + core + 2 harness); Directory.Build.props enables lockfile mode; dotnet restore --locked-mode succeeds locally; windows.yml + validation.yml both use --locked-mode; scripts/check-nuget-package-versions.ps1 wildcards-guard added (locally checked via rg equivalent — zero Version=\"*\" patterns in csproj/props/targets). Known gaps acceptable: no pwsh on macOS host so PowerShell guard untested locally (CI will execute); WinUI app full build still needs Windows (XAML compiler is Win-only) — core + harness projects build locally. PKGBUILD pre-pinned 2dc959b6db3129bcb5b5c50d53903e22ab881d16a5dc675e9c9164a8a9ec6a76."
+}
