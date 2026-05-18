@@ -665,7 +665,7 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Files changed (anticipated)**: `.github/workflows/tauri-bundles.yml` or a release workflow, `src-tauri/tauri.conf.json`, signing assets/entitlements if needed, `RELEASE.md`.
 - **Known gaps**: requires Apple Developer credentials; cannot be fully validated on local non-release runs.
 
-### R-30: Subprocess timeout can still hang on child process trees that keep pipes open `[~]`
+### R-30: Subprocess timeout can still hang on child process trees that keep pipes open `[x]`
 - **What**: `output_bounded` returns from its polling loop when the direct child exits (`crates/core/src/utils/process.rs:112-114`) and then joins stdout/stderr reader threads without a join deadline (`:160-161`, `:209-213`). On timeout/output cap it kills only the direct child (`:117`, `:130`, `:140`). A wrapper/Pandoc process can spawn a child that inherits stdout/stderr, exits or is killed, and leaves the reader threads blocked forever.
 - **Severity**: MEDIUM. M-3 bounded the common case, but process trees can still hang compile/import/Pandoc checks indefinitely.
 - **Branch**: `fix/r-30-process-tree-timeouts`
@@ -673,6 +673,7 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Tests**: locked cargo metadata; workflow YAML parse; `git diff --check`; Rust fmt; locked clippy; targeted process-helper tests; full locked Rust suite; UI install/lint/build; cross-frontend harness with Swift and C# writers; release metadata/checksum gate.
 - **Files changed**: `.github/workflows/validation.yml`, `Cargo.lock`, `crates/core/Cargo.toml`, `crates/core/src/utils/process.rs`, `pkg/arch/PKGBUILD`, `.review/findings/R-30.md`, `REVIEW.md`.
 - **Known gaps**: local macOS host cannot compile the Windows Rust target because the Windows C toolchain/headers are unavailable, so the Windows process-tree path is covered by the new `windows-latest` CI job. Descendants that intentionally escape the inherited Unix process group with their own session/process-group management are outside this finding's scope.
+- **Reviewer verdict**: VERIFIED via merge commit `7a31b16`. Empirically validated: the previously flaky `process_helper_caps_combined_stdout_and_stderr` (witnessed failing during R-14 verification 8h ago) now passes **5/5 consecutive runs** with the new process-tree boundary. Full Rust suite clean. Implementation uses textbook patterns — Unix process groups with `SIGKILL`-to-group, Windows Job Objects with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` + suspended-create-then-resume so descendants are tracked from inception. Reader threads moved to bounded event channel with post-kill deadline, eliminating the indefinite-join path. New `windows-latest` CI job exercises the Job Object code path on a real Windows runner. PKGBUILD pre-pinned `75a046a…2134`. Closes the last open finding — all 30 R-* items now resolved.
 
 ---
 

@@ -1,0 +1,7 @@
+{
+  "id": "R-30",
+  "sha": "7a31b160ff401efd99b92a240c137838dc74152b",
+  "ts": "2026-05-18T05:10:00Z",
+  "reviewer": "claude",
+  "note": "Empirically validated: the previously flaky process_helper_caps_combined_stdout_and_stderr (witnessed failing during R-14 verification 8h ago) now passes 5/5 consecutive runs with the new process-tree boundary. Full Rust suite clean. Implementation: Unix process groups with SIGKILL-to-group, Windows Job Objects with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE + suspended-create-then-resume so descendants are tracked from inception. Reader threads moved to bounded event channel with post-kill deadline, eliminating indefinite-join path. New windows-latest CI job exercises Job Object code on a real Windows runner. PKGBUILD pre-pinned 75a046aea1e6dba469eda8db32c73ecf1a35ebf66912f8376c184246564e2134. Known gap: macOS host can't cross-compile Windows Rust target (covered by Windows CI), and descendants that intentionally escape the inherited Unix process group with their own setsid are out of scope. Closes the last open R-* finding."
+}
