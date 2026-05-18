@@ -3,6 +3,7 @@
 //! All revision control uses embedded git2 — no system git required.
 //! Writers see "Save Revision" / "Revision History" — never "git".
 
+use crate::core::project::writer;
 use crate::utils::error::{ChiknError, GitError, GitErrorKind};
 use git2::{
     BranchType, Cred, DiffOptions, ErrorClass, ErrorCode, FetchOptions, IndexAddOption, Oid,
@@ -345,6 +346,8 @@ pub fn restore_document(
 ) -> Result<Revision, ChiknError> {
     let repo = Repository::open(project_path)
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    reject_dirty_worktree(&repo, "restore this document")?;
+
     let oid = Oid::from_str(commit_id)
         .map_err(|e| ChiknError::Unknown(format!("Invalid commit id: {}", e)))?;
     let commit = repo
@@ -368,12 +371,6 @@ pub fn restore_document(
     // Also try to restore the .meta sidecar from the same commit if present.
     let meta_path = doc_path.strip_suffix(".md").map(|s| format!("{}.meta", s));
 
-    let abs_target = project_path.join(doc_path);
-    if let Some(parent) = abs_target.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&abs_target, blob.content())?;
-
     // Sidecar restore is best-effort about EXISTENCE — older commits may
     // predate the .meta convention, in which case there's nothing to restore
     // and we shouldn't fail the operation. But if the sidecar IS in the
@@ -381,20 +378,25 @@ pub fn restore_document(
     // would see "restored successfully" while the document content reverted
     // and metadata/comments/fields stayed at the post-restore state, with
     // the merge commit cementing that mismatch into history. (F-011)
-    if let Some(meta_rel) = meta_path {
+    let meta_content = if let Some(meta_rel) = meta_path {
         if let Ok(meta_entry) = tree.get_path(std::path::Path::new(&meta_rel)) {
             let meta_blob = repo
                 .find_blob(meta_entry.id())
                 .map_err(|e| ChiknError::Unknown(format!("Sidecar blob: {}", e)))?;
-            let abs_meta = project_path.join(&meta_rel);
-            std::fs::write(&abs_meta, meta_blob.content()).map_err(|e| {
-                ChiknError::Unknown(format!(
-                    "Failed to restore sidecar metadata for {}: {}",
-                    doc_path, e
-                ))
-            })?;
+            Some(meta_blob.content().to_vec())
+        } else {
+            None
         }
-    }
+    } else {
+        None
+    };
+
+    writer::write_document_blobs(
+        project_path,
+        doc_path,
+        blob.content(),
+        meta_content.as_deref(),
+    )?;
 
     let short = &commit_id[..8.min(commit_id.len())];
     let msg = format!("Restore {} to {}", doc_path, short);
@@ -437,6 +439,7 @@ pub fn restore_revision(path: &Path, commit_id: &str) -> Result<Revision, ChiknE
 pub fn create_draft(path: &Path, name: &str) -> Result<(), ChiknError> {
     let repo = Repository::open(path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
+    reject_dirty_worktree(&repo, "create a draft")?;
 
     let head = repo
         .head()
@@ -491,6 +494,7 @@ pub fn list_drafts(path: &Path) -> Result<Vec<DraftVersion>, ChiknError> {
 pub fn switch_draft(path: &Path, name: &str) -> Result<(), ChiknError> {
     let repo = Repository::open(path)
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    reject_dirty_worktree(&repo, "switch drafts")?;
 
     let refname = format!("refs/heads/{}", name);
     repo.set_head(&refname)
@@ -551,6 +555,8 @@ pub fn merge_draft(path: &Path, name: &str) -> Result<MergeResult, ChiknError> {
     if analysis.is_up_to_date() {
         return Ok(MergeResult::UpToDate);
     }
+
+    reject_dirty_worktree(&repo, "merge this draft")?;
 
     if analysis.is_fast_forward() {
         let current_branch = current_branch_name(&repo)?;
@@ -839,6 +845,8 @@ pub fn sync_pull(
     if analysis.is_up_to_date() {
         return Ok(PullResult::UpToDate);
     }
+
+    reject_dirty_worktree(&repo, "pull changes")?;
 
     if analysis.is_fast_forward() {
         // Move local branch to remote OID and check out

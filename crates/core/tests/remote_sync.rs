@@ -18,6 +18,25 @@ fn file_url(path: &Path) -> String {
     format!("file://{}", path.display())
 }
 
+fn current_branch(path: &Path) -> String {
+    git2::Repository::open(path)
+        .unwrap()
+        .head()
+        .unwrap()
+        .shorthand()
+        .unwrap()
+        .to_string()
+}
+
+fn head_id(path: &Path) -> git2::Oid {
+    git2::Repository::open(path)
+        .unwrap()
+        .head()
+        .unwrap()
+        .target()
+        .unwrap()
+}
+
 fn assert_git_kind<T>(result: Result<T, ChiknError>, expected: GitErrorKind) {
     match result {
         Err(ChiknError::Git(err)) => assert_eq!(err.kind, expected, "{}", err.message),
@@ -52,6 +71,95 @@ fn init_bare_repo(path: &Path) -> bool {
         .status()
         .expect("need system git");
     status.success()
+}
+
+#[test]
+fn restore_document_rejects_dirty_worktree_without_clobbering_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("Novel.chikn");
+    fs::create_dir_all(&project).unwrap();
+    git::init_repo(&project).expect("init repo");
+
+    let manuscript = project.join("manuscript/one.md");
+    fs::create_dir_all(manuscript.parent().unwrap()).unwrap();
+    fs::write(&manuscript, "# Chapter 1\n\nOriginal.\n").unwrap();
+    let original = git::save_revision(&project, "Original").expect("original revision");
+
+    fs::write(&manuscript, "# Chapter 1\n\nCommitted rewrite.\n").unwrap();
+    git::save_revision(&project, "Rewrite").expect("rewrite revision");
+
+    let dirty_content = "# Chapter 1\n\nUnsaved typing.\n";
+    fs::write(&manuscript, dirty_content).unwrap();
+
+    assert_git_kind_with_message(
+        git::restore_document(&project, "manuscript/one.md", &original.id),
+        GitErrorKind::Conflict,
+        "unsaved changes",
+    );
+    assert_eq!(fs::read_to_string(&manuscript).unwrap(), dirty_content);
+}
+
+#[cfg(unix)]
+#[test]
+fn restore_document_rejects_symlink_document_without_touching_outside_file() {
+    use std::os::unix::fs as unix_fs;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("Novel.chikn");
+    fs::create_dir_all(&project).unwrap();
+    git::init_repo(&project).expect("init repo");
+
+    let manuscript = project.join("manuscript/one.md");
+    fs::create_dir_all(manuscript.parent().unwrap()).unwrap();
+    fs::write(&manuscript, "# Chapter 1\n\nOriginal.\n").unwrap();
+    let original = git::save_revision(&project, "Original").expect("original revision");
+
+    let outside = tmp.path().join("outside.md");
+    fs::write(&outside, "outside original").unwrap();
+    fs::remove_file(&manuscript).unwrap();
+    unix_fs::symlink(&outside, &manuscript).unwrap();
+    git::save_revision(&project, "Commit symlink target").expect("symlink revision");
+    assert!(!git::has_changes(&project).expect("clean worktree"));
+
+    let result = git::restore_document(&project, "manuscript/one.md", &original.id);
+
+    assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    assert_eq!(fs::read_to_string(&outside).unwrap(), "outside original");
+}
+
+#[cfg(unix)]
+#[test]
+fn restore_document_rejects_symlink_meta_without_touching_outside_file() {
+    use std::os::unix::fs as unix_fs;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("Novel.chikn");
+    fs::create_dir_all(&project).unwrap();
+    git::init_repo(&project).expect("init repo");
+
+    let manuscript = project.join("manuscript/one.md");
+    let meta = project.join("manuscript/one.meta");
+    fs::create_dir_all(manuscript.parent().unwrap()).unwrap();
+    fs::write(&manuscript, "# Chapter 1\n\nOriginal.\n").unwrap();
+    fs::write(&meta, "id: one\nname: One\nstatus: Original\n").unwrap();
+    let original = git::save_revision(&project, "Original").expect("original revision");
+
+    fs::write(&manuscript, "# Chapter 1\n\nCurrent.\n").unwrap();
+    let outside = tmp.path().join("outside.meta");
+    fs::write(&outside, "outside original").unwrap();
+    fs::remove_file(&meta).unwrap();
+    unix_fs::symlink(&outside, &meta).unwrap();
+    git::save_revision(&project, "Commit meta symlink").expect("symlink revision");
+    assert!(!git::has_changes(&project).expect("clean worktree"));
+
+    let result = git::restore_document(&project, "manuscript/one.md", &original.id);
+
+    assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    assert_eq!(fs::read_to_string(&outside).unwrap(), "outside original");
+    assert_eq!(
+        fs::read_to_string(&manuscript).unwrap(),
+        "# Chapter 1\n\nCurrent.\n"
+    );
 }
 
 #[test]
@@ -106,6 +214,99 @@ fn restore_revision_clean_worktree_restores_and_commits_forward() {
         "restore should create a new commit"
     );
     assert!(!git::has_changes(&project).expect("clean worktree"));
+}
+
+#[test]
+fn create_draft_rejects_dirty_worktree_and_does_not_create_branch() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("Novel.chikn");
+    fs::create_dir_all(&project).unwrap();
+    init_test_repo(&project);
+
+    let dirty_content = "# Chapter 1\n\nUnsaved typing.\n";
+    fs::write(project.join("manuscript/one.md"), dirty_content).unwrap();
+
+    assert_git_kind_with_message(
+        git::create_draft(&project, "draft-2"),
+        GitErrorKind::Conflict,
+        "unsaved changes",
+    );
+    assert_eq!(
+        fs::read_to_string(project.join("manuscript/one.md")).unwrap(),
+        dirty_content
+    );
+    assert!(
+        !git::list_drafts(&project)
+            .unwrap()
+            .iter()
+            .any(|draft| draft.name == "draft-2"),
+        "dirty create_draft should not leave a branch behind"
+    );
+}
+
+#[test]
+fn switch_draft_rejects_dirty_worktree_without_switching_or_clobbering() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("Novel.chikn");
+    fs::create_dir_all(&project).unwrap();
+    init_test_repo(&project);
+    let main_branch = current_branch(&project);
+
+    git::create_draft(&project, "draft-2").expect("create draft");
+    fs::write(
+        project.join("manuscript/one.md"),
+        "# Chapter 1\n\nDraft content.\n",
+    )
+    .unwrap();
+    git::save_revision(&project, "Draft content").expect("draft revision");
+    git::switch_draft(&project, &main_branch).expect("switch back to main");
+
+    let dirty_content = "# Chapter 1\n\nUnsaved main typing.\n";
+    fs::write(project.join("manuscript/one.md"), dirty_content).unwrap();
+
+    assert_git_kind_with_message(
+        git::switch_draft(&project, "draft-2"),
+        GitErrorKind::Conflict,
+        "unsaved changes",
+    );
+    assert_eq!(current_branch(&project), main_branch);
+    assert_eq!(
+        fs::read_to_string(project.join("manuscript/one.md")).unwrap(),
+        dirty_content
+    );
+}
+
+#[test]
+fn merge_draft_fast_forward_rejects_dirty_worktree_without_advancing_head() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("Novel.chikn");
+    fs::create_dir_all(&project).unwrap();
+    init_test_repo(&project);
+    let main_branch = current_branch(&project);
+
+    git::create_draft(&project, "draft-2").expect("create draft");
+    fs::write(
+        project.join("manuscript/one.md"),
+        "# Chapter 1\n\nDraft content.\n",
+    )
+    .unwrap();
+    git::save_revision(&project, "Draft content").expect("draft revision");
+    git::switch_draft(&project, &main_branch).expect("switch back to main");
+
+    let head_before = head_id(&project);
+    let dirty_content = "# Chapter 1\n\nUnsaved main typing.\n";
+    fs::write(project.join("manuscript/one.md"), dirty_content).unwrap();
+
+    assert_git_kind_with_message(
+        git::merge_draft(&project, "draft-2"),
+        GitErrorKind::Conflict,
+        "unsaved changes",
+    );
+    assert_eq!(head_id(&project), head_before);
+    assert_eq!(
+        fs::read_to_string(project.join("manuscript/one.md")).unwrap(),
+        dirty_content
+    );
 }
 
 #[test]
@@ -282,6 +483,53 @@ fn ahead_count_increases_after_new_revision() {
     let s2 = git::sync_status(&project).expect("status");
     assert_eq!(s2.ahead, 0);
     assert_eq!(s2.behind, 0);
+}
+
+#[test]
+fn sync_pull_fast_forward_rejects_dirty_worktree_without_advancing_head() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project_a = tmp.path().join("A.chikn");
+    fs::create_dir_all(&project_a).unwrap();
+    init_test_repo(&project_a);
+
+    let remote = tmp.path().join("remote.git");
+    if !init_bare_repo(&remote) {
+        return;
+    }
+
+    let url = file_url(&remote);
+    let auth = git::RemoteAuth::default();
+    git::push_remote(&project_a, &url, &auth).expect("initial push should succeed");
+
+    let project_b = tmp.path().join("B.chikn");
+    let branch = current_branch(&project_a);
+    git2::build::RepoBuilder::new()
+        .branch(&branch)
+        .clone(&url, &project_b)
+        .expect("clone project");
+
+    fs::write(
+        project_b.join("manuscript/one.md"),
+        "# Chapter 1\n\nRemote rewrite.\n",
+    )
+    .unwrap();
+    git::save_revision(&project_b, "Remote rewrite").unwrap();
+    git::push_remote(&project_b, &url, &auth).expect("remote push should succeed");
+
+    let head_before = head_id(&project_a);
+    let dirty_content = "# Chapter 1\n\nUnsaved local typing.\n";
+    fs::write(project_a.join("manuscript/one.md"), dirty_content).unwrap();
+
+    assert_git_kind_with_message(
+        git::sync_pull(&project_a, &url, &auth),
+        GitErrorKind::Conflict,
+        "unsaved changes",
+    );
+    assert_eq!(head_id(&project_a), head_before);
+    assert_eq!(
+        fs::read_to_string(project_a.join("manuscript/one.md")).unwrap(),
+        dirty_content
+    );
 }
 
 #[test]
