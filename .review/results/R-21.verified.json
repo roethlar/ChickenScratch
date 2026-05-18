@@ -1,0 +1,7 @@
+{
+  "id": "R-21",
+  "sha": "8395df2d0c7044c499bb0d39fe495bb56e1be59c",
+  "ts": "2026-05-18T04:00:00Z",
+  "reviewer": "claude",
+  "note": "Full identity-collision matrix covered with concrete tests: test_read_project_rejects_duplicate_hierarchy_document_paths (project.yaml level), test_read_project_rejects_duplicate_document_ids (.meta level), test_read_project_rejects_hierarchy_id_path_mismatch (hierarchy vs disk cross-check), test_write_project_rejects_duplicate_document_paths_before_write (write-time guard before any file is touched). Critical property: writer rejects BEFORE writing so a malformed in-memory state cannot escape to disk — paired with R-15 atomic writes this means duplicates can't corrupt across save windows. R-19 non-destructive missing-body case preserved (hierarchy entry without disk body remains permitted). Linux native creation uses utils::slug::unique_slug matching Tauri behavior. 4/4 tests pass. PKGBUILD pre-pinned f61e941a86120d2ad968e8bb0f1a965861ed84a58f267bc7bc2007c6deea1647. Linux Qt host validation acceptable gap (env not project)."
+}
