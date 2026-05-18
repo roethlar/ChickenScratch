@@ -40,10 +40,10 @@ jobs:
         run: scripts/check-release-metadata.sh
 
       - name: Rust clippy
-        run: cargo clippy -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
+        run: cargo clippy --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
 
       - name: Rust tests
-        run: cargo test -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
+        run: cargo test --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
 
       - name: UI lint
         run: npm run lint

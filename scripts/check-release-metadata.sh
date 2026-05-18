@@ -53,6 +53,8 @@ fail() {
   errors=$((errors + 1))
 }
 
+cargo metadata --locked --format-version 1 >/dev/null || fail "Cargo.lock is stale; run cargo metadata and commit Cargo.lock"
+
 toml_version() {
   sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$1" | head -n 1
 }

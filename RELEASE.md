@@ -30,8 +30,9 @@ Run from the repository root:
 ```bash
 scripts/check-release-metadata.sh
 cargo fmt --all -- --check
-cargo clippy -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
-cargo test -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
+cargo metadata --locked --format-version 1 >/dev/null
+cargo clippy --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
+cargo test --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
 cd ui && npm ci && npm run lint && npm run build && cd ..
 ```
 
@@ -46,7 +47,7 @@ crates/core/tests/cross_frontend/run.sh
 macOS:
 
 ```bash
-CI=true cargo tauri build --bundles app,dmg
+CI=true cargo tauri build --bundles app,dmg -- --locked
 test -d target/release/bundle/macos/ChickenScratch.app
 test -n "$(find target/release/bundle/dmg -name 'ChickenScratch_*.dmg' -print -quit)"
 ```
@@ -56,7 +57,7 @@ test -n "$(find target/release/bundle/dmg -name 'ChickenScratch_*.dmg' -print -q
 Linux:
 
 ```bash
-cargo tauri build --bundles appimage
+cargo tauri build --bundles appimage -- --locked
 test -n "$(find target/release/bundle/appimage -name '*.AppImage' -print -quit)"
 ```
 

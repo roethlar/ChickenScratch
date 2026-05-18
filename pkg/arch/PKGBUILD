@@ -10,7 +10,7 @@ depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'pandoc')
 makedepends=('rust' 'cargo' 'nodejs' 'npm' 'pkg-config')
 _upstream_version="${pkgver//_/-}"
 source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$_upstream_version/$pkgname-$pkgver.tar.gz")
-sha256sums=('a426057ca804792cfcad5ffc5bc549589c01afbbeed91ba42939acb9224f3853')
+sha256sums=('370be2ad422d78885b6802a9396c44f146375d32fae02bbc87fbf7b8271126a3')
 
 build() {
     cd "$srcdir/$pkgname-$pkgver"
@@ -22,7 +22,7 @@ build() {
     cd ..
 
     # Build Tauri app (release binary only, no bundling)
-    cargo build --release -p chickenscratch
+    cargo build --locked --release -p chickenscratch
 }
 
 package() {

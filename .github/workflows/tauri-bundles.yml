@@ -43,10 +43,13 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version 2.11.1 --locked
 
+      - name: Locked Rust dependency preflight
+        run: cargo metadata --locked --format-version 1 >/dev/null
+
       - name: Build macOS bundles
         env:
           CI: true
-        run: cargo tauri build --bundles app,dmg
+        run: cargo tauri build --bundles app,dmg -- --locked
 
       - name: Verify macOS artifacts
         run: |
@@ -100,8 +103,11 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version 2.11.1 --locked
 
+      - name: Locked Rust dependency preflight
+        run: cargo metadata --locked --format-version 1 >/dev/null
+
       - name: Build Linux AppImage
-        run: cargo tauri build --bundles appimage
+        run: cargo tauri build --bundles appimage -- --locked
 
       - name: Verify Linux artifact
         run: test -n "$(find target/release/bundle/appimage -name '*.AppImage' -print -quit)"
