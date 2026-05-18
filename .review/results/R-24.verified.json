@@ -1,0 +1,7 @@
+{
+  "id": "R-24",
+  "sha": "d241aad2a1e6c66cea7bf0ec604fd228cf4f1c26",
+  "ts": "2026-05-18T04:20:00Z",
+  "reviewer": "claude",
+  "note": "navigationGuards.ts centralizes flush-before-navigate with five wrapper helpers (selectDocumentWithEditorFlush, clearDocumentSelectionWithEditorFlush, enterFlowWithEditorFlush, exitFlowWithEditorFlush, plus underlying flushEditorBeforeNavigation). Each returns false on flush throw and skips navigation. Nine callsites updated. Editor.tsx load effect provides defense in depth: flush → if-fail-return BEFORE any buffer mutation or setDirtyTracked(false) at lines 294-298 (flow→flow), 334-340 (flow→single), 348-355 (single→none). Binder delete blocked on active doc / ancestor until flush succeeds. Known gap (no UI test harness, coverage is structural/code-review) is real but acceptable — change is small and self-contained, load-effect ordering is the load-bearing property and is correct. PKGBUILD pre-pinned d8eab4dded323c065caefedd8d42a08d53a8b44a9810a27a744139aa91b1b5d0."
+}
