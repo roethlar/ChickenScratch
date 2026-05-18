@@ -158,8 +158,11 @@ export function Revisions() {
     if (!dir) return;
     localStorage.setItem("chickenscratch-backup-dir", dir);
     try {
-      await gitCmd.pushBackup(project.path, dir);
-      toastSuccess("Backup complete.");
+      await runWithEditorFlush("Backup", async () => {
+        await gitCmd.manualBackup(project.path, dir);
+        toastSuccess("Backup complete.");
+        await refresh();
+      });
     } catch (e) {
       toastError(`Backup failed: ${e}`);
     }

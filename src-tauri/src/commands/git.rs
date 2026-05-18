@@ -100,6 +100,21 @@ pub fn push_backup(
     })
 }
 
+#[tauri::command]
+pub fn manual_backup(
+    project_path: String,
+    write_locks: State<'_, ProjectWriteLocks>,
+    backup_dir: String,
+) -> Result<Option<git::Revision>, ChiknError> {
+    write_locks.with_project_lock(&project_path, || {
+        git::backup_current_work(
+            Path::new(&project_path),
+            Path::new(&backup_dir),
+            "Manual backup",
+        )
+    })
+}
+
 /// Push the current branch to the remote URL configured in settings.
 #[tauri::command]
 pub fn sync_push(

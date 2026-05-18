@@ -684,6 +684,22 @@ pub fn push_backup(project_path: &Path, backup_dir: &Path) -> Result<(), ChiknEr
     Ok(())
 }
 
+/// Commit current dirty work if needed, then push the current branch to backup.
+pub fn backup_current_work(
+    project_path: &Path,
+    backup_dir: &Path,
+    message: &str,
+) -> Result<Option<Revision>, ChiknError> {
+    let revision = if has_changes(project_path)? {
+        Some(save_revision(project_path, message)?)
+    } else {
+        None
+    };
+
+    push_backup(project_path, backup_dir)?;
+    Ok(revision)
+}
+
 // ── Remote sync ──────────────────────────────────────────────────────────────
 //
 // Push/fetch against an arbitrary git URL (GitHub, Gitea, self-hosted, or a
@@ -1408,5 +1424,69 @@ mod tests {
         assert!(
             matches!(result, Err(ChiknError::Unknown(message)) if message.contains("Failed to create backup directory"))
         );
+    }
+
+    #[test]
+    fn manual_backup_commits_dirty_work_before_pushing() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("ManualBackup.chikn");
+        std::fs::create_dir(&project_path).unwrap();
+        std::fs::create_dir(project_path.join("manuscript")).unwrap();
+        init_repo(&project_path).unwrap();
+
+        let doc_path = project_path.join("manuscript").join("one.md");
+        std::fs::write(&doc_path, "baseline").unwrap();
+        save_revision(&project_path, "Baseline").unwrap();
+
+        std::fs::write(&doc_path, "edited before manual backup").unwrap();
+        let backup_dir = temp_dir.path().join("backups");
+
+        let revision = backup_current_work(&project_path, &backup_dir, "Manual backup").unwrap();
+
+        assert!(revision.is_some());
+        let bare_repo = Repository::open_bare(backup_dir.join("ManualBackup.git")).unwrap();
+        let head = bare_repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(head.message().unwrap(), "Manual backup");
+        let tree = head.tree().unwrap();
+        let entry = tree
+            .get_path(std::path::Path::new("manuscript/one.md"))
+            .unwrap();
+        let blob = bare_repo.find_blob(entry.id()).unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(blob.content()),
+            "edited before manual backup"
+        );
+    }
+
+    #[test]
+    fn manual_backup_pushes_clean_head_without_empty_revision() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("CleanManualBackup.chikn");
+        std::fs::create_dir(&project_path).unwrap();
+        std::fs::create_dir(project_path.join("manuscript")).unwrap();
+        init_repo(&project_path).unwrap();
+
+        std::fs::write(project_path.join("manuscript").join("one.md"), "baseline").unwrap();
+        let baseline = save_revision(&project_path, "Baseline").unwrap();
+        let backup_dir = temp_dir.path().join("backups");
+
+        let revision = backup_current_work(&project_path, &backup_dir, "Manual backup").unwrap();
+
+        assert!(revision.is_none());
+        let local_head = Repository::open(&project_path)
+            .unwrap()
+            .head()
+            .unwrap()
+            .target()
+            .unwrap();
+        assert_eq!(local_head.to_string(), baseline.id);
+
+        let bare_head = Repository::open_bare(backup_dir.join("CleanManualBackup.git"))
+            .unwrap()
+            .head()
+            .unwrap()
+            .target()
+            .unwrap();
+        assert_eq!(bare_head, local_head);
     }
 }

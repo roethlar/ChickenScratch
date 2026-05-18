@@ -75,6 +75,13 @@ export async function pushBackup(
   return invoke("push_backup", { projectPath, backupDir });
 }
 
+export async function manualBackup(
+  projectPath: string,
+  backupDir: string
+): Promise<Revision | null> {
+  return invoke("manual_backup", { projectPath, backupDir });
+}
+
 export interface FileDiff {
   path: string;
   status: string;
