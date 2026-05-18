@@ -1,0 +1,7 @@
+{
+  "id": "R-29",
+  "sha": "19e0ad08b7c1393ba4534e9d34e5cadfac8db1ca",
+  "ts": "2026-05-18T05:18:00Z",
+  "reviewer": "claude",
+  "note": "Two-track design: existing tauri-bundles.yml renamed 'macOS unsigned smoke app and DMG' (artifact name signals not-for-distribution); new macos-release.yml is signed/notarized path. Release workflow gated by v* tag or workflow_dispatch only (no auto-push), protected by release-macos GH Actions environment, with fail-before-build secrets check (::error annotations for any of 7 missing secrets). Implementation: temporary keychain, security import + set-key-partition-list, App Store Connect P8 to APPLE_API_KEY_PATH, build via existing locked cargo tauri build (inherits R-12 CI=true + R-27 --locked), xcrun notarytool submit --wait then xcrun stapler staple, then triple verification before upload: codesign --verify --deep --strict, spctl --assess --type execute, xcrun stapler validate on both .app and .dmg, plus spctl --assess --type open --context context:primary-signature on .dmg. tauri.conf.json adds hardenedRuntime=true. RELEASE.md documents unsigned-vs-signed split + required secrets. PKGBUILD pre-pinned 343bfe75b5eb98cae6f84a21669d4ae431ffbdfb7caf8027cbc7027d41d1b7fe. Final open R-* finding closed — all 31 items resolved."
+}
