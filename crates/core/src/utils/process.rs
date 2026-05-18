@@ -696,7 +696,7 @@ mod platform {
         let needs_quotes = wide.is_empty()
             || wide
                 .iter()
-                .any(|ch| matches!(*ch, 0x20 | 0x09 | b'"' as u16));
+                .any(|ch| *ch == 0x20 || *ch == 0x09 || *ch == b'"' as u16);
 
         if !needs_quotes {
             line.extend(wide);

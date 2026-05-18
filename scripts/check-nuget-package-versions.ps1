@@ -13,15 +13,16 @@ foreach ($file in $files) {
     [xml]$xml = Get-Content -Raw -Path $file.FullName
 
     foreach ($node in $xml.SelectNodes("//PackageReference[@Version] | //PackageVersion[@Version]")) {
-        if ($node.Version -like "*`**") {
+        $version = $node.GetAttribute("Version")
+        if ($version -match "\*") {
             $relativePath = Resolve-Path -Relative -Path $file.FullName
-            $bad += "$relativePath`: $($node.GetAttribute("Include")) $($node.Version)"
+            $bad += "$relativePath`: $($node.GetAttribute("Include")) $version"
         }
     }
 
     foreach ($node in $xml.SelectNodes("//PackageReference[Version] | //PackageVersion[Version]")) {
         $versionNode = $node.SelectSingleNode("Version")
-        if ($null -ne $versionNode -and $versionNode.InnerText -like "*`**") {
+        if ($null -ne $versionNode -and $versionNode.InnerText -match "\*") {
             $relativePath = Resolve-Path -Relative -Path $file.FullName
             $bad += "$relativePath`: $($node.GetAttribute("Include")) $($versionNode.InnerText)"
         }
