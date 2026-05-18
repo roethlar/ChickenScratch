@@ -1,9 +1,6 @@
 name: macOS Signed Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 permissions:

@@ -57,7 +57,7 @@ test -n "$(find target/release/bundle/dmg -name 'ChickenScratch_*.dmg' -print -q
 
 `CI=true` makes Tauri skip Finder AppleScript DMG layout work, matching the GitHub Actions path and headless release automation.
 
-The unsigned smoke artifact uploaded by `Tauri Bundles` is not a public release artifact. For public macOS distribution, use the protected `macOS Signed Release` workflow from the `v<version>` tag or via `workflow_dispatch`. The workflow must run in the `release-macos` environment with these secrets:
+The unsigned smoke artifact uploaded by `Tauri Bundles` is not a public release artifact. For public macOS distribution, manually run the protected `macOS Signed Release` workflow after the release tag exists. The workflow is intentionally `workflow_dispatch`-only until Apple Developer credentials are available, so unsigned macOS signing does not block the `v<version>` tag. The workflow must run in the `release-macos` environment with these secrets:
 
 - `APPLE_CERTIFICATE`: base64-encoded Developer ID Application `.p12`
 - `APPLE_CERTIFICATE_PASSWORD`: password for the `.p12`
@@ -83,7 +83,7 @@ xcrun stapler validate "$DMG"
 spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
 ```
 
-Do not attach the unsigned smoke artifact to a public release.
+Do not attach the unsigned smoke artifact to a public release. Until Apple Developer credentials are available, ship macOS as source-build/internal-test only.
 
 Linux:
 
@@ -152,6 +152,8 @@ git push origin master "v$version"
 ```
 
 Upload `dist/chickenscratch-${version}.tar.gz` to the GitHub release for `v${version}`.
+
+If Apple Developer credentials are configured later, manually run the `macOS Signed Release` workflow against the release tag and attach only its signed/notarized macOS artifacts to the public release.
 
 Validate on Arch Linux:
 
