@@ -158,7 +158,7 @@ log "rust-converter: ok"
 CHIKN_CROSS_FRONTEND_DUMP_HIERARCHY_DOCS="$HIERARCHY_DOCS" verify_rust_reader "after-rust-converter"
 
 if command -v swift >/dev/null 2>&1; then
-  swift run --package-path macos ChiknKitCrossFrontendHarness "$PROJECT"
+  swift run --package-path macos --disable-automatic-resolution ChiknKitCrossFrontendHarness "$PROJECT"
   SWIFT_WRITER_RAN=1
   log "swift-chiknkit-writer: ok"
   CHIKN_CROSS_FRONTEND_EXPECT_HIERARCHY_DOCS="$HIERARCHY_DOCS" verify_rust_reader "after-swift-writer" "cross_frontend_swift"
@@ -167,7 +167,8 @@ else
 fi
 
 if command -v dotnet >/dev/null 2>&1; then
-  dotnet run --project windows/ChickenScratch.Core.Tests/CrossFrontendHarness/ChickenScratch.Core.CrossFrontendHarness.csproj -- "$PROJECT"
+  dotnet restore windows/ChickenScratch.Core.Tests/CrossFrontendHarness/ChickenScratch.Core.CrossFrontendHarness.csproj --locked-mode -p:EnableWindowsTargeting=true
+  dotnet run --no-restore --project windows/ChickenScratch.Core.Tests/CrossFrontendHarness/ChickenScratch.Core.CrossFrontendHarness.csproj -- "$PROJECT"
   CSHARP_WRITER_RAN=1
   log "csharp-core-writer: ok"
   CHIKN_CROSS_FRONTEND_EXPECT_HIERARCHY_DOCS="$HIERARCHY_DOCS" verify_rust_reader "after-csharp-writer" "cross_frontend_csharp"

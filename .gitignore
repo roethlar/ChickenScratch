@@ -22,7 +22,6 @@ ui/dist/
 macos/.build/
 macos/.swiftpm/
 macos/DerivedData/
-macos/Package.resolved
 *.xcuserstate
 *.xcworkspace/xcuserdata/
 xcuserdata/

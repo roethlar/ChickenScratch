@@ -34,6 +34,9 @@ cargo metadata --locked --format-version 1 >/dev/null
 cargo clippy --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
 cargo test --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
 cd ui && npm ci && npm run lint && npm run build && cd ..
+swift package resolve --package-path macos
+git diff --exit-code -- macos/Package.resolved
+cd windows && dotnet restore ChickenScratch.slnx --locked-mode -p:EnableWindowsTargeting=true && cd ..
 ```
 
 Run cross-frontend format validation:
@@ -65,7 +68,7 @@ Windows:
 
 ```powershell
 cd windows
-dotnet restore ChickenScratch.slnx
+dotnet restore ChickenScratch.slnx --locked-mode
 dotnet build ChickenScratch.slnx /p:Configuration=Release --no-restore
 dotnet build ChickenScratch.App/ChickenScratch.App.csproj /p:Platform=x64 /p:Configuration=Release
 ```
