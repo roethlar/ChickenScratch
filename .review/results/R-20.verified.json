@@ -1,0 +1,7 @@
+{
+  "id": "R-20",
+  "sha": "96821ddaa221d475a5f9239608d4459d976327d1",
+  "ts": "2026-05-18T03:42:00Z",
+  "reviewer": "claude",
+  "note": "New shared core::project::deletion::delete_node (crates/core/src/core/project/deletion.rs) has correct ordering: walk subtree → delete files via writer::delete_document (inheriting R-14 safe-path) → only THEN prune hierarchy + document map. On mid-operation filesystem error, the loaded Project is structurally intact so the caller doesn't write a smaller manifest. Test delete_folder_removes_descendant_files_and_prevents_repair_resurrection covers the exact threat: delete folder with nested doc, assert .md + .meta gone, document map pruned, and R-19's reader-repair doesn't bring it back. Linux bridge now calls the shared helper and clears active editor for deleted descendants. Old hierarchy-only remove helper deleted so behavior can't drift back. Linux Qt host validation acceptable gap (macOS cxx-qt environmental failure, not project code). Tauri duplicate is follow-up unification. PKGBUILD pre-pinned b298bd020f36d2d2aa09910a677b4ef4f1fbd2a78d12a71da1e5f29084a7587e."
+}
