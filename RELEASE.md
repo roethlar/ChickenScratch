@@ -47,7 +47,7 @@ crates/core/tests/cross_frontend/run.sh
 
 ## 3. Desktop Artifact Builds
 
-macOS:
+macOS unsigned smoke build:
 
 ```bash
 CI=true cargo tauri build --bundles app,dmg -- --locked
@@ -56,6 +56,34 @@ test -n "$(find target/release/bundle/dmg -name 'ChickenScratch_*.dmg' -print -q
 ```
 
 `CI=true` makes Tauri skip Finder AppleScript DMG layout work, matching the GitHub Actions path and headless release automation.
+
+The unsigned smoke artifact uploaded by `Tauri Bundles` is not a public release artifact. For public macOS distribution, use the protected `macOS Signed Release` workflow from the `v<version>` tag or via `workflow_dispatch`. The workflow must run in the `release-macos` environment with these secrets:
+
+- `APPLE_CERTIFICATE`: base64-encoded Developer ID Application `.p12`
+- `APPLE_CERTIFICATE_PASSWORD`: password for the `.p12`
+- `APPLE_SIGNING_IDENTITY`: exact Developer ID Application identity
+- `APPLE_API_ISSUER`: App Store Connect API issuer ID
+- `APPLE_API_KEY`: App Store Connect API key ID
+- `APPLE_API_KEY_P8`: App Store Connect private key contents
+- `KEYCHAIN_PASSWORD`: temporary CI keychain password
+
+The release workflow imports the Developer ID certificate, writes the App Store Connect API key, builds with `cargo tauri build --bundles app,dmg -- --locked`, explicitly submits and staples the DMG with `xcrun notarytool`, and fails unless all signing, notarization, and stapling checks pass:
+
+```bash
+APP=target/release/bundle/macos/ChickenScratch.app
+DMG="$(find target/release/bundle/dmg -name 'ChickenScratch_*.dmg' -print -quit)"
+
+codesign --verify --deep --strict --verbose=2 "$APP"
+codesign -dv --verbose=4 "$APP" 2>&1 | grep 'Authority=Developer ID Application'
+xcrun notarytool submit "$DMG" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
+xcrun stapler staple "$DMG"
+spctl --assess --type execute --verbose=4 "$APP"
+xcrun stapler validate "$APP"
+xcrun stapler validate "$DMG"
+spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
+```
+
+Do not attach the unsigned smoke artifact to a public release.
 
 Linux:
 

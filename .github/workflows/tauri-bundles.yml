@@ -20,7 +20,7 @@ on:
 
 jobs:
   macos:
-    name: macOS app and DMG
+    name: macOS unsigned smoke app and DMG
     runs-on: macos-latest
 
     steps:
@@ -59,7 +59,7 @@ jobs:
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: chickenscratch-macos
+          name: chickenscratch-macos-unsigned-smoke
           path: |
             target/release/bundle/macos/ChickenScratch.app
             target/release/bundle/dmg/*.dmg
