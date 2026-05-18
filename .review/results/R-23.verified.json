@@ -1,0 +1,7 @@
+{
+  "id": "R-23",
+  "sha": "a45f2c8b7f3d069088cf0e9fd6925aa84dfb6472",
+  "ts": "2026-05-18T04:10:00Z",
+  "reviewer": "claude",
+  "note": "Full chain end-to-end: Backup button (Revisions.tsx:161) → runWithEditorFlush('Backup', ...) → gitCmd.manualBackup → Tauri manual_backup command under per-project write lock → core backup_current_work commits dirty state with 'Manual backup' message before pushing. Two tests cover both legs: manual_backup_commits_dirty_work_before_pushing (dirty case) and manual_backup_pushes_clean_head_without_empty_revision (clean case, no empty-commit spam). Write-lock scoping prevents autosave race. Pending debounce content captured via runWithEditorFlush, then already-flushed-but-uncommitted prose captured by the commit step — so a writer clicking Backup now sees the toast match reality (their current work is in the backup repo). PKGBUILD pre-pinned c24fe59b28327994e32cbcbcf5bf561b107185ff1e7a76f023a9061f3b0023cc."
+}
