@@ -1,0 +1,7 @@
+{
+  "id": "R-25",
+  "sha": "f7d753489036e5ff4a3dc7764d6dc85d4696ada8",
+  "ts": "2026-05-18T04:25:00Z",
+  "reviewer": "claude",
+  "note": "All-or-nothing replacement pattern: stream to in-memory buffer (replacement string), commit single insertContentAt({from,to}, replacement) transaction only if all five guards hold — not aborted, not nav-cancelled, non-empty replacement, still on origin doc, AND both textBetween(from,to) === selectedText AND selectedRangeFingerprint === selectedFingerprint. The fingerprint check (JSON of editor.state.doc.slice(from,to)) catches concurrent edits producing identical plain text but different ProseMirror structure (e.g., link annotations added during stream) — without it, autosave could persist a replacement against drifted marks. On failure or guard reject, original selection preserved untouched. Brainstorm unchanged (appends, no replacement). PKGBUILD pre-pinned a426057ca804792cfcad5ffc5bc549589c01afbbeed91ba42939acb9224f3853. Known gap (no UI test harness for AI streams) acceptable — change scope is small, all guards are concrete property checks visible in code review."
+}
