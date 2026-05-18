@@ -11,6 +11,7 @@ else
 fi
 PROJECT="$WORKDIR/Corn.chikn"
 MANIFEST="$WORKDIR/manifest.txt"
+HIERARCHY_DOCS="$WORKDIR/hierarchy-docs.txt"
 PANDOC_SHIM="$WORKDIR/pandoc-shim"
 FAIL_ON_REPAIR="${CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR:-0}"
 SWIFT_WRITER_RAN=0
@@ -80,22 +81,28 @@ verify_rust_reader() {
   local stage="$1"
   local marker="${2:-}"
   local output_file="$WORKDIR/rust-reader-$stage.log"
+  local env_args=(
+    "CHIKN_CROSS_FRONTEND_VERIFY=$PROJECT"
+  )
+
+  if [[ -n "$marker" ]]; then
+    env_args+=("CHIKN_CROSS_FRONTEND_EXPECT_FIELD=$marker")
+  fi
+
+  if [[ -n "${CHIKN_CROSS_FRONTEND_DUMP_HIERARCHY_DOCS:-}" ]]; then
+    env_args+=("CHIKN_CROSS_FRONTEND_DUMP_HIERARCHY_DOCS=$CHIKN_CROSS_FRONTEND_DUMP_HIERARCHY_DOCS")
+  fi
+
+  if [[ -n "${CHIKN_CROSS_FRONTEND_EXPECT_HIERARCHY_DOCS:-}" ]]; then
+    env_args+=("CHIKN_CROSS_FRONTEND_EXPECT_HIERARCHY_DOCS=$CHIKN_CROSS_FRONTEND_EXPECT_HIERARCHY_DOCS")
+  fi
 
   log "rust-reader:$stage: start"
-  if [[ -n "$marker" ]]; then
-    run_and_capture "$output_file" \
-      env \
-        CHIKN_CROSS_FRONTEND_VERIFY="$PROJECT" \
-        CHIKN_CROSS_FRONTEND_EXPECT_FIELD="$marker" \
-        cargo test -p chickenscratch-core --test cross_frontend_round_trip \
-          verify_cross_frontend_harness_project_from_env -- --exact --nocapture
-  else
-    run_and_capture "$output_file" \
-      env \
-        CHIKN_CROSS_FRONTEND_VERIFY="$PROJECT" \
-        cargo test -p chickenscratch-core --test cross_frontend_round_trip \
-          verify_cross_frontend_harness_project_from_env -- --exact --nocapture
-  fi
+  run_and_capture "$output_file" \
+    env \
+      "${env_args[@]}" \
+      cargo test -p chickenscratch-core --test cross_frontend_round_trip \
+        verify_cross_frontend_harness_project_from_env -- --exact --nocapture
   fail_if_repair_markers_present "$output_file" "$stage"
   log "rust-reader:$stage: ok"
 }
@@ -148,13 +155,13 @@ rm -rf "$PROJECT"
 cargo build -p chikn-converter
 target/debug/chikn-converter --pandoc "$PANDOC_SHIM" samples/Corn.scriv "$PROJECT"
 log "rust-converter: ok"
-verify_rust_reader "after-rust-converter"
+CHIKN_CROSS_FRONTEND_DUMP_HIERARCHY_DOCS="$HIERARCHY_DOCS" verify_rust_reader "after-rust-converter"
 
 if command -v swift >/dev/null 2>&1; then
   swift run --package-path macos ChiknKitCrossFrontendHarness "$PROJECT"
   SWIFT_WRITER_RAN=1
   log "swift-chiknkit-writer: ok"
-  verify_rust_reader "after-swift-writer" "cross_frontend_swift"
+  CHIKN_CROSS_FRONTEND_EXPECT_HIERARCHY_DOCS="$HIERARCHY_DOCS" verify_rust_reader "after-swift-writer" "cross_frontend_swift"
 else
   skip_toolchain "swift-chiknkit-writer" "swift not found"
 fi
@@ -163,7 +170,7 @@ if command -v dotnet >/dev/null 2>&1; then
   dotnet run --project windows/ChickenScratch.Core.Tests/CrossFrontendHarness/ChickenScratch.Core.CrossFrontendHarness.csproj -- "$PROJECT"
   CSHARP_WRITER_RAN=1
   log "csharp-core-writer: ok"
-  verify_rust_reader "after-csharp-writer" "cross_frontend_csharp"
+  CHIKN_CROSS_FRONTEND_EXPECT_HIERARCHY_DOCS="$HIERARCHY_DOCS" verify_rust_reader "after-csharp-writer" "cross_frontend_csharp"
 else
   skip_toolchain "csharp-core-writer" "dotnet not found"
 fi

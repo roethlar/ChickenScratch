@@ -56,6 +56,7 @@ jobs:
       - name: Cross-frontend harness
         env:
           CHIKN_CROSS_FRONTEND_WORKDIR: ${{ runner.temp }}/chikn-cross-frontend
+          CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR: "1"
         run: |
           rm -rf "$CHIKN_CROSS_FRONTEND_WORKDIR"
           crates/core/tests/cross_frontend/run.sh
