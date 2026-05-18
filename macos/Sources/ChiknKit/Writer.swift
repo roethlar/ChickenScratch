@@ -138,7 +138,7 @@ public enum Writer {
         ].compactMapValues { $0 is NSNull ? nil : $0 }
         try writeYaml(meta, to: metaURL)
 
-        let node = TreeNode(id: id, name: trimmed, kind: .document)
+        let node = TreeNode(id: id, name: trimmed, kind: .document, relativePath: relativePath)
         var project = project
         project.hierarchy = insertNode(node, parentID: resolvedParentID, in: project.hierarchy, path: relativePath)
         let document = Document(
@@ -652,7 +652,7 @@ public enum Writer {
 
     private static func writeProjectYaml(_ project: Project) throws {
         let url = project.path.appendingPathComponent("project.yaml")
-        let payload = ProjectYaml(project: project)
+        let payload = try ProjectYaml(project: project)
         let encoder = YAMLEncoder()
         let text = try encoder.encode(payload)
         try text.write(to: url, atomically: true, encoding: .utf8)
@@ -668,13 +668,13 @@ public enum Writer {
         let metadata: MetadataYaml
         let hierarchy: [NodeYaml]
 
-        init(project: Project) {
+        init(project: Project) throws {
             id = project.id
             name = project.name
             created = Writer.iso8601(project.created)
             modified = Writer.iso8601(project.modified)
             metadata = MetadataYaml(project.metadata)
-            hierarchy = project.hierarchy.map { NodeYaml($0, in: project) }
+            hierarchy = try project.hierarchy.map { try NodeYaml($0, in: project) }
         }
     }
 
@@ -747,16 +747,26 @@ public enum Writer {
         let path: String?
         let children: [NodeYaml]
 
-        init(_ node: TreeNode, in project: Project) {
+        init(_ node: TreeNode, in project: Project) throws {
             id = node.id
             name = node.name
             type = node.kind.rawValue
             if node.kind == .document {
-                path = project.documents[node.id]?.relativePath
+                guard let resolvedPath = project.documents[node.id]?.relativePath ?? node.relativePath,
+                      !resolvedPath.isEmpty
+                else {
+                    throw ChiknError.invalidProjectYaml("document hierarchy node has no path: \(node.id)")
+                }
+                _ = try SafeProjectPath.documentURLs(
+                    projectURL: project.path,
+                    relativePath: resolvedPath,
+                    createParentDirectories: false
+                )
+                path = resolvedPath
             } else {
                 path = nil
             }
-            children = node.children.map { NodeYaml($0, in: project) }
+            children = try node.children.map { try NodeYaml($0, in: project) }
         }
     }
 

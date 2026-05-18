@@ -44,6 +44,14 @@ func topLevelFolderID(named name: String, in project: Project) -> String? {
     project.hierarchy.first { $0.kind == .folder && $0.name == name }?.id
 }
 
+func findNode(id: String, in nodes: [TreeNode]) -> TreeNode? {
+    for node in nodes {
+        if node.id == id { return node }
+        if let found = findNode(id: id, in: node.children) { return found }
+    }
+    return nil
+}
+
 @MainActor
 func checkThrows(_ label: String, _ body: () throws -> Void) {
     do {
@@ -451,6 +459,95 @@ runCase("reader rejects symlinked metadata targets") {
 
     checkThrows("reader rejects symlinked .meta target") {
         _ = try Reader.readProject(at: url)
+    }
+}
+
+runCase("missing hierarchy document body is not pruned on native write") {
+    let url = makeTempProjectURL()
+    defer { cleanup(url) }
+
+    var project = try Writer.createProject(at: url, name: "MissingBodyPreserve")
+    let (updated, doc) = try Writer.createDocument(name: "Vanishing Scene", parentID: "manuscript", in: project)
+    project = updated
+
+    let docURL = url.appendingPathComponent(doc.relativePath)
+    try FileManager.default.removeItem(at: docURL)
+
+    let reread = try Reader.readProject(at: url)
+    check(reread.documents[doc.id] == nil, "missing body is absent from document map")
+    check(findNode(id: doc.id, in: reread.hierarchy)?.relativePath == doc.relativePath,
+          "hierarchy keeps missing body path")
+
+    try Writer.touchProject(reread)
+    let projectYaml = try String(contentsOf: url.appendingPathComponent("project.yaml"), encoding: .utf8)
+    check(projectYaml.contains("id: \(doc.id)"), "missing body id remains in project.yaml")
+    check(projectYaml.contains("path: \(doc.relativePath)"), "missing body path remains in project.yaml")
+    check(!FileManager.default.fileExists(atPath: docURL.path), "native metadata write did not recreate missing body")
+}
+
+runCase("reader fails closed on missing or malformed document metadata") {
+    let missingURL = makeTempProjectURL()
+    defer { cleanup(missingURL) }
+
+    var missingProject = try Writer.createProject(at: missingURL, name: "MissingMeta")
+    let (missingUpdated, missingDoc) = try Writer.createDocument(name: "No Meta", parentID: "manuscript", in: missingProject)
+    missingProject = missingUpdated
+    let missingMeta = missingURL.appendingPathComponent(missingDoc.relativePath)
+        .deletingPathExtension().appendingPathExtension("meta")
+    try FileManager.default.removeItem(at: missingMeta)
+    checkThrows("missing .meta rejects load") {
+        _ = try Reader.readProject(at: missingProject.path)
+    }
+
+    let corruptURL = makeTempProjectURL()
+    defer { cleanup(corruptURL) }
+    var corruptProject = try Writer.createProject(at: corruptURL, name: "CorruptMeta")
+    let (corruptUpdated, corruptDoc) = try Writer.createDocument(name: "Corrupt Meta", parentID: "manuscript", in: corruptProject)
+    corruptProject = corruptUpdated
+    let corruptMeta = corruptURL.appendingPathComponent(corruptDoc.relativePath)
+        .deletingPathExtension().appendingPathExtension("meta")
+    try "id: [unterminated\n".write(to: corruptMeta, atomically: true, encoding: .utf8)
+    checkThrows("corrupt .meta rejects load") {
+        _ = try Reader.readProject(at: corruptProject.path)
+    }
+
+    let noIDURL = makeTempProjectURL()
+    defer { cleanup(noIDURL) }
+    var noIDProject = try Writer.createProject(at: noIDURL, name: "NoIDMeta")
+    let (noIDUpdated, noIDDoc) = try Writer.createDocument(name: "No ID", parentID: "manuscript", in: noIDProject)
+    noIDProject = noIDUpdated
+    let noIDMeta = noIDURL.appendingPathComponent(noIDDoc.relativePath)
+        .deletingPathExtension().appendingPathExtension("meta")
+    try "name: No ID\n".write(to: noIDMeta, atomically: true, encoding: .utf8)
+    checkThrows("missing meta id rejects load") {
+        _ = try Reader.readProject(at: noIDProject.path)
+    }
+}
+
+runCase("reader fails closed when document content cannot be read") {
+    let url = makeTempProjectURL()
+    defer { cleanup(url) }
+
+    _ = try Writer.createProject(at: url, name: "UnreadableContent")
+    let directoryURL = url.appendingPathComponent("manuscript/directory.md")
+    try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+    let metaURL = url.appendingPathComponent("manuscript/directory.meta")
+    try "id: directory\nname: Directory\n".write(to: metaURL, atomically: true, encoding: .utf8)
+
+    checkThrows("directory named .md rejects load") {
+        _ = try Reader.readProject(at: url)
+    }
+}
+
+runCase("writer rejects document hierarchy nodes without paths") {
+    let url = makeTempProjectURL()
+    defer { cleanup(url) }
+
+    var project = try Writer.createProject(at: url, name: "MissingHierarchyPath")
+    project.hierarchy[0].children.append(TreeNode(id: "missing-path", name: "Missing Path", kind: .document))
+
+    checkThrows("document hierarchy path is required") {
+        try Writer.touchProject(project)
     }
 }
 

@@ -108,12 +108,20 @@ public struct TreeNode: Sendable, Identifiable, Hashable {
     public let id: String
     public var name: String
     public var kind: NodeKind
+    public var relativePath: String?
     public var children: [TreeNode]
 
-    public init(id: String, name: String, kind: NodeKind, children: [TreeNode] = []) {
+    public init(
+        id: String,
+        name: String,
+        kind: NodeKind,
+        relativePath: String? = nil,
+        children: [TreeNode] = []
+    ) {
         self.id = id
         self.name = name
         self.kind = kind
+        self.relativePath = relativePath
         self.children = children
     }
 

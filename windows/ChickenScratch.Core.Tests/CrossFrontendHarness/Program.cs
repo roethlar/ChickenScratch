@@ -11,11 +11,17 @@ if (args.Length == 1 && args[0] == "--atomic-writes")
     return RunAtomicWritesHarness();
 }
 
+if (args.Length == 1 && args[0] == "--native-repair")
+{
+    return RunNativeRepairHarness();
+}
+
 if (args.Length != 1)
 {
     Console.Error.WriteLine("usage: dotnet run --project windows/ChickenScratch.Core.Tests/CrossFrontendHarness <project.chikn>");
     Console.Error.WriteLine("       dotnet run --project windows/ChickenScratch.Core.Tests/CrossFrontendHarness -- --safe-paths");
     Console.Error.WriteLine("       dotnet run --project windows/ChickenScratch.Core.Tests/CrossFrontendHarness -- --atomic-writes");
+    Console.Error.WriteLine("       dotnet run --project windows/ChickenScratch.Core.Tests/CrossFrontendHarness -- --native-repair");
     return 1;
 }
 
@@ -158,6 +164,98 @@ static int RunAtomicWritesHarness()
         AssertNoAtomicTempFiles(Path.GetDirectoryName(newMetaPath)!, "new.meta");
 
         Console.WriteLine("ChickenScratch.Core.CrossFrontendHarness atomic-writes: passed");
+        return 0;
+    }
+    finally
+    {
+        if (Directory.Exists(tempRoot))
+            Directory.Delete(tempRoot, recursive: true);
+    }
+}
+
+static int RunNativeRepairHarness()
+{
+    var tempRoot = Path.Combine(Path.GetTempPath(), "chickenscratch-native-repair-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(tempRoot);
+
+    try
+    {
+        var missingBodyPath = CreateProjectRoot(tempRoot, "missing-body");
+        WriteHierarchyProjectYaml(missingBodyPath, "missing-body-doc", "Missing Body", "manuscript/missing-body.md");
+
+        var missingBodyProject = ProjectReader.ReadProject(missingBodyPath);
+        AssertEqual(false, missingBodyProject.Documents.ContainsKey("missing-body-doc"), "missing body should not enter document map");
+        ProjectWriter.WriteProject(missingBodyProject);
+        var missingBodyYaml = File.ReadAllText(Path.Combine(missingBodyPath, "project.yaml"));
+        AssertContains(missingBodyYaml, "id: missing-body-doc", "missing body hierarchy id should be preserved");
+        AssertContains(missingBodyYaml, "path: manuscript/missing-body.md", "missing body hierarchy path should be preserved");
+        AssertEqual(false, File.Exists(Path.Combine(missingBodyPath, "manuscript", "missing-body.md")), "missing body should not be recreated");
+
+        var missingMetaPath = CreateProjectRoot(tempRoot, "missing-meta");
+        File.WriteAllText(Path.Combine(missingMetaPath, "manuscript", "scene.md"), "scene body");
+        WriteHierarchyProjectYaml(missingMetaPath, "scene-id", "Scene From Hierarchy", "manuscript/scene.md");
+
+        var missingMetaProject = ProjectReader.ReadProject(missingMetaPath);
+        AssertEqual(true, missingMetaProject.Documents.ContainsKey("scene-id"), "missing meta should recover hierarchy id");
+        ProjectWriter.WriteProject(missingMetaProject);
+        var recoveredMeta = File.ReadAllText(Path.Combine(missingMetaPath, "manuscript", "scene.meta"));
+        AssertContains(recoveredMeta, "id: scene-id", "recovered meta should persist hierarchy id");
+        AssertContains(recoveredMeta, "name: Scene From Hierarchy", "recovered meta should persist hierarchy name");
+
+        var missingIDMetaPath = CreateProjectRoot(tempRoot, "missing-id-meta");
+        File.WriteAllText(Path.Combine(missingIDMetaPath, "manuscript", "note.md"), "note body");
+        File.WriteAllText(Path.Combine(missingIDMetaPath, "manuscript", "note.meta"), "name: Meta Name\nstatus: Draft\n");
+        WriteHierarchyProjectYaml(missingIDMetaPath, "note-id", "Note From Hierarchy", "manuscript/note.md");
+
+        var missingIDProject = ProjectReader.ReadProject(missingIDMetaPath);
+        AssertEqual(true, missingIDProject.Documents.ContainsKey("note-id"), "meta without id should recover hierarchy id");
+        AssertEqual("Draft", missingIDProject.Documents["note-id"].Status, "meta fields should survive id recovery");
+        ProjectWriter.WriteProject(missingIDProject);
+        var missingIDMeta = File.ReadAllText(Path.Combine(missingIDMetaPath, "manuscript", "note.meta"));
+        AssertContains(missingIDMeta, "id: note-id", "rewritten meta should include recovered id");
+        AssertContains(missingIDMeta, "status: Draft", "rewritten meta should preserve existing metadata");
+
+        AssertThrows("corrupt meta should fail before native write", () =>
+        {
+            var corruptMetaPath = CreateProjectRoot(tempRoot, "corrupt-meta");
+            File.WriteAllText(Path.Combine(corruptMetaPath, "manuscript", "bad.md"), "bad body");
+            File.WriteAllText(Path.Combine(corruptMetaPath, "manuscript", "bad.meta"), "id: [unterminated\n");
+            WriteHierarchyProjectYaml(corruptMetaPath, "bad-id", "Bad Meta", "manuscript/bad.md");
+            _ = ProjectReader.ReadProject(corruptMetaPath);
+        });
+
+        AssertRejects("writer rejects hierarchy document without a path", () =>
+        {
+            var projectPath = CreateProjectRoot(tempRoot, "empty-hierarchy-path");
+            var project = new Project
+            {
+                Id = Guid.NewGuid().ToString(),
+                Name = "Empty Hierarchy Path",
+                Path = projectPath,
+                Hierarchy =
+                [
+                    new FolderNode
+                    {
+                        Id = "manuscript",
+                        Name = "Manuscript",
+                        Type = "folder",
+                        Children =
+                        [
+                            new DocumentNode
+                            {
+                                Id = "empty-path",
+                                Name = "Empty Path",
+                                Path = "",
+                                Type = "document",
+                            },
+                        ],
+                    },
+                ],
+            };
+            ProjectWriter.WriteProject(project);
+        });
+
+        Console.WriteLine("ChickenScratch.Core.CrossFrontendHarness native-repair: passed");
         return 0;
     }
     finally
@@ -315,6 +413,33 @@ static void WriteMinimalProjectYaml(string projectPath)
         """);
 }
 
+static void WriteHierarchyProjectYaml(string projectPath, string docId, string docName, string docPath)
+{
+    File.WriteAllText(
+        Path.Combine(projectPath, "project.yaml"),
+        $"""
+        id: {Path.GetFileNameWithoutExtension(projectPath)}
+        name: Native Repair
+        created: 2026-01-01T00:00:00Z
+        modified: 2026-01-01T00:00:00Z
+        hierarchy:
+        - id: manuscript
+          name: Manuscript
+          type: folder
+          children:
+          - id: {docId}
+            name: {docName}
+            type: document
+            path: {docPath}
+        - id: research
+          name: Research
+          type: folder
+        - id: trash
+          name: Trash
+          type: folder
+        """);
+}
+
 static void AssertRejects(string name, Action action)
 {
     try
@@ -327,6 +452,20 @@ static void AssertRejects(string name, Action action)
     }
 
     throw new InvalidOperationException($"{name}: expected InvalidOperationException");
+}
+
+static void AssertThrows(string name, Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (Exception)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException($"{name}: expected an exception");
 }
 
 static void AssertEqual<T>(T expected, T actual, string message)
