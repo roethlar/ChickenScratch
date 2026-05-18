@@ -1,0 +1,7 @@
+{
+  "id": "R-17",
+  "sha": "a23c2d0482b9a2d7ff1b6664b715c5a76b3a75c9",
+  "ts": "2026-05-18T03:32:00Z",
+  "reviewer": "claude",
+  "note": "All six git mutation paths now guarded. Concrete tests with explicit no-side-effect assertions in remote_sync.rs: restore_document (dirty + symlink .md + symlink .meta), create_draft (no orphan branch), switch_draft (no switch + no clobber), merge_draft fast-forward (no advance HEAD), sync_pull fast-forward (no advance HEAD). Each rejection paired with absence-of-side-effect assertion so tests prove the guard isn't just early-returning after damage. restore_document routes through pub(crate) writer helper so historical .md/.meta blobs inherit R-14 path validation + R-15 atomic semantics. 17/17 remote_sync tests pass. PKGBUILD pre-pinned b5262f77867a367305844b9e5f6d0ddb8b5d18bc4dedcea24efe4568a536b57c. Closes the targeted-overwrite vector for historical restore and the lost-prose vector for draft/pull workflows."
+}
