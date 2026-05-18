@@ -1,6 +1,6 @@
 use chickenscratch_core::core::compile::{self, CompileOptions};
 use chickenscratch_core::core::git;
-use chickenscratch_core::core::project::{reader, writer};
+use chickenscratch_core::core::project::{deletion, reader, writer};
 use chickenscratch_core::models::{Comment, Document, Project, TreeNode};
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QList, QString, QStringList};
@@ -680,16 +680,15 @@ impl ffi::AppController {
                 None => return QString::from("No project loaded"),
             };
 
-            remove_from_hierarchy(&mut project.hierarchy, &id_str);
-            project.documents.remove(&id_str);
+            let deleted_ids = deletion::delete_node(project, &id_str)?;
 
-            writer::write_project(project)
+            writer::write_project(project).map(|_| deleted_ids)
         };
 
         match write_result {
-            Ok(()) => {
+            Ok(deleted_ids) => {
                 let active = self.as_ref().active_doc_id().to_string();
-                if active == id_str {
+                if deleted_ids.iter().any(|id| id == &active) {
                     self.as_mut().set_active_doc_id(QString::default());
                     self.as_mut().set_active_doc_name(QString::default());
                     self.as_mut().set_active_doc_content(QString::default());
@@ -1386,16 +1385,6 @@ fn add_to_hierarchy(nodes: &mut Vec<TreeNode>, parent_id: &str, new_node: TreeNo
         }
     }
     false
-}
-
-/// Recursively remove the node with the given `node_id` from the hierarchy.
-fn remove_from_hierarchy(nodes: &mut Vec<TreeNode>, node_id: &str) {
-    nodes.retain(|n| n.id() != node_id);
-    for node in nodes.iter_mut() {
-        if let TreeNode::Folder { children, .. } = node {
-            remove_from_hierarchy(children, node_id);
-        }
-    }
 }
 
 fn rename_in_hierarchy(nodes: &mut Vec<TreeNode>, node_id: &str, new_name: &str) {
