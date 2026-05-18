@@ -1,0 +1,7 @@
+{
+  "id": "R-27",
+  "sha": "4e7a1b6b35a614125cfb7d57f62fcf3918dafba4",
+  "ts": "2026-05-18T04:30:00Z",
+  "reviewer": "claude",
+  "note": "--locked now wired through every release-path Cargo invocation. check-release-metadata.sh:56 runs cargo metadata --locked --format-version 1, failing the release gate on stale lock. validation.yml runs clippy + tests --locked. tauri-bundles.yml has explicit 'Locked Rust dependency preflight' step on both macOS and Linux jobs, plus cargo tauri build ... -- --locked (trailing -- passes flag through Tauri CLI to underlying cargo build). PKGBUILD uses cargo build --locked --release. Gate passes locally; Cargo.lock in sync with manifests. Any future manifest edit without lockfile refresh will fail at PR time. PKGBUILD pre-pinned 370be2ad422d78885b6802a9396c44f146375d32fae02bbc87fbf7b8271126a3."
+}
