@@ -506,32 +506,7 @@ fn write_document(
     project_path: &Path,
     document: &crate::models::Document,
 ) -> Result<(), ChiknError> {
-    // Resolve full path from project root
-    let full_content_path = project_path.join(&document.path);
-
-    let folder_path = ensure_document_parent_directory(project_path, &document.path)?;
-    let doc_name = full_content_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| {
-            ChiknError::InvalidFormat(format!("Invalid document path: {}", document.path))
-        })?;
-
-    let project_root = canonical_project_root(project_path)?;
-    ensure_existing_path_safe(
-        &full_content_path,
-        &project_root,
-        &document.path,
-        "document file",
-    )?;
-
-    let meta_path = get_document_meta_path(&folder_path, doc_name);
-    ensure_existing_path_safe(
-        &meta_path,
-        &project_root,
-        &document.path,
-        "document metadata",
-    )?;
+    let (full_content_path, meta_path) = safe_document_write_paths(project_path, &document.path)?;
 
     // Read existing metadata to preserve fields we don't model in Document
     let existing_meta = read_existing_document_metadata(&meta_path)?;
@@ -579,6 +554,57 @@ fn write_document(
     atomic_write_file(&meta_path, meta_content.as_bytes())?;
 
     Ok(())
+}
+
+/// Write restored document bytes through the same path validation, symlink
+/// rejection, and atomic-file replacement used by normal project saves.
+pub(crate) fn write_document_blobs(
+    project_path: &Path,
+    document_path: &str,
+    content: &[u8],
+    metadata: Option<&[u8]>,
+) -> Result<(), ChiknError> {
+    let (full_content_path, meta_path) = safe_document_write_paths(project_path, document_path)?;
+
+    atomic_write_file(&full_content_path, content)?;
+    if let Some(metadata) = metadata {
+        atomic_write_file(&meta_path, metadata)?;
+    }
+
+    Ok(())
+}
+
+fn safe_document_write_paths(
+    project_path: &Path,
+    document_path: &str,
+) -> Result<(PathBuf, PathBuf), ChiknError> {
+    let full_content_path = project_path.join(document_path);
+
+    let folder_path = ensure_document_parent_directory(project_path, document_path)?;
+    let doc_name = full_content_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| {
+            ChiknError::InvalidFormat(format!("Invalid document path: {}", document_path))
+        })?;
+
+    let project_root = canonical_project_root(project_path)?;
+    ensure_existing_path_safe(
+        &full_content_path,
+        &project_root,
+        document_path,
+        "document file",
+    )?;
+
+    let meta_path = get_document_meta_path(&folder_path, doc_name);
+    ensure_existing_path_safe(
+        &meta_path,
+        &project_root,
+        document_path,
+        "document metadata",
+    )?;
+
+    Ok((full_content_path, meta_path))
 }
 
 fn atomic_write_file(path: &Path, contents: &[u8]) -> Result<(), ChiknError> {
