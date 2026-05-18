@@ -2,6 +2,7 @@ use chickenscratch_core::core::compile::{self, CompileOptions};
 use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::{deletion, reader, writer};
 use chickenscratch_core::models::{Comment, Document, Project, TreeNode};
+use chickenscratch_core::utils::slug::unique_slug;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QList, QString, QStringList};
 use std::collections::HashSet;
@@ -575,15 +576,14 @@ impl ffi::AppController {
 
         let now = chrono_now();
         let new_id = make_id();
-        let slug = make_slug(name_trimmed);
-        let rel_path = format!("manuscript/{}.md", slug);
-
         let write_result = {
             let mut rust_mut = self.as_mut().rust_mut();
             let project = match rust_mut.project.as_mut() {
                 Some(p) => p,
                 None => return QString::from("No project loaded"),
             };
+            let slug = unique_slug(name_trimmed, "manuscript/", &project.documents);
+            let rel_path = format!("manuscript/{}.md", slug);
 
             let new_node = TreeNode::Document {
                 id: new_id.clone(),
@@ -1354,17 +1354,6 @@ fn make_id() -> String {
             .unwrap_or_default()
             .as_nanos()
     )
-}
-
-fn make_slug(name: &str) -> String {
-    name.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
 }
 
 /// Recursively add `new_node` as a child of the folder with the given `parent_id`.

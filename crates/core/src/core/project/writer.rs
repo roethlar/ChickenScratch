@@ -22,6 +22,7 @@
 //! ```
 
 use chrono::Utc;
+use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::io::Write;
@@ -243,9 +244,30 @@ fn write_all_documents(project: &Project) -> Result<(), ChiknError> {
 fn validate_all_document_targets(project: &Project) -> Result<(), ChiknError> {
     let project_path = Path::new(&project.path);
     let project_root = canonical_project_root(project_path)?;
+    let mut document_ids = HashSet::new();
+    let mut document_paths = HashSet::new();
 
-    for document in project.documents.values() {
+    for (map_id, document) in &project.documents {
+        if map_id != &document.id {
+            return Err(ChiknError::InvalidFormat(format!(
+                "Document map key {map_id} does not match document id {}",
+                document.id
+            )));
+        }
+        if !document_ids.insert(document.id.clone()) {
+            return Err(ChiknError::InvalidFormat(format!(
+                "Duplicate document id: {}",
+                document.id
+            )));
+        }
         validate_relative_document_path(&document.path)?;
+        let normalized_path = normalized_relative_document_path(&document.path)?;
+        if !document_paths.insert(normalized_path) {
+            return Err(ChiknError::InvalidFormat(format!(
+                "Duplicate document path: {}",
+                document.path
+            )));
+        }
 
         let doc_path = Path::new(&document.path);
         let full_content_path = project_path.join(doc_path);
@@ -325,6 +347,20 @@ fn validate_relative_document_path(document_path: &str) -> Result<(), ChiknError
     }
 
     Ok(())
+}
+
+fn normalized_relative_document_path(document_path: &str) -> Result<String, ChiknError> {
+    let slash_path = document_path.replace('\\', "/");
+    validate_relative_document_path(&slash_path)?;
+    let components: Vec<String> = Path::new(&slash_path)
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect();
+
+    Ok(components.join("/"))
 }
 
 fn invalid_document_path(document_path: &str, reason: &str) -> ChiknError {
@@ -778,6 +814,43 @@ mod tests {
 
         let meta_path = get_manuscript_path(&project_path).join("chapter-01.meta");
         assert!(meta_path.exists());
+    }
+
+    #[test]
+    fn test_write_project_rejects_duplicate_document_paths_before_write() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("DuplicatePathProject.chikn");
+        let mut project = create_project(&project_path, "Duplicate Path Project").unwrap();
+
+        let content_path = get_manuscript_path(&project_path).join("chapter-01.md");
+        fs::write(&content_path, "original").unwrap();
+
+        let first = Document {
+            id: "doc1".to_string(),
+            name: "Chapter 1".to_string(),
+            path: "manuscript/chapter-01.md".to_string(),
+            content: "first".to_string(),
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        let second = Document {
+            id: "doc2".to_string(),
+            name: "Chapter 1 Copy".to_string(),
+            path: "manuscript/chapter-01.md".to_string(),
+            content: "second".to_string(),
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+
+        project.documents.insert(first.id.clone(), first);
+        project.documents.insert(second.id.clone(), second);
+
+        let result = write_project(&mut project);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        assert_eq!(fs::read_to_string(content_path).unwrap(), "original");
     }
 
     #[test]

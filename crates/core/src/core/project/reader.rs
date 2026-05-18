@@ -19,7 +19,7 @@
 //! # Ok(()) }
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
@@ -220,8 +220,9 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
     validate_hierarchy_document_paths(&metadata.hierarchy)?;
 
     // Read all documents from manuscript and research folders
-    let hierarchy_identities = collect_hierarchy_document_identities(&metadata.hierarchy);
+    let hierarchy_identities = collect_hierarchy_document_identities(&metadata.hierarchy)?;
     let documents = read_all_documents(path, &hierarchy_identities)?;
+    validate_hierarchy_documents_match_loaded_documents(&metadata.hierarchy, &documents)?;
 
     let mut project = Project {
         id: metadata.id,
@@ -520,31 +521,58 @@ fn collect_paths_inner(hierarchy: &[TreeNode], paths: &mut std::collections::Has
 
 fn collect_hierarchy_document_identities(
     hierarchy: &[TreeNode],
-) -> HashMap<String, HierarchyDocumentIdentity> {
+) -> Result<HashMap<String, HierarchyDocumentIdentity>, ChiknError> {
     let mut identities = HashMap::new();
-    collect_hierarchy_document_identities_inner(hierarchy, &mut identities);
-    identities
+    let mut document_ids = HashSet::new();
+    let mut document_paths = HashSet::new();
+    collect_hierarchy_document_identities_inner(
+        hierarchy,
+        &mut identities,
+        &mut document_ids,
+        &mut document_paths,
+    )?;
+    Ok(identities)
 }
 
 fn collect_hierarchy_document_identities_inner(
     hierarchy: &[TreeNode],
     identities: &mut HashMap<String, HierarchyDocumentIdentity>,
-) {
+    document_ids: &mut HashSet<String>,
+    document_paths: &mut HashSet<String>,
+) -> Result<(), ChiknError> {
     for node in hierarchy {
         match node {
             TreeNode::Document { id, name, path } => {
-                identities
-                    .entry(path.clone())
-                    .or_insert_with(|| HierarchyDocumentIdentity {
+                if !document_ids.insert(id.clone()) {
+                    return Err(ChiknError::InvalidFormat(format!(
+                        "Duplicate hierarchy document id: {id}"
+                    )));
+                }
+                let normalized_path = normalized_relative_document_path(path)?;
+                if !document_paths.insert(normalized_path.clone()) {
+                    return Err(ChiknError::InvalidFormat(format!(
+                        "Duplicate hierarchy document path: {path}"
+                    )));
+                }
+                identities.insert(
+                    normalized_path,
+                    HierarchyDocumentIdentity {
                         id: id.clone(),
                         name: name.clone(),
-                    });
+                    },
+                );
             }
             TreeNode::Folder { children, .. } => {
-                collect_hierarchy_document_identities_inner(children, identities);
+                collect_hierarchy_document_identities_inner(
+                    children,
+                    identities,
+                    document_ids,
+                    document_paths,
+                )?;
             }
         }
     }
+    Ok(())
 }
 
 /// Reads project.yaml and parses into ProjectMetadata
@@ -567,6 +595,7 @@ fn read_all_documents(
     hierarchy_identities: &HashMap<String, HierarchyDocumentIdentity>,
 ) -> Result<HashMap<String, Document>, ChiknError> {
     let mut documents = HashMap::new();
+    let mut document_paths = HashSet::new();
     let project_root = canonical_project_root(project_path)?;
 
     // Read from manuscript folder (recursively)
@@ -577,6 +606,7 @@ fn read_all_documents(
         &project_root,
         hierarchy_identities,
         &mut documents,
+        &mut document_paths,
     )?;
 
     // Read from research folder (recursively)
@@ -587,6 +617,7 @@ fn read_all_documents(
         &project_root,
         hierarchy_identities,
         &mut documents,
+        &mut document_paths,
     )?;
 
     // Read from characters/locations folders if present (novelist convention).
@@ -598,6 +629,7 @@ fn read_all_documents(
         &project_root,
         hierarchy_identities,
         &mut documents,
+        &mut document_paths,
     )?;
     let locations_path = get_locations_path(project_path);
     read_optional_document_root(
@@ -606,6 +638,7 @@ fn read_all_documents(
         &project_root,
         hierarchy_identities,
         &mut documents,
+        &mut document_paths,
     )?;
 
     Ok(documents)
@@ -637,6 +670,7 @@ fn read_optional_document_root(
     project_root: &Path,
     hierarchy_identities: &HashMap<String, HierarchyDocumentIdentity>,
     documents: &mut HashMap<String, Document>,
+    document_paths: &mut HashSet<String>,
 ) -> Result<(), ChiknError> {
     match fs::symlink_metadata(folder_path) {
         Ok(metadata) => {
@@ -647,6 +681,7 @@ fn read_optional_document_root(
                 project_root,
                 hierarchy_identities,
                 documents,
+                document_paths,
             )
         }
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
@@ -661,6 +696,7 @@ fn read_documents_from_folder(
     project_root: &Path,
     hierarchy_identities: &HashMap<String, HierarchyDocumentIdentity>,
     documents: &mut HashMap<String, Document>,
+    document_paths: &mut HashSet<String>,
 ) -> Result<(), ChiknError> {
     let metadata = fs::symlink_metadata(folder_path)?;
     ensure_read_directory_metadata_safe(folder_path, &metadata, project_root)?;
@@ -686,6 +722,19 @@ fn read_documents_from_folder(
                         project_root,
                         hierarchy_identities,
                     )?;
+                    let normalized_path = normalized_relative_document_path(&doc.path)?;
+                    if !document_paths.insert(normalized_path) {
+                        return Err(ChiknError::InvalidFormat(format!(
+                            "Duplicate document path: {}",
+                            doc.path
+                        )));
+                    }
+                    if documents.contains_key(&doc.id) {
+                        return Err(ChiknError::InvalidFormat(format!(
+                            "Duplicate document id: {}",
+                            doc.id
+                        )));
+                    }
                     documents.insert(doc.id.clone(), doc);
                 }
             }
@@ -697,10 +746,62 @@ fn read_documents_from_folder(
                 project_root,
                 hierarchy_identities,
                 documents,
+                document_paths,
             )?;
         }
     }
 
+    Ok(())
+}
+
+fn validate_hierarchy_documents_match_loaded_documents(
+    hierarchy: &[TreeNode],
+    documents: &HashMap<String, Document>,
+) -> Result<(), ChiknError> {
+    let mut documents_by_path = HashMap::new();
+    for document in documents.values() {
+        let normalized_path = normalized_relative_document_path(&document.path)?;
+        documents_by_path.insert(normalized_path, document.id.as_str());
+    }
+    validate_hierarchy_documents_match_loaded_documents_inner(
+        hierarchy,
+        documents,
+        &documents_by_path,
+    )
+}
+
+fn validate_hierarchy_documents_match_loaded_documents_inner(
+    hierarchy: &[TreeNode],
+    documents: &HashMap<String, Document>,
+    documents_by_path: &HashMap<String, &str>,
+) -> Result<(), ChiknError> {
+    for node in hierarchy {
+        match node {
+            TreeNode::Document { id, path, .. } => {
+                let normalized_path = normalized_relative_document_path(path)?;
+                if let Some(document) = documents.get(id) {
+                    let loaded_path = normalized_relative_document_path(&document.path)?;
+                    if loaded_path != normalized_path {
+                        return Err(ChiknError::InvalidFormat(format!(
+                            "Hierarchy document {id} points at {path}, but loaded document path is {}",
+                            document.path
+                        )));
+                    }
+                } else if let Some(actual_id) = documents_by_path.get(&normalized_path) {
+                    return Err(ChiknError::InvalidFormat(format!(
+                        "Hierarchy document {id} points at {path}, but that path loaded as document {actual_id}"
+                    )));
+                }
+            }
+            TreeNode::Folder { children, .. } => {
+                validate_hierarchy_documents_match_loaded_documents_inner(
+                    children,
+                    documents,
+                    documents_by_path,
+                )?;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -889,6 +990,20 @@ fn validate_relative_document_path(document_path: &str) -> Result<(), ChiknError
     }
 
     Ok(())
+}
+
+fn normalized_relative_document_path(document_path: &str) -> Result<String, ChiknError> {
+    let slash_path = document_path.replace('\\', "/");
+    validate_relative_document_path(&slash_path)?;
+    let components: Vec<String> = Path::new(&slash_path)
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect();
+
+    Ok(components.join("/"))
 }
 
 fn invalid_document_path(document_path: &str, reason: &str) -> ChiknError {
@@ -1111,6 +1226,78 @@ hierarchy:
     id: "doc1"
     name: "Chapter 1"
     path: "../outside.md"
+"#,
+            generate_id()
+        );
+        fs::write(project_path.join(PROJECT_FILE), project_yaml).unwrap();
+
+        let result = read_project(&project_path);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_read_project_rejects_duplicate_document_ids() {
+        let (_temp, project_path) = create_test_project();
+        fs::write(
+            project_path.join(RESEARCH_FOLDER).join("duplicate.md"),
+            "duplicate body",
+        )
+        .unwrap();
+        fs::write(
+            project_path.join(RESEARCH_FOLDER).join("duplicate.meta"),
+            r#"id: "doc1"
+created: "2025-01-01T00:00:00Z"
+modified: "2025-01-01T00:00:00Z"
+"#,
+        )
+        .unwrap();
+
+        let result = read_project(&project_path);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_read_project_rejects_duplicate_hierarchy_document_paths() {
+        let (_temp, project_path) = create_test_project();
+        let project_yaml = format!(
+            r#"id: "{}"
+name: "Duplicate Paths"
+created: "2025-01-01T00:00:00Z"
+modified: "2025-01-01T00:00:00Z"
+hierarchy:
+  - type: Document
+    id: "doc1"
+    name: "Chapter 1"
+    path: "manuscript/chapter-01.md"
+  - type: Document
+    id: "doc2"
+    name: "Chapter 1 Copy"
+    path: "manuscript/chapter-01.md"
+"#,
+            generate_id()
+        );
+        fs::write(project_path.join(PROJECT_FILE), project_yaml).unwrap();
+
+        let result = read_project(&project_path);
+
+        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_read_project_rejects_hierarchy_id_path_mismatch() {
+        let (_temp, project_path) = create_test_project();
+        let project_yaml = format!(
+            r#"id: "{}"
+name: "ID Mismatch"
+created: "2025-01-01T00:00:00Z"
+modified: "2025-01-01T00:00:00Z"
+hierarchy:
+  - type: Document
+    id: "wrong-doc-id"
+    name: "Chapter 1"
+    path: "manuscript/chapter-01.md"
 "#,
             generate_id()
         );
