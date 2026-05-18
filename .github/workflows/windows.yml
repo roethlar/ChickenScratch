@@ -22,9 +22,13 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Validate package references pinned
+        shell: pwsh
+        run: ./scripts/check-nuget-package-versions.ps1
+
       - name: Restore
         working-directory: windows
-        run: dotnet restore ChickenScratch.slnx
+        run: dotnet restore ChickenScratch.slnx --locked-mode
 
       - name: Build
         working-directory: windows

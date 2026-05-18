@@ -33,6 +33,17 @@ jobs:
         run: npm ci
         working-directory: ui
 
+      - name: Swift package lock
+        run: |
+          swift package resolve --package-path macos
+          git diff --exit-code -- macos/Package.resolved
+
+      - name: Windows NuGet lock
+        run: |
+          ./scripts/check-nuget-package-versions.ps1
+          dotnet restore windows/ChickenScratch.slnx --locked-mode -p:EnableWindowsTargeting=true
+        shell: pwsh
+
       - name: Rust format
         run: cargo fmt --all -- --check
 
