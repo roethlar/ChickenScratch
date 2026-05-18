@@ -665,13 +665,14 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Files changed (anticipated)**: `.github/workflows/tauri-bundles.yml` or a release workflow, `src-tauri/tauri.conf.json`, signing assets/entitlements if needed, `RELEASE.md`.
 - **Known gaps**: requires Apple Developer credentials; cannot be fully validated on local non-release runs.
 
-### R-30: Subprocess timeout can still hang on child process trees that keep pipes open `[ ]`
+### R-30: Subprocess timeout can still hang on child process trees that keep pipes open `[~]`
 - **What**: `output_bounded` returns from its polling loop when the direct child exits (`crates/core/src/utils/process.rs:112-114`) and then joins stdout/stderr reader threads without a join deadline (`:160-161`, `:209-213`). On timeout/output cap it kills only the direct child (`:117`, `:130`, `:140`). A wrapper/Pandoc process can spawn a child that inherits stdout/stderr, exits or is killed, and leaves the reader threads blocked forever.
 - **Severity**: MEDIUM. M-3 bounded the common case, but process trees can still hang compile/import/Pandoc checks indefinitely.
-- **Approach**: run subprocesses in a killable process group/job object and kill the whole group on timeout/cap. Keep a deadline while joining readers or use nonblocking reads that can be abandoned after process-tree kill.
-- **Tests**: Unix helper test with `sh -c '(sleep 3600) &'` and a short timeout should return promptly. Add Windows job-object equivalent if possible.
-- **Files changed (anticipated)**: `crates/core/src/utils/process.rs`, platform-specific tests.
-- **Known gaps**: Windows process-tree handling needs Job Objects or an equivalent crate.
+- **Branch**: `fix/r-30-process-tree-timeouts`
+- **Approach**: `output_bounded` now launches subprocesses inside a killable process tree boundary instead of only managing the direct child. Unix commands run in their own process group and timeout/output-cap paths send `SIGKILL` to the group. Windows commands are created suspended, assigned to a Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, and then resumed so descendants are killed when the job is terminated or closed. Stdout/stderr readers now report completion over a bounded event channel; timeout, output-cap, and direct-child-exit paths kill the process tree when needed, wait for the child, and drain reader events only until a post-kill deadline instead of joining reader threads indefinitely. Validation now includes a Windows CI job for the Rust process-helper tests.
+- **Tests**: locked cargo metadata; workflow YAML parse; `git diff --check`; Rust fmt; locked clippy; targeted process-helper tests; full locked Rust suite; UI install/lint/build; cross-frontend harness with Swift and C# writers; release metadata/checksum gate.
+- **Files changed**: `.github/workflows/validation.yml`, `Cargo.lock`, `crates/core/Cargo.toml`, `crates/core/src/utils/process.rs`, `pkg/arch/PKGBUILD`, `.review/findings/R-30.md`, `REVIEW.md`.
+- **Known gaps**: local macOS host cannot compile the Windows Rust target because the Windows C toolchain/headers are unavailable, so the Windows process-tree path is covered by the new `windows-latest` CI job. Descendants that intentionally escape the inherited Unix process group with their own session/process-group management are outside this finding's scope.
 
 ---
 

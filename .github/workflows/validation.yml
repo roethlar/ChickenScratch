@@ -72,3 +72,16 @@ jobs:
           rm -rf "$CHIKN_CROSS_FRONTEND_WORKDIR"
           crates/core/tests/cross_frontend/run.sh
           grep -q 'writer-toolchains-ran:2/2' "$CHIKN_CROSS_FRONTEND_WORKDIR/manifest.txt"
+
+  rust-process-windows:
+    name: Rust process helper on Windows
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Process helper tests
+        run: cargo test --locked -p chickenscratch-core utils::process::tests --lib
