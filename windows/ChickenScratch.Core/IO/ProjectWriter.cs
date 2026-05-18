@@ -9,6 +9,7 @@ public static class ProjectWriter
     {
         project.Modified = DateTime.UtcNow;
         SafeProjectPath.ValidateAllDocumentTargets(project.Path, project.Documents.Values.Select(d => d.Path));
+        ValidateHierarchyDocumentTargets(project.Path, project.Hierarchy);
 
         var root = new ProjectYamlRoot
         {
@@ -221,4 +222,22 @@ public static class ProjectWriter
         FolderNode fn  => new TreeNodeYaml { Id = fn.Id, Name = fn.Name, Type = "folder",   Children = fn.Children.Select(SerializeNode).ToList() },
         _ => throw new InvalidOperationException($"Unknown node type: {node.GetType()}")
     };
+
+    private static void ValidateHierarchyDocumentTargets(string projectPath, IEnumerable<TreeNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            if (node is DocumentNode dn)
+            {
+                _ = SafeProjectPath.GetDocumentContentPath(
+                    projectPath,
+                    dn.Path,
+                    createParentDirectories: false);
+                continue;
+            }
+
+            if (node is FolderNode fn)
+                ValidateHierarchyDocumentTargets(projectPath, fn.Children);
+        }
+    }
 }

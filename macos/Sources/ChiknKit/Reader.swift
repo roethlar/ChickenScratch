@@ -69,8 +69,9 @@ public enum Reader {
               let kind = NodeKind(rawValue: typeString)
         else { return nil }
 
+        let path = kind == .document ? map["path"] as? String : nil
         let children = decodeNodes(map["children"])
-        return TreeNode(id: id, name: name, kind: kind, children: children)
+        return TreeNode(id: id, name: name, kind: kind, relativePath: path, children: children)
     }
 
     // MARK: - Metadata
@@ -152,15 +153,14 @@ public enum Reader {
                     throw ChiknError.invalidDocumentPath("Project document path is a symlink: \(fileURL.path)")
                 }
                 guard fileURL.pathExtension == "md" else { continue }
-                if let doc = try readDocument(at: fileURL, projectURL: projectURL) {
-                    out[doc.id] = doc
-                }
+                let doc = try readDocument(at: fileURL, projectURL: projectURL)
+                out[doc.id] = doc
             }
         }
         return out
     }
 
-    private static func readDocument(at fileURL: URL, projectURL: URL) throws -> Document? {
+    private static func readDocument(at fileURL: URL, projectURL: URL) throws -> Document {
         guard let relative = try SafeProjectPath.relativeDocumentPath(for: fileURL, in: projectURL) else {
             throw ChiknError.invalidDocumentPath("Document path not within project: \(fileURL.path)")
         }
@@ -169,22 +169,27 @@ public enum Reader {
             relativePath: relative,
             createParentDirectories: false
         )
-        let metaURL = urls.meta
-        guard let metaMap = readMetaMap(at: metaURL),
-              let id = metaMap["id"] as? String
-        else { return nil }
+        let metaMap = try readMetaMap(at: urls.meta)
+        guard let id = metaMap["id"] as? String, !id.isEmpty else {
+            throw ChiknError.invalidProjectYaml("document metadata missing required id: \(urls.meta.path)")
+        }
 
-        let content = (try? String(contentsOf: urls.document, encoding: .utf8)) ?? ""
+        let content = try String(contentsOf: urls.document, encoding: .utf8)
         let name = (metaMap["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
                 ?? urls.document.deletingPathExtension().lastPathComponent
         let meta = decodeDocumentMeta(metaMap)
         return Document(id: id, name: name, relativePath: relative, content: content, meta: meta)
     }
 
-    private static func readMetaMap(at url: URL) -> [String: Any]? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        return (try? Yams.load(yaml: text)) as? [String: Any]
+    private static func readMetaMap(at url: URL) throws -> [String: Any] {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw ChiknError.invalidProjectYaml("document metadata missing: \(url.path)")
+        }
+        let text = try String(contentsOf: url, encoding: .utf8)
+        guard let parsed = try Yams.load(yaml: text) as? [String: Any] else {
+            throw ChiknError.invalidProjectYaml("document metadata is not a mapping: \(url.path)")
+        }
+        return parsed
     }
 
     /// Top-level keys that map to typed columns on `DocumentMeta`. Anything

@@ -65,11 +65,10 @@ public static class ProjectReader
         // Load threads.yaml sidecar when present. Missing/empty file → empty list.
         project.Threads = ReadThreads(projectPath);
 
-        // Repair: remove hierarchy entries whose .md files don't exist.
-        // Documents loaded from disk but missing from hierarchy stay in
-        // `project.Documents` (matches the Rust reader's orphan handling for
-        // entity folders that live outside hierarchy).
-        RepairHierarchy(project.Hierarchy, project.Documents, projectPath);
+        // Validate hierarchy paths without pruning nodes whose files are
+        // temporarily missing. Persisting that repair turns sync or antivirus
+        // blips into permanent binder loss on the next write.
+        ValidateHierarchyPaths(project.Hierarchy, projectPath);
 
         // Repair: ensure standard top-level folders exist
         EnsureStandardFolders(project);
@@ -139,7 +138,7 @@ public static class ProjectReader
             mdAbsolutePath,
             relPath,
             "document file");
-        var content = File.Exists(mdAbsolutePath) ? File.ReadAllText(mdAbsolutePath) : string.Empty;
+        var content = File.ReadAllText(mdAbsolutePath);
 
         var metaPath = System.IO.Path.ChangeExtension(mdAbsolutePath, ".meta");
         DocumentMetaYaml? meta = null;
@@ -290,25 +289,20 @@ public static class ProjectReader
     private static string NormalizePath(string path) =>
         path.Replace('\\', '/');
 
-    private static void RepairHierarchy(List<TreeNode> nodes, Dictionary<string, Document> docs, string projectPath)
+    private static void ValidateHierarchyPaths(List<TreeNode> nodes, string projectPath)
     {
-        for (int i = nodes.Count - 1; i >= 0; i--)
+        foreach (var node in nodes)
         {
-            if (nodes[i] is DocumentNode dn)
+            if (node is DocumentNode dn)
             {
-                var contentPath = SafeProjectPath.GetDocumentContentPath(
+                _ = SafeProjectPath.GetDocumentContentPath(
                     projectPath,
                     dn.Path,
                     createParentDirectories: false);
-                if (!File.Exists(contentPath))
-                {
-                    docs.Remove(dn.Id);
-                    nodes.RemoveAt(i);
-                }
             }
-            else if (nodes[i] is FolderNode folder)
+            else if (node is FolderNode folder)
             {
-                RepairHierarchy(folder.Children, docs, projectPath);
+                ValidateHierarchyPaths(folder.Children, projectPath);
             }
         }
     }
