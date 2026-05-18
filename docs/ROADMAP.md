@@ -149,10 +149,10 @@ Deliberately **not** planned: name generators, deep character-psychology forms, 
 - Flathub submission
 
 ### macOS Code Signing
-- Apple Developer account
-- Signing identity in tauri.conf.json
-- Notarization via xcrun notarytool
-- CI/CD automation
+- Protected release workflow for Developer ID signing and notarization
+- App Store Connect API credentials in the `release-macos` GitHub environment
+- Release artifact verification with `codesign`, `spctl`, and `stapler`
+- Unsigned macOS CI artifacts are smoke-only and not public downloads
 
 ### Auto-Update
 - tauri-plugin-updater
