@@ -597,13 +597,14 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Known gaps**: none for filesystem placement. The generated XML currently does not emit the project display title; R-22 only fixes the path primitive.
 - **Reviewer verdict**: VERIFIED via merge commit `a4fc49f`. New `scrivx_filename_from_output_path` derives the filename from `scriv_path.file_stem()` and rejects empty / `.` / `..` / `/` / `\` / control-char / non-UTF-8 stems before constructing the join. Concrete attack test in `crates/core/src/scrivener/exporter/mod.rs::test_write_scrivx_uses_output_folder_name_not_project_name` passes hostile `project_name = "../victim/victim"` and asserts the `.scrivx` lands in `Export.scriv/Export.scrivx` with no `victim/victim.scrivx` outside the export root. Control-char rejection test covers newline. **PKGBUILD pin updated proactively this time** (`ff4eea0…ca33b8`) — GPT broke the R-12/R-26 recurrence pattern. R-13 gate passes; `--require-tag` produces exactly one error (missing tag). 4/4 exporter tests pass.
 
-### R-23: Manual Backup reports success while omitting current work `[ ]`
+### R-23: Manual Backup reports success while omitting current work `[~]`
 - **What**: the Revisions Backup button calls `gitCmd.pushBackup` directly (`ui/src/components/revisions/Revisions.tsx:152-162`). It does not use `runWithEditorFlush`, does not save a revision, and backend `push_backup` only pushes the current branch (`src-tauri/src/commands/git.rs:93-100`). `backup_on_close` is safer because it commits dirty changes before pushing (`src-tauri/src/commands/git.rs:245-261`).
 - **Severity**: HIGH for user trust and data recovery. A writer can click Backup, see "Backup complete", and still have neither pending debounce edits nor already-flushed uncommitted edits in the backup repo.
-- **Approach**: route manual backup through the same flush + auto-revision + push flow as close/periodic backup, or block with a clear prompt until the user saves a revision.
-- **Tests**: commit baseline, edit a doc, trigger manual backup, clone the backup repo, and assert the edited text is present after the fix.
-- **Files changed (anticipated)**: `ui/src/components/revisions/Revisions.tsx`, `src-tauri/src/commands/git.rs`, tests or harness coverage.
-- **Known gaps**: decide whether manual backup should create an auto revision message or require the user to name it.
+- **Branch**: `fix/r-23-manual-backup-flush`
+- **Approach**: add a core `backup_current_work` helper that commits dirty project state before pushing backup refs, expose it as a write-locked Tauri `manual_backup` command, and route the Revisions Backup button through `runWithEditorFlush` before invoking the command.
+- **Tests**: focused core manual-backup tests; backup-directory failure regression; `cargo fmt --all -- --check`; clippy; full Rust suite; UI lint/build; release metadata gate before review handoff.
+- **Files changed**: `crates/core/src/core/git.rs`, `src-tauri/src/commands/git.rs`, `src-tauri/src/main.rs`, `ui/src/commands/git.ts`, `ui/src/components/revisions/Revisions.tsx`, `.review/findings/R-23.md`, `REVIEW.md`, `pkg/arch/PKGBUILD`.
+- **Known gaps**: manual backups use a deterministic `Manual backup` revision message; there is no prompt for a custom revision name.
 
 ### R-24: Document/flow switches do not await failed flushes before replacing buffers and clearing dirty state `[ ]`
 - **What**: `flushPendingSave` throws on failed disk writes (`ui/src/components/editor/Editor.tsx:152-214`), but the document-load effect calls it without `await` before replacing editor content for flow entry/exit and single-doc switches (`Editor.tsx:280-349`). It then calls `setDirtyTracked(false)` after loading the new buffer. The Flow exit toolbar catches flush failure but exits flow anyway (`ui/src/components/editor/Toolbar.tsx:304-310`).

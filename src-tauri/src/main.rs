@@ -52,6 +52,7 @@ fn main() {
             git::switch_draft,
             git::merge_draft,
             git::push_backup,
+            git::manual_backup,
             git::sync_push,
             git::sync_fetch,
             git::sync_status,
