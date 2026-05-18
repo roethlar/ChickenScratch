@@ -485,6 +485,75 @@ runCase("missing hierarchy document body is not pruned on native write") {
     check(!FileManager.default.fileExists(atPath: docURL.path), "native metadata write did not recreate missing body")
 }
 
+runCase("rust canonical hierarchy tags survive Swift metadata write") {
+    let url = makeTempProjectURL()
+    defer { cleanup(url) }
+
+    try FileManager.default.createDirectory(at: url.appendingPathComponent("manuscript"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: url.appendingPathComponent("research"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: url.appendingPathComponent("templates"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: url.appendingPathComponent("settings"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: url.appendingPathComponent("characters"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: url.appendingPathComponent("locations"), withIntermediateDirectories: true)
+
+    let folderID = "folder-part-one"
+    let docID = "doc-opening"
+    let docPath = "manuscript/opening.md"
+    let projectYaml = """
+    id: "canonical-tags"
+    name: "Canonical Tags"
+    created: "2026-05-01T00:00:00Z"
+    modified: "2026-05-01T00:00:00Z"
+    metadata:
+      title: ""
+      author: ""
+      project_type: ""
+      genre: ""
+      theme: ""
+      summary: ""
+    hierarchy:
+      - type: Folder
+        id: "\(folderID)"
+        name: "Part One"
+        children:
+          - type: Document
+            id: "\(docID)"
+            name: "Opening"
+            path: "\(docPath)"
+    """
+    try projectYaml.write(to: url.appendingPathComponent("project.yaml"), atomically: true, encoding: .utf8)
+    try "Opening body.".write(to: url.appendingPathComponent(docPath), atomically: true, encoding: .utf8)
+    let metaYaml = """
+    id: "\(docID)"
+    name: "Opening"
+    created: "2026-05-01T00:00:00Z"
+    modified: "2026-05-01T00:00:00Z"
+    """
+    try metaYaml.write(
+        to: url.appendingPathComponent(docPath).deletingPathExtension().appendingPathExtension("meta"),
+        atomically: true,
+        encoding: .utf8
+    )
+
+    let project = try Reader.readProject(at: url)
+    let folder = findNode(id: folderID, in: project.hierarchy)
+    check(folder?.kind == .folder, "canonical Folder tag loads")
+    check(folder?.children.first?.id == docID, "canonical Document tag stays under folder")
+    check(folder?.children.first?.relativePath == docPath, "canonical Document path loads")
+
+    var meta = project.documents[docID]!.meta
+    meta.synopsis = "Updated through Swift."
+    _ = try Writer.saveDocumentMeta(id: docID, meta: meta, in: project)
+
+    let reread = try Reader.readProject(at: url)
+    let rereadFolder = findNode(id: folderID, in: reread.hierarchy)
+    check(rereadFolder?.name == "Part One", "folder survives Swift metadata write")
+    check(rereadFolder?.children.count == 1, "document is not repaired as a root orphan")
+    check(rereadFolder?.children.first?.id == docID, "child document id survives Swift metadata write")
+    check(rereadFolder?.children.first?.relativePath == docPath, "child document path survives Swift metadata write")
+    check(reread.documents[docID]?.meta.synopsis == "Updated through Swift.", "metadata write still applies")
+}
+
 runCase("reader fails closed on missing or malformed document metadata") {
     let missingURL = makeTempProjectURL()
     defer { cleanup(missingURL) }

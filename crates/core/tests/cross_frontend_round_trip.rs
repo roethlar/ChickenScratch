@@ -14,6 +14,7 @@
 //! repair markers on stdout/stderr.
 
 use chickenscratch_core::core::project::reader::read_project;
+use chickenscratch_core::models::TreeNode;
 use std::fs;
 use tempfile::TempDir;
 
@@ -29,6 +30,25 @@ fn verify_cross_frontend_harness_project_from_env() {
         !project.documents.is_empty(),
         "cross-frontend harness project should contain documents"
     );
+    let hierarchy_docs = hierarchy_document_fingerprints(&project.hierarchy);
+    assert!(
+        !hierarchy_docs.is_empty(),
+        "cross-frontend harness project should contain hierarchy document nodes"
+    );
+
+    if let Ok(dump_path) = std::env::var("CHIKN_CROSS_FRONTEND_DUMP_HIERARCHY_DOCS") {
+        fs::write(&dump_path, hierarchy_docs.join("\n") + "\n")
+            .expect("write hierarchy document baseline");
+    }
+
+    if let Ok(expect_path) = std::env::var("CHIKN_CROSS_FRONTEND_EXPECT_HIERARCHY_DOCS") {
+        let expected = fs::read_to_string(&expect_path).expect("read hierarchy document baseline");
+        let expected = normalize_fingerprint_lines(&expected);
+        assert_eq!(
+            hierarchy_docs, expected,
+            "hierarchy document ancestry/id/path set drifted from the Rust converter baseline"
+        );
+    }
 
     if let Ok(marker) = std::env::var("CHIKN_CROSS_FRONTEND_EXPECT_FIELD") {
         let found = project
@@ -48,6 +68,44 @@ fn verify_cross_frontend_harness_project_from_env() {
         project.hierarchy.len(),
         project.threads.len()
     );
+}
+
+fn hierarchy_document_fingerprints(hierarchy: &[TreeNode]) -> Vec<String> {
+    let mut fingerprints = Vec::new();
+    let mut ancestors = Vec::new();
+    collect_hierarchy_document_fingerprints(hierarchy, &mut ancestors, &mut fingerprints);
+    fingerprints.sort();
+    fingerprints
+}
+
+fn collect_hierarchy_document_fingerprints(
+    hierarchy: &[TreeNode],
+    ancestors: &mut Vec<String>,
+    fingerprints: &mut Vec<String>,
+) {
+    for node in hierarchy {
+        match node {
+            TreeNode::Document { id, path, .. } => {
+                fingerprints.push(format!("{}\t{}\t{}", ancestors.join("/"), id, path));
+            }
+            TreeNode::Folder { id, children, .. } => {
+                ancestors.push(id.clone());
+                collect_hierarchy_document_fingerprints(children, ancestors, fingerprints);
+                ancestors.pop();
+            }
+        }
+    }
+}
+
+fn normalize_fingerprint_lines(raw: &str) -> Vec<String> {
+    let mut lines: Vec<String> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+    lines.sort();
+    lines
 }
 
 /// Build a project on disk using the wire forms a Windows-style writer

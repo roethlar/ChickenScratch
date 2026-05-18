@@ -66,12 +66,16 @@ public enum Reader {
               let id = map["id"] as? String,
               let name = map["name"] as? String,
               let typeString = map["type"] as? String,
-              let kind = NodeKind(rawValue: typeString)
+              let kind = decodeNodeKind(typeString)
         else { return nil }
 
         let path = kind == .document ? map["path"] as? String : nil
         let children = decodeNodes(map["children"])
         return TreeNode(id: id, name: name, kind: kind, relativePath: path, children: children)
+    }
+
+    private static func decodeNodeKind(_ raw: String) -> NodeKind? {
+        NodeKind(rawValue: raw.lowercased())
     }
 
     // MARK: - Metadata
