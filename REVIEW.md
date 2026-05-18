@@ -617,13 +617,14 @@ After R-1..R-13 closed the release-tooling gaps, a fresh four-domain review (dat
 - **Known gaps**: no dedicated UI failing-flush test harness exists yet; the branch relies on type/lint/build validation and scoped review.
 - **Reviewer verdict**: VERIFIED via merge commit `d241aad`. `navigationGuards.ts` centralizes the flush-before-navigate pattern with five wrapper helpers (`selectDocumentWithEditorFlush`, `clearDocumentSelectionWithEditorFlush`, `enterFlowWithEditorFlush`, `exitFlowWithEditorFlush`, plus the underlying `flushEditorBeforeNavigation`). Each helper returns `false` and skips the navigation if flush throws. Nine callsites updated (Binder, Corkboard, ProjectSearch, CommandPalette, Stats, Timeline, Revisions thread links, Toolbar flow-exit). `Editor.tsx` load effect provides defense in depth: flush → `if-fail-return` BEFORE any buffer mutation or `setDirtyTracked(false)` — confirmed at lines 294-298 (flow→flow), 334-340 (flow→single), 348-355 (single→none). Binder delete operations on active doc / ancestor folder also blocked until flush succeeds. Acknowledged gap (no UI test harness) is real — coverage is structural/code-review only — but the change is small, self-contained, and the load-effect ordering is the load-bearing property. PKGBUILD pre-pinned `d8eab4d…b5d0`.
 
-### R-25: AI replacement deletes selected prose before the stream succeeds `[ ]`
+### R-25: AI replacement deletes selected prose before the stream succeeds `[~]`
 - **What**: for polish/expand/simplify, `Toolbar.tsx:417-430` deletes the selected range first and then inserts streaming chunks. On `ai:error`, network failure, invalid key, or context cancellation, the catch at `Toolbar.tsx:439-442` only toasts; it does not restore the original `selectedText`. Autosave can persist the deletion as ordinary editor content.
 - **Severity**: HIGH for AI-assisted editing data loss.
-- **Approach**: keep the original selection until the first successful replacement is ready, or insert into a temporary transaction that can roll back. On stream failure/cancellation, restore `selectedText` and selection, and avoid autosaving a failed transform as a deletion.
-- **Tests**: configure a failing endpoint, select text, run Polish, assert the original selected text remains. Repeat for navigation abort during replacement.
-- **Files changed (anticipated)**: `ui/src/components/editor/Toolbar.tsx`, maybe `ui/src/commands/ai.ts`.
-- **Known gaps**: brainstorm mode appends after selection and is lower risk; focus replacement ops first.
+- **Branch**: `fix/r-25-ai-replacement-buffer`
+- **Approach**: leave selected prose untouched while replacement streams run, buffer AI chunks in memory, and commit one replacement transaction only after the stream succeeds and the original document/flow context plus selected range are unchanged.
+- **Tests**: UI lint/build; `cargo fmt --all -- --check`; clippy; full Rust suite; release metadata gate before review handoff.
+- **Files changed**: `ui/src/components/editor/Toolbar.tsx`, `.review/findings/R-25.md`, `REVIEW.md`, `pkg/arch/PKGBUILD`.
+- **Known gaps**: no dedicated UI AI-stream test harness exists yet; brainstorm mode remains append-only and unchanged.
 
 ### R-26: Release checksum gate can be bypassed by path-filtered CI `[x]`
 - **What**: R-13 added source archive SHA comparison in `scripts/check-release-metadata.sh`, but `.github/workflows/validation.yml:5-35` only runs on selected paths. Tarball-included files such as `README.md`, `LICENSE`, docs, and other workflow files can change the release archive SHA without triggering the validation job that checks `pkg/arch/PKGBUILD`.

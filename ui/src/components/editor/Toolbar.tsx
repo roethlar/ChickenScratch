@@ -72,6 +72,10 @@ function ToolbarSep() {
   return <div className="toolbar-sep" />;
 }
 
+function selectedRangeFingerprint(editor: Editor, from: number, to: number): string {
+  return JSON.stringify(editor.state.doc.slice(from, to).toJSON());
+}
+
 export function Toolbar({ editor }: ToolbarProps) {
   const setLink = useCallback(async () => {
     if (!editor) return;
@@ -353,6 +357,7 @@ function AiMenu({ editor }: { editor: Editor }) {
       return;
     }
     const selectedText = editor.state.doc.textBetween(from, to, " ");
+    const selectedFingerprint = selectedRangeFingerprint(editor, from, to);
     setWorking(true);
     setOpen(false);
 
@@ -411,22 +416,16 @@ function AiMenu({ editor }: { editor: Editor }) {
           }
         );
       } else {
-        // Polish/expand/simplify: stream replacement into the original range.
-        // We delete the selection first, then append chunks into that span.
-        editor
-          .chain()
-          .focus()
-          .setTextSelection({ from, to })
-          .deleteSelection()
-          .run();
-        const insertPos = editor.state.selection.from;
-        let currentEnd = insertPos;
+        // Replacement ops are all-or-nothing: keep the selected prose intact
+        // while the stream is in flight, then replace it in one transaction
+        // only if the user is still on the same document and the selected
+        // range still contains the original text.
+        let replacement = "";
         await aiTransformStream(
           selectedText,
           op,
           (delta) => {
-            editor.commands.insertContentAt(currentEnd, delta);
-            currentEnd += delta.length;
+            replacement += delta;
           },
           {
             requestId,
@@ -434,6 +433,20 @@ function AiMenu({ editor }: { editor: Editor }) {
             abortSignal: abortController.signal,
           }
         );
+        if (
+          !abortController.signal.aborted &&
+          !cancelledForContext &&
+          replacement.length > 0 &&
+          stillOnOriginDoc() &&
+          editor.state.doc.textBetween(from, to, " ") === selectedText &&
+          selectedRangeFingerprint(editor, from, to) === selectedFingerprint
+        ) {
+          editor
+            .chain()
+            .focus()
+            .insertContentAt({ from, to }, replacement)
+            .run();
+        }
       }
     } catch (e) {
       if (!cancelledForContext) {
