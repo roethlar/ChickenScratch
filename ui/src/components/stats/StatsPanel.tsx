@@ -10,6 +10,7 @@ import {
 } from "../../commands/io";
 import * as sessionCmd from "../../commands/session";
 import { toastError, toastSuccess } from "../shared/Toast";
+import { selectDocumentWithEditorFlush } from "../editor/navigationGuards";
 
 interface StatsPanelProps {
   open: boolean;
@@ -18,7 +19,6 @@ interface StatsPanelProps {
 
 export function StatsPanel({ open, onClose }: StatsPanelProps) {
   const project = useProjectStore((s) => s.project);
-  const selectDocument = useProjectStore((s) => s.selectDocument);
   const [stats, setStats] = useState<ProjectStats | null>(null);
   const [history, setHistory] = useState<DayEntry[]>([]);
 
@@ -102,7 +102,11 @@ export function StatsPanel({ open, onClose }: StatsPanelProps) {
           <button
             key={doc.id}
             className="stats-doc"
-            onClick={() => { selectDocument(doc.id); onClose(); }}
+            onClick={() => {
+              void selectDocumentWithEditorFlush(doc.id).then((ok) => {
+                if (ok) onClose();
+              });
+            }}
             title={`Click to open ${doc.name}`}
           >
             <div className="stats-doc-header">

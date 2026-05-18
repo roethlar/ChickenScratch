@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useId, useRef } from "react";
 import { dialogPrompt, dialogConfirm, useModalFocusTrap } from "../shared/Dialog";
 import { flushPendingEditorSave } from "../editor/editorRef";
+import { selectDocumentWithEditorFlush } from "../editor/navigationGuards";
 import {
   Save,
   History,
@@ -678,8 +679,6 @@ function ThreadsList({
     [project, scenesByThread, onChange]
   );
 
-  const selectDocument = useProjectStore((s) => s.selectDocument);
-
   return (
     <div className="threads-panel">
       {dangling.length > 0 && (
@@ -744,7 +743,7 @@ function ThreadsList({
                     <button
                       key={doc.id}
                       className="thread-card-scene"
-                      onClick={() => selectDocument(doc.id)}
+                      onClick={() => { void selectDocumentWithEditorFlush(doc.id); }}
                       title={doc.synopsis ?? ""}
                     >
                       {doc.name}

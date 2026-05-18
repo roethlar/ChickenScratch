@@ -4,12 +4,13 @@ import { useProjectStore } from "../../stores/projectStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { TreeNode } from "../../types";
 import { useModalFocusTrap } from "../shared/Dialog";
+import { selectDocumentWithEditorFlush } from "../editor/navigationGuards";
 
 interface CommandItem {
   id: string;
   label: string;
   category: "document" | "action";
-  action: () => void;
+  action: () => void | Promise<boolean>;
 }
 
 function flattenDocNames(nodes: TreeNode[]): { id: string; name: string }[] {
@@ -29,7 +30,6 @@ export function CommandPalette({
   onClose: () => void;
 }) {
   const hierarchy = useProjectStore(useShallow((s) => s.project?.hierarchy ?? null));
-  const selectDocument = useProjectStore((s) => s.selectDocument);
   const { setTheme, toggleFocusMode } = useSettingsStore();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -70,12 +70,12 @@ export function CommandPalette({
           id: `doc-${d.id}`,
           label: d.name,
           category: "document",
-          action: () => selectDocument(d.id),
+          action: () => selectDocumentWithEditorFlush(d.id),
         }))
       : [];
 
     return [...docs, ...actions];
-  }, [hierarchy, selectDocument, setTheme, toggleFocusMode]);
+  }, [hierarchy, setTheme, toggleFocusMode]);
 
   const filtered = useMemo(() => {
     if (!query) return items;
@@ -88,8 +88,9 @@ export function CommandPalette({
     setSelectedIndex(0);
   };
 
-  const execute = (item: CommandItem) => {
-    item.action();
+  const execute = async (item: CommandItem) => {
+    const result = await item.action();
+    if (result === false) return;
     onClose();
   };
 
@@ -102,7 +103,7 @@ export function CommandPalette({
       setSelectedIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter" && filtered[selectedIndex]) {
       e.preventDefault();
-      execute(filtered[selectedIndex]);
+      void execute(filtered[selectedIndex]);
     } else if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -138,7 +139,7 @@ export function CommandPalette({
             <button
               key={item.id}
               className={`palette-item ${i === selectedIndex ? "selected" : ""}`}
-              onClick={() => execute(item)}
+              onClick={() => { void execute(item); }}
               onMouseEnter={() => setSelectedIndex(i)}
             >
               <span className="palette-item-label">{item.label}</span>

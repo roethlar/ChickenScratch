@@ -35,7 +35,8 @@ import { toastError, toastSuccess } from "../shared/Toast";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
-import { flushPendingEditorSave, getEditorMarkdown } from "./editorRef";
+import { getEditorMarkdown } from "./editorRef";
+import { exitFlowWithEditorFlush } from "./navigationGuards";
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -297,7 +298,6 @@ export function Toolbar({ editor }: ToolbarProps) {
 
 function FlowButton() {
   const flowDocs = useProjectStore((s) => s.flowDocs);
-  const exitFlow = useProjectStore((s) => s.exitFlow);
 
   if (!flowDocs) return null;
 
@@ -306,8 +306,7 @@ function FlowButton() {
   // already null and the flow buffer's edits would be saved to the
   // wrong target (or dropped entirely).
   const handleExit = async () => {
-    try { await flushPendingEditorSave(); } catch { /* surfaced via toast inside the flush */ }
-    exitFlow();
+    await exitFlowWithEditorFlush();
   };
 
   return (

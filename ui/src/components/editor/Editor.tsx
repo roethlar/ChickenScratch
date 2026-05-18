@@ -280,74 +280,102 @@ export function Editor() {
   // Load document content when active doc changes, or enter flow mode.
   useEffect(() => {
     if (!editor) return;
-    const flow = useProjectStore.getState().flowDocs;
+    let cancelled = false;
 
-    if (flow) {
-      // Flow mode: concatenate documents with boundary markers.
-      const flowKey = flow.map((d) => d.docId).join("|");
-      if (flowIdsRef.current === flowKey) return;
-      // Persist any pending edits from the previous buffer (single-doc or
-      // a different flow set) before we replace the editor content.
-      flushPendingSave();
-      flowIdsRef.current = flowKey;
-      // Capture the flow set so flushPendingSave can save against it
-      // even after the store's `flowDocs` is cleared by exitFlow or by
-      // selectDocument.
-      flowDocsRef.current = flow.map((d) => ({ docId: d.docId, name: d.name, path: d.path }));
-      docIdRef.current = null;
+    const loadBuffer = async () => {
+      const flow = useProjectStore.getState().flowDocs;
 
-      const project = useProjectStore.getState().project;
-      if (!project) return;
-      const parts: string[] = [];
-      for (const fd of flow) {
-        const doc = project.documents[fd.docId];
-        if (!doc) continue;
-        // Emit a leading boundary for *every* doc — including the first.
-        // splitFlowSections only outputs sections delimited by markers, so
-        // skipping the leading marker silently drops every edit to the
-        // first document on save.
-        parts.push(buildFlowBoundary(fd.docId, fd.name));
-        parts.push(doc.content || "");
+      if (flow) {
+        // Flow mode: concatenate documents with boundary markers.
+        const flowKey = flow.map((d) => d.docId).join("|");
+        if (flowIdsRef.current === flowKey) return;
+        // Persist any pending edits from the previous buffer (single-doc or
+        // a different flow set) before we replace the editor content.
+        try {
+          await flushPendingSave();
+        } catch {
+          return;
+        }
+        if (cancelled) return;
+        flowIdsRef.current = flowKey;
+        // Capture the flow set so flushPendingSave can save against it
+        // even after the store's `flowDocs` is cleared by exitFlow or by
+        // selectDocument.
+        flowDocsRef.current = flow.map((d) => ({ docId: d.docId, name: d.name, path: d.path }));
+        docIdRef.current = null;
+
+        const project = useProjectStore.getState().project;
+        if (!project) return;
+        const parts: string[] = [];
+        for (const fd of flow) {
+          const doc = project.documents[fd.docId];
+          if (!doc) continue;
+          // Emit a leading boundary for *every* doc — including the first.
+          // splitFlowSections only outputs sections delimited by markers, so
+          // skipping the leading marker silently drops every edit to the
+          // first document on save.
+          parts.push(buildFlowBoundary(fd.docId, fd.name));
+          parts.push(doc.content || "");
+        }
+        // emitUpdate=false: Tiptap 3 fires onUpdate by default on programmatic
+        // setContent, which would route through debouncedSave and immediately
+        // re-stamp every loaded doc's `modified` even though the user hasn't
+        // typed. Document loads must be inert.
+        editor.commands.setContent(parts.join(""), { emitUpdate: false });
+        setDirtyTracked(false);
+        return;
       }
-      // emitUpdate=false: Tiptap 3 fires onUpdate by default on programmatic
-      // setContent, which would route through debouncedSave and immediately
-      // re-stamp every loaded doc's `modified` even though the user hasn't
-      // typed. Document loads must be inert.
-      editor.commands.setContent(parts.join(""), { emitUpdate: false });
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDirtyTracked(false);
-      return;
-    }
 
-    // Single-doc mode
-    if (flowIdsRef.current !== null) {
-      // Coming back from flow mode — flush whatever the flow buffer holds.
-      // The flush still has the captured flow set in `flowDocsRef`, so
-      // each section gets saved to the right doc.
-      flushPendingSave();
-    }
-    flowIdsRef.current = null;
-    flowDocsRef.current = null;
-    if (!activeDoc) {
-      // Switching to "no document" — flush so the previous doc's edits
-      // don't sit on the timer until the next mount.
-      if (docIdRef.current) flushPendingSave();
-      editor.commands.clearContent(false);
-      docIdRef.current = null;
-      return;
-    }
-    if (docIdRef.current !== activeDoc.id) {
-      // Critical: persist edits to the OUTGOING doc *before* we overwrite
-      // the buffer with the incoming doc's content. Without this, any
-      // typing from the past 2s of debounce window is silently dropped.
-      flushPendingSave();
-      docIdRef.current = activeDoc.id;
-      const md = activeDoc.content || "";
-      // emitUpdate=false so loading a doc doesn't trigger autosave (Tiptap
-      // 3 emits update on setContent by default).
-      editor.commands.setContent(md, { emitUpdate: false });
-      setDirtyTracked(false);
-    }
+      // Single-doc mode
+      if (flowIdsRef.current !== null) {
+        // Coming back from flow mode — flush whatever the flow buffer holds.
+        // The flush still has the captured flow set in `flowDocsRef`, so
+        // each section gets saved to the right doc.
+        try {
+          await flushPendingSave();
+        } catch {
+          return;
+        }
+        if (cancelled) return;
+      }
+      flowIdsRef.current = null;
+      flowDocsRef.current = null;
+      if (!activeDoc) {
+        // Switching to "no document" — flush so the previous doc's edits
+        // don't sit on the timer until the next mount.
+        if (docIdRef.current) {
+          try {
+            await flushPendingSave();
+          } catch {
+            return;
+          }
+          if (cancelled) return;
+        }
+        editor.commands.clearContent(false);
+        docIdRef.current = null;
+        return;
+      }
+      if (docIdRef.current !== activeDoc.id) {
+        // Critical: persist edits to the OUTGOING doc *before* we overwrite
+        // the buffer with the incoming doc's content. Without this, any
+        // typing from the past 2s of debounce window is silently dropped.
+        try {
+          await flushPendingSave();
+        } catch {
+          return;
+        }
+        if (cancelled) return;
+        docIdRef.current = activeDoc.id;
+        const md = activeDoc.content || "";
+        // emitUpdate=false so loading a doc doesn't trigger autosave (Tiptap
+        // 3 emits update on setContent by default).
+        editor.commands.setContent(md, { emitUpdate: false });
+        setDirtyTracked(false);
+      }
+    };
+
+    void loadBuffer();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDoc?.id, editor, flowDocs]);
 

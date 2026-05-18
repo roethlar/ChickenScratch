@@ -26,6 +26,12 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { listTemplates, createFromTemplate, type Template } from "../../commands/templates";
 import { DragProvider, useDrag } from "./DragContext";
+import {
+  clearDocumentSelectionWithEditorFlush,
+  enterFlowWithEditorFlush,
+  flushEditorBeforeNavigation,
+  selectDocumentWithEditorFlush,
+} from "../editor/navigationGuards";
 
 const DocumentHistory = lazy(() =>
   import("../revisions/DocumentHistory").then((module) => ({
@@ -154,7 +160,6 @@ function BinderInner() {
   );
   const hierarchy = useProjectStore(useShallow((s) => s.project?.hierarchy ?? null));
   const activeDocId = useProjectStore((s) => s.activeDocId);
-  const selectDocument = useProjectStore((s) => s.selectDocument);
   // Use the store helper so `activeDoc` re-derives from the new project
   // after rename/move/delete operations — keeps the inspector and other
   // active-doc panels in sync.
@@ -164,6 +169,18 @@ function BinderInner() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
   const openFoldersProjectRef = useRef<string | null>(null);
+
+  const handleSelectDocument = useCallback(async (docId: string) => {
+    if (!(await selectDocumentWithEditorFlush(docId))) return false;
+    setSelectedId(docId);
+    return true;
+  }, []);
+
+  const handleClearDocumentSelection = useCallback(async () => {
+    if (!(await clearDocumentSelectionWithEditorFlush())) return false;
+    setSelectedId(null);
+    return true;
+  }, []);
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -283,26 +300,32 @@ function BinderInner() {
   const handleDelete = useCallback(
     async (nodeId: string) => {
       if (!projectInfo || !hierarchy) return;
+      const affectsActiveDoc =
+        !!activeDocId &&
+        (nodeId === activeDocId || isChildOf(hierarchy, activeDocId, nodeId));
 
       // If item is already in Trash, permanently delete
       const isInTrash = trashId && isChildOf(hierarchy, nodeId, trashId);
       if (isInTrash) {
         if (!(await dialogConfirm("Permanently delete this item?"))) return;
+        if (affectsActiveDoc && !(await flushEditorBeforeNavigation())) return;
         const updated = await docCmd.deleteNode(projectInfo.path, nodeId);
         setProject(updated);
       } else if (trashId) {
         // Move to Trash
+        if (affectsActiveDoc && !(await flushEditorBeforeNavigation())) return;
         const updated = await docCmd.moveNode(projectInfo.path, nodeId, trashId);
         setProject(updated);
         toastSuccess("Moved to Trash");
       } else {
         // No Trash folder — permanent delete
         if (!(await dialogConfirm("Permanently delete this item?"))) return;
+        if (affectsActiveDoc && !(await flushEditorBeforeNavigation())) return;
         const updated = await docCmd.deleteNode(projectInfo.path, nodeId);
         setProject(updated);
       }
 
-      if (activeDocId === nodeId) {
+      if (affectsActiveDoc) {
         useProjectStore.setState({ activeDocId: null, activeDoc: null });
       }
       closeMenu();
@@ -456,8 +479,6 @@ function BinderInner() {
     [projectInfo, setProject, closeMenu]
   );
 
-  const enterFlow = useProjectStore((s) => s.enterFlow);
-
   /** Recursively collect all .md documents under a folder node, in tree order. */
   const collectFlowDocs = useCallback(
     (folderId: string): FlowDoc[] => {
@@ -491,14 +512,14 @@ function BinderInner() {
   );
 
   const handleFolderFlow = useCallback(
-    (folderId: string) => {
+    async (folderId: string) => {
       const docs = collectFlowDocs(folderId);
       if (docs.length > 0) {
-        enterFlow(docs);
+        if (!(await enterFlowWithEditorFlush(docs))) return;
         closeMenu();
       }
     },
-    [collectFlowDocs, enterFlow, closeMenu]
+    [collectFlowDocs, closeMenu]
   );
 
   const [flowSelected, setFlowSelected] = useState<Set<string>>(new Set());
@@ -513,7 +534,7 @@ function BinderInner() {
     [flowSelected]
   );
 
-  const handleFlowStart = useCallback(() => {
+  const handleFlowStart = useCallback(async () => {
     if (!hierarchy || flowSelected.size < 2) return;
     const documents = useProjectStore.getState().project?.documents;
     if (!documents) return;
@@ -523,10 +544,10 @@ function BinderInner() {
       if (doc) docs.push({ docId: id, name: doc.name, path: doc.path });
     }
     if (docs.length > 1) {
-      enterFlow(docs);
+      if (!(await enterFlowWithEditorFlush(docs))) return;
       setFlowSelected(new Set());
     }
-  }, [hierarchy, flowSelected, enterFlow]);
+  }, [hierarchy, flowSelected]);
 
   const visibleTreeNodes = useMemo(
     () => hierarchy ? flattenVisibleTreeNodes(hierarchy, openFolders) : [],
@@ -621,10 +642,10 @@ function BinderInner() {
         case " ":
           e.preventDefault();
           e.stopPropagation();
-          setSelectedId(focusedNode.id);
           if (focusedNode.type === "Document") {
-            selectDocument(focusedNode.id);
+            void handleSelectDocument(focusedNode.id);
           } else if (focusedNode.hasChildren) {
+            setSelectedId(focusedNode.id);
             handleToggleFolder(focusedNode.id);
           }
           break;
@@ -648,8 +669,7 @@ function BinderInner() {
         case "Escape":
           e.preventDefault();
           e.stopPropagation();
-          setSelectedId(null);
-          useProjectStore.setState({ activeDocId: null, activeDoc: null });
+          void handleClearDocumentSelection();
           break;
       }
     },
@@ -659,7 +679,8 @@ function BinderInner() {
       openFolders,
       handleToggleFolder,
       moveTreeFocus,
-      selectDocument,
+      handleSelectDocument,
+      handleClearDocumentSelection,
     ]
   );
 
@@ -702,8 +723,7 @@ function BinderInner() {
           target.classList.contains("binder-tree") ||
           target.classList.contains("binder-outline")
         ) {
-          setSelectedId(null);
-          useProjectStore.setState({ activeDocId: null, activeDoc: null });
+          void handleClearDocumentSelection();
         }
       }}
     >
@@ -761,7 +781,7 @@ function BinderInner() {
               selectedId={selectedId}
               projectId={projectInfo.id}
               openFolders={openFolders}
-              onSelect={selectDocument}
+              onSelect={handleSelectDocument}
               onSelectNode={setSelectedId}
               onToggleFolder={handleToggleFolder}
               onContextMenu={handleContextMenu}
@@ -777,7 +797,7 @@ function BinderInner() {
           label="Characters"
           projectPath={projectInfo.path}
           activeDocId={activeDocId}
-          onSelect={selectDocument}
+          onSelect={handleSelectDocument}
           onCreated={setProject}
         />
         <EntitySection
@@ -785,7 +805,7 @@ function BinderInner() {
           label="Locations"
           projectPath={projectInfo.path}
           activeDocId={activeDocId}
-          onSelect={selectDocument}
+          onSelect={handleSelectDocument}
           onCreated={setProject}
         />
       </div>
@@ -939,7 +959,7 @@ function EntitySection({
   label: string;
   projectPath: string;
   activeDocId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string) => void | Promise<boolean>;
   onCreated: (project: Project) => void;
 }) {
   const prefix = kind === "character" ? "characters/" : "locations/";
@@ -1001,7 +1021,7 @@ function EntitySection({
             <button
               key={doc.id}
               className={`binder-entity-item ${activeDocId === doc.id ? "active" : ""}`}
-              onClick={() => onSelect(doc.id)}
+              onClick={() => { void onSelect(doc.id); }}
             >
               {doc.name}
             </button>
@@ -1038,7 +1058,7 @@ function TreeItem({
   selectedId: string | null;
   projectId: string;
   openFolders: Record<string, boolean>;
-  onSelect: (id: string) => void;
+  onSelect: (id: string) => void | Promise<boolean>;
   onSelectNode: (id: string) => void;
   onToggleFolder: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, nodeId: string, nodeType: "Document" | "Folder") => void;
@@ -1140,8 +1160,7 @@ function TreeItem({
           if (e.ctrlKey || e.metaKey) {
             onFlowToggle?.(node.id);
           } else {
-            onSelectNode(node.id);
-            onSelect(node.id);
+            void onSelect(node.id);
           }
         }}
         onContextMenu={(e) => {

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useProjectStore } from "../../stores/projectStore";
 import type { Document, Thread } from "../../types";
+import { selectDocumentWithEditorFlush } from "../editor/navigationGuards";
 
 interface TimelineScene {
   doc: Document;
@@ -72,7 +73,6 @@ type LaneMode = "pov" | "thread" | "single";
 
 export function TimelineView() {
   const project = useProjectStore((s) => s.project);
-  const selectDocument = useProjectStore((s) => s.selectDocument);
   const [laneMode, setLaneMode] = useState<LaneMode>("pov");
 
   const timelineData = useMemo(() => (project ? extractTimelineData(project) : { scenes: [], invalidStoryTimes: 0 }), [project]);
@@ -140,7 +140,7 @@ export function TimelineView() {
   };
 
   const handleSceneClick = (docId: string) => {
-    selectDocument(docId);
+    void selectDocumentWithEditorFlush(docId);
   };
 
   if (!project) {
