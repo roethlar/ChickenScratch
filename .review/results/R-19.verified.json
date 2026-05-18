@@ -1,0 +1,7 @@
+{
+  "id": "R-19",
+  "sha": "f745ef7dbaabe897902488a3fe89ad4af97231fa",
+  "ts": "2026-05-18T03:25:00Z",
+  "reviewer": "claude",
+  "note": "Cross-frontend convergence on the data-integrity story (R-15 closed the Rust path with quarantine; R-19 closes Swift+Windows with fail-closed — different policy, same outcome). Swift TreeNode retains hierarchy path, so a missing .md is preserved through round-trip — concrete test 'missing hierarchy document body is not pruned on native write' proves project.yaml id+path survive a re-write after body deletion. Three Swift fail-closed cases: missing .meta, corrupt YAML (unterminated bracket), missing id field — all reject load. Unreadable .md (directory at path) rejects load. Writer rejects hierarchy nodes without resolvable paths. Windows --native-repair harness covers the same matrix. Cross-frontend round-trip clean. PKGBUILD pre-pinned 585365a998e3943081102d45e4181c1d67cc84571065a782c9939d637ed8edbd. Known gap: Linux native repair remains R-20."
+}
