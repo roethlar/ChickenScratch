@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Identifier="34B5675F-781E-414C-99F0-78C39096B34A" Version="2.0" Creator="SCRMAC-3.3.6-16305" Device="Nagatha" Author="" Modified="2024-11-12 15:26:20 -0500" ModID="54A8FC17-B3D0-4ACF-AE53-5377F45C1ADB">
+    <Binder>
+        <BinderItem UUID="81ED43FE-2729-4988-ABB7-03F99CEC546D" Type="DraftFolder" Created="2018-11-14 23:34:33 -0500" Modified="2018-11-14 23:34:33 -0500">
+            <Title>Draft</Title>
+            <Children>
+                <BinderItem UUID="6ACCEC54-88F0-4CAC-ADE0-7AE0AED3E777" Type="Text" Created="2018-11-14 23:34:33 -0500" Modified="2018-11-14 23:34:56 -0500">
+                    <MetaData>
+                        <IncludeInCompile>Yes</IncludeInCompile>
+                    </MetaData>
+                    <TextSettings>
+                        <TextSelection>0,0</TextSelection>
+                    </TextSettings>
+                </BinderItem>
+            </Children>
+        </BinderItem>
+        <BinderItem UUID="9A5B9439-127B-4D9E-A430-EDADFF605CD5" Type="ResearchFolder" Created="2018-11-14 23:34:33 -0500" Modified="2018-11-14 23:34:33 -0500">
+            <Title>Research</Title>
+        </BinderItem>
+        <BinderItem UUID="CC43417D-0F4D-44FD-AF25-4FB9257BA535" Type="TrashFolder" Created="2018-11-14 23:34:33 -0500" Modified="2018-11-14 23:34:33 -0500">
+            <Title>Trash</Title>
+        </BinderItem>
+    </Binder>
+    <Collections>
+        <Collection Type="Binder" ID="C3C0EF61-23E8-4995-AAFF-AEB10D177125" Color="0.112547 0.112547 0.112547">
+            <Title>Binder</Title>
+        </Collection>
+        <Collection Type="RecentSearch" ID="9069075F-95E7-464F-B6F8-C76E819F332D" Color="0.190666 0.172706 0.216531">
+            <Title>Search Results</Title>
+        </Collection>
+    </Collections>
+    <SectionTypes>
+        <TypeDefinitions>
+            <Type ID="AE2715FF-198C-43BB-A84B-327F71A73AB8">Heading</Type>
+            <Type ID="3CE968F1-ECA7-4379-BD89-09FE04495AC4">Sub-Heading</Type>
+            <Type ID="B5FA48D6-AAB6-4A80-BBAE-C5A1E7599C0E">Section</Type>
+        </TypeDefinitions>
+        <LevelTypes>
+            <Folders>
+                <Type>AE2715FF-198C-43BB-A84B-327F71A73AB8</Type>
+            </Folders>
+            <Containers>
+                <Type>B5FA48D6-AAB6-4A80-BBAE-C5A1E7599C0E</Type>
+            </Containers>
+            <Files>
+                <Type>B5FA48D6-AAB6-4A80-BBAE-C5A1E7599C0E</Type>
+            </Files>
+        </LevelTypes>
+    </SectionTypes>
+    <LabelSettings>
+        <Title>Label</Title>
+        <DefaultLabelID>-1</DefaultLabelID>
+        <Labels>
+            <Label ID="-1">No Label</Label>
+            <Label ID="0" Color="1.0 0.76 0.78">Red</Label>
+            <Label ID="1" Color="1.0 0.83 0.71">Orange</Label>
+            <Label ID="2" Color="1.0 0.91 0.71">Yellow</Label>
+            <Label ID="3" Color="0.76 0.95 0.75">Green</Label>
+            <Label ID="4" Color="0.75 0.91 0.98">Blue</Label>
+            <Label ID="5" Color="0.97 0.82 1.0">Purple</Label>
+        </Labels>
+    </LabelSettings>
+    <StatusSettings>
+        <Title>Status</Title>
+        <DefaultStatusID>-1</DefaultStatusID>
+        <StatusItems>
+            <Status ID="-1">No Status</Status>
+            <Status ID="0">To Do</Status>
+            <Status ID="1">First Draft</Status>
+            <Status ID="2">Revised Draft</Status>
+            <Status ID="3">Final Draft</Status>
+            <Status ID="4">Done</Status>
+        </StatusItems>
+    </StatusSettings>
+    <ProjectTargets Notify="No">
+        <DraftTarget Type="Words" CountIncludedOnly="No" CurrentCompileGroupOnly="No" Deadline="2018-11-15 21:41:03 -0500" IgnoreDeadline="Yes">0</DraftTarget>
+        <SessionTarget Type="Words" CountDraftOnly="Yes" AllowNegatives="No" NextResetDate="2024-11-13 00:00:00 -0500" ResetType="Time" ResetTime="00:00" DeterminedFromDeadline="No" WritingDays="" CanWriteOnDeadlineDate="No">0</SessionTarget>
+        <PreviousSession Words="0" Characters="0" Date="2024-11-12 15:26:07 -0500"/>
+    </ProjectTargets>
+    <RecentWritingHistory Date="2024-11-12 00:00:00 -0500">
+        <DraftWordCount>0</DraftWordCount>
+        <DraftCharCount>0</DraftCharCount>
+        <OtherWordCount>0</OtherWordCount>
+        <OtherCharCount>0</OtherCharCount>
+    </RecentWritingHistory>
+    <PrintSettings PaperSize="612.0,792.0" LeftMargin="72.0" RightMargin="72.0" TopMargin="90.0" BottomMargin="90.0" PaperType="na-letter" Orientation="Portrait" HorizontalPagination="Clip" VerticalPagination="Auto" ScaleFactor="1.0" HorizontallyCentered="Yes" VerticallyCentered="Yes" Collates="Yes" PagesAcross="1" PagesDown="1"/>
+</ScrivenerProject>

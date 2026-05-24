@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<ScrivenerProject Version="2.0" Creator="SCRIOS-1.1.5-1301" Modified="2018-11-14 23:35:09 -0500" Device="Zoë the Third" Checksums="17CB5E51-6D87-4DE3-81DD-338E2504CE3B">
+	<Binder>
+		<BinderItem UUID="81ED43FE-2729-4988-ABB7-03F99CEC546D" Type="DraftFolder" Created="2018-11-14 23:34:33 -0500" Modified="2018-11-14 23:34:33 -0500">
+			<Title>Draft</Title>
+			<MetaData>
+				<LabelID>-1</LabelID>
+				<StatusID>-1</StatusID>
+			</MetaData>
+			<Children>
+			<BinderItem UUID="6ACCEC54-88F0-4CAC-ADE0-7AE0AED3E777" Type="Text" Created="2018-11-14 23:34:33 -0500" Modified="2018-11-14 23:34:56 -0500">
+				<MetaData>
+					<LabelID>-1</LabelID>
+					<StatusID>-1</StatusID>
+					<IncludeInCompile>Yes</IncludeInCompile>
+				</MetaData>
+				<TextSettings><TextSelection>0,16925</TextSelection></TextSettings>
+			</BinderItem>
+			</Children>
+		</BinderItem>
+		<BinderItem UUID="9A5B9439-127B-4D9E-A430-EDADFF605CD5" Type="ResearchFolder" Created="2018-11-14 23:34:33 -0500" Modified="2018-11-14 23:34:33 -0500">
+			<Title>Research</Title>
+			<MetaData>
+				<LabelID>-1</LabelID>
+				<StatusID>-1</StatusID>
+			</MetaData>
+		</BinderItem>
+		<BinderItem UUID="CC43417D-0F4D-44FD-AF25-4FB9257BA535" Type="TrashFolder" Created="2018-11-14 23:34:33 -0500" Modified="2018-11-14 23:34:33 -0500">
+			<Title>Trash</Title>
+			<MetaData>
+				<LabelID>-1</LabelID>
+				<StatusID>-1</StatusID>
+			</MetaData>
+		</BinderItem>
+	</Binder>
+	<LabelSettings>
+		<Title>Label</Title>
+		<DefaultLabelID>-1</DefaultLabelID>
+		<Labels>
+			<Label ID="-1" Color="0.0 0.0 0.0">No Label</Label>
+			<Label ID="0" Color="1.0 0.76 0.78">Red</Label>
+			<Label ID="1" Color="1.0 0.83 0.71">Orange</Label>
+			<Label ID="2" Color="1.0 0.91 0.71">Yellow</Label>
+			<Label ID="3" Color="0.76 0.95 0.75">Green</Label>
+			<Label ID="4" Color="0.75 0.91 0.98">Blue</Label>
+			<Label ID="5" Color="0.97 0.82 1.0">Purple</Label>
+		</Labels>
+	</LabelSettings>
+	<StatusSettings>
+		<Title>Status</Title>
+		<DefaultStatusID>-1</DefaultStatusID>
+		<StatusItems>
+			<Status ID="-1">No Status</Status>
+			<Status ID="0">To Do</Status>
+			<Status ID="1">First Draft</Status>
+			<Status ID="2">Revised Draft</Status>
+			<Status ID="3">Final Draft</Status>
+			<Status ID="4">Done</Status>
+		</StatusItems>
+	</StatusSettings>
+	<ProjectTargets>
+		<DraftTarget Type="Words">0</DraftTarget>
+		<SessionTarget Type="Words" CountDraftOnly="Yes" AllowNegatives="No">0</SessionTarget>
+		<PreviousSession Words="0" Characters="0"></PreviousSession>
+	</ProjectTargets>
+</ScrivenerProject>
