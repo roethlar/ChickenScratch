@@ -1,8 +1,0 @@
-<Solution>
-  <Project Path="ChickenScratch.App/ChickenScratch.App.csproj">
-    <Platform Project="x64" />
-  </Project>
-  <Project Path="ChickenScratch.Core/ChickenScratch.Core.csproj" />
-  <Project Path="ChickenScratch.Core.Tests/CrossFrontendHarness/ChickenScratch.Core.CrossFrontendHarness.csproj" />
-  <Project Path="ChickenScratch.Core.Tests/GitServiceRestoreHarness/ChickenScratch.Core.GitServiceRestoreHarness.csproj" />
-</Solution>
