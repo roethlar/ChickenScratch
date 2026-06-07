@@ -9,6 +9,18 @@ license = "MIT"
 name = "chikn-converter"
 path = "src/main.rs"
 
+[lib]
+name = "chikn_converter"
+path = "src/lib.rs"
+
 [dependencies]
 chickenscratch-core = { path = "../core" }
 clap = { version = "4", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+regex = "1"
+quick-xml = { version = "0.36", features = ["serialize"] }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"

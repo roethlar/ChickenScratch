@@ -1,6 +1,8 @@
 # Phase — Format Finalization, Then UI Sync
 
-**Status:** Active
+> **Governance update (2026-06-07):** Step 2 (“Sync the five UIs”) is **superseded** by [ADR-004](../adr/ADR-004-deprecated-native-engines.md). Format work applies to the **Rust engine** and **Tauri reference UI** only. Swift/C#/Qt parity is no longer a goal. See [CURRENT_PHASE.md](../CURRENT_PHASE.md).
+
+**Status:** Active (engine + Tauri scope only)
 **Scope:** Replace all current feature work until complete.
 
 The `.chikn` format is one concept. The five frontends are separate things that agree on it. This phase solidifies that split: lock the format as genre-agnostic, then bring every UI into lockstep with the locked schema.

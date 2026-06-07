@@ -6,7 +6,9 @@ These sit alongside [ROADMAP.md](../ROADMAP.md) (forward-looking feature catalog
 
 ## Current phase
 
-**[PHASE_FORMAT_FINALIZATION.md](PHASE_FORMAT_FINALIZATION.md)** — lock the `.chikn` format as genre-agnostic, give UIs a single generic extensibility point (`fields` map per document), sync all five frontends to preserve unknown entries. This is the only active plan until it ships.
+**Authoritative:** [`CURRENT_PHASE.md`](../CURRENT_PHASE.md) · [`INVARIANTS.md`](../INVARIANTS.md)
+
+**[PHASE_FORMAT_FINALIZATION.md](PHASE_FORMAT_FINALIZATION.md)** — lock the `.chikn` format as genre-agnostic (`fields` map per document). **Engine + Tauri only** — five-frontend sync is deprecated per [ADR-004](../adr/ADR-004-deprecated-native-engines.md).
 
 **v1.2 — Novelist features** *(UI-layer, paused until format finalization ships).* Bring ChickenScratch up to parity with (and past) the best open-source Scrivener alternatives on the features that actually matter for long-form fiction. Sourced from a comparative survey of Scrivener, Manuskript, bibisco, oStorybook, and yWriter. These are **novelist-UI** plans — the format stays genre-agnostic; novelist UIs write their domain-specific data into the generic `fields` extensibility that format finalization introduces.
 

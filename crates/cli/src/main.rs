@@ -3,8 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use chickenscratch_core::core::project::reader::read_project;
-use chickenscratch_core::scrivener::converter::import_scriv;
-use chickenscratch_core::scrivener::exporter::export_to_scriv;
+use chikn_converter::{import_scriv, export_to_scriv};
 
 #[derive(Parser)]
 #[command(name = "chikn-converter")]

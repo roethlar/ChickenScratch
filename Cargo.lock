@@ -619,6 +619,7 @@ name = "chickenscratch"
 version = "1.0.0"
 dependencies = [
  "chickenscratch-core",
+ "chikn-converter",
  "chrono",
  "dirs",
  "keyring",
@@ -691,7 +692,13 @@ name = "chikn-converter"
 version = "1.0.0"
 dependencies = [
  "chickenscratch-core",
+ "chrono",
  "clap",
+ "quick-xml 0.36.2",
+ "regex",
+ "serde",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::{reader, writer};
-use chickenscratch_core::scrivener::converter;
+use chikn_converter;
 use chickenscratch_core::{ChiknError, Project};
 use std::path::Path;
 #[cfg(target_os = "macos")]
@@ -50,7 +50,7 @@ pub fn import_scrivener(
     let settings = crate::commands::settings::get_app_settings();
     let (pandoc_path, _) = crate::commands::settings::resolve_pandoc(&settings)?;
     write_locks.with_project_lock(&output_path, || {
-        converter::import_scriv(
+        chikn_converter::import_scriv(
             Path::new(&scriv_path),
             Path::new(&output_path),
             Some(pandoc_path.as_path()),

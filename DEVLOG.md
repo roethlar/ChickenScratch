@@ -2,6 +2,16 @@
 
 Running log of architectural decisions and significant changes.
 
+Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every session. **Never** append because the owner asked a question (Invariant I0).
+
+---
+
+## 2026-06-07 — Agent protocol v2: Rule 0, multi-CLI, governance
+
+**Change:** Canonical `AGENTS.md` for Grok, Codex, Claude Code, Antigravity. **Rule 0 / Invariant I0:** owner questions → answer only, zero repo edits. Engine-only `.chikn` I/O, Tauri reference GUI, deprecated native trees. Invariants, ADRs, `CURRENT_PHASE`, DEVLOG rules for significant work only. Owner does not load files or use jargon.
+
+**Files:** `AGENTS.md`, `CLAUDE.md`, `docs/INVARIANTS.md` (I0), `docs/AGENT-WORKFLOW.md`, `.grok/rules/`, `.claude/rules/`, reviewer checks I0.
+
 ---
 
 ## 2026-05-07 — Fifth review pass, batch 1: Windows format parity (F-001 → F-006)

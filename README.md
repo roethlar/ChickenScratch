@@ -2,7 +2,11 @@
 
 A cross-platform writing app for fiction writers. Open-source Scrivener alternative with git-native revision control.
 
-**Status:** v1.0.0 release target — Tauri desktop is the primary supported build
+**The product is the [`.chikn` format](docs/CHIKN_FORMAT_SPEC.md)** — plain Markdown projects with embedded history. This repo’s Rust **engine** (`crates/core`) is the canonical reader/writer; the **Tauri app** is the reference GUI.
+
+**Owner:** open this folder in Grok, Codex, Claude Code, or Antigravity CLI — say what you need ([`docs/START-HERE.md`](docs/START-HERE.md))
+
+**Status:** v1.0.0 release target — Tauri desktop is the primary supported build. `macos/`, `windows/`, `linux/` native trees are deprecated.
 
 For usage instructions, see the [User Guide](docs/USER_GUIDE.md).
 
