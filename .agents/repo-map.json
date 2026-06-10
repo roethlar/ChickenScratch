@@ -1,0 +1,82 @@
+{
+  "validated_against": {
+    "commit": "d893ed0",
+    "date": "2026-06-10"
+  },
+  "projects": [
+    {
+      "path": "crates/core",
+      "name": "chickenscratch-core",
+      "role": "The engine - only code that reads/writes the .chikn format; git revisions; Pandoc compile (ADR-001)"
+    },
+    {
+      "path": "crates/cli",
+      "name": "chikn-converter",
+      "role": "Scrivener <-> .chikn converter CLI; calls the engine, hosts the Scrivener parsing code"
+    },
+    {
+      "path": "crates/tui",
+      "name": "chikn",
+      "role": "Terminal UI over the engine"
+    },
+    {
+      "path": "src-tauri",
+      "name": "chickenscratch",
+      "role": "Tauri backend - thin commands over the engine, plus app services (settings, keyring, AI)"
+    },
+    {
+      "path": "ui",
+      "name": "ui (npm)",
+      "role": "React + TipTap frontend; the reference GUI with src-tauri (ADR-003)"
+    }
+  ],
+  "verification": {
+    "status": "blocked",
+    "status_note": "Root Cargo.toml still lists the deleted linux/ directory as a workspace member, so all cargo commands fail on master (verified 2026-06-10). Commands below are the declared suite from docs/AGENT-WORKFLOW.md and apply as soon as the workspace manifest is fixed.",
+    "commands": [
+      "cargo fmt --all -- --check",
+      "cargo clippy -p chickenscratch-core --all-targets -- -D warnings",
+      "cargo test -p chickenscratch-core --lib",
+      "cargo clippy -p chickenscratch --all-targets -- -D warnings",
+      "cargo test -p chickenscratch --bins",
+      "cd ui && npm run lint && npm run build"
+    ],
+    "conditional_commands": {
+      "release": "scripts/check-release-metadata.sh and RELEASE.md runbook (both currently reference deleted native trees - see .agents/state.md drift register)"
+    },
+    "policy": {
+      "code_changes": "Run the suite for touched areas before claiming completion (Invariant I9).",
+      "docs_only": "Code verification not required unless docs affect setup, commands, runtime behavior, generated files, or user-visible behavior.",
+      "manual_behavior": "Run the relevant manual check or smoke test for behavior not covered by automation, or state clearly that it was not run."
+    }
+  },
+  "fact_bearing_paths": [
+    "docs/INVARIANTS.md",
+    "docs/CURRENT_PHASE.md",
+    "docs/ARCHITECTURE.md",
+    "docs/AGENT-WORKFLOW.md",
+    "docs/HUMAN-GATE.md",
+    "docs/PROJECT.md",
+    "docs/CHIKN_FORMAT_SPEC.md",
+    "docs/adr/",
+    "docs/plans/",
+    "README.md",
+    "RELEASE.md",
+    "DEVLOG.md"
+  ],
+  "guidance_paths": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "GEMINI.md",
+    ".agents/state.md",
+    ".agents/decisions.md",
+    ".agents/repo-map.json",
+    ".agents/artifact-manifest.json"
+  ],
+  "notes": [
+    "AGENTS.md (June 7 protocol) is canonical; docs/adr/ is the decision log; .agents/decisions.md is a pointer stub.",
+    "REVIEW.md and .review/ are the audit record of a completed 63-finding review cycle - history, not state.",
+    "scripts/check-release-metadata.sh requires REVIEW.md to stay export-ignored in .gitattributes; never delete or rename REVIEW.md.",
+    "macos/, windows/, linux/ native trees were deleted 2026-06-07 (ADR-004); CI and release scripts still reference them - drift register in .agents/state.md."
+  ]
+}

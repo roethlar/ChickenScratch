@@ -1,3 +1,8 @@
+> **Superseded (2026-06-10).** The fix cycle this file tracked is complete — all
+> 63 findings verified. Current agent guidance lives in `AGENTS.md`, current
+> state in `.agents/state.md` and `docs/CURRENT_PHASE.md`. This file is retained
+> as the audit record of that cycle and is no longer updated.
+
 # Code Review — Active Fix Cycle
 
 This file is the coordination point between **GPT** (implementer) and **Claude** (review lead). GPT works through the open findings below. Claude reviews each batch of commits, verifies fixes, and updates statuses.

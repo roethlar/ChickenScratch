@@ -1,0 +1,73 @@
+{
+  "validated_against": {
+    "commit": "d893ed0",
+    "date": "2026-06-10"
+  },
+  "artifacts": [
+    {
+      "path": "AGENTS.md",
+      "purpose": "Canonical agent protocol (June 7 system + Bootstrap Handoff)",
+      "custody": "tracked"
+    },
+    {
+      "path": "CLAUDE.md",
+      "purpose": "Claude Code shim importing AGENTS.md",
+      "custody": "tracked"
+    },
+    {
+      "path": "GEMINI.md",
+      "purpose": "Antigravity shim pointing at AGENTS.md",
+      "custody": "tracked"
+    },
+    {
+      "path": ".agents/state.md",
+      "purpose": "Session-level current state, blockers, drift register",
+      "custody": "tracked"
+    },
+    {
+      "path": ".agents/decisions.md",
+      "purpose": "Pointer stub to docs/adr/ plus layout-level decisions",
+      "custody": "tracked"
+    },
+    {
+      "path": ".agents/repo-map.json",
+      "purpose": "Project layout, verification commands and their current status",
+      "custody": "tracked"
+    },
+    {
+      "path": ".agents/artifact-manifest.json",
+      "purpose": "This list of governance artifacts",
+      "custody": "tracked"
+    },
+    {
+      "path": ".agents/harvest.md",
+      "purpose": "One transferable governance lesson (no harvest dropbox configured)",
+      "custody": "tracked"
+    },
+    {
+      "path": "docs/INVARIANTS.md",
+      "purpose": "Hard rules I0-I10 (canonical, pre-existing)",
+      "custody": "tracked"
+    },
+    {
+      "path": "docs/CURRENT_PHASE.md",
+      "purpose": "Authoritative phase plan (canonical, pre-existing)",
+      "custody": "tracked"
+    },
+    {
+      "path": "docs/adr/",
+      "purpose": "Canonical decision records (pre-existing)",
+      "custody": "tracked"
+    },
+    {
+      "path": "REVIEW.md",
+      "purpose": "Superseded audit record of the completed review cycle; must stay export-ignored in .gitattributes",
+      "custody": "tracked"
+    },
+    {
+      "path": "DEVLOG.md",
+      "purpose": "Append-only journal for significant work (pre-existing)",
+      "custody": "tracked"
+    }
+  ]
+}
