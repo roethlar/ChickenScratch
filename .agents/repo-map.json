@@ -1,7 +1,7 @@
 {
   "validated_against": {
-    "commit": "d893ed0",
-    "date": "2026-06-10"
+    "commit": "94ae421",
+    "date": "2026-07-03"
   },
   "projects": [
     {
@@ -32,7 +32,7 @@
   ],
   "verification": {
     "status": "blocked",
-    "status_note": "Root Cargo.toml still lists the deleted linux/ directory as a workspace member, so all cargo commands fail on master (verified 2026-06-10). Commands below are the declared suite from docs/AGENT-WORKFLOW.md and apply as soon as the workspace manifest is fixed.",
+    "status_note": "Root Cargo.toml still lists the deleted linux/ directory as a workspace member, so all cargo commands fail on master (re-verified 2026-07-03 via git status/git diff Cargo.toml). An uncommitted, unverified local edit to Cargo.toml already removes linux from members but has not been committed or run. Commands below are the declared suite from .agents/repo-guidance.md and apply as soon as the workspace manifest is fixed and committed.",
     "commands": [
       "cargo fmt --all -- --check",
       "cargo clippy -p chickenscratch-core --all-targets -- -D warnings",
@@ -45,7 +45,7 @@
       "release": "scripts/check-release-metadata.sh and RELEASE.md runbook (both currently reference deleted native trees - see .agents/state.md drift register)"
     },
     "policy": {
-      "code_changes": "Run the suite for touched areas before claiming completion (Invariant I9).",
+      "code_changes": "Run the suite for touched areas before claiming completion (docs/INVARIANTS.md I9).",
       "docs_only": "Code verification not required unless docs affect setup, commands, runtime behavior, generated files, or user-visible behavior.",
       "manual_behavior": "Run the relevant manual check or smoke test for behavior not covered by automation, or state clearly that it was not run."
     }
@@ -60,6 +60,7 @@
     "docs/CHIKN_FORMAT_SPEC.md",
     "docs/adr/",
     "docs/plans/",
+    "docs/history/",
     "README.md",
     "RELEASE.md",
     "DEVLOG.md"
@@ -68,13 +69,16 @@
     "AGENTS.md",
     "CLAUDE.md",
     "GEMINI.md",
+    ".agents/repo-guidance.md",
     ".agents/state.md",
     ".agents/decisions.md",
+    ".agents/push-policy.md",
     ".agents/repo-map.json",
     ".agents/artifact-manifest.json"
   ],
   "notes": [
-    "AGENTS.md (June 7 protocol) is canonical; docs/adr/ is the decision log; .agents/decisions.md is a pointer stub.",
+    "AGENTS.md is now the portable AgentGovernanceBootstrap template, replaced whole on refresh and never hand-edited; ChickenScratch-specific rules live in .agents/repo-guidance.md, which points at docs/INVARIANTS.md, docs/PROJECT.md, docs/CURRENT_PHASE.md, docs/ARCHITECTURE.md, docs/AGENT-WORKFLOW.md, docs/HUMAN-GATE.md rather than duplicating them (decided 2026-07-03, see .agents/decisions.md).",
+    "docs/adr/ remains the product/architecture decision log; .agents/decisions.md holds governance/layout-level decisions and follows the toolkit's Open/Active/Adopted/Superseded lifecycle, archiving closed entries verbatim to docs/history/decisions-archive.md.",
     "REVIEW.md and .review/ are the audit record of a completed 63-finding review cycle - history, not state.",
     "scripts/check-release-metadata.sh requires REVIEW.md to stay export-ignored in .gitattributes; never delete or rename REVIEW.md.",
     "macos/, windows/, linux/ native trees were deleted 2026-06-07 (ADR-004); CI and release scripts still reference them - drift register in .agents/state.md."

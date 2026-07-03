@@ -1,22 +1,27 @@
 {
   "validated_against": {
-    "commit": "d893ed0",
-    "date": "2026-06-10"
+    "commit": "94ae421",
+    "date": "2026-07-03"
   },
   "artifacts": [
     {
       "path": "AGENTS.md",
-      "purpose": "Canonical agent protocol (June 7 system + Bootstrap Handoff)",
+      "purpose": "Portable AgentGovernanceBootstrap template; replaced whole on refresh, never hand-edited",
       "custody": "tracked"
     },
     {
       "path": "CLAUDE.md",
-      "purpose": "Claude Code shim importing AGENTS.md",
+      "purpose": "Claude Code shim importing AGENTS.md (unchanged - already matched the template)",
       "custody": "tracked"
     },
     {
       "path": "GEMINI.md",
-      "purpose": "Antigravity shim pointing at AGENTS.md",
+      "purpose": "Antigravity shim importing AGENTS.md (reconciled to the shim template)",
+      "custody": "tracked"
+    },
+    {
+      "path": ".agents/repo-guidance.md",
+      "purpose": "ChickenScratch-specific rules carved out of AGENTS.md: mission, reading order, verification, earned practices",
       "custody": "tracked"
     },
     {
@@ -26,7 +31,12 @@
     },
     {
       "path": ".agents/decisions.md",
-      "purpose": "Pointer stub to docs/adr/ plus layout-level decisions",
+      "purpose": "Open/active governance decisions (Open/Active/Adopted/Superseded lifecycle); product/architecture decisions stay in docs/adr/",
+      "custody": "tracked"
+    },
+    {
+      "path": ".agents/push-policy.md",
+      "purpose": "Push policy for commits made by agents (default: always ask)",
       "custody": "tracked"
     },
     {
@@ -45,6 +55,76 @@
       "custody": "tracked"
     },
     {
+      "path": ".agents/hooks.json",
+      "purpose": "Antigravity re-ground hook (fires on context compaction)",
+      "custody": "tracked"
+    },
+    {
+      "path": ".claude/commands/catchup.md",
+      "purpose": "Claude Code wrapper for the catchup operator",
+      "custody": "tracked"
+    },
+    {
+      "path": ".claude/commands/handoff.md",
+      "purpose": "Claude Code wrapper for the handoff operator",
+      "custody": "tracked"
+    },
+    {
+      "path": ".claude/commands/drift.md",
+      "purpose": "Claude Code wrapper for the drift operator",
+      "custody": "tracked"
+    },
+    {
+      "path": ".claude/commands/decision.md",
+      "purpose": "Claude Code wrapper for the decision operator",
+      "custody": "tracked"
+    },
+    {
+      "path": ".claude/commands/plan.md",
+      "purpose": "Claude Code wrapper for the plan operator",
+      "custody": "tracked"
+    },
+    {
+      "path": ".claude/commands/playbook.md",
+      "purpose": "Claude Code wrapper for the playbook operator",
+      "custody": "tracked"
+    },
+    {
+      "path": ".claude/commands/update-governance.md",
+      "purpose": "Claude Code wrapper that refreshes governance from the toolkit (previously present but untracked - see .gitignore fix)",
+      "custody": "tracked"
+    },
+    {
+      "path": ".claude/settings.json",
+      "purpose": "Claude Code hooks: re-ground on compaction, AGENTS.md pre-edit tripwire",
+      "custody": "tracked"
+    },
+    {
+      "path": ".claude/agents-md-tripwire.py",
+      "purpose": "Advisory pre-edit reminder script invoked by .claude/settings.json",
+      "custody": "tracked"
+    },
+    {
+      "path": ".codex/hooks.json",
+      "purpose": "Codex CLI hooks: re-ground on compaction, AGENTS.md pre-edit tripwire",
+      "custody": "tracked"
+    },
+    {
+      "path": ".codex/agents-md-tripwire.py",
+      "purpose": "Advisory pre-edit reminder script invoked by .codex/hooks.json",
+      "custody": "tracked"
+    },
+    {
+      "path": ".grok/hooks/reground.json",
+      "purpose": "Grok CLI re-ground hook (fires on context compaction)",
+      "custody": "tracked"
+    },
+    {
+      "path": "docs/history/decisions-archive.md",
+      "purpose": "Verbatim archive of closed .agents/decisions.md entries",
+      "custody": "tracked"
+    },
+    {
       "path": "docs/INVARIANTS.md",
       "purpose": "Hard rules I0-I10 (canonical, pre-existing)",
       "custody": "tracked"
@@ -55,8 +135,28 @@
       "custody": "tracked"
     },
     {
+      "path": "docs/PROJECT.md",
+      "purpose": "Plain-English mission, priorities, glossary (canonical, pre-existing)",
+      "custody": "tracked"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "purpose": "Code-to-invariant map (canonical, pre-existing)",
+      "custody": "tracked"
+    },
+    {
+      "path": "docs/AGENT-WORKFLOW.md",
+      "purpose": "Full agent workflow steps (canonical, pre-existing)",
+      "custody": "tracked"
+    },
+    {
+      "path": "docs/HUMAN-GATE.md",
+      "purpose": "How the owner directs work, agent interpretation table (canonical, pre-existing)",
+      "custody": "tracked"
+    },
+    {
       "path": "docs/adr/",
-      "purpose": "Canonical decision records (pre-existing)",
+      "purpose": "Canonical architecture decision records (pre-existing)",
       "custody": "tracked"
     },
     {

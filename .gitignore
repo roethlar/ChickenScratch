@@ -15,8 +15,8 @@ windows/**/BundleArtifacts/
 node_modules/
 ui/dist/
 
-# Claude
-.claude/
+# Claude Code (machine-local only; commands/hooks under .claude/ are tracked)
+.claude/settings.local.json
 
 # Swift / Xcode
 macos/.build/
@@ -40,9 +40,6 @@ Thumbs.db
 # Env
 .env
 .env.local
-
-# Agents
-.claude/
 
 # Tauri generated
 src-tauri/gen/
