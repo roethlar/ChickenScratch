@@ -1,7 +1,7 @@
 use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::{reader, writer};
-use chikn_converter;
 use chickenscratch_core::{ChiknError, Project};
+use chikn_converter;
 use std::path::Path;
 #[cfg(target_os = "macos")]
 use std::process::Command;
