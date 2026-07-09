@@ -57,14 +57,8 @@ cd ui && npm run lint && npm run build
 
 Full release checklist: `RELEASE.md`.
 
-**Currently blocked** (verified via `git status --short` and `git diff
-Cargo.toml`, 2026-07-03): root `Cargo.toml` still lists the deleted `linux/`
-directory as a workspace member, so every `cargo` command fails. There is an
-**uncommitted, unverified** local edit to `Cargo.toml` that removes `linux`
-from the members list — the plausible fix — but it has not been committed or
-run yet. Do not assume the build is fixed until that edit is committed and
-the suite above is actually run green. See `.agents/state.md` for the current
-status.
+Current runnability status lives in `.agents/state.md` (Verification), not
+here.
 
 `docs/AGENT-WORKFLOW.md` §6 governs `DEVLOG.md`: append only after
 significant work (architecture, format, governance, a shipped plan, or a

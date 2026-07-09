@@ -10,31 +10,30 @@ decisions; `DEVLOG.md` holds history.
   (governance docs) landed; native frontends (`macos/`, `windows/`, `linux/`)
   were **deleted from the tree** in the same change set; Scrivener
   import/export moved from the engine into `crates/cli`.
-- Governance refresh in progress (2026-07-03): `AGENTS.md` reconciled to the
-  current AgentGovernanceBootstrap template (portable, generic); repo-specific
-  rules carved into `.agents/repo-guidance.md`; harness command wrappers,
-  hooks, and shims brought up to date. See `.agents/decisions.md` for why.
+- Governance refresh landed as of `2ab2579` (2026-07-03): `AGENTS.md`
+  reconciled to the current AgentGovernanceBootstrap template (portable,
+  generic); repo-specific rules carved into `.agents/repo-guidance.md`;
+  harness command wrappers, hooks, and shims brought up to date. See
+  `.agents/decisions.md` for why.
+- **Build fixed on `master`** (2026-07-09, owner-approved work request):
+  `f049198` removed the deleted `linux/` directory from the workspace
+  members in root `Cargo.toml` (Cargo.lock regenerated); `d0f9cad` applied
+  mechanical `cargo fmt` to three files whose drift the broken workspace had
+  hidden. Full verification suite run green locally as of `d0f9cad`. Note:
+  the "uncommitted local edit to Cargo.toml" recorded here on 2026-07-03 no
+  longer existed by 2026-07-09 (clean worktree, empty stash); the fix was
+  re-made from scratch.
 - No other feature work in flight.
 
 ## Blockers
 
-- **The build is broken on `master`.** Root `Cargo.toml` still lists the
-  deleted `linux/` directory as a workspace member, so every `cargo` command
-  fails (`cargo metadata` errors on the missing manifest). The verification
-  suite cannot run until this one-line removal is made and committed.
-- There is an **uncommitted, unverified** local edit to `Cargo.toml` (present
-  in the working tree as of 2026-07-03, confirmed via `git diff Cargo.toml`)
-  that removes `linux` from the members list — the plausible fix for the
-  blocker above. It has not been committed and the suite has not been run
-  against it yet. Fixing and verifying this is a code change that needs an
-  owner work request.
+- None.
 
 ## Known drift (recorded, not yet fixed)
 
 Left over from the native-tree deletion; most are anticipated by goals G4–G6
 in `docs/CURRENT_PHASE.md`:
 
-- `Cargo.toml` workspace members include deleted `linux/` (the build-breaker above).
 - `.github/workflows/validation.yml` sets up Swift/.NET and resolves the
   deleted `macos/` and `windows/` trees; the cross-frontend step calls
   `crates/core/tests/cross_frontend/run.sh`, whose Swift/C# harnesses no
@@ -52,10 +51,10 @@ in `docs/CURRENT_PHASE.md`:
 
 ## Next
 
-1. Owner decision: fix the broken workspace (remove `linux` from
-   `Cargo.toml` members — an uncommitted edit already does this, see
-   Blockers) and trim CI/release scripts to engine + Tauri + converter + TUI
-   (goals G5/G6). Small, well-defined work request.
+1. Owner decision: trim CI/release scripts to engine + Tauri + converter +
+   TUI (goals G5/G6). CI on `master` stays red until this lands — the
+   workflows still reference the deleted native trees (see Known drift).
+   Small, well-defined work request.
 2. Then Step 2 of the phase: format lock (genre-agnostic `fields` map, spec
    alignment, round-trip tests) per
    `docs/plans/PHASE_FORMAT_FINALIZATION.md`, engine scope only.
@@ -64,8 +63,9 @@ in `docs/CURRENT_PHASE.md`:
 
 - Declared suite: `.agents/repo-guidance.md` Verification section (fmt check,
   clippy, core lib tests, Tauri bin tests, UI lint + build).
-- **Currently not runnable** — blocked by the broken workspace manifest above.
-  Status recorded in `.agents/repo-map.json`.
+- Runnable again and last run green locally 2026-07-09, as of `d0f9cad`,
+  machine-local (owner's Mac). GitHub CI remains red until the workflow
+  drift above is fixed. Status recorded in `.agents/repo-map.json`.
 
 ## Active Sources
 

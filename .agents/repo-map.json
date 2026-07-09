@@ -1,7 +1,7 @@
 {
   "validated_against": {
-    "commit": "94ae421",
-    "date": "2026-07-03"
+    "commit": "d0f9cad",
+    "date": "2026-07-09"
   },
   "projects": [
     {
@@ -31,8 +31,8 @@
     }
   ],
   "verification": {
-    "status": "blocked",
-    "status_note": "Root Cargo.toml still lists the deleted linux/ directory as a workspace member, so all cargo commands fail on master (re-verified 2026-07-03 via git status/git diff Cargo.toml). An uncommitted, unverified local edit to Cargo.toml already removes linux from members but has not been committed or run. Commands below are the declared suite from .agents/repo-guidance.md and apply as soon as the workspace manifest is fixed and committed.",
+    "status": "runnable",
+    "status_note": "Workspace manifest fixed in f049198 (removed deleted linux/ from members); full suite below run green locally 2026-07-09 as of d0f9cad. GitHub CI on master remains red until the workflow drift in .agents/state.md is fixed (workflows reference deleted native trees).",
     "commands": [
       "cargo fmt --all -- --check",
       "cargo clippy -p chickenscratch-core --all-targets -- -D warnings",
