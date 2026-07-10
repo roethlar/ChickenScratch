@@ -31,7 +31,7 @@ use std::path::{Component, Path, PathBuf};
 use super::format::{
     get_document_meta_path, get_project_file_path, get_threads_path, REQUIRED_FOLDERS,
 };
-use super::reader::{DocumentMetadata, ProjectMetadata};
+use super::reader::{lift_legacy_novelist_keys, DocumentMetadata, ProjectMetadata};
 use crate::models::{Project, TreeNode};
 use crate::utils::error::ChiknError;
 
@@ -574,7 +574,7 @@ fn write_document(
     // Read existing metadata to preserve fields we don't model in Document
     let existing_meta = read_existing_document_metadata(&meta_path)?;
 
-    let metadata = DocumentMetadata {
+    let mut metadata = DocumentMetadata {
         id: document.id.clone(),
         name: Some(document.name.clone()),
         created: document.created.clone(),
@@ -615,6 +615,11 @@ fn write_document(
             .map(|m| m.extra.clone())
             .unwrap_or_default(),
     };
+
+    // The existing .meta may still carry legacy top-level novelist keys the
+    // reader lifted into `fields` at load time; relocate them here too so
+    // the save moves them on disk instead of duplicating them.
+    lift_legacy_novelist_keys(&mut metadata);
 
     let meta_content = serde_yaml::to_string(&metadata)?;
 
@@ -1202,6 +1207,139 @@ mod tests {
         assert!(
             rewritten.contains("arc_stage: rising-action"),
             "unknown thread-entry key must survive rewrite:\n{rewritten}"
+        );
+    }
+
+    #[test]
+    fn test_legacy_novelist_keys_lift_into_fields() {
+        // Sidecars written during the 10ec683 window carry novelist keys at
+        // the .meta TOP LEVEL. They must load into `fields` (where the UIs
+        // look) and relocate under `fields:` on the next save.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("Legacy.chikn");
+        let mut project = create_project(&project_path, "Legacy").unwrap();
+
+        let doc = Document {
+            id: "scene-1".to_string(),
+            name: "scene-one".to_string(),
+            path: "manuscript/scene-one.md".to_string(),
+            content: "Sarah waited.".to_string(),
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        project.documents.insert(doc.id.clone(), doc.clone());
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
+        write_project(&mut project).unwrap();
+
+        let meta_path = project_path.join("manuscript/scene-one.meta");
+        let existing = std::fs::read_to_string(&meta_path).unwrap();
+        std::fs::write(
+            &meta_path,
+            format!(
+                "{}\npov_character: sarah\nduration_minutes: 90\nthreads:\n- main-plot\n",
+                existing.trim_end()
+            ),
+        )
+        .unwrap();
+
+        // Read: values must surface in `fields`.
+        let mut reloaded = read_project(&project_path).unwrap();
+        let d = reloaded.documents.get("scene-1").unwrap();
+        assert_eq!(
+            d.fields.get("pov_character").and_then(|v| v.as_str()),
+            Some("sarah"),
+            "legacy string key must lift into fields on read"
+        );
+        assert_eq!(
+            d.fields.get("duration_minutes").and_then(|v| v.as_i64()),
+            Some(90),
+            "legacy numeric key must lift into fields on read"
+        );
+
+        // Write: keys must relocate under fields:, not duplicate at top level.
+        write_project(&mut reloaded).unwrap();
+        let rewritten = std::fs::read_to_string(&meta_path).unwrap();
+        assert!(
+            !rewritten
+                .lines()
+                .any(|l| l.starts_with("pov_character:") || l.starts_with("duration_minutes:")),
+            "legacy keys must not remain at .meta top level:\n{rewritten}"
+        );
+        let final_load = read_project(&project_path).unwrap();
+        let d = final_load.documents.get("scene-1").unwrap();
+        assert_eq!(
+            d.fields.get("pov_character").and_then(|v| v.as_str()),
+            Some("sarah")
+        );
+        assert_eq!(
+            d.fields
+                .get("threads")
+                .and_then(|v| v.as_sequence())
+                .map(|s| s.len()),
+            Some(1),
+            "legacy list key must survive the relocation"
+        );
+    }
+
+    #[test]
+    fn test_legacy_lift_fields_wins_on_conflict() {
+        // When the same key exists both under fields: and at the legacy top
+        // level, the fields: value is authoritative; the stale duplicate is
+        // dropped rather than resurrected.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("LegacyConflict.chikn");
+        let mut project = create_project(&project_path, "LegacyConflict").unwrap();
+
+        let doc = Document {
+            id: "scene-1".to_string(),
+            name: "scene-one".to_string(),
+            path: "manuscript/scene-one.md".to_string(),
+            content: "Text.".to_string(),
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        project.documents.insert(doc.id.clone(), doc.clone());
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
+        write_project(&mut project).unwrap();
+
+        let meta_path = project_path.join("manuscript/scene-one.meta");
+        let existing = std::fs::read_to_string(&meta_path).unwrap();
+        std::fs::write(
+            &meta_path,
+            format!(
+                "{}\npov_character: old-sarah\nfields:\n  pov_character: new-sarah\n",
+                existing.trim_end()
+            ),
+        )
+        .unwrap();
+
+        let mut reloaded = read_project(&project_path).unwrap();
+        let d = reloaded.documents.get("scene-1").unwrap();
+        assert_eq!(
+            d.fields.get("pov_character").and_then(|v| v.as_str()),
+            Some("new-sarah"),
+            "fields: value must win over the legacy top-level duplicate"
+        );
+
+        write_project(&mut reloaded).unwrap();
+        let rewritten = std::fs::read_to_string(&meta_path).unwrap();
+        assert!(
+            !rewritten.lines().any(|l| l.starts_with("pov_character:")),
+            "stale top-level duplicate must be gone after save:\n{rewritten}"
+        );
+        assert!(
+            rewritten.contains("pov_character: new-sarah"),
+            "authoritative fields: value must persist:\n{rewritten}"
         );
     }
 

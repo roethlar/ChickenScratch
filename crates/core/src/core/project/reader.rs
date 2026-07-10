@@ -152,6 +152,34 @@ pub struct DocumentMetadata {
     pub extra: std::collections::BTreeMap<String, serde_yaml::Value>,
 }
 
+/// The six novelist keys commit `10ec683` briefly added as top-level typed
+/// sidecar fields before the format was locked as genre-agnostic (see
+/// docs/plans/PHASE_FORMAT_FINALIZATION.md). MIGRATION SHIM ONLY — not typed
+/// fields (I4). Sidecars written during that window carry these at the
+/// `.meta` top level, where no current UI looks; they are lifted into
+/// `fields`, where docs/UI_CONVENTIONS_NOVELIST.md places them, so the data
+/// resurfaces. `fields` wins when it already has the key.
+const LEGACY_NOVELIST_KEYS: [&str; 6] = [
+    "pov_character",
+    "location",
+    "story_time",
+    "duration_minutes",
+    "threads",
+    "characters_in_scene",
+];
+
+/// Move legacy top-level novelist keys (captured in `extra`) into `fields`.
+/// Existing `fields` entries win; the stale top-level duplicate is dropped.
+/// Applied on read (so the data is visible in memory) and on the write-time
+/// merge (so the next save relocates the keys on disk).
+pub(crate) fn lift_legacy_novelist_keys(metadata: &mut DocumentMetadata) {
+    for key in LEGACY_NOVELIST_KEYS {
+        if let Some(value) = metadata.extra.remove(key) {
+            metadata.fields.entry(key.to_string()).or_insert(value);
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct HierarchyDocumentIdentity {
     id: String,
@@ -908,7 +936,10 @@ fn read_document_metadata_or_default(
 
     let meta_content = fs::read_to_string(meta_path)?;
     match serde_yaml::from_str::<DocumentMetadata>(&meta_content) {
-        Ok(metadata) => Ok(metadata),
+        Ok(mut metadata) => {
+            lift_legacy_novelist_keys(&mut metadata);
+            Ok(metadata)
+        }
         Err(e) => {
             let quarantine_path = quarantine_corrupt_document_metadata(meta_path)?;
             eprintln!(
