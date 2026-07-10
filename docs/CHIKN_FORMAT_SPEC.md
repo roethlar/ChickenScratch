@@ -1,6 +1,6 @@
 # .chikn Format Specification v1.2
 **Status**: Living Specification
-**Last Updated**: 2026-05-07
+**Last Updated**: 2026-07-09
 **Purpose**: Define the .chikn project format for creative writing with git integration
 
 ---
@@ -8,9 +8,12 @@
 ## Design Philosophy
 
 The .chikn format is designed to be:
-- **Git-friendly**: Plain text files that diff/merge cleanly
+- **Git-friendly**: Plain text files that diff/merge cleanly, re-emitted in
+  one canonical form so history records real edits only
 - **Human-readable**: Writers can edit files directly if needed
-- **Lossless**: Full Scrivener compatibility via metadata preservation
+- **Lossless**: Saving never silently destroys data — unknown YAML keys
+  written by other or newer tools survive round-trips (see *Unknown-key
+  preservation*), and Scrivener metadata is preserved for round-trip
 - **Simple**: YAML for structure, Markdown for content
 - **Extensible**: Room for future features without breaking changes
 
@@ -57,6 +60,9 @@ Revision history lives entirely in `.git/`. The `revs/` tarball scheme in older 
 #### Schema
 
 ```yaml
+# Version marker (stamped by writers; absent in pre-v1.2 projects)
+format_version: string        # e.g. "1.2" — see Format Versioning
+
 # Required fields
 id: string                    # UUID for project (generated on creation)
 name: string                  # Project display name
@@ -66,18 +72,23 @@ modified: string              # ISO 8601 timestamp (updated on save)
 # Document hierarchy
 hierarchy: TreeNode[]         # Top-level hierarchy (see TreeNode schema)
 
-# Optional fields (for future use)
-settings:
-  auto_save_interval: number  # Seconds between auto-saves (default: 2)
-  word_count_goal: number     # Daily/project word count target
-  compile_format: string      # Default compile format
-
+# Optional project-level metadata (all fields optional)
 metadata:
+  title: string               # Work title (can differ from project name)
   author: string              # Project author
+  project_type: string        # e.g. "Novel", "Short Story", "Screenplay"
   genre: string               # Fiction genre
-  target_audience: string     # Target reader demographic
-  tags: string[]              # Project tags/categories
+  theme: string               # Central theme
+  summary: string             # Short project summary
+  session_target:             # Writer session goals (novelist convention)
+    words_per_session: number
+    deadline: string          # ISO date (YYYY-MM-DD)
+    total_target: number
 ```
+
+Unknown keys — at the top level of `project.yaml` or inside the
+`metadata:` block — are tolerated on read and preserved verbatim on write
+(see *Unknown-key preservation* under Version 1.2).
 
 #### TreeNode Schema
 
@@ -97,6 +108,7 @@ TreeNode:
 #### Example project.yaml
 
 ```yaml
+format_version: '1.2'
 id: 8d9f6c30-317e-4aea-9c34-1dbc5c8d6b44
 name: My Novel
 created: 2025-10-14T10:30:00Z
@@ -243,24 +255,17 @@ include_in_compile: "Yes"|"No"  # Include when compiling/exporting.
                               # (Scrivener legacy). Readers MUST also accept
                               # a YAML boolean for round-trip with frontends
                               # that historically wrote `true`/`false` here.
-
-# Custom formatting (for rich text preservation)
-custom_styles:
-  - name: string              # Style name (e.g., "Emphasis Red")
-    color: string             # Hex color (#ff0000)
-    font: string              # Font family
-    size: number              # Font size in points
-    bold: boolean
-    italic: boolean
-    underline: boolean
-
-# Document statistics
-word_count: number            # Current word count
-target: number                # Word count target
-character_count: number       # Character count (with spaces)
+                              # Writers emit exactly "Yes" or "No"; readers
+                              # treat any value other than the exact string
+                              # "No" (or boolean false) as included.
 
 # Scrivener compatibility
 scrivener_uuid: string        # Original Scrivener UUID (for import/export)
+
+# Document connections
+links: string[]               # IDs of related documents (bidirectional
+                              # linking is a UI behavior; the format stores
+                              # the ID list as written)
 
 # Compile ordering & targeting
 word_count_target: integer    # Target for this document (0 = no target)
@@ -274,6 +279,14 @@ comments:
     created: string           # ISO 8601
     modified: string          # ISO 8601
 ```
+
+Earlier drafts of this section also listed `custom_styles`, `word_count`,
+`target`, and `character_count`. No implementation ever wrote or read them
+— word/character counts are derived from content, `target` duplicated
+`word_count_target`, and rich-text styles are carried in the Markdown
+itself as `[text]{.class}` spans — so v1.2 removes them from the schema.
+Files that contain them anyway keep them: they round-trip as preserved
+unknown keys.
 
 #### Example .meta file
 
@@ -292,18 +305,12 @@ keywords:
   - protagonist
   - setup
 synopsis: "Hero discovers the call to adventure"
+word_count_target: 3000
 
-# Statistics
-word_count: 2547
-target: 3000
-
-# Custom formatting
-custom_styles:
-  - name: Dream Sequence
-    color: "#666666"
-    font: Georgia
-    size: 12
-    italic: true
+# Generic UI extensibility (see Version 1.2)
+fields:
+  pov_character: sarah-bennett
+  story_time: Day 1, 08:15
 ```
 
 ---
@@ -416,6 +423,15 @@ revs/
 
 ## Format Versioning
 
+**On-disk marker.** Writers stamp `format_version` (e.g. `"1.2"`) at the
+top of `project.yaml` on every save. The marker is a detection hook for
+future migrations, never a read gate: readers accept any value, and a
+missing marker simply means the project was last written before v1.2
+locked the format (it gains the marker on its next save). A file claiming
+a newer version still loads — unknown-key preservation means an older
+engine passes through what it doesn't understand instead of destroying
+it. Breaking schema changes bump this version together with this spec.
+
 ### Version 1.0
 - project.yaml with hierarchy
 - Markdown documents with .meta sidecar files
@@ -458,6 +474,18 @@ fields:
 - **No format-level vocabulary.** The format does not define `pov_character` or any other key name. Domain-specific key lists live in separate UI convention documents (for example, `docs/UI_CONVENTIONS_NOVELIST.md`).
 
 **What this replaces.** An earlier draft of v1.2 added typed domain fields (`pov_character`, `location`, `story_time`, `duration_minutes`, `threads`, `characters_in_scene`) directly to the schema. That was a design error — those are novelist-UI concepts, not format concepts. v1.2 ships the generic mechanism instead; novelist UIs write the same six keys into `fields` per their convention doc.
+
+**Legacy migration.** Sidecars written during that draft's window may carry the six keys at the `.meta` top level. Readers lift them into `fields` on load (an existing `fields` entry wins over the stale top-level duplicate), and the next save relocates them under `fields:` on disk. Nothing is deleted; the keys move to where current UIs read them.
+
+**Unknown-key preservation (I5).** Beyond the `fields` map, the format guarantees that unknown YAML keys written by other or newer tools survive read→write cycles at these surfaces:
+
+- the top level of a document's `.meta` sidecar,
+- the top level of `project.yaml` and the keys inside its `metadata:` block,
+- individual thread entries in `threads.yaml`.
+
+Readers tolerate the unknown keys; writers re-emit them verbatim. `fields` remains the *sanctioned* extensibility surface — UIs should never invent top-level keys — but a top-level key that exists anyway is never silently destroyed. Two structures are **closed**: hierarchy nodes in `project.yaml` (`type`/`id`/`name`/`path`/`children` only) and `comments` entries; adding keys to those requires a format version bump.
+
+**Canonical serialization.** Writers emit each YAML file in one canonical form: known keys in schema order, `fields` entries and preserved unknown keys in sorted (lexicographic) order. Saving the same state twice produces byte-identical `.meta` and `threads.yaml` files (`project.yaml` differs only in its top-level `modified:` timestamp), so the embedded git history records real edits only.
 
 **Out of the format, in the UIs:**
 
@@ -525,9 +553,11 @@ See [`plans/PHASE_FORMAT_FINALIZATION.md`](plans/PHASE_FORMAT_FINALIZATION.md) f
 - ✅ Must exist at project root
 - ✅ Must be valid YAML
 - ✅ Must have: `id`, `name`, `hierarchy`, `created`, `modified`
+- ✅ May have `format_version` (recommended; stamped by writers)
 - ✅ All hierarchy IDs must be unique
 - ✅ Document paths must exist as .md files
 - ✅ Folder IDs must match parent_id references
+- ✅ Unknown top-level and `metadata:`-block keys are valid and must be preserved
 
 ### Document Files (.md)
 - ✅ Must be UTF-8 encoded
@@ -540,6 +570,7 @@ See [`plans/PHASE_FORMAT_FINALIZATION.md`](plans/PHASE_FORMAT_FINALIZATION.md) f
 - ✅ Must have: `id`, `name`, `created`, `modified`, `parent_id`
 - ✅ ID must match hierarchy entry
 - ✅ parent_id must reference valid folder or be null
+- ✅ Unknown top-level keys are valid and must be preserved
 
 ### Git Repository
 - ✅ `.git/` directory must exist at project root
@@ -844,15 +875,13 @@ Any editor supporting .chikn format must:
 
 ## Reference Implementations
 
-Five in-tree implementations of this spec share the same on-disk format. Three are Rust-backed by `chickenscratch-core`; two are standalone ports that target byte-for-byte compatibility:
+One engine implements this spec: **`crates/core/` (`chickenscratch-core`)** — the only code that reads or writes the format ([ADR-001](adr/ADR-001-single-engine.md), invariant I2). Everything else is a frontend over it:
 
-- **`src-tauri/`** + **`ui/`** — Tauri desktop app (Rust backend, React/TipTap frontend). Canonical reference for read/write, hierarchy, comments, footnotes, compile.
-- **`crates/tui/`** — `chikn` terminal UI (Rust, ratatui). Exercises the same core library against a markdown-native editor.
-- **`linux/`** — Qt6 Wayland-native frontend (Rust via `cxx-qt`, QML UI). Shares `chickenscratch-core`.
-- **`macos/`** — SwiftUI + Liquid Glass frontend (Swift, macOS 26+). Ships its own `ChiknKit` Swift library that parses and writes YAML via Yams and shells out to `/usr/bin/git`. Maintains byte-for-byte compatibility with the Rust writer through Codable structs with explicit key order.
-- **`windows/`** — WinUI 3 + C# frontend with `LibGit2Sharp`. Own `ChickenScratch.Core` library.
+- **`src-tauri/`** + **`ui/`** — Tauri desktop app (Rust backend, React/TipTap frontend). The reference GUI ([ADR-003](adr/ADR-003-tauri-reference-ui.md)).
+- **`crates/tui/`** — `chikn` terminal UI (Rust, ratatui).
+- **`crates/cli/`** — `chikn-converter`, the standalone Scrivener ↔ .chikn converter.
 
-See also `crates/cli/` (`chikn-converter`) for the standalone Scrivener ↔ .chikn converter.
+Earlier native reimplementations (Swift `ChiknKit`, C# `ChickenScratch.Core`, Qt6) are deprecated and removed from the tree ([ADR-004](adr/ADR-004-deprecated-native-engines.md)); references to "five frontends" or byte-for-byte ports in older documents are historical.
 
 ---
 
