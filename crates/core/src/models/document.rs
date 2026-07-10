@@ -3,7 +3,7 @@
 //! Represents a single document in a ChickenScratch project
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// Document model
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,8 +72,11 @@ pub struct Document {
     /// schema. Novelist UIs (for example) agree on a set of keys in
     /// `docs/UI_CONVENTIONS_NOVELIST.md`; other domains publish their own
     /// convention docs. See `docs/FOLDER_FIRST_DOCUMENTS.md`.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub fields: HashMap<String, serde_yaml::Value>,
+    ///
+    /// Sorted map so sidecars serialize with one canonical key order — the
+    /// embedded git history stays free of spurious reorder diffs.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fields: BTreeMap<String, serde_yaml::Value>,
 }
 
 /// A comment anchored to a span in the document.
@@ -116,7 +119,7 @@ impl Default for Document {
             word_count_target: 0,
             compile_order: 0,
             comments: Vec::new(),
-            fields: HashMap::new(),
+            fields: BTreeMap::new(),
         }
     }
 }

@@ -368,7 +368,7 @@ fn create_entity_impl(
     let now = chrono::Utc::now().to_rfc3339();
 
     // Tag the entity via the generic fields map so any UI can detect it
-    let mut fields = std::collections::HashMap::new();
+    let mut fields = std::collections::BTreeMap::new();
     fields.insert("entity_kind".to_string(), serde_yaml::Value::String(kind));
 
     let document = Document {

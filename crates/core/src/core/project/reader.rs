@@ -139,9 +139,10 @@ pub struct DocumentMetadata {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub comments: Vec<crate::models::Comment>,
 
-    /// Generic UI extensibility — see `Document::fields`.
-    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
-    pub fields: std::collections::HashMap<String, serde_yaml::Value>,
+    /// Generic UI extensibility — see `Document::fields`. Sorted map for
+    /// one canonical serialized key order.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub fields: std::collections::BTreeMap<String, serde_yaml::Value>,
 
     /// Unknown top-level sidecar keys, preserved verbatim across read→write
     /// cycles (tolerant readers, preserving writers — INVARIANTS.md I5).
@@ -975,7 +976,7 @@ fn default_document_metadata(
         word_count_target: 0,
         compile_order: 0,
         comments: Vec::new(),
-        fields: std::collections::HashMap::new(),
+        fields: std::collections::BTreeMap::new(),
         extra: Default::default(),
     }
 }

@@ -948,7 +948,7 @@ mod tests {
         let project_path = temp_dir.path().join("FieldsMap.chikn");
         let mut project = create_project(&project_path, "Fields Map Test").unwrap();
 
-        let mut fields = std::collections::HashMap::new();
+        let mut fields = std::collections::BTreeMap::new();
         // A novelist-convention string.
         fields.insert("pov_character".to_string(), Value::String("sarah".into()));
         // An integer.
@@ -1207,6 +1207,51 @@ mod tests {
         assert!(
             rewritten.contains("arc_stage: rising-action"),
             "unknown thread-entry key must survive rewrite:\n{rewritten}"
+        );
+    }
+
+    #[test]
+    fn test_fields_serialize_in_canonical_sorted_order() {
+        // Sidecars must have one canonical byte form: fields keys serialize
+        // sorted regardless of insertion order, so the embedded git history
+        // never records spurious reorder diffs.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("Canonical.chikn");
+        let mut project = create_project(&project_path, "Canonical").unwrap();
+
+        let mut doc = Document {
+            id: "doc1".to_string(),
+            name: "canon".to_string(),
+            path: "manuscript/canon.md".to_string(),
+            content: "Text.".to_string(),
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        for key in ["zeta", "alpha", "mike", "bravo", "yankee", "charlie"] {
+            doc.fields
+                .insert(key.to_string(), serde_yaml::Value::String("v".into()));
+        }
+        project.documents.insert(doc.id.clone(), doc.clone());
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
+        write_project(&mut project).unwrap();
+
+        let meta = std::fs::read_to_string(project_path.join("manuscript/canon.meta")).unwrap();
+        let field_keys: Vec<String> = meta
+            .lines()
+            .skip_while(|l| !l.starts_with("fields:"))
+            .skip(1)
+            .take_while(|l| l.starts_with("  "))
+            .filter_map(|l| l.trim().split(':').next().map(str::to_string))
+            .collect();
+        assert_eq!(
+            field_keys,
+            vec!["alpha", "bravo", "charlie", "mike", "yankee", "zeta"],
+            "fields keys must serialize in sorted order:\n{meta}"
         );
     }
 
