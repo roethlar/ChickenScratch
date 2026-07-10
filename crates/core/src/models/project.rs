@@ -11,7 +11,7 @@ use super::{Document, TreeNode};
 /// `threads.yaml`. The format itself stays genre-agnostic; this lives in the
 /// project model so any frontend that wants threads has a typed view of them
 /// while frontends that don't simply ignore the field.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Thread {
     /// Stable id (slug-style); referenced from a Document's `fields.threads`.
     pub id: String,
@@ -31,7 +31,7 @@ pub struct Thread {
 
 /// Writer session targets — words/session goal, optional deadline, total target.
 /// All optional; all-None means the feature is off for this project.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SessionTarget {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub words_per_session: Option<u32>,
@@ -50,7 +50,7 @@ impl SessionTarget {
 }
 
 /// Project-level metadata
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ProjectMeta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -82,7 +82,7 @@ fn skip_empty_session_target(t: &Option<SessionTarget>) -> bool {
 }
 
 /// Project model
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     /// Project unique ID
     pub id: String,

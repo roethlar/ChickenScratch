@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// Document model
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Document {
     /// Unique document ID
     pub id: String,
@@ -81,7 +81,7 @@ pub struct Document {
 
 /// A comment anchored to a span in the document.
 /// The anchor is a `<span class="comment" data-comment-id="...">` element in `content`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Comment {
     /// Unique comment id (matches the data-comment-id attribute in the content)
     pub id: String,

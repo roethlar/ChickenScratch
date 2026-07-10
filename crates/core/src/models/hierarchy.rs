@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// make the reader accept either case so a project authored on any frontend
 /// can be reopened in Tauri without re-saving (cross-frontend drift sibling
 /// to F-001/F-002).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum TreeNode {
     #[serde(alias = "folder")]
