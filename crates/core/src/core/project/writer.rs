@@ -29,7 +29,8 @@ use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use super::format::{
-    get_document_meta_path, get_project_file_path, get_threads_path, REQUIRED_FOLDERS,
+    get_document_meta_path, get_project_file_path, get_threads_path, FORMAT_VERSION,
+    REQUIRED_FOLDERS,
 };
 use super::reader::{lift_legacy_novelist_keys, DocumentMetadata, ProjectMetadata};
 use crate::models::{Project, TreeNode};
@@ -241,6 +242,9 @@ fn write_project_metadata(project: &Project) -> Result<(), ChiknError> {
     let existing = read_existing_project_metadata(&project_file)?;
 
     let metadata = ProjectMetadata {
+        // Always stamp the version this writer speaks — a legacy
+        // version-less project gains the marker on its first save.
+        format_version: Some(FORMAT_VERSION.to_string()),
         id: project.id.clone(),
         name: project.name.clone(),
         hierarchy: project.hierarchy.clone(),
@@ -1207,6 +1211,72 @@ mod tests {
         assert!(
             rewritten.contains("arc_stage: rising-action"),
             "unknown thread-entry key must survive rewrite:\n{rewritten}"
+        );
+    }
+
+    #[test]
+    fn test_project_yaml_stamped_with_format_version() {
+        // The writer stamps the format version it speaks; new projects carry
+        // the marker from their very first project.yaml.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("Versioned.chikn");
+        create_project(&project_path, "Versioned").unwrap();
+
+        let yaml: serde_yaml::Value = serde_yaml::from_str(
+            &std::fs::read_to_string(project_path.join("project.yaml")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            yaml.get("format_version").and_then(|v| v.as_str()),
+            Some(crate::core::project::format::FORMAT_VERSION),
+            "new project.yaml must carry the format version marker"
+        );
+    }
+
+    #[test]
+    fn test_versionless_project_loads_and_gains_version_on_save() {
+        // Projects written before the marker existed load fine (never a
+        // gate) and pick up the marker on their next save. A file claiming
+        // a future version also loads — preservation means an older engine
+        // doesn't destroy what it doesn't understand.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("Legacy.chikn");
+        let mut project = create_project(&project_path, "Legacy").unwrap();
+        write_project(&mut project).unwrap();
+
+        // Simulate a pre-marker project.yaml.
+        let project_file = project_path.join("project.yaml");
+        let stripped: String = std::fs::read_to_string(&project_file)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with("format_version:"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&project_file, format!("{stripped}\n")).unwrap();
+
+        let mut reloaded = read_project(&project_path).expect("version-less project must load");
+        write_project(&mut reloaded).unwrap();
+        let yaml: serde_yaml::Value =
+            serde_yaml::from_str(&std::fs::read_to_string(&project_file).unwrap()).unwrap();
+        assert_eq!(
+            yaml.get("format_version").and_then(|v| v.as_str()),
+            Some(crate::core::project::format::FORMAT_VERSION),
+            "version-less project must gain the marker on save"
+        );
+
+        // Future-version tolerance: replace the marker and reload.
+        let future = std::fs::read_to_string(&project_file).unwrap().replace(
+            &format!(
+                "format_version: '{}'",
+                crate::core::project::format::FORMAT_VERSION
+            ),
+            "format_version: '9.9'",
+        );
+        std::fs::write(&project_file, future).unwrap();
+        let loaded = read_project(&project_path);
+        assert!(
+            loaded.is_ok(),
+            "future format_version must never gate reads: {loaded:?}"
         );
     }
 

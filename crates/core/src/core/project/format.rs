@@ -22,6 +22,13 @@
 use crate::utils::error::ChiknError;
 use std::path::{Path, PathBuf};
 
+/// On-disk format version stamped into `project.yaml` by the writer.
+/// Detection hook for future migrations, never a read gate: readers accept
+/// any value (or none — projects written before v1.2 locked the format),
+/// and unknown-key preservation means newer files survive an older engine.
+/// Bump only with a spec version bump (docs/CHIKN_FORMAT_SPEC.md, ADR-002).
+pub const FORMAT_VERSION: &str = "1.2";
+
 /// File extension for ChickenScratch projects
 pub const PROJECT_EXTENSION: &str = "chikn";
 

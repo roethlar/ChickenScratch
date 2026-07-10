@@ -39,6 +39,13 @@ use crate::utils::error::ChiknError;
 /// Project metadata structure as stored in project.yaml
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectMetadata {
+    /// On-disk format version (see `format::FORMAT_VERSION`). Absent in
+    /// projects written before v1.2 locked the format; any value is
+    /// accepted on read. Declared first so it serializes at the top of
+    /// project.yaml.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format_version: Option<String>,
+
     /// Project unique ID
     pub id: String,
 
