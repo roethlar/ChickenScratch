@@ -1,6 +1,6 @@
 {
   "validated_against": {
-    "commit": "d0f9cad",
+    "commit": "35f721a",
     "date": "2026-07-09"
   },
   "projects": [
@@ -32,7 +32,7 @@
   ],
   "verification": {
     "status": "runnable",
-    "status_note": "Workspace manifest fixed in f049198 (removed deleted linux/ from members); full suite below run green locally 2026-07-09 as of d0f9cad. GitHub CI on master remains red until the workflow drift in .agents/state.md is fixed (workflows reference deleted native trees).",
+    "status_note": "Full suite run green locally 2026-07-09 as of 35f721a (format-lock slice E; each format-lock slice ran the suite green before committing). GitHub CI on master remains red until the workflow drift in .agents/state.md is fixed (workflows reference deleted native trees).",
     "commands": [
       "cargo fmt --all -- --check",
       "cargo clippy -p chickenscratch-core --all-targets -- -D warnings",

@@ -23,12 +23,14 @@ decisions; `DEVLOG.md` holds history.
   the "uncommitted local edit to Cargo.toml" recorded here on 2026-07-03 no
   longer existed by 2026-07-09 (clean worktree, empty stash); the fix was
   re-made from scratch.
-- Format lock (phase Step 2) picked up on owner request (2026-07-09):
-  six-agent audit found the schema work already implemented; the real gaps
-  (top-level unknown-key loss, no version marker, nondeterministic `fields`
-  order, no full-fidelity round-trip test, spec drift) are scoped in
-  `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md` — **Proposed, awaiting owner
-  approval**. No engine code changed yet.
+- **Format lock (phase Step 2) shipped 2026-07-09** per owner-approved
+  `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md` (status: Shipped): unknown
+  top-level key preservation (I5), legacy novelist-key lift, canonical
+  `fields` order, `format_version` marker, full-fidelity round-trip tests,
+  spec aligned. Summary in `DEVLOG.md` (2026-07-09 entry). The audit also
+  found phase Step 3 (Tauri Inspector → `doc.fields`) was already in place
+  before this work. G2's engine+spec+tests criteria look satisfied —
+  closing/advancing the phase is the owner's call (`SET PHASE`).
 - No other feature work in flight.
 
 ## Blockers
@@ -60,18 +62,22 @@ in `docs/CURRENT_PHASE.md`:
 1. Owner decision: trim CI/release scripts to engine + Tauri + converter +
    TUI (goals G5/G6). CI on `master` stays red until this lands — the
    workflows still reference the deleted native trees (see Known drift).
-   Small, well-defined work request.
-2. Then Step 2 of the phase: format lock (genre-agnostic `fields` map, spec
-   alignment, round-trip tests) per
-   `docs/plans/PHASE_FORMAT_FINALIZATION.md`, engine scope only.
+   Small, well-defined work request. README/ARCHITECTURE cleanup (G4) rides
+   along; ROADMAP's What's Built and phase sections were already refreshed
+   with the format lock.
+2. Owner decision: phase Step 2 (format lock) is done and Step 3 was found
+   already in place — declare G2 met / advance the phase via `SET PHASE`,
+   or name the next work.
 
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section (fmt check,
   clippy, core lib tests, Tauri bin tests, UI lint + build).
-- Runnable again and last run green locally 2026-07-09, as of `d0f9cad`,
-  machine-local (owner's Mac). GitHub CI remains red until the workflow
-  drift above is fixed. Status recorded in `.agents/repo-map.json`.
+- Last run green locally 2026-07-09 as of `35f721a` (format-lock slice E;
+  every slice A–E ran the full suite green before its commit; later commits
+  are docs-only), machine-local (owner's Mac). GitHub CI remains red until
+  the workflow drift above is fixed. Status recorded in
+  `.agents/repo-map.json`.
 
 ## Active Sources
 

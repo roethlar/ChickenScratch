@@ -1,7 +1,7 @@
 # Plan: Format lock — engine round-trip guarantees and spec alignment
 
-**Status:** Approved by owner (2026-07-09), including the legacy scene-detail
-lift in slice B
+**Status:** Shipped 2026-07-09 (slices A–F, commits `08d65a3`…`d132b0e`);
+summary folded into `DEVLOG.md` per `docs/plans/README.md`
 
 **Owner request (quote):**
 > focus on 2. [Step 2 of `CURRENT_PHASE.md` — "Format lock (engine)"]

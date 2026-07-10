@@ -84,6 +84,13 @@ Not every frontend is at feature parity with Tauri — the SwiftUI, Qt6, and Win
 - Recent projects, Wayland compatibility
 - AI via reqwest (no curl dependency)
 
+**Format (engine) — v1.2 lock, shipped 2026-07-09**
+- Genre-agnostic schema: one generic `fields` map per document; novelist keys are UI conventions ([UI_CONVENTIONS_NOVELIST.md](UI_CONVENTIONS_NOVELIST.md))
+- Unknown-key preservation at every open surface (`.meta`, `project.yaml`, thread entries) — saves never silently destroy other tools' data
+- Legacy top-level novelist keys auto-lift into `fields`
+- `format_version` marker in `project.yaml`; canonical (sorted, byte-stable) serialization
+- Full-fidelity round-trip test suite (`crates/core/tests/format_round_trip.rs`); spec matches engine behavior ([CHIKN_FORMAT_SPEC.md](CHIKN_FORMAT_SPEC.md))
+
 ---
 
 ## v1.1 — Shipped
@@ -104,9 +111,9 @@ Bring the newer native frontends up to Tauri's feature set. Highest-leverage gap
 
 ## Current phase — Format finalization, then UI sync
 
-The `.chikn` format is one concept, genre-agnostic. The five frontends agree on it. This phase solidifies that split: lock the format schema, give UIs a single generic extensibility point (`fields` map per document), and bring every frontend into lockstep. See [plans/PHASE_FORMAT_FINALIZATION.md](plans/PHASE_FORMAT_FINALIZATION.md) for the full plan.
+The `.chikn` format is one concept, genre-agnostic. This phase solidifies that split: lock the format schema and give UIs a single generic extensibility point (`fields` map per document). See [plans/PHASE_FORMAT_FINALIZATION.md](plans/PHASE_FORMAT_FINALIZATION.md) for the original plan and [plans/PLAN_FORMAT_LOCK_ENGINE.md](plans/PLAN_FORMAT_LOCK_ENGINE.md) for the engine lock that shipped 2026-07-09 (see "Format (engine)" under What's Built). Multi-frontend sync was superseded by [ADR-004](adr/ADR-004-deprecated-native-engines.md) — engine + Tauri only.
 
-Until this phase is done, feature work below (including the Tier 1/2/3 novelist plans and the v1.1 AI/remote-sync items) is paused. It resumes cleanly once the format is locked.
+Remaining phase work is cleanup, not format: CI/release scripts and docs still referencing the deleted native trees (goals G4–G6 in [CURRENT_PHASE.md](CURRENT_PHASE.md)). Feature work below (including the Tier 1/2/3 novelist plans) resumes once the owner closes the phase.
 
 ---
 

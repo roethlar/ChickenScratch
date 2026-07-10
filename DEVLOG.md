@@ -6,6 +6,56 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-07-09 — Format lock (engine): preservation contract, version marker, canonical bytes, spec alignment
+
+**Change:** Completed `CURRENT_PHASE.md` Step 2 per the owner-approved
+`docs/plans/PLAN_FORMAT_LOCK_ENGINE.md`. A six-agent audit first established
+that the schema work in `PHASE_FORMAT_FINALIZATION.md` Step 1 (typed novelist
+fields out, generic `fields` map in) had already shipped; the remaining gaps
+were round-trip guarantees and spec drift. Five engine slices + one spec pass,
+one commit each:
+
+1. **Unknown top-level keys survive saves (I5).** serde flatten catch-alls on
+   `DocumentMetadata`, `ProjectMetadata`, `ProjectMeta`, `Thread`; `.meta` and
+   `project.yaml` extras merge from a re-read of the existing file (same
+   pattern as `section_type`/`scrivener_uuid`). Corrupt existing
+   `project.yaml` now aborts the save instead of being clobbered. Previously
+   any top-level key the structs didn't declare was silently destroyed on the
+   first save — contradicting I5 and the spec's "Lossless" pitch.
+2. **Legacy lift.** The six repudiated `10ec683`-era top-level novelist keys
+   lift into `fields` on read and relocate on the next save; `fields` wins on
+   conflict. Owner-approved data migration; nothing is deleted.
+3. **Canonical `fields` order.** `HashMap` → `BTreeMap` on `Document` and
+   `DocumentMetadata`: sidecars now have one canonical byte form instead of
+   per-process-random key order polluting embedded git history.
+4. **`format_version` marker.** Writers stamp `"1.2"` into `project.yaml`;
+   absent/unknown versions never gate reads. First on-disk migration hook.
+5. **Full-fidelity round-trip tests.** New `crates/core/tests/format_round_trip.rs`:
+   whole-document equality (every field at once), whole-project state over two
+   save/load cycles, byte-stability across consecutive saves, foreign+legacy
+   fixture. Models gained `PartialEq`. Proven capable: a writer dropping
+   `links` fails these while the whole pre-existing suite stays green.
+6. **Spec alignment.** `CHIKN_FORMAT_SPEC.md` now documents the preservation
+   contract (and which structures stay closed), canonical serialization, the
+   version marker, and the legacy lift; drops never-implemented
+   `custom_styles`/`word_count`/`target`/`character_count` (preserved as
+   unknowns if present in files); defines `links`; fixes the `metadata:`
+   schema to match `ProjectMeta`; replaces the five-implementations section
+   with the ADR-004 reality.
+
+Every slice's guard test was proven red with its mechanism reverted before
+committing. Full suite (fmt, clippy ×2, core lib, tauri bins, ui lint+build)
+green on every slice. Same-day precursor: removed the deleted `linux/` tree
+from the workspace manifest, which had broken every cargo command since
+2026-06-07.
+
+**Files:** `crates/core/src/core/project/{reader,writer,format}.rs`,
+`crates/core/src/models/{document,project,hierarchy}.rs`,
+`crates/core/tests/format_round_trip.rs`, `src-tauri/src/commands/{document,threads}.rs`
+(mechanical), `docs/CHIKN_FORMAT_SPEC.md`, `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md`.
+
+---
+
 ## 2026-06-07 — Agent protocol v2: Rule 0, multi-CLI, governance
 
 **Change:** Canonical `AGENTS.md` for Grok, Codex, Claude Code, Antigravity. **Rule 0 / Invariant I0:** owner questions → answer only, zero repo edits. Engine-only `.chikn` I/O, Tauri reference GUI, deprecated native trees. Invariants, ADRs, `CURRENT_PHASE`, DEVLOG rules for significant work only. Owner does not load files or use jargon.
