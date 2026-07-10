@@ -1,6 +1,7 @@
 # Plan: Format lock — engine round-trip guarantees and spec alignment
 
-**Status:** Proposed — awaiting owner approval (2026-07-09)
+**Status:** Approved by owner (2026-07-09), including the legacy scene-detail
+lift in slice B
 
 **Owner request (quote):**
 > focus on 2. [Step 2 of `CURRENT_PHASE.md` — "Format lock (engine)"]
