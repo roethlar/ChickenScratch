@@ -150,6 +150,7 @@ pub fn create_thread(
             name: trimmed.to_string(),
             color: color.and_then(non_empty),
             description: description.and_then(non_empty),
+            extra: Default::default(),
         });
         writer::write_project(&mut project)?;
         Ok(project)

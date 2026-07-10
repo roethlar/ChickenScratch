@@ -57,6 +57,13 @@ pub struct ProjectMetadata {
     /// Project-level metadata
     #[serde(default)]
     pub metadata: crate::models::ProjectMeta,
+
+    /// Unknown top-level keys, preserved verbatim across read→write cycles
+    /// (tolerant readers, preserving writers — INVARIANTS.md I5). Sorted map
+    /// so re-emission is deterministic. Declared last so preserved keys
+    /// serialize after the known schema.
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_yaml::Value>,
 }
 
 /// Document metadata structure as stored in .meta files
@@ -135,6 +142,14 @@ pub struct DocumentMetadata {
     /// Generic UI extensibility — see `Document::fields`.
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub fields: std::collections::HashMap<String, serde_yaml::Value>,
+
+    /// Unknown top-level sidecar keys, preserved verbatim across read→write
+    /// cycles (tolerant readers, preserving writers — INVARIANTS.md I5).
+    /// `fields` is the sanctioned extensibility surface; this map only
+    /// guarantees that keys written by other or newer tools are never
+    /// silently destroyed by a save.
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_yaml::Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -930,6 +945,7 @@ fn default_document_metadata(
         compile_order: 0,
         comments: Vec::new(),
         fields: std::collections::HashMap::new(),
+        extra: Default::default(),
     }
 }
 
@@ -1606,12 +1622,14 @@ hierarchy: []
                 name: "Main Plot".into(),
                 color: Some("#3b82f6".into()),
                 description: Some("Sarah uncovers the truth.".into()),
+                extra: Default::default(),
             },
             crate::models::Thread {
                 id: "romance".into(),
                 name: "Sarah & Marcus".into(),
                 color: Some("#ef4444".into()),
                 description: None,
+                extra: Default::default(),
             },
         ];
         super::super::writer::write_project(&mut project).expect("write");

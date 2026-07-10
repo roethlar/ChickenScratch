@@ -209,10 +209,36 @@ fn create_project_structure(path: &Path) -> Result<(), ChiknError> {
     Ok(())
 }
 
+/// Read the existing project.yaml so unknown top-level keys can be carried
+/// into the rewrite (I5). Missing file → Ok(None) (fresh create). A present
+/// but unparseable file is an error: overwriting YAML we cannot read would
+/// destroy whatever it held, so the save aborts before touching disk —
+/// mirrors the corrupt-.meta guard in `read_existing_document_metadata`.
+fn read_existing_project_metadata(
+    project_file: &Path,
+) -> Result<Option<ProjectMetadata>, ChiknError> {
+    match fs::read_to_string(project_file) {
+        Ok(content) => serde_yaml::from_str::<ProjectMetadata>(&content)
+            .map(Some)
+            .map_err(|e| {
+                ChiknError::InvalidFormat(format!(
+                    "Failed to parse existing project metadata at {}: {}",
+                    project_file.display(),
+                    e
+                ))
+            }),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Writes project.yaml metadata
 fn write_project_metadata(project: &Project) -> Result<(), ChiknError> {
     let project_path = Path::new(&project.path);
     let project_file = get_project_file_path(project_path);
+
+    // Preserve unknown top-level keys from the existing file (I5).
+    let existing = read_existing_project_metadata(&project_file)?;
 
     let metadata = ProjectMetadata {
         id: project.id.clone(),
@@ -221,6 +247,7 @@ fn write_project_metadata(project: &Project) -> Result<(), ChiknError> {
         created: project.created.clone(),
         modified: project.modified.clone(),
         metadata: project.metadata.clone(),
+        extra: existing.map(|m| m.extra).unwrap_or_default(),
     };
 
     let yaml_content = serde_yaml::to_string(&metadata)?;
@@ -581,6 +608,12 @@ fn write_document(
         compile_order: document.compile_order,
         comments: document.comments.clone(),
         fields: document.fields.clone(),
+        // Unknown top-level sidecar keys survive the rewrite (I5), same
+        // re-read pattern as section_type / scrivener_uuid above.
+        extra: existing_meta
+            .as_ref()
+            .map(|m| m.extra.clone())
+            .unwrap_or_default(),
     };
 
     let meta_content = serde_yaml::to_string(&metadata)?;
@@ -1046,6 +1079,151 @@ mod tests {
             d.fields.get("ttrpg_encounter_cr").and_then(|v| v.as_i64()),
             Some(12),
             "unknown numeric field must round-trip"
+        );
+    }
+
+    #[test]
+    fn test_unknown_top_level_meta_keys_survive_round_trip() {
+        // I5: unknown TOP-LEVEL sidecar keys (not nested under `fields:`)
+        // written by another or newer tool must survive a read→write cycle.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("TopLevel.chikn");
+        let mut project = create_project(&project_path, "TopLevel").unwrap();
+
+        let doc = Document {
+            id: "doc1".to_string(),
+            name: "chapter-01".to_string(),
+            path: "manuscript/chapter-01.md".to_string(),
+            content: "Text.".to_string(),
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        project.documents.insert(doc.id.clone(), doc.clone());
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
+        write_project(&mut project).unwrap();
+
+        let meta_path = project_path.join("manuscript/chapter-01.meta");
+        let existing = std::fs::read_to_string(&meta_path).unwrap();
+        std::fs::write(
+            &meta_path,
+            format!(
+                "{}\nfuture_format_key: from-the-future\nanother_tool:\n  nested: true\n",
+                existing.trim_end()
+            ),
+        )
+        .unwrap();
+
+        let mut reloaded = read_project(&project_path).unwrap();
+        write_project(&mut reloaded).unwrap();
+
+        let rewritten = std::fs::read_to_string(&meta_path).unwrap();
+        assert!(
+            rewritten.contains("future_format_key: from-the-future"),
+            "unknown top-level scalar key must survive rewrite:\n{rewritten}"
+        );
+        assert!(
+            rewritten.contains("another_tool:") && rewritten.contains("nested: true"),
+            "unknown top-level mapping key must survive rewrite:\n{rewritten}"
+        );
+    }
+
+    #[test]
+    fn test_unknown_project_yaml_keys_survive_round_trip() {
+        // I5 for project.yaml: unknown keys at the top level and inside the
+        // metadata: block must survive a read→write cycle.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("ProjExtra.chikn");
+        let mut project = create_project(&project_path, "ProjExtra").unwrap();
+        // Ensure the metadata: block exists as a mapping we can patch below.
+        project.metadata.title = Some("ProjExtra".into());
+        write_project(&mut project).unwrap();
+
+        let project_file = project_path.join("project.yaml");
+        let existing = std::fs::read_to_string(&project_file).unwrap();
+        let patched = format!("{}\nfuture_top_level: keep-me\n", existing.trim_end())
+            .replace("metadata:\n", "metadata:\n  future_meta_key: keep-me-too\n");
+        std::fs::write(&project_file, patched).unwrap();
+
+        let mut reloaded = read_project(&project_path).unwrap();
+        assert_eq!(
+            reloaded
+                .metadata
+                .extra
+                .get("future_meta_key")
+                .and_then(|v| v.as_str()),
+            Some("keep-me-too"),
+            "metadata-block unknown key must load into the model's extras"
+        );
+        write_project(&mut reloaded).unwrap();
+
+        let rewritten = std::fs::read_to_string(&project_file).unwrap();
+        assert!(
+            rewritten.contains("future_top_level: keep-me"),
+            "unknown top-level project.yaml key must survive rewrite:\n{rewritten}"
+        );
+        assert!(
+            rewritten.contains("future_meta_key: keep-me-too"),
+            "unknown metadata-block key must survive rewrite:\n{rewritten}"
+        );
+    }
+
+    #[test]
+    fn test_unknown_thread_entry_keys_survive_round_trip() {
+        // I5 for threads.yaml: unknown keys on a thread entry survive.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("ThreadExtra.chikn");
+        let mut project = create_project(&project_path, "ThreadExtra").unwrap();
+        project.threads = vec![crate::models::Thread {
+            id: "main-plot".into(),
+            name: "Main Plot".into(),
+            color: None,
+            description: None,
+            extra: Default::default(),
+        }];
+        write_project(&mut project).unwrap();
+
+        let threads_path = project_path.join("threads.yaml");
+        let existing = std::fs::read_to_string(&threads_path).unwrap();
+        std::fs::write(
+            &threads_path,
+            format!("{}\n  arc_stage: rising-action\n", existing.trim_end()),
+        )
+        .unwrap();
+
+        let mut reloaded = read_project(&project_path).unwrap();
+        write_project(&mut reloaded).unwrap();
+
+        let rewritten = std::fs::read_to_string(&threads_path).unwrap();
+        assert!(
+            rewritten.contains("arc_stage: rising-action"),
+            "unknown thread-entry key must survive rewrite:\n{rewritten}"
+        );
+    }
+
+    #[test]
+    fn test_corrupt_existing_project_yaml_aborts_write() {
+        // Overwriting a project.yaml we cannot parse would destroy whatever
+        // it held (I6): the save must abort before touching the file.
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("CorruptProj.chikn");
+        let mut project = create_project(&project_path, "CorruptProj").unwrap();
+        write_project(&mut project).unwrap();
+
+        let project_file = project_path.join("project.yaml");
+        let corrupt = "id: [unclosed\n";
+        std::fs::write(&project_file, corrupt).unwrap();
+
+        let result = write_project(&mut project);
+        assert!(result.is_err(), "write over corrupt project.yaml must fail");
+        assert_eq!(
+            std::fs::read_to_string(&project_file).unwrap(),
+            corrupt,
+            "corrupt project.yaml must be left untouched by the failed save"
         );
     }
 
@@ -1565,6 +1743,7 @@ mod tests {
             name: "Main Plot".into(),
             color: None,
             description: None,
+            extra: Default::default(),
         }];
         write_project(&mut project).unwrap();
         let threads_path = project_path.join("threads.yaml");

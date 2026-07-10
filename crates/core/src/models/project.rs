@@ -23,6 +23,10 @@ pub struct Thread {
     /// Optional free-form prose description.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Unknown keys on this thread entry, preserved verbatim across
+    /// read→write cycles (tolerant readers, preserving writers — I5).
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_yaml::Value>,
 }
 
 /// Writer session targets — words/session goal, optional deadline, total target.
@@ -63,6 +67,11 @@ pub struct ProjectMeta {
     /// Writer session targets (Tier 2 v1.2 novelist convention).
     #[serde(default, skip_serializing_if = "skip_empty_session_target")]
     pub session_target: Option<SessionTarget>,
+    /// Unknown keys inside the `metadata:` block, preserved verbatim across
+    /// read→write cycles (tolerant readers, preserving writers — I5). Rides
+    /// the in-memory model, so no write-time merge is needed.
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_yaml::Value>,
 }
 
 fn skip_empty_session_target(t: &Option<SessionTarget>) -> bool {
