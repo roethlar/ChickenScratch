@@ -23,6 +23,12 @@ decisions; `DEVLOG.md` holds history.
   the "uncommitted local edit to Cargo.toml" recorded here on 2026-07-03 no
   longer existed by 2026-07-09 (clean worktree, empty stash); the fix was
   re-made from scratch.
+- Format lock (phase Step 2) picked up on owner request (2026-07-09):
+  six-agent audit found the schema work already implemented; the real gaps
+  (top-level unknown-key loss, no version marker, nondeterministic `fields`
+  order, no full-fidelity round-trip test, spec drift) are scoped in
+  `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md` — **Proposed, awaiting owner
+  approval**. No engine code changed yet.
 - No other feature work in flight.
 
 ## Blockers
