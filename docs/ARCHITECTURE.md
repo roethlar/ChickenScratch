@@ -1,6 +1,6 @@
 # Architecture
 
-**Last verified:** commit `b27f315` (2026-05-24)  
+**Last verified:** commit `b1ee466` (2026-07-10)  
 **Governed by:** [`INVARIANTS.md`](INVARIANTS.md)
 
 ---
@@ -32,10 +32,10 @@
 │    project.yaml, manuscript/*.md + *.meta, .git/, …         │
 └─────────────────────────────────────────────────────────────┘
 
-DEPRECATED (do not extend):
+REMOVED (ADR-004; history in git):
   macos/ChiknKit (Swift reimplementation)
   windows/ChickenScratch.Core (C# reimplementation)
-  linux/ Qt frontend (partial; use engine via bridge only if revived)
+  linux/ Qt frontend
 ```
 
 ## Crate map
@@ -48,7 +48,7 @@ DEPRECATED (do not extend):
 | `src-tauri/` | `chickenscratch` | Tauri backend: thin commands → core + app services (settings, AI, keyring) |
 | `ui/` | (npm package) | React frontend: TipTap editor, panels, dialogs |
 
-Cargo workspace: root `Cargo.toml` — members include `core`, `cli`, `tui`, `src-tauri`, `linux` (Qt; excluded from `default-members`).
+Cargo workspace: root `Cargo.toml` — members are `crates/core`, `crates/cli`, `crates/tui`, `src-tauri`.
 
 ## What belongs in the engine vs the app
 
@@ -76,17 +76,18 @@ Cargo workspace: root `Cargo.toml` — members include `core`, `cli`, `tui`, `sr
 - TipTap editor (Markdown ↔ HTML in the webview)
 - Calls Tauri commands only — **never** touches `.chikn` files directly
 
-## Deprecated paths
+## Removed native experiments
 
-See [ADR-004](adr/ADR-004-deprecated-native-engines.md).
+See [ADR-004](adr/ADR-004-deprecated-native-engines.md). The deprecated
+`macos/` (SwiftUI + ChiknKit), `windows/` (WinUI + C# core), and `linux/`
+(Qt6 + cxx-qt) trees have been deleted from the working tree; their history
+remains in git. Format I/O lives only in `crates/core` (I2); any future
+native shell calls the Rust engine rather than reimplementing it.
 
-| Path | Status | Agent rule |
-|------|--------|------------|
-| `macos/` | Deprecated | No new features. Do not fix format I/O here — fix engine. |
-| `windows/` | Deprecated | No new features. WinUI is not the shipping Windows plan. |
-| `linux/` | Deprecated | Qt scaffold; Tauri is the Linux GUI. |
-
-Cross-frontend tests (`crates/core/tests/cross_frontend/`) exist for **regression detection** during deprecation. New work should not target “all five UIs pass.”
+The format harness (`crates/core/tests/cross_frontend/run.sh`) now drives
+the Rust converter → Rust reader leg only; the fixture tests in
+`crates/core/tests/cross_frontend_round_trip.rs` still guard reader
+tolerance for `.meta` shapes the removed writers produced.
 
 ## External dependencies
 
