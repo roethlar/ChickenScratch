@@ -42,14 +42,11 @@ The 2026-07-10 cleanup (`docs/plans/PLAN_DEPRECATION_CLEANUP.md`) resolved
 the CI/release/README/ARCHITECTURE/ROADMAP entries formerly listed here
 (archived detail: DEVLOG top entry). Remaining:
 
-- Doc stragglers still describing the deleted native trees:
-  `docs/USER_GUIDE.md` (build/usage sections for the deleted SwiftUI, Qt6,
-  and WinUI apps), `docs/EDITOR_DESIGN.md` (scope line + tree diagram),
-  `TODO.md` (WinUI parity item, line ~181), and "deprecated experiments"
-  wording in `docs/INVARIANTS.md` I3 / `docs/PROJECT.md` glossary where the
-  trees are now removed. `docs/GPT_Code_Review.md` is historical; only
-  sweep on owner request. `.gitignore` / `.gitattributes` patterns for the
-  deleted trees are harmless leftovers.
+- ~~Doc stragglers~~ swept 2026-07-10 on owner yes (USER_GUIDE,
+  EDITOR_DESIGN scope line, TODO parity section, I3/glossary wording —
+  one commit each). Remaining mentions are intentional: historical docs
+  (`docs/GPT_Code_Review.md`, EDITOR_DESIGN's date-stamped April tree),
+  and harmless `.gitignore` / `.gitattributes` patterns.
 - `docs/CURRENT_PHASE.md` Step 4 lists "Add `DEPRECATED.md` stubs in
   `macos/`, `windows/`, `linux/`" — moot now the trees are deleted (G6 is
   satisfied by deletion + ADR-004). Owner-controlled file; report-only.
@@ -62,8 +59,6 @@ the CI/release/README/ARCHITECTURE/ROADMAP entries formerly listed here
 3. Owner decision: G4/G5 work is done and G2/G3/G6 look met — declare
    goals met / advance the phase via `SET PHASE`, or name the next work.
    Checkbox edits in `docs/CURRENT_PHASE.md` are the owner's call.
-4. Optional, on owner yes: sweep the doc stragglers listed under Known
-   drift (docs-only, small).
 
 ## Verification
 
