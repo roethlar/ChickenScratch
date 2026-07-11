@@ -48,7 +48,9 @@ pub fn compile(
     author: Option<&str>,
     options: Option<CompileOptions>,
 ) -> Result<(), ChiknError> {
-    let project = reader::read_project(project_path)?;
+    // Repairs-disabled read: compiling is a pure export and must never
+    // mutate the project folder (a Degraded project can be exported too).
+    let project = reader::read_project_readonly(project_path)?;
 
     let opts = options.unwrap_or_default();
 

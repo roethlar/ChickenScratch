@@ -248,6 +248,33 @@ fn current_timestamp() -> String {
 /// # Ok(()) }
 /// ```
 pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
+    read_project_impl(path, RepairMode::SelfHeal)
+}
+
+/// Repairs-disabled read for Degraded opens (see
+/// `super::fidelity::probe_project_fidelity`).
+///
+/// Byte-for-byte side-effect-free: no missing-folder creation on disk and
+/// no corrupt-sidecar quarantine renames — corrupt metadata is treated as
+/// missing in memory instead. In-memory reconciliation (orphan adoption,
+/// binder folders) still happens so the read-only UI shows everything, but
+/// nothing on disk changes. Normal `read_project` self-heal is unchanged
+/// for Full projects.
+pub fn read_project_readonly(path: &Path) -> Result<Project, ChiknError> {
+    read_project_impl(path, RepairMode::ReadOnly)
+}
+
+/// Whether a load may touch the disk to self-heal.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RepairMode {
+    /// Normal open: recreate missing standard folders, quarantine corrupt
+    /// sidecars.
+    SelfHeal,
+    /// Degraded open: pure read, disk stays byte-identical.
+    ReadOnly,
+}
+
+fn read_project_impl(path: &Path, repair_mode: RepairMode) -> Result<Project, ChiknError> {
     // F-012: previously `validate_project_structure` ran first and rejected
     // the project the moment any of `manuscript/`, `research/`, `templates/`,
     // `settings/` was missing — even though the rest of the read+repair flow
@@ -264,7 +291,9 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
     //     load; the user sees broken state rather than a confusing error
     //     screen, and the next save attempt will surface the real fs problem.
     validate_project_root(path)?;
-    pre_repair_folders(path);
+    if repair_mode == RepairMode::SelfHeal {
+        pre_repair_folders(path);
+    }
 
     // Read project.yaml
     let metadata = read_project_metadata(path)?;
@@ -272,7 +301,7 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
 
     // Read all documents from manuscript and research folders
     let hierarchy_identities = collect_hierarchy_document_identities(&metadata.hierarchy)?;
-    let documents = read_all_documents(path, &hierarchy_identities)?;
+    let documents = read_all_documents(path, &hierarchy_identities, repair_mode)?;
     validate_hierarchy_documents_match_loaded_documents(&metadata.hierarchy, &documents)?;
 
     let mut project = Project {
@@ -288,7 +317,7 @@ pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
     };
 
     // Reconcile hierarchy with actual files on disk
-    let repaired = repair_project(&mut project, path);
+    let repaired = repair_project(&mut project, path, repair_mode);
     if repaired {
         eprintln!(
             "Repaired {} in memory; project.yaml was not rewritten during load.",
@@ -391,7 +420,7 @@ fn create_required_folder_if_safe(
 /// 1. Hierarchy references a file that doesn't exist — keep it and warn
 /// 2. A .md file exists on disk but isn't in hierarchy — add to hierarchy
 /// 3. Document in the loaded map has no file on disk — keep it and warn
-fn repair_project(project: &mut Project, project_path: &Path) -> bool {
+fn repair_project(project: &mut Project, project_path: &Path, repair_mode: RepairMode) -> bool {
     let mut repaired = false;
 
     // Pass 1: Warn on hierarchy entries that point to missing files. Keep the
@@ -455,34 +484,38 @@ fn repair_project(project: &mut Project, project_path: &Path) -> bool {
     }
 
     // Pass 4: Ensure default directories exist on disk when doing so is safe.
-    match project_path.canonicalize() {
-        Ok(project_root) => {
-            for folder in super::format::REQUIRED_FOLDERS {
-                match create_required_folder_if_safe(project_path, &project_root, folder) {
-                    Ok(true) => {
-                        eprintln!(
-                            "Repaired: created missing folder on disk: {}",
-                            project_path.join(folder).display()
-                        );
-                        repaired = true;
-                    }
-                    Ok(false) => {}
-                    Err(e) => {
-                        eprintln!(
-                            "Repair skipped unsafe folder creation for {}: {}",
-                            project_path.join(folder).display(),
-                            e
-                        );
+    // Disk repairs are the one pass a read-only (Degraded) open must skip:
+    // the open has to leave the folder byte-identical.
+    if repair_mode == RepairMode::SelfHeal {
+        match project_path.canonicalize() {
+            Ok(project_root) => {
+                for folder in super::format::REQUIRED_FOLDERS {
+                    match create_required_folder_if_safe(project_path, &project_root, folder) {
+                        Ok(true) => {
+                            eprintln!(
+                                "Repaired: created missing folder on disk: {}",
+                                project_path.join(folder).display()
+                            );
+                            repaired = true;
+                        }
+                        Ok(false) => {}
+                        Err(e) => {
+                            eprintln!(
+                                "Repair skipped unsafe folder creation for {}: {}",
+                                project_path.join(folder).display(),
+                                e
+                            );
+                        }
                     }
                 }
             }
-        }
-        Err(e) => {
-            eprintln!(
-                "Repair skipped required folder creation for {}: {}",
-                project_path.display(),
-                e
-            );
+            Err(e) => {
+                eprintln!(
+                    "Repair skipped required folder creation for {}: {}",
+                    project_path.display(),
+                    e
+                );
+            }
         }
     }
 
@@ -644,53 +677,31 @@ fn read_project_metadata(path: &Path) -> Result<ProjectMetadata, ChiknError> {
 fn read_all_documents(
     project_path: &Path,
     hierarchy_identities: &HashMap<String, HierarchyDocumentIdentity>,
+    repair_mode: RepairMode,
 ) -> Result<HashMap<String, Document>, ChiknError> {
     let mut documents = HashMap::new();
     let mut document_paths = HashSet::new();
     let project_root = canonical_project_root(project_path)?;
 
-    // Read from manuscript folder (recursively)
-    let manuscript_path = get_manuscript_path(project_path);
-    read_optional_document_root(
-        &manuscript_path,
-        project_path,
-        &project_root,
-        hierarchy_identities,
-        &mut documents,
-        &mut document_paths,
-    )?;
-
-    // Read from research folder (recursively)
-    let research_path = get_research_path(project_path);
-    read_optional_document_root(
-        &research_path,
-        project_path,
-        &project_root,
-        hierarchy_identities,
-        &mut documents,
-        &mut document_paths,
-    )?;
-
-    // Read from characters/locations folders if present (novelist convention).
-    // Optional — projects without these folders are still valid.
-    let characters_path = get_characters_path(project_path);
-    read_optional_document_root(
-        &characters_path,
-        project_path,
-        &project_root,
-        hierarchy_identities,
-        &mut documents,
-        &mut document_paths,
-    )?;
-    let locations_path = get_locations_path(project_path);
-    read_optional_document_root(
-        &locations_path,
-        project_path,
-        &project_root,
-        hierarchy_identities,
-        &mut documents,
-        &mut document_paths,
-    )?;
+    // Read from the four document roots (recursively). characters/ and
+    // locations/ are optional novelist conventions — projects without
+    // them are still valid.
+    for folder_path in [
+        get_manuscript_path(project_path),
+        get_research_path(project_path),
+        get_characters_path(project_path),
+        get_locations_path(project_path),
+    ] {
+        read_optional_document_root(
+            &folder_path,
+            project_path,
+            &project_root,
+            hierarchy_identities,
+            &mut documents,
+            &mut document_paths,
+            repair_mode,
+        )?;
+    }
 
     Ok(documents)
 }
@@ -715,6 +726,7 @@ fn read_threads(project_path: &Path) -> Result<Vec<Thread>, ChiknError> {
     Ok(parsed.threads)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn read_optional_document_root(
     folder_path: &Path,
     project_path: &Path,
@@ -722,6 +734,7 @@ fn read_optional_document_root(
     hierarchy_identities: &HashMap<String, HierarchyDocumentIdentity>,
     documents: &mut HashMap<String, Document>,
     document_paths: &mut HashSet<String>,
+    repair_mode: RepairMode,
 ) -> Result<(), ChiknError> {
     match fs::symlink_metadata(folder_path) {
         Ok(metadata) => {
@@ -733,6 +746,7 @@ fn read_optional_document_root(
                 hierarchy_identities,
                 documents,
                 document_paths,
+                repair_mode,
             )
         }
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
@@ -741,6 +755,7 @@ fn read_optional_document_root(
 }
 
 /// Reads all documents from a folder recursively
+#[allow(clippy::too_many_arguments)]
 fn read_documents_from_folder(
     folder_path: &Path,
     project_path: &Path,
@@ -748,6 +763,7 @@ fn read_documents_from_folder(
     hierarchy_identities: &HashMap<String, HierarchyDocumentIdentity>,
     documents: &mut HashMap<String, Document>,
     document_paths: &mut HashSet<String>,
+    repair_mode: RepairMode,
 ) -> Result<(), ChiknError> {
     let metadata = fs::symlink_metadata(folder_path)?;
     ensure_read_directory_metadata_safe(folder_path, &metadata, project_root)?;
@@ -772,6 +788,7 @@ fn read_documents_from_folder(
                         project_path,
                         project_root,
                         hierarchy_identities,
+                        repair_mode,
                     )?;
                     let normalized_path = normalized_relative_document_path(&doc.path)?;
                     if !document_paths.insert(normalized_path) {
@@ -798,6 +815,7 @@ fn read_documents_from_folder(
                 hierarchy_identities,
                 documents,
                 document_paths,
+                repair_mode,
             )?;
         }
     }
@@ -860,7 +878,13 @@ fn validate_hierarchy_documents_match_loaded_documents_inner(
 #[cfg(test)]
 fn read_document(content_path: &Path, project_path: &Path) -> Result<Document, ChiknError> {
     let project_root = canonical_project_root(project_path)?;
-    read_document_with_root(content_path, project_path, &project_root, &HashMap::new())
+    read_document_with_root(
+        content_path,
+        project_path,
+        &project_root,
+        &HashMap::new(),
+        RepairMode::SelfHeal,
+    )
 }
 
 fn read_document_with_root(
@@ -868,6 +892,7 @@ fn read_document_with_root(
     _project_path: &Path,
     project_root: &Path,
     hierarchy_identities: &HashMap<String, HierarchyDocumentIdentity>,
+    repair_mode: RepairMode,
 ) -> Result<Document, ChiknError> {
     ensure_existing_read_file_safe(content_path, project_root, "document file")?;
 
@@ -907,7 +932,12 @@ fn read_document_with_root(
         .replace('\\', "/")
         .to_string();
     let fallback_identity = hierarchy_identities.get(&relative_path);
-    let metadata = read_document_metadata_or_default(&meta_path, project_root, fallback_identity)?;
+    let metadata = read_document_metadata_or_default(
+        &meta_path,
+        project_root,
+        fallback_identity,
+        repair_mode,
+    )?;
 
     // Use display name from metadata if available, otherwise use filename
     let display_name = metadata.name.unwrap_or_else(|| file_stem.to_string());
@@ -937,6 +967,7 @@ fn read_document_metadata_or_default(
     meta_path: &Path,
     project_root: &Path,
     fallback_identity: Option<&HierarchyDocumentIdentity>,
+    repair_mode: RepairMode,
 ) -> Result<DocumentMetadata, ChiknError> {
     if !ensure_optional_read_file_safe(meta_path, project_root, "document metadata")? {
         return Ok(default_document_metadata(fallback_identity));
@@ -949,6 +980,16 @@ fn read_document_metadata_or_default(
             Ok(metadata)
         }
         Err(e) => {
+            // A read-only (Degraded) open must not rename anything on
+            // disk: treat the corrupt sidecar as missing in memory only.
+            if repair_mode == RepairMode::ReadOnly {
+                eprintln!(
+                    "Corrupt document metadata treated as missing (read-only open): {} ({})",
+                    meta_path.display(),
+                    e
+                );
+                return Ok(default_document_metadata(fallback_identity));
+            }
             let quarantine_path = quarantine_corrupt_document_metadata(meta_path)?;
             eprintln!(
                 "Corrupt document metadata quarantined: {} -> {} ({})",
@@ -1260,7 +1301,7 @@ modified: "2025-01-01T00:00:00Z"
     #[test]
     fn test_read_all_documents() {
         let (_temp, project_path) = create_test_project();
-        let result = read_all_documents(&project_path, &HashMap::new());
+        let result = read_all_documents(&project_path, &HashMap::new(), RepairMode::SelfHeal);
 
         assert!(result.is_ok());
         let documents = result.unwrap();
@@ -1483,7 +1524,8 @@ hierarchy: []
         fs::write(project_path.join(PROJECT_FILE), project_yaml).unwrap();
 
         // Read all documents (should find nested)
-        let documents = read_all_documents(&project_path, &HashMap::new()).unwrap();
+        let documents =
+            read_all_documents(&project_path, &HashMap::new(), RepairMode::SelfHeal).unwrap();
 
         assert_eq!(documents.len(), 1);
         assert!(documents.contains_key("nested-doc1"));
@@ -1594,6 +1636,47 @@ hierarchy: []
             project_yaml_before,
             "quarantining corrupt metadata must not rewrite project.yaml"
         );
+    }
+
+    #[test]
+    fn test_readonly_read_does_not_quarantine_corrupt_meta() {
+        // The Degraded open path must leave the folder byte-identical:
+        // corrupt sidecars are treated as missing in memory, never renamed.
+        let (_temp, project_path) = create_test_project();
+        let meta_path = project_path.join("manuscript/chapter-01.meta");
+        fs::write(&meta_path, "id: [").unwrap();
+        let corrupt_bytes = fs::read(&meta_path).unwrap();
+
+        let project = read_project_readonly(&project_path).unwrap();
+
+        let document = project.documents.get("doc1").unwrap();
+        assert_eq!(document.id, "doc1");
+        assert_eq!(document.name, "Chapter 1");
+        assert!(meta_path.exists(), "corrupt meta must stay in place");
+        assert_eq!(fs::read(&meta_path).unwrap(), corrupt_bytes);
+        assert_eq!(count_corrupt_meta_quarantines(&project_path), 0);
+    }
+
+    #[test]
+    fn test_readonly_read_does_not_create_missing_folders() {
+        let (_temp, project_path) = create_test_project();
+        fs::remove_dir(project_path.join(RESEARCH_FOLDER)).unwrap();
+        fs::remove_dir(project_path.join(TEMPLATES_FOLDER)).unwrap();
+        fs::remove_dir(project_path.join(SETTINGS_FOLDER)).unwrap();
+
+        let project = read_project_readonly(&project_path).unwrap();
+
+        assert_eq!(project.documents.len(), 1);
+        assert!(
+            !project_path.join(RESEARCH_FOLDER).exists(),
+            "read-only open must not self-heal folders on disk"
+        );
+        assert!(!project_path.join(TEMPLATES_FOLDER).exists());
+        assert!(!project_path.join(SETTINGS_FOLDER).exists());
+
+        // The normal open still self-heals (unchanged for Full projects).
+        read_project(&project_path).unwrap();
+        assert!(project_path.join(RESEARCH_FOLDER).exists());
     }
 
     #[test]
