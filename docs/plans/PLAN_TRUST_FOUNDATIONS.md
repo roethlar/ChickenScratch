@@ -1,9 +1,10 @@
 # Plan: Trust foundations — write-guard and vault onboarding
 
-**Status:** Reviewed (codex, accepted round 3 — record:
-`.agents/review/findings/plan-1.md`) — **pending owner approval**; no
-implementation until the owner approves. Drafted at owner instruction
-2026-07-11 ("plan what we have so far").
+**Status:** Approved 2026-07-11 — owner answered "ok" to the plain-English
+scope decision (guard first, vault second; UI redesign excluded), after the
+self-heal clarification (heal Full projects as today; hands-off for
+Degraded). Reviewed by codex, accepted round 3
+(`.agents/review/findings/plan-1.md`). Slice 1 in progress.
 
 **Owner request (quote):**
 > plan what we have so far
