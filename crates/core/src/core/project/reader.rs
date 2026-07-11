@@ -1047,7 +1047,7 @@ fn validate_relative_document_path(document_path: &str) -> Result<(), ChiknError
     Ok(())
 }
 
-fn normalized_relative_document_path(document_path: &str) -> Result<String, ChiknError> {
+pub(crate) fn normalized_relative_document_path(document_path: &str) -> Result<String, ChiknError> {
     let slash_path = document_path.replace('\\', "/");
     validate_relative_document_path(&slash_path)?;
     let components: Vec<String> = Path::new(&slash_path)

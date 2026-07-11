@@ -65,6 +65,12 @@ pub enum ChiknError {
     #[error("{0}")]
     Git(GitError),
 
+    /// The project may only be opened read-only: it probed Degraded, or a
+    /// write token was stale or bound to a different project. The payload
+    /// is a plain-English explanation safe to surface directly.
+    #[error("This project is read-only: {0}")]
+    ReadOnly(String),
+
     #[error("Unknown error: {0}")]
     Unknown(String),
 }

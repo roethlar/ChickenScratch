@@ -4,6 +4,7 @@
 //! and hierarchy management.
 
 pub mod deletion;
+pub mod fidelity;
 pub mod format;
 pub mod hierarchy;
 pub mod reader;
