@@ -6,6 +6,84 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-07-11 — Write-guard shipped (PLAN_TRUST_FOUNDATIONS Slice 1): the app can no longer save over a project it cannot fully read
+
+**Change:** Executed the owner-approved
+`docs/plans/PLAN_TRUST_FOUNDATIONS.md` Slice 1, one concern per commit.
+This closes the 2026-07-10 data-destruction bug where opening an
+April-era `.html` project loaded zero documents and any save path
+(including the close-time "Auto-save on close" commit) wrote the empty
+in-memory state over real prose.
+
+1. **Fidelity probe + WriteToken** (`crates/core/src/core/project/fidelity.rs`).
+   `probe_project_fidelity` is a side-effect-free preflight that
+   classifies a project *before* anything touches it. Degraded reasons:
+   non-`.md` hierarchy paths; unresolved hierarchy documents (missing,
+   unreadable, outside the loaded folders — zero-byte files stay VALID);
+   content-threatening self-heal (corrupt sidecar, orphan adoption,
+   conflicting identity); `format_version` newer than or unintelligible
+   to the engine. Missing standard folders and an absent format_version
+   stay Full. `WriteToken` is the non-`Clone`, engine-issued write
+   capability: bound to a canonical symlink-resolved root (a token for
+   project A never authorizes writes into project B) and stamped with a
+   per-project write epoch. `ChiknError::ReadOnly` carries plain-English
+   refusals.
+2. **Writer/deletion gating.** `write_project`, `delete_document`,
+   `deletion::delete_node` require `&WriteToken`; the public `safe_path`
+   helpers became engine-private; app-side project writes go through
+   token-gated `write_project_app_file` (the Statistics panel's
+   `settings/writing-history.json`) and `ensure_project_subdir`.
+3. **Git gating + epochs.** All mutating git functions take the token;
+   tree-replacing ops (restore revision/document, switch/merge draft,
+   pull, force-pull, abort-pull) bump the epoch on success, so tokens
+   issued before the replacement are refused until a re-probe.
+4. **Repairs-disabled read.** `read_project_readonly` performs no folder
+   creation and no sidecar quarantine renames (corrupt meta is treated as
+   missing in memory). Normal `read_project` self-heal is unchanged for
+   Full projects. `compile()` and the pure query commands (stats,
+   session progress, search, get_document, list_threads, …) use the
+   repairs-disabled read — a Degraded project can be browsed and exported
+   without a single byte written.
+5. **Frontends.** Tauri: probe-first `load_project` returns
+   `{project, read_only, read_only_reasons}`; tokens live in a
+   `ProjectTokens` app-state registry (checkout re-probes when missing or
+   stale; tree-replacing commands refresh it); `backup_on_close` SKIPS
+   silently without a token. TUI: probe-first open, READ-ONLY status +
+   `[read-only]` title, every mutating key refuses. UI: one banner,
+   non-editable editor, disabled Revisions, all auto-save timers skipped.
+6. **Docs.** USER_GUIDE: "Projects from older versions open read-only".
+
+**Found while implementing (plan-vs-code divergence, resolved):** the
+plan's test requires `samples/Corn.chikn` to probe Full and open
+normally, but current master could not open it at all — four of its
+nineteen sidecars (older-frontend output) omit `id:`, the serde default
+generated a random id, and identity validation hard-failed the load. Fix
+(own commit): a sidecar without an explicit id inherits the hierarchy
+identity for its path, exactly like the existing missing-sidecar
+fallback (tolerant readers, I5).
+
+**Guard proofs (AGENTS.md discipline — disable, watch the test fail,
+restore, watch it pass):**
+- `acquire_write_token` temporarily issued tokens unconditionally → all
+  four Degraded-fixture byte-identity tests FAILED ("Degraded project
+  must stay byte-identical after mutation attempts" — the writer rewrote
+  fixtures (a)/(b), stamped the 1.2 version over the newer (e), and the
+  writing-history path dirtied (c)); restored → all pass.
+- `read_project_readonly` temporarily routed through the self-healing
+  reader → the corrupt-sidecar fixture FAILED at "Degraded open must be
+  byte-for-byte side-effect-free" (quarantine rename); restored → pass.
+- The id-less-sidecar fallback disabled → its unit test and the Corn
+  integration test FAILED; restored → pass.
+
+**Verified:** declared suite green before every commit (fmt, clippy core
+`-D warnings`, core lib tests, clippy tauri, tauri bin tests, ui lint +
+build), plus `cargo test -p chickenscratch-core --tests` (write_guard,
+remote_sync, round-trip suites) and clippy on the TUI and converter
+crates. `samples/Corn.chikn` probes Full in place with a byte-identical
+tree. Out of scope, unchanged: automatic migration of HTML-era projects
+(rebuild-from-`.scriv` remains the workaround); Slice 2 (vault) pending
+the owner's guided-token decision.
+
 ## 2026-07-10 — ADR-005: binary-only distribution; Arch packaging removed, release gate green
 
 **Change:** The owner settled distribution intent: writers install built

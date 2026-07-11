@@ -1,6 +1,7 @@
 # Plan: Trust foundations — write-guard and vault onboarding
 
-**Status:** Slice 1 (write-guard) approved 2026-07-11 and in progress.
+**Status:** Slice 1 (write-guard) approved 2026-07-11 and **shipped
+2026-07-11** (DEVLOG top entry; guard proofs recorded there).
 Slice 2 (vault) is NOT approved — owner: "we're nowhere near deciding how
 remotes will work"; it remains a draft direction only, and no vault work
 may start without a fresh owner decision on remote design. Reviewed by

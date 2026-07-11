@@ -6,26 +6,24 @@ decisions; `DEVLOG.md` holds history.
 
 ## Now
 
+- **Write-guard shipped** (2026-07-11, `docs/plans/PLAN_TRUST_FOUNDATIONS.md`
+  Slice 1; DEVLOG top entry has the slice-by-slice detail and guard
+  proofs): side-effect-free fidelity probe + non-forgeable root-bound,
+  epoch-stamped `WriteToken` gate every mutating engine API; Degraded
+  projects open read-only in Tauri (banner + disabled affordances +
+  skipped auto-saves), TUI (status + refused keys), and never receive a
+  byte of writes — including the Statistics writing-history path. A
+  reader fix rode along (own commit): sidecars without `id:` inherit the
+  hierarchy identity, which `samples/Corn.chikn` needs to open at all.
 - Phase **Coherence** (`docs/CURRENT_PHASE.md` is authoritative): Steps 1–3
-  are effectively done — governance landed 2026-07-03, the engine format
-  lock shipped 2026-07-09 (`DEVLOG.md` top entry; plan:
-  `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md`, status Shipped), and Tauri
-  alignment (Step 3) was found already in place by the format-lock audit.
-  What remains is deprecation cleanup (goals G4–G6). Landed-entry detail
-  rotated to `docs/history/state-archive.md`.
-- **Deprecation cleanup executed** (2026-07-10, owner-approved
-  `docs/plans/PLAN_DEPRECATION_CLEANUP.md`): CI, release gate, and
-  README/ARCHITECTURE/ROADMAP no longer reference the deleted native trees
-  (G4/G5 work done; DEVLOG entries).
-- **ADR-005 binary-only distribution executed** (2026-07-10): Arch
-  packaging (`pkg/`, `create-release-source.sh`, release-gate pin checks)
-  removed per owner decision; `check-release-metadata.sh` passes both
-  modes. Resolves the release-metadata blocker recorded earlier that day.
-- **Push status**: local `master` is ahead of both remotes by the cleanup
-  commits (plan + slices + close-out); ask-first policy, owner not yet
-  asked post-cleanup. Remotes: Gitea `origin` (http://q:3000) and `github`
-  (https://github.com/roethlar/ChickenScratch); pushes go to both.
-- No feature work in flight.
+  effectively done; deprecation cleanup (G4–G6) and ADR-005 binary-only
+  distribution executed 2026-07-10 (DEVLOG entries; archived detail in
+  `docs/history/state-archive.md`).
+- **Push status** (as of the Slice 1 close-out commit): local `master` is
+  ahead of both remotes by the 2026-07-10 cleanup commits plus the Slice 1
+  commits; ask-first policy, owner not yet asked. Remotes: Gitea `origin`
+  (http://q:3000) and `github` (https://github.com/roethlar/ChickenScratch);
+  pushes go to both.
 
 ## Blockers
 
@@ -50,10 +48,14 @@ the CI/release/README/ARCHITECTURE/ROADMAP entries formerly listed here
 
 ## Next
 
-1. Owner go for pushing the ADR-005 commits (ask-first policy); after the
-   push, Validation CI on GitHub is expected fully green for the first
-   time since May — confirm and record.
-2. Owner decision: G4/G5 work is done and G2/G3/G6 look met — declare
+1. Slice 2 (vault) is pending and NOT approved: the owner said "we're
+   nowhere near deciding how remotes will work". No vault work until a
+   fresh owner decision on remote design (and the plan's open v1
+   guided-token question).
+2. Owner go for pushing the accumulated commits (ask-first policy); after
+   the push, Validation CI on GitHub is expected fully green — confirm
+   and record.
+3. Owner decision: G4/G5 work is done and G2/G3/G6 look met — declare
    goals met / advance the phase via `SET PHASE`, or name the next work.
    Checkbox edits in `docs/CURRENT_PHASE.md` are the owner's call.
 
@@ -61,13 +63,11 @@ the CI/release/README/ARCHITECTURE/ROADMAP entries formerly listed here
 
 - Declared suite: `.agents/repo-guidance.md` Verification section (fmt check,
   clippy, core lib tests, Tauri bin tests, UI lint + build).
-- Last run green locally 2026-07-10 during the deprecation cleanup (on the
-  CI-trim slice tree and re-run at close-out; intervening commits touched
-  only workflows, scripts, and docs), machine-local (owner's Mac). The
-  rust-only format harness and `check-release-metadata.sh` (single
-  remaining pre-existing error, see Blockers) were exercised directly.
-  Remote Validation CI stays red only at the "Release metadata" step until
-  the blocker decision lands.
+- Last run green locally 2026-07-11 before every Slice 1 commit (owner's
+  Mac), plus `cargo test -p chickenscratch-core --tests` (write_guard,
+  remote_sync, round-trip suites) and clippy on the TUI and converter
+  crates. Guard proofs for the new write-guard tests are recorded in the
+  DEVLOG top entry.
 
 ## Active Sources
 
