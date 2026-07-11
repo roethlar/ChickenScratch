@@ -105,7 +105,7 @@ fn render_comments_overlay(f: &mut Frame, area: Rect, app: &App) {
         .map(|c| {
             let anchor = app.comment_anchor_text(&c.id);
             let preview = if anchor.len() > 40 {
-                format!("{}...", &anchor.chars().take(40).collect::<String>())
+                format!("{}...", anchor.chars().take(40).collect::<String>())
             } else {
                 anchor
             };
