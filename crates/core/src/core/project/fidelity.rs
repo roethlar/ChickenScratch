@@ -812,7 +812,7 @@ hierarchy:
     #[test]
     fn full_when_standard_folders_missing() {
         // Missing research/templates/settings is benign self-heal, not
-        // Degraded (samples/Corn.chikn ships exactly this shape).
+        // Degraded.
         let (_t, root) = create_probe_project();
         fs::remove_dir(root.join(RESEARCH_FOLDER)).unwrap();
         fs::remove_dir(root.join(TEMPLATES_FOLDER)).unwrap();
