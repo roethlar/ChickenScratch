@@ -6,7 +6,7 @@ A cross-platform writing app for fiction writers. Open-source Scrivener alternat
 
 **Owner:** open this folder in Grok, Codex, Claude Code, or Antigravity CLI — say what you need ([`docs/START-HERE.md`](docs/START-HERE.md))
 
-**Status:** v1.0.0 release target — Tauri desktop is the primary supported build. `macos/`, `windows/`, `linux/` native trees are deprecated.
+**Status:** v1.0.0 release target — Tauri desktop is the primary supported build. The earlier per-platform native experiments were removed ([ADR-004](docs/adr/ADR-004-deprecated-native-engines.md)).
 
 For usage instructions, see the [User Guide](docs/USER_GUIDE.md).
 
@@ -15,9 +15,7 @@ For usage instructions, see the [User Guide](docs/USER_GUIDE.md).
 | Platform | Implementation | Status |
 |----------|---------------|--------|
 | macOS / Linux | Tauri + Rust + React | 1.0 release target — fullest feature set |
-| macOS (native) | SwiftUI + Liquid Glass (macOS 26+) | Early scaffold — writing + revisions |
-| Windows | WinUI 3 (Windows App SDK) + C# | Preview — packaging (.msi) pending |
-| Linux (native) | Qt6 Wayland + cxx-qt | Early scaffold — binder + editor + inspector |
+| Windows | Tauri (same app) | Planned — Windows bundle after the 1.0 cleanup phase |
 | TUI (any OS) | Ratatui + Rust (`chikn` binary) | Preview |
 
 ## Build
@@ -48,40 +46,6 @@ cd ui && npx vite --port 1420
 # Terminal 2
 cargo tauri dev
 ```
-
-### Windows (WinUI 3)
-
-Requires: .NET 10 SDK, Windows App SDK, Pandoc
-
-```bash
-cd windows
-dotnet build ChickenScratch.App/ChickenScratch.App.csproj /p:Platform=x64 /p:Configuration=Release
-```
-
-Output is in `windows/ChickenScratch.App/bin/x64/Release/`.
-
-### macOS (SwiftUI, Liquid Glass)
-
-Requires: macOS 26 (Tahoe), Swift 6.1+ (Xcode 26 or the matching CLT).
-
-```bash
-cd macos
-swift build
-swift run ChickenScratch
-```
-
-Or open `macos/Package.swift` in Xcode 26.
-
-### Linux (Qt6, cxx-qt)
-
-Requires: Rust, Qt 6.x (`qtbase`, `qtdeclarative`), Pandoc.
-
-```bash
-cargo build --release -p chickenscratch-linux
-./target/release/chickenscratch-linux
-```
-
-`linux/` is excluded from the workspace `default-members` so `cargo build` at the root doesn't require Qt. Build it explicitly by package name, or `cd linux && cargo build`.
 
 ### TUI (`chikn`)
 
@@ -116,26 +80,15 @@ ChickenScratch/
 ├── crates/tui/         # Terminal UI (Ratatui)
 ├── src-tauri/          # Tauri app backend (commands, settings, AI)
 ├── ui/                 # React + TypeScript + TipTap frontend
-├── windows/            # WinUI 3 app (C# / Windows App SDK)
-│   ├── ChickenScratch.Core/   # C# library: .chikn I/O, git, compile
-│   └── ChickenScratch.App/    # WinUI 3 app shell
-├── macos/              # Native SwiftUI app (Liquid Glass, macOS 26+)
-│   ├── Sources/ChiknKit/          # Swift library: .chikn reader/writer
-│   └── Sources/ChickenScratchApp/ # SwiftUI app shell
-├── linux/              # Qt6 Wayland-native app (cxx-qt)
-│   ├── src/                       # Rust bridge + main
-│   └── qml/                       # QML UI (binder, editor, inspector, find/replace)
 ├── pkg/arch/           # Arch Linux PKGBUILD
 └── docs/               # Format spec, design docs, user guide
 ```
 
 ## Dependencies
 
-- [Tauri 2](https://tauri.app/) — app framework (Tauri frontend)
-- [Windows App SDK](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/) — app framework (Windows)
-- [cxx-qt](https://github.com/KDAB/cxx-qt) — Rust ↔ Qt6 bindings (Linux native)
-- [TipTap](https://tiptap.dev/) — WYSIWYG editor (Tauri frontend)
-- [git2-rs](https://github.com/rust-lang/git2-rs) / [LibGit2Sharp](https://github.com/libgit2/libgit2sharp) — embedded git
+- [Tauri 2](https://tauri.app/) — app framework (desktop app)
+- [TipTap](https://tiptap.dev/) — WYSIWYG editor (desktop app)
+- [git2-rs](https://github.com/rust-lang/git2-rs) — embedded git
 - [Ratatui](https://ratatui.rs/) — TUI framework
 - [Pandoc](https://pandoc.org/) — document format conversion
 
