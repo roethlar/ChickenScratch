@@ -43,9 +43,9 @@ approval vehicle for UI work.
 - **No visible scratch-outs in the editor.** Cuts vanish normally while
   writing; struck-through text lingering on the page "will encourage saving
   just to have a usable editor." History stays behind the scenes.
-- **Permanent deletion must exist as an explicit option** (never default):
-  "it has to be GONE … that's the only thing that will stop someone
-  desperate to not fix the writing." A deliberate burn feature that removes
-  text/documents from the project *and its embedded history*. This is an
-  owner-directed exception to I6's no-history-rewrite rule and requires its
-  own ADR + design before implementation.
+- **Edge case noted, not planned:** some writers need cut text truly GONE
+  (a prof deleted 100 pages to foreclose salvage). Recorded as a boundary
+  the lifecycle design should not foreclose, **not** a feature to build —
+  the format is genre-agnostic and most genres would not want a burn bag
+  (same reasoning that kept domain-specific labels out of the format).
+  Today's answer for that writer: export keepers, delete the project.
