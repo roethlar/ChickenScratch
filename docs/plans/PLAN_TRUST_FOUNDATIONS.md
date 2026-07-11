@@ -1,10 +1,10 @@
 # Plan: Trust foundations — write-guard and vault onboarding
 
-**Status:** Approved 2026-07-11 — owner answered "ok" to the plain-English
-scope decision (guard first, vault second; UI redesign excluded), after the
-self-heal clarification (heal Full projects as today; hands-off for
-Degraded). Reviewed by codex, accepted round 3
-(`.agents/review/findings/plan-1.md`). Slice 1 in progress.
+**Status:** Slice 1 (write-guard) approved 2026-07-11 and in progress.
+Slice 2 (vault) is NOT approved — owner: "we're nowhere near deciding how
+remotes will work"; it remains a draft direction only, and no vault work
+may start without a fresh owner decision on remote design. Reviewed by
+codex, accepted round 3 (`.agents/review/findings/plan-1.md`).
 
 **Owner request (quote):**
 > plan what we have so far
