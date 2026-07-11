@@ -1,7 +1,7 @@
 # Plan: Deprecation cleanup — CI, release gate, and docs (G4–G6)
 
-**Status:** Draft — awaiting owner approval (2026-07-10). Execution may not
-begin until the status line records approval.
+**Status:** Approved 2026-07-10 — owner answered "yes" to the plain-English
+go/no-go ("Okay to proceed?"). Execution in progress.
 
 **Owner request (quote):**
 > Owner approved on 2026-07-10: "yes" to drafting this plan for the G4–G6
