@@ -2,7 +2,7 @@
 
 **Status:** Shipped (v0.1.0-alpha). Historical record of the design the Tauri editor was built to. Phases 1–6 are all delivered; this document is preserved to explain the *why* behind current structure rather than to plan future work.
 **Date:** 2026-04-02 (original); last updated 2026-04-23
-**Scope:** Cross-platform Tauri editor for .chikn writing projects. Four additional frontends (WinUI 3 at `windows/`, SwiftUI at `macos/`, Qt6 at `linux/`, ratatui at `crates/tui/`) share the same `.chikn` storage format but have their own design documents or are scaffold-only. See [ROADMAP.md](ROADMAP.md) for the current frontend matrix.
+**Scope:** Cross-platform Tauri editor for .chikn writing projects. At the time of writing, four additional frontends (WinUI 3, SwiftUI, Qt6, ratatui) shared the `.chikn` storage format; the WinUI/SwiftUI/Qt6 native experiments were later removed ([ADR-004](adr/ADR-004-deprecated-native-engines.md)) — only the TUI (`crates/tui/`) remains. The directory tree later in this document reflects the April 2026 repo layout. See [ROADMAP.md](ROADMAP.md) for the current picture.
 
 ---
 
