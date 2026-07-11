@@ -62,6 +62,22 @@ generated a random id, and identity validation hard-failed the load. Fix
 identity for its path, exactly like the existing missing-sidecar
 fallback (tolerant readers, I5).
 
+**Same-day follow-up (owner ruling: no orphaned-file support pre-ship —
+"we just need to convert the original scrivener projects again"):** the
+id-inheritance fix above was reverted; `samples/Corn.chikn` was
+regenerated with the current converter (ids everywhere, current escaping,
+full folder set, 16 docs — today's converter skips empty Scrivener
+documents). Regeneration surfaced a real fidelity-rule defect: the fresh
+sample's binder references a research PDF, which the probe classified
+Degraded ("non-.md path") — and every fresh Scrivener import with research
+assets, including the owner's rebuilt project, would have wrongly opened
+read-only. Refinement (own commit): known binary asset extensions
+referenced by the binder are fidelity-neutral while the file exists
+(missing asset = Degraded); `.html`-era text stays Degraded; and the
+writer's private choke point now refuses to emit document text into any
+non-.md path, so assets are structurally unwritable even with a valid
+token (guard-proofed by `writer_refuses_document_content_into_asset_path`).
+
 **Guard proofs (AGENTS.md discipline — disable, watch the test fail,
 restore, watch it pass):**
 - `acquire_write_token` temporarily issued tokens unconditionally → all

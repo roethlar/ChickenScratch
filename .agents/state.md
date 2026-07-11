@@ -12,9 +12,13 @@ decisions; `DEVLOG.md` holds history.
   epoch-stamped `WriteToken` gate every mutating engine API; Degraded
   projects open read-only in Tauri (banner + disabled affordances +
   skipped auto-saves), TUI (status + refused keys), and never receive a
-  byte of writes — including the Statistics writing-history path. A
-  reader fix rode along (own commit): sidecars without `id:` inherit the
-  hierarchy identity, which `samples/Corn.chikn` needs to open at all.
+  byte of writes — including the Statistics writing-history path.
+  Same-day follow-up on owner ruling (no orphaned-file support pre-ship):
+  the id-inheritance reader shim was reverted; `samples/Corn.chikn`
+  regenerated with the current converter; binder-referenced binary assets
+  (research PDFs etc.) are now fidelity-neutral while present, and the
+  writer structurally refuses text writes into non-.md paths (DEVLOG top
+  entry, follow-up paragraph).
 - Phase **Coherence** (`docs/CURRENT_PHASE.md` is authoritative): Steps 1–3
   effectively done; deprecation cleanup (G4–G6) and ADR-005 binary-only
   distribution executed 2026-07-10 (DEVLOG entries; archived detail in
