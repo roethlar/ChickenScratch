@@ -37,3 +37,15 @@ approval vehicle for UI work.
 - Differentiation should come from surfacing the app's unique organs
   (embedded history, drafts, plain files) inside each mode, not from layout
   novelty.
+
+## Owner corrections (2026-07-11)
+
+- **No visible scratch-outs in the editor.** Cuts vanish normally while
+  writing; struck-through text lingering on the page "will encourage saving
+  just to have a usable editor." History stays behind the scenes.
+- **Permanent deletion must exist as an explicit option** (never default):
+  "it has to be GONE … that's the only thing that will stop someone
+  desperate to not fix the writing." A deliberate burn feature that removes
+  text/documents from the project *and its embedded history*. This is an
+  owner-directed exception to I6's no-history-rewrite rule and requires its
+  own ADR + design before implementation.
