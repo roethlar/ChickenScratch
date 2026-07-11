@@ -48,27 +48,52 @@ Tauri command surface: `src-tauri/src/commands/` (document/io/git).
 
 ### [MODEL] Approach
 
-1. **Fidelity classification in the engine.** `read_project` (or a wrapper
-   probe) classifies a load as `Full` or `Degraded { reasons }`. Degraded
-   triggers, at minimum:
-   - any hierarchy document whose `path` does not end in `.md`;
-   - any document file that exists with nonzero bytes but loads as empty
-     content;
-   - any quarantine/repair event during load.
-   Expose the classification on the loaded `Project` (e.g.
-   `read_fidelity` field) without changing on-disk format (I4/I5 safe:
-   in-memory only).
-2. **Hard refusal in every mutating path.** `write_project`,
-   `write_document`, document deletion, and all git-mutating operations
-   (save revision, auto-commit, auto-save-on-close, backup push of new
-   commits) return a typed error (`ProjectReadOnly { reasons }`) when the
-   project's fidelity is not `Full`. The guard lives in `crates/core`, not
-   in UI, so every frontend inherits it (I2).
-3. **Tauri surfacing, plain English.** On Degraded open: banner "This
-   project was made by an older version and opens read-only — nothing will
-   be changed. [Learn what to do]" — editor read-only, save/revision UI
-   disabled, close-time auto-save skipped. No dialog storm: one banner.
-4. **Docs:** USER_GUIDE short section "Projects from older versions open
+(Revised after codex review `plan-1`; the five findings are folded in.)
+
+1. **Side-effect-free preflight, before any load.** `read_project` itself
+   mutates disk during load — it creates missing standard folders
+   (`reader.rs:250-268,339-379`) and renames corrupt sidecars
+   (`reader.rs:936-960,991-1009`) — so classification cannot run after it.
+   Add `probe_project_fidelity(root) -> Fidelity` in `crates/core`: a pure
+   read-only scan (no folder creation, no renames, no writes of any kind)
+   that classifies **before** anything else touches the project.
+   `Fidelity::Degraded { reasons }` when any of:
+   - any hierarchy document `path` not ending in `.md`;
+   - any hierarchy document that does not resolve to a readable, non-empty
+     parse (a file with nonzero bytes that yields empty content, an
+     unparsable file, or a missing file — a hierarchy entry that "never
+     loads" is Degraded, not a warning; cf. `reader.rs:824-846,394-406`);
+   - any condition that would trigger a load-time repair or quarantine
+     (missing standard folder, corrupt sidecar, orphan adoption);
+   - `project.yaml` `format_version` absent-and-legacy-shaped, or **newer
+     than this engine writes** (reader accepts anything at
+     `reader.rs:41-47` while the writer stamps the current version at
+     `writer.rs:244-259` — an unguarded silent-downgrade path; newer or
+     unsupported versions are Degraded).
+   `Fidelity::Full` requires: every hierarchy document resolves to loaded
+   content, no repair conditions, and a supported `format_version`.
+2. **Non-forgeable write capability.** Fidelity carried as a field on
+   `Project` cannot guard path-only mutators (`writer.rs::delete_document`
+   at `writer.rs:739-784`, folder deletion in `deletion.rs`, and the git
+   restore / draft / backup / sync mutators in `core/git.rs`). Introduce a
+   `WriteToken` (non-`Clone`, non-constructible outside the engine):
+   issued only by (a) a `Full` preflight or (b) the project-creation path
+   (a project the engine itself just initialized is `Full` by
+   construction). Every mutating engine API — `write_project`,
+   `write_document`, both deletion paths, and every git-mutating function —
+   takes `&WriteToken`; without one the call cannot be expressed. A typed
+   `ProjectReadOnly { reasons }` error covers the runtime refusal where a
+   token is requested for a Degraded project.
+3. **Degraded open path.** For Degraded projects the app loads via a
+   repairs-disabled read (pure read; load-time self-heal is suppressed so
+   an open leaves the folder byte-identical). Repairs remain allowed on
+   `Full` projects (normal self-heal is unchanged).
+4. **Tauri surfacing, plain English.** On Degraded open: one banner —
+   "This project was made by an older version and opens read-only —
+   nothing will be changed. [Learn what to do]" — editor read-only,
+   save/revision UI disabled, close-time auto-save skipped. No dialog
+   storm.
+5. **Docs:** USER_GUIDE short section "Projects from older versions open
    read-only"; RELEASE.md unaffected.
 
 Out of scope for this slice: automatic migration of HTML-era projects
@@ -79,27 +104,35 @@ future plan if the owner wants it).
 
 | File / area | Change |
 |---|---|
-| `crates/core/src/core/project/reader.rs` | fidelity classification |
-| `crates/core/src/models.rs` (or project struct home) | `read_fidelity` |
-| `crates/core/src/core/project/writer.rs` | refuse on Degraded |
-| `crates/core/src/core/project/deletion.rs` | refuse on Degraded |
-| `crates/core/src/core/git.rs` | refuse mutations on Degraded |
-| `src-tauri/src/commands/*` | map error → read-only state; skip auto-saves |
+| `crates/core/src/core/project/` (new `fidelity.rs` or in `reader.rs`) | side-effect-free `probe_project_fidelity`; `WriteToken` |
+| `crates/core/src/core/project/reader.rs` | repairs-disabled read path for Degraded opens |
+| `crates/core/src/core/project/writer.rs` | `write_project`, `write_document`, `delete_document` (`:739-784`) take `&WriteToken` |
+| `crates/core/src/core/project/deletion.rs` | folder deletion takes `&WriteToken` |
+| `crates/core/src/core/git.rs` | every mutating fn (save revision, auto-commit, restore, drafts, backup, sync) takes `&WriteToken` |
+| `src-tauri/src/commands/*` | token plumbed via project state; Degraded → read-only state; auto-saves skipped |
 | `ui/` (banner + disabled states) | read-only presentation |
 | `docs/USER_GUIDE.md` | read-only explanation |
 
 ### [MODEL] Tests (guard proofs)
 
-- New fixture: minimal legacy project (one `.html` document + hierarchy
-  path referencing it). Engine tests assert: loads Degraded; every mutating
-  API returns `ProjectReadOnly`; on-disk bytes identical before/after the
-  attempts (hash the tree).
-- Guard-proof discipline: temporarily disable the guard → the
-  bytes-unchanged assertion FAILS (writer gutted the file) → restore →
-  PASS. This mirrors the real incident.
-- Existing suites stay green: modern-format fixtures still load `Full` and
-  write normally (no false positives — assert `Full` on the standard
-  fixtures, including `samples/Corn.chikn`).
+Fixtures (each a minimal on-disk project):
+(a) legacy `.html` documents; (b) hierarchy entry referencing a missing
+file; (c) corrupt document sidecar; (d) missing standard folder;
+(e) `format_version` newer than the engine's.
+
+- Each fixture: `probe_project_fidelity` returns Degraded with the right
+  reason; **tree hash identical before vs after the probe AND before vs
+  after a Degraded open** (this is what catches load-time folder creation
+  and sidecar renames — the probe and the Degraded read must both be
+  side-effect-free); every mutating API is uncallable/refused
+  (`ProjectReadOnly`), tree hash still identical after the attempts.
+- Guard-proof discipline: disable the guard (issue a token uncondition-
+  ally) → the bytes-identical assertions FAIL (writer guts fixture (a),
+  repairs dirty (b)–(d), version downgrade dirties (e)) → restore → PASS.
+  Mirrors the real incident.
+- No false positives: modern fixtures, including `samples/Corn.chikn`,
+  probe `Full`, open normally, write normally, and load-time self-heal
+  still works for `Full` projects (existing repair tests stay green).
 
 ## Slice 2 — Vault: one-button private GitHub backup + any-remote pairing
 
