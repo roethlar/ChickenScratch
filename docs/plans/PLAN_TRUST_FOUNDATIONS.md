@@ -1,8 +1,9 @@
 # Plan: Trust foundations — write-guard and vault onboarding
 
-**Status:** Draft — pending owner approval. Drafted at owner instruction
-2026-07-11 ("plan what we have so far"); reviewed via
-`.agents/playbooks/reviewloop.md` (record: `.agents/review/`).
+**Status:** Reviewed (codex, accepted round 3 — record:
+`.agents/review/findings/plan-1.md`) — **pending owner approval**; no
+implementation until the owner approves. Drafted at owner instruction
+2026-07-11 ("plan what we have so far").
 
 **Owner request (quote):**
 > plan what we have so far

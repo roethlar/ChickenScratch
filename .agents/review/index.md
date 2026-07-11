@@ -14,4 +14,4 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 
 | ID     | Type | Subject                                   | Status | Branch |
 |--------|------|-------------------------------------------|--------|--------|
-| plan-1 | plan | `docs/plans/PLAN_TRUST_FOUNDATIONS.md`    | `[~]`  | n/a (doc review on master) |
+| plan-1 | plan | `docs/plans/PLAN_TRUST_FOUNDATIONS.md`    | `[x]`  | n/a (doc review on master) |
