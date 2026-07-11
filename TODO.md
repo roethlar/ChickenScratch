@@ -168,17 +168,10 @@ Reframed: these are UI-layer plans now. The format ships generic extensibility; 
 - [ ] Rich research (inline PDF / image / audio preview; external-open fallback; drag-drop import)
 - [ ] Split editor (two independent TipTap panes with orientation toggle)
 
-### Native-frontend parity
-- [x] SwiftUI v1.2: scene metadata, characters, locations, threads (full editing, not read-only)
-- [x] SwiftUI: delete (Trash + permanent), move up/down, drafts, per-doc history
-- [ ] SwiftUI: drag-drop reorder in binder (keyboard-only via Move Up/Down today)
-- [ ] SwiftUI: rich-text editor with markdown round-trip (currently plain `TextEditor`)
-- [ ] SwiftUI: comments, footnotes, find/replace, flow mode
-- [ ] SwiftUI: compile/export UI, settings panel, project search, templates CRUD
-- [ ] SwiftUI: AI streaming, remote sync UI (push/fetch/pull + conflict dialog)
-- [ ] Linux (Qt6): AI, templates, drafts, remote sync (revisions, comments, footnotes, compile, settings shipped)
-- [ ] Linux v1.2 read-only: display new scene metadata, characters, locations, threads
-- [ ] Windows (WinUI): tracked separately in `windows/` — bring to full parity
+### Native-frontend parity — superseded, will not ship
+Superseded by [ADR-004](docs/adr/ADR-004-deprecated-native-engines.md): the
+SwiftUI, Qt6, and WinUI native experiments were deprecated and removed. The
+open items that lived here are in this file's git history.
 
 ### Platform packaging
 - [ ] Windows testing and packaging (.msi)
