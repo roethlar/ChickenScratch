@@ -37,8 +37,41 @@ Findings (all admitted by the coder; none disputed):
    `writer.rs::delete_document` (`writer.rs:739-784`), not (only)
    `deletion.rs`.
 
-## Coder disposition
+## Coder disposition (round 1)
 
 All five admitted. #5 amended rather than replaced: both `deletion.rs`
 (folder deletion) and `writer.rs::delete_document` are guarded. Plan
-revised in the follow-up commit; re-dispatch after revision.
+revised (`3284953`); re-dispatched.
+
+## Reviewer comments — round 2
+
+- **Reviewer**: codex-cli 0.144.1 (same incantation)
+- **Reviewed SHA**: `3284953764af0b657d61df41299ad59847131dc9`
+- **Base SHA**: `e612bc2fcb0bea8e6c1b751cf4225936b846c6f0`
+- **Verdict**: `reopened` — 2026-07-11T06:0xZ (UTC)
+
+Findings (all admitted; resolutions in parentheses):
+
+1. WriteToken not bound to a project root — a token from Full project A
+   could mutate Degraded project B (bind token to canonical root; mutators
+   validate target under root; cross-project rejection test).
+2. No token freshness rule — restore/draft-switch/merge/pull can replace
+   the tree with legacy/future content while an old token persists (epoch
+   on the token; tree-replacing ops bump epoch, re-probe, reissue; stale
+   token refused; test).
+3. Repair policy contradiction — missing standard folders marked Degraded
+   while Full self-heal is preserved, and `samples/Corn.chikn` itself
+   lacks research/templates/settings (resolution: missing standard folders
+   are benign self-heal, NOT Degraded; Degraded is reserved for
+   content-threatening conditions; fixture (d) becomes a Full-with-
+   self-heal case).
+4. "Non-empty parse" wording conflicts with valid zero-byte documents —
+   Corn contains two (resolution: zero-byte documents are valid; only
+   nonzero-bytes-yielding-empty, unparsable, or missing files are
+   unresolved; explicit test).
+5. Mutator coverage incomplete — public `safe_path` helpers create
+   directories tokenlessly and `src-tauri/src/commands/io.rs:436-470`
+   writes `settings/writing-history.json` on opening Statistics
+   (resolution: project-mutating helpers gated behind the token; the
+   writing-history write routed through a token-gated engine API; no-write
+   test on Degraded projects covering the stats path).
