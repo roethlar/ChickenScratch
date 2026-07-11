@@ -59,31 +59,55 @@ Tauri command surface: `src-tauri/src/commands/` (document/io/git).
    that classifies **before** anything else touches the project.
    `Fidelity::Degraded { reasons }` when any of:
    - any hierarchy document `path` not ending in `.md`;
-   - any hierarchy document that does not resolve to a readable, non-empty
-     parse (a file with nonzero bytes that yields empty content, an
-     unparsable file, or a missing file — a hierarchy entry that "never
-     loads" is Degraded, not a warning; cf. `reader.rs:824-846,394-406`);
-   - any condition that would trigger a load-time repair or quarantine
-     (missing standard folder, corrupt sidecar, orphan adoption);
+   - any hierarchy document that is **unresolved**: file missing, file
+     unparsable, or file with nonzero bytes whose parse yields empty
+     content. **Zero-byte document files are valid** — the app creates
+     them deliberately and `samples/Corn.chikn` contains two (a hierarchy
+     entry that "never loads" is Degraded, not a warning; cf.
+     `reader.rs:824-846,394-406`);
+   - any **content-threatening** repair/quarantine condition: corrupt
+     sidecar (load renames it), orphan adoption, duplicate identity.
+     **Missing standard folders are NOT Degraded** — recreating an empty
+     `research/` or `Trash/` touches no content and stays normal
+     self-heal (`samples/Corn.chikn` itself lacks research/templates/
+     settings and must probe Full);
    - `project.yaml` `format_version` absent-and-legacy-shaped, or **newer
      than this engine writes** (reader accepts anything at
      `reader.rs:41-47` while the writer stamps the current version at
      `writer.rs:244-259` — an unguarded silent-downgrade path; newer or
      unsupported versions are Degraded).
-   `Fidelity::Full` requires: every hierarchy document resolves to loaded
-   content, no repair conditions, and a supported `format_version`.
-2. **Non-forgeable write capability.** Fidelity carried as a field on
-   `Project` cannot guard path-only mutators (`writer.rs::delete_document`
-   at `writer.rs:739-784`, folder deletion in `deletion.rs`, and the git
-   restore / draft / backup / sync mutators in `core/git.rs`). Introduce a
-   `WriteToken` (non-`Clone`, non-constructible outside the engine):
-   issued only by (a) a `Full` preflight or (b) the project-creation path
+   `Fidelity::Full` requires: every hierarchy document resolves (zero-byte
+   counts as resolved), no content-threatening repair condition, and a
+   supported `format_version`.
+2. **Non-forgeable, root-bound, epoch-stamped write capability.**
+   Fidelity carried as a field on `Project` cannot guard path-only
+   mutators (`writer.rs::delete_document` at `writer.rs:739-784`, folder
+   deletion in `deletion.rs`, and the git restore / draft / backup / sync
+   mutators in `core/git.rs`). Introduce a `WriteToken` (non-`Clone`,
+   non-constructible outside the engine) with two bindings:
+   - **Root binding:** the token stores the canonical (symlink-resolved)
+     project root it was issued for; every mutating API validates its
+     target path lies under the token's root. A token for project A can
+     never authorize a write into project B.
+   - **Epoch binding:** the engine keeps a per-project write epoch; any
+     operation that replaces working-tree content (revision restore,
+     draft switch, sync pull/merge) bumps the epoch, re-probes fidelity,
+     and reissues the token only if still `Full`. A token from before the
+     bump is stale and refused — so a pull that drops legacy or
+     newer-format content into the tree cannot be followed by writes on a
+     borrowed pre-pull token.
+   Issued only by (a) a `Full` preflight or (b) the project-creation path
    (a project the engine itself just initialized is `Full` by
    construction). Every mutating engine API — `write_project`,
-   `write_document`, both deletion paths, and every git-mutating function —
+   `write_document`, both deletion paths, every git-mutating function,
+   and **every project-directory-creating helper** (the public
+   `safe_path` creators move behind the token or become engine-private) —
    takes `&WriteToken`; without one the call cannot be expressed. A typed
-   `ProjectReadOnly { reasons }` error covers the runtime refusal where a
-   token is requested for a Degraded project.
+   `ProjectReadOnly { reasons }` error covers the runtime refusal.
+   **App-side writes into the project obey the same gate:** the
+   Statistics panel's `settings/writing-history.json` write
+   (`src-tauri/src/commands/io.rs:436-470`) routes through a token-gated
+   engine API — opening Statistics on a Degraded project writes nothing.
 3. **Degraded open path.** For Degraded projects the app loads via a
    repairs-disabled read (pure read; load-time self-heal is suppressed so
    an open leaves the folder byte-identical). Repairs remain allowed on
@@ -115,24 +139,33 @@ future plan if the owner wants it).
 
 ### [MODEL] Tests (guard proofs)
 
-Fixtures (each a minimal on-disk project):
+Degraded fixtures (each a minimal on-disk project):
 (a) legacy `.html` documents; (b) hierarchy entry referencing a missing
-file; (c) corrupt document sidecar; (d) missing standard folder;
-(e) `format_version` newer than the engine's.
+file; (c) corrupt document sidecar; (e) `format_version` newer than the
+engine's.
 
-- Each fixture: `probe_project_fidelity` returns Degraded with the right
-  reason; **tree hash identical before vs after the probe AND before vs
-  after a Degraded open** (this is what catches load-time folder creation
-  and sidecar renames — the probe and the Degraded read must both be
-  side-effect-free); every mutating API is uncallable/refused
-  (`ProjectReadOnly`), tree hash still identical after the attempts.
-- Guard-proof discipline: disable the guard (issue a token uncondition-
-  ally) → the bytes-identical assertions FAIL (writer guts fixture (a),
-  repairs dirty (b)–(d), version downgrade dirties (e)) → restore → PASS.
-  Mirrors the real incident.
-- No false positives: modern fixtures, including `samples/Corn.chikn`,
-  probe `Full`, open normally, write normally, and load-time self-heal
-  still works for `Full` projects (existing repair tests stay green).
+- Each Degraded fixture: `probe_project_fidelity` returns Degraded with
+  the right reason; **tree hash identical before vs after the probe AND
+  before vs after a Degraded open** (catches load-time sidecar renames —
+  probe and Degraded read must both be side-effect-free); every mutating
+  API is uncallable/refused (`ProjectReadOnly`); tree hash still identical
+  after the attempts **including opening the Statistics panel** (the
+  writing-history path).
+- Token-binding tests: a token issued for Full project A is refused
+  against project B's paths (cross-project rejection); after a simulated
+  tree-replacing operation (restore/pull) the pre-bump token is refused
+  (stale-token test).
+- Valid-emptiness tests: a zero-byte document file probes `Full` and
+  round-trips untouched; `samples/Corn.chikn` (which lacks
+  research/templates/settings folders and contains two zero-byte
+  documents) probes `Full`, opens normally, self-heals its missing
+  folders, and writes normally.
+- Guard-proof discipline: disable the guard (issue a token
+  unconditionally) → the bytes-identical assertions FAIL (writer guts
+  fixture (a), quarantine dirties (c), version downgrade dirties (e)) →
+  restore → PASS. Mirrors the real incident.
+- Existing repair tests for `Full` projects stay green (self-heal
+  unchanged where fidelity is Full).
 
 ## Slice 2 — Vault: one-button private GitHub backup + any-remote pairing
 
