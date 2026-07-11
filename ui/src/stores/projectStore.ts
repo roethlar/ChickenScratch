@@ -12,6 +12,12 @@ export interface FlowDoc {
 
 interface ProjectState {
   project: Project | null;
+  /** True when the open project is read-only (older/newer format): the
+   *  backend holds no write token and every mutating command refuses.
+   *  The UI disables editing and skips all auto-save timers. */
+  readOnly: boolean;
+  /** Plain-English reasons the project opened read-only. */
+  readOnlyReasons: string[];
   activeDocId: string | null;
   activeDoc: Document | null;
   saving: boolean;
@@ -44,6 +50,8 @@ interface ProjectState {
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   project: null,
+  readOnly: false,
+  readOnlyReasons: [],
   activeDocId: null,
   activeDoc: null,
   saving: false,
@@ -54,12 +62,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   openProject: async (path: string) => {
     try {
-      const project = await projectCmd.loadProject(path);
+      const loaded = await projectCmd.loadProject(path);
+      const project = loaded.project;
       const totalWords = Object.values(project.documents).reduce((sum, doc) => {
         const text = (doc.content || "").replace(/<[^>]*>/g, "");
         return sum + text.split(/\s+/).filter(Boolean).length;
       }, 0);
-      set({ project, activeDocId: null, activeDoc: null, error: null, sessionStartWords: totalWords });
+      set({
+        project,
+        readOnly: loaded.read_only,
+        readOnlyReasons: loaded.read_only_reasons,
+        activeDocId: null,
+        activeDoc: null,
+        error: null,
+        sessionStartWords: totalWords,
+      });
       addRecentProject(project.name, path).catch(() => {});
     } catch (e) {
       set({ error: String(e) });
@@ -69,7 +86,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   createProject: async (name: string, path: string) => {
     try {
       const project = await projectCmd.createProject(name, path);
-      set({ project, activeDocId: null, activeDoc: null, error: null });
+      set({ project, readOnly: false, readOnlyReasons: [], activeDocId: null, activeDoc: null, error: null });
     } catch (e) {
       set({ error: String(e) });
     }
@@ -78,14 +95,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   importScrivener: async (scrivPath: string, outputPath: string) => {
     try {
       const project = await projectCmd.importScrivener(scrivPath, outputPath);
-      set({ project, activeDocId: null, activeDoc: null, error: null });
+      set({ project, readOnly: false, readOnlyReasons: [], activeDocId: null, activeDoc: null, error: null });
     } catch (e) {
       set({ error: String(e) });
     }
   },
 
   closeProject: () => {
-    set({ project: null, activeDocId: null, activeDoc: null });
+    set({ project: null, readOnly: false, readOnlyReasons: [], activeDocId: null, activeDoc: null });
   },
 
   selectDocument: (docId: string) => {

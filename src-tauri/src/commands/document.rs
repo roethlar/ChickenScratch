@@ -1,4 +1,4 @@
-use chickenscratch_core::core::project::fidelity::{self, WriteToken};
+use chickenscratch_core::core::project::fidelity::WriteToken;
 use chickenscratch_core::core::project::{hierarchy, reader, writer};
 use chickenscratch_core::models::Comment;
 use chickenscratch_core::utils::slug;
@@ -6,11 +6,12 @@ use chickenscratch_core::{ChiknError, Document, Project, TreeNode};
 use std::path::{Path, PathBuf};
 use tauri::State;
 
-use super::ProjectWriteLocks;
+use super::{ProjectTokens, ProjectWriteLocks};
 
 #[tauri::command]
 pub fn get_document(project_path: String, doc_id: String) -> Result<Option<Document>, ChiknError> {
-    let project = reader::read_project(Path::new(&project_path))?;
+    // Pure query: the repairs-disabled read never touches the disk.
+    let project = reader::read_project_readonly(Path::new(&project_path))?;
     Ok(project.documents.get(&doc_id).cloned())
 }
 
@@ -18,11 +19,12 @@ pub fn get_document(project_path: String, doc_id: String) -> Result<Option<Docum
 pub fn update_document_content(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     doc_id: String,
     content: String,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         if let Some(doc) = project.documents.get_mut(&doc_id) {
             doc.content = content;
@@ -44,13 +46,14 @@ pub fn update_document_content(
 pub fn add_comment(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     doc_id: String,
     comment_id: String,
     body: String,
     new_content: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         if let Some(doc) = project.documents.get_mut(&doc_id) {
             let now = chrono::Utc::now().to_rfc3339();
@@ -78,13 +81,14 @@ pub fn add_comment(
 pub fn update_comment(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     doc_id: String,
     comment_id: String,
     body: Option<String>,
     resolved: Option<bool>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         if let Some(doc) = project.documents.get_mut(&doc_id) {
             if let Some(c) = doc.comments.iter_mut().find(|c| c.id == comment_id) {
@@ -118,12 +122,13 @@ pub fn update_comment(
 pub fn delete_comment(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     doc_id: String,
     comment_id: String,
     new_content: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         if let Some(doc) = project.documents.get_mut(&doc_id) {
             doc.comments.retain(|c| c.id != comment_id);
@@ -172,6 +177,7 @@ fn apply_field_updates(doc: &mut chickenscratch_core::models::Document, updates:
 pub fn update_document_metadata(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     doc_id: String,
     synopsis: Option<String>,
     label: Option<String>,
@@ -183,7 +189,7 @@ pub fn update_document_metadata(
     fields: Option<FieldUpdates>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         if let Some(doc) = project.documents.get_mut(&doc_id) {
             doc.synopsis = synopsis;
@@ -218,11 +224,12 @@ pub fn update_document_metadata(
 pub fn rename_node(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     node_id: String,
     new_name: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         // Rename in hierarchy
@@ -262,11 +269,12 @@ fn rename_in_hierarchy(nodes: &mut Vec<TreeNode>, node_id: &str, new_name: &str)
 pub fn link_documents(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     doc_id_a: String,
     doc_id_b: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         let now = chrono::Utc::now().to_rfc3339();
 
@@ -293,11 +301,12 @@ pub fn link_documents(
 pub fn create_document(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     name: String,
     parent_id: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         let doc_id = uuid::Uuid::new_v4().to_string();
@@ -341,17 +350,19 @@ pub fn create_document(
 pub fn create_entity(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     name: String,
     kind: String, // "character" or "location"
 ) -> Result<Project, ChiknError> {
     let project_path = PathBuf::from(project_path);
     write_locks.with_project_lock(&project_path, || {
-        create_entity_impl(&project_path, name, kind)
+        create_entity_impl(&project_path, &tokens, name, kind)
     })
 }
 
 fn create_entity_impl(
     project_path: &Path,
+    tokens: &ProjectTokens,
     name: String,
     kind: String,
 ) -> Result<Project, ChiknError> {
@@ -366,7 +377,7 @@ fn create_entity_impl(
         }
     };
 
-    let token = fidelity::acquire_write_token(project_path)?;
+    let token = tokens.checkout(project_path)?;
     writer::ensure_project_subdir(&token, Path::new(folder))?;
 
     let mut project = reader::read_project(project_path)?;
@@ -402,11 +413,12 @@ fn create_entity_impl(
 pub fn create_folder(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     name: String,
     parent_id: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         let folder_id = uuid::Uuid::new_v4().to_string();
@@ -430,10 +442,11 @@ pub fn create_folder(
 pub fn delete_node(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     node_id: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         let path = Path::new(&project_path);
 
@@ -481,12 +494,13 @@ fn delete_node_files(
 pub fn move_node(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     node_id: String,
     new_parent_id: Option<String>,
     new_index: Option<usize>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         // `None` from the UI means "keep current parent" — used for in-place
@@ -528,6 +542,7 @@ mod tests {
 
         let project = create_entity_impl(
             &project_path,
+            &ProjectTokens::default(),
             "Sarah Bennett".to_string(),
             "character".to_string(),
         )
@@ -555,6 +570,7 @@ mod tests {
 
         let result = create_entity_impl(
             &project_path,
+            &ProjectTokens::default(),
             "Mallory".to_string(),
             "character".to_string(),
         );

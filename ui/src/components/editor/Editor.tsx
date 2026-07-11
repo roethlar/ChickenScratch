@@ -104,7 +104,7 @@ export function Editor() {
         // Reload project so docs pick up updated content (even partial —
         // the on-disk truth is what we mirror).
         const Project = await import("../../commands/project");
-        const reloaded = await Project.loadProject(p.path);
+        const reloaded = (await Project.loadProject(p.path)).project;
         useProjectStore.setState({ project: reloaded });
       } else {
         // Single-doc mode

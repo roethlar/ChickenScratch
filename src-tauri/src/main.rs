@@ -15,6 +15,7 @@ fn main() {
 
     tauri::Builder::default()
         .manage(commands::ProjectWriteLocks::default())
+        .manage(commands::ProjectTokens::default())
         .manage(ai::AiStreamRegistry::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())

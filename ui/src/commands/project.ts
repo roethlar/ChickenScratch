@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Project } from "../types";
+import type { LoadedProject, Project } from "../types";
 
 export async function createProject(
   name: string,
@@ -8,7 +8,7 @@ export async function createProject(
   return invoke("create_project", { name, path });
 }
 
-export async function loadProject(path: string): Promise<Project> {
+export async function loadProject(path: string): Promise<LoadedProject> {
   return invoke("load_project", { path });
 }
 

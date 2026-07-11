@@ -1,20 +1,20 @@
 use chickenscratch_core::core::git;
-use chickenscratch_core::core::project::fidelity;
 use chickenscratch_core::ChiknError;
 use std::path::Path;
 use tauri::State;
 
-use super::ProjectWriteLocks;
+use super::{ProjectTokens, ProjectWriteLocks};
 
 #[tauri::command]
 pub fn save_revision(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     message: String,
 ) -> Result<git::Revision, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
         let path = Path::new(&project_path);
-        let token = fidelity::acquire_write_token(path)?;
+        let token = tokens.checkout(path)?;
         let rev = git::save_revision(path, &message, &token)?;
 
         // After named revision: push to backup remote and remote-sync if configured.
@@ -46,11 +46,17 @@ pub fn list_revisions(project_path: String) -> Result<Vec<git::Revision>, ChiknE
 pub fn restore_revision(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     commit_id: String,
 ) -> Result<git::Revision, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
-        git::restore_revision(Path::new(&project_path), &commit_id, &token)
+        let token = tokens.checkout(&project_path)?;
+        let result = git::restore_revision(Path::new(&project_path), &commit_id, &token);
+        // Tree replaced on success: re-probe and reissue (or drop) the token.
+        if result.is_ok() {
+            tokens.refresh(Path::new(&project_path));
+        }
+        result
     })
 }
 
@@ -58,10 +64,11 @@ pub fn restore_revision(
 pub fn create_draft(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     name: String,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         git::create_draft(Path::new(&project_path), &name, &token)
     })
 }
@@ -75,11 +82,16 @@ pub fn list_drafts(project_path: String) -> Result<Vec<git::DraftVersion>, Chikn
 pub fn switch_draft(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     name: String,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
-        git::switch_draft(Path::new(&project_path), &name, &token)
+        let token = tokens.checkout(&project_path)?;
+        let result = git::switch_draft(Path::new(&project_path), &name, &token);
+        if result.is_ok() {
+            tokens.refresh(Path::new(&project_path));
+        }
+        result
     })
 }
 
@@ -87,11 +99,16 @@ pub fn switch_draft(
 pub fn merge_draft(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     name: String,
 ) -> Result<git::MergeResult, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
-        git::merge_draft(Path::new(&project_path), &name, &token)
+        let token = tokens.checkout(&project_path)?;
+        let result = git::merge_draft(Path::new(&project_path), &name, &token);
+        if result.is_ok() {
+            tokens.refresh(Path::new(&project_path));
+        }
+        result
     })
 }
 
@@ -99,10 +116,11 @@ pub fn merge_draft(
 pub fn push_backup(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     backup_dir: String,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         git::push_backup(Path::new(&project_path), Path::new(&backup_dir), &token)
     })
 }
@@ -111,10 +129,11 @@ pub fn push_backup(
 pub fn manual_backup(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     backup_dir: String,
 ) -> Result<Option<git::Revision>, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         git::backup_current_work(
             Path::new(&project_path),
             Path::new(&backup_dir),
@@ -129,9 +148,10 @@ pub fn manual_backup(
 pub fn sync_push(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let (url, auth) = remote_from_settings()?;
         git::push_remote(Path::new(&project_path), &url, &auth, &token)
     })
@@ -142,9 +162,10 @@ pub fn sync_push(
 pub fn sync_fetch(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let (url, auth) = remote_from_settings()?;
         git::fetch_remote(Path::new(&project_path), &url, &auth, &token)
     })
@@ -168,12 +189,17 @@ pub fn document_history(
 pub fn restore_document(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     doc_path: String,
     commit_id: String,
 ) -> Result<git::Revision, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
-        git::restore_document(Path::new(&project_path), &doc_path, &commit_id, &token)
+        let token = tokens.checkout(&project_path)?;
+        let result = git::restore_document(Path::new(&project_path), &doc_path, &commit_id, &token);
+        if result.is_ok() {
+            tokens.refresh(Path::new(&project_path));
+        }
+        result
     })
 }
 
@@ -185,11 +211,16 @@ pub fn restore_document(
 pub fn sync_pull(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
 ) -> Result<git::PullResult, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let (url, auth) = remote_from_settings()?;
-        git::sync_pull(Path::new(&project_path), &url, &auth, &token)
+        let result = git::sync_pull(Path::new(&project_path), &url, &auth, &token);
+        if result.is_ok() {
+            tokens.refresh(Path::new(&project_path));
+        }
+        result
     })
 }
 
@@ -197,10 +228,15 @@ pub fn sync_pull(
 pub fn sync_abort_pull(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
-        git::sync_abort_pull(Path::new(&project_path), &token)
+        let token = tokens.checkout(&project_path)?;
+        let result = git::sync_abort_pull(Path::new(&project_path), &token);
+        if result.is_ok() {
+            tokens.refresh(Path::new(&project_path));
+        }
+        result
     })
 }
 
@@ -208,11 +244,16 @@ pub fn sync_abort_pull(
 pub fn sync_pull_force(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let (url, auth) = remote_from_settings()?;
-        git::sync_pull_force(Path::new(&project_path), &url, &auth, &token)
+        let result = git::sync_pull_force(Path::new(&project_path), &url, &auth, &token);
+        if result.is_ok() {
+            tokens.refresh(Path::new(&project_path));
+        }
+        result
     })
 }
 
@@ -275,6 +316,7 @@ pub fn has_changes(project_path: String) -> Result<bool, ChiknError> {
 pub fn backup_on_close(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
         let path = Path::new(&project_path);
@@ -284,7 +326,7 @@ pub fn backup_on_close(
         // SKIPPED entirely, never surfaced as an error. This is the exact
         // path that once committed "Auto-save on close" over a legacy
         // project it had loaded as empty.
-        let Ok(token) = fidelity::acquire_write_token(path) else {
+        let Ok(token) = tokens.checkout(path) else {
             return Ok(());
         };
 

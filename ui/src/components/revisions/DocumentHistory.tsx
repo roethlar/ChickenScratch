@@ -73,7 +73,7 @@ export function DocumentHistory({ open, docId, onClose }: Props) {
         // same-doc restores; selecting the same id won't re-run Editor's load
         // effect, so relying on selection can leave stale text queued to save.
         const Project = await import("../../commands/project");
-        const reloaded = await Project.loadProject(project.path);
+        const reloaded = (await Project.loadProject(project.path)).project;
         useProjectStore.getState().setProject(reloaded);
         const restoredDoc = reloaded.documents[doc.id];
         if (useProjectStore.getState().activeDocId === doc.id && restoredDoc) {

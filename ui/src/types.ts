@@ -69,3 +69,13 @@ export interface Project {
   metadata: ProjectMeta;
   threads?: Thread[];
 }
+
+/** Result of opening a project. `read_only` is true when the project
+ * opens read-only (the fidelity probe classified it Degraded): no write
+ * token exists in the backend and every mutating command refuses.
+ * `read_only_reasons` carries plain-English explanations. */
+export interface LoadedProject {
+  project: Project;
+  read_only: boolean;
+  read_only_reasons: string[];
+}

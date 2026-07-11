@@ -1,10 +1,10 @@
-use chickenscratch_core::core::project::{fidelity, hierarchy, reader, writer};
+use chickenscratch_core::core::project::{hierarchy, reader, writer};
 use chickenscratch_core::{ChiknError, Document, Project, TreeNode};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tauri::State;
 
-use super::ProjectWriteLocks;
+use super::{ProjectTokens, ProjectWriteLocks};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Template {
@@ -52,12 +52,13 @@ pub fn list_templates() -> Vec<Template> {
 pub fn create_from_template(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     template_id: String,
     name: String,
     parent_id: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         let template = default_templates()
@@ -120,7 +121,8 @@ pub fn create_from_template(
 
 #[tauri::command]
 pub fn save_as_template(project_path: String, doc_id: String) -> Result<Template, ChiknError> {
-    let project = reader::read_project(Path::new(&project_path))?;
+    // Pure query today (returns the template; nothing is written).
+    let project = reader::read_project_readonly(Path::new(&project_path))?;
     let doc = project
         .documents
         .get(&doc_id)

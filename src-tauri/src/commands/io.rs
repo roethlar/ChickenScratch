@@ -1,7 +1,7 @@
 use chickenscratch_core::core::compile;
 use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::hierarchy;
-use chickenscratch_core::core::project::{fidelity, reader, writer};
+use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::utils::process::{
     output_bounded, PANDOC_OUTPUT_LIMIT_BYTES, PANDOC_TIMEOUT,
 };
@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::State;
 
-use super::ProjectWriteLocks;
+use super::{ProjectTokens, ProjectWriteLocks};
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -88,6 +88,7 @@ const PANDOC_IMPORT_EXTENSIONS: &[&str] = &[
 pub fn import_file(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     file_path: String,
     parent_id: Option<String>,
 ) -> Result<Project, ChiknError> {
@@ -115,7 +116,7 @@ pub fn import_file(
     };
 
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         let doc_id = uuid::Uuid::new_v4().to_string();
@@ -207,16 +208,18 @@ pub fn import_markdown_folder(
     folder_path: String,
     output_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
 ) -> Result<Project, ChiknError> {
     let lock_path = output_path.clone();
     write_locks.with_project_lock(lock_path, || {
-        import_markdown_folder_impl(folder_path, output_path)
+        import_markdown_folder_impl(folder_path, output_path, &tokens)
     })
 }
 
 fn import_markdown_folder_impl(
     folder_path: String,
     output_path: String,
+    tokens: &ProjectTokens,
 ) -> Result<Project, ChiknError> {
     let folder = Path::new(&folder_path);
     let output = Path::new(&output_path);
@@ -229,7 +232,7 @@ fn import_markdown_folder_impl(
 
     let mut project = writer::create_project(output, &name)?;
     // Freshly created by the engine — probes Full by construction.
-    let token = fidelity::acquire_write_token(output)?;
+    let token = tokens.checkout(output)?;
 
     let mut entries: Vec<_> = fs::read_dir(folder)?
         .filter_map(|e| e.ok())
@@ -430,17 +433,24 @@ fn parse_writing_history(path: &Path, data: &str) -> Result<WritingHistory, Chik
 pub fn record_daily_words(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     words: usize,
 ) -> Result<(), ChiknError> {
     let lock_path = project_path.clone();
-    write_locks.with_project_lock(lock_path, || record_daily_words_impl(project_path, words))
+    write_locks.with_project_lock(lock_path, || {
+        record_daily_words_impl(project_path, &tokens, words)
+    })
 }
 
-fn record_daily_words_impl(project_path: String, words: usize) -> Result<(), ChiknError> {
+fn record_daily_words_impl(
+    project_path: String,
+    tokens: &ProjectTokens,
+    words: usize,
+) -> Result<(), ChiknError> {
     // Project-internal app files obey the same write gate as documents: a
     // Degraded project never yields a token, so opening Statistics on one
     // writes nothing.
-    let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+    let token = tokens.checkout(&project_path)?;
     let path = Path::new(&project_path)
         .join("settings")
         .join("writing-history.json");
@@ -497,7 +507,10 @@ pub struct SessionProgress {
 
 #[tauri::command]
 pub fn get_session_progress(project_path: String) -> Result<SessionProgress, ChiknError> {
-    let project = reader::read_project(Path::new(&project_path))?;
+    // Pure query: the repairs-disabled read never touches the disk (the
+    // Statistics panel must be able to open on a Degraded project without
+    // writing a single byte).
+    let project = reader::read_project_readonly(Path::new(&project_path))?;
     let target = project.metadata.session_target.clone().unwrap_or_default();
 
     // Current manuscript word count (only documents under manuscript/, like the badge expects).
@@ -556,7 +569,8 @@ pub fn get_session_progress(project_path: String) -> Result<SessionProgress, Chi
 
 #[tauri::command]
 pub fn get_project_stats(project_path: String) -> Result<ProjectStats, ChiknError> {
-    let project = reader::read_project(Path::new(&project_path))?;
+    // Pure query — see get_session_progress.
+    let project = reader::read_project_readonly(Path::new(&project_path))?;
     let mut docs = Vec::new();
     let mut total_words = 0;
     let mut manuscript_words = 0;
@@ -645,7 +659,11 @@ mod tests {
         // from the hierarchy) is a content-threatening self-heal condition.
         fs::write(project_path.join("manuscript/orphan.md"), "stranded work").unwrap();
 
-        let result = record_daily_words_impl(project_path.to_string_lossy().to_string(), 1234);
+        let result = record_daily_words_impl(
+            project_path.to_string_lossy().to_string(),
+            &ProjectTokens::default(),
+            1234,
+        );
 
         assert!(
             matches!(result, Err(ChiknError::ReadOnly(_))),
@@ -664,7 +682,12 @@ mod tests {
         chickenscratch_core::core::project::writer::create_project(&project_path, "Safe History")
             .unwrap();
 
-        record_daily_words_impl(project_path.to_string_lossy().to_string(), 1234).unwrap();
+        record_daily_words_impl(
+            project_path.to_string_lossy().to_string(),
+            &ProjectTokens::default(),
+            1234,
+        )
+        .unwrap();
 
         assert!(project_path.join("settings/writing-history.json").exists());
     }
@@ -686,7 +709,11 @@ mod tests {
         fs::remove_dir(project_path.join("settings")).unwrap();
         unix_fs::symlink(&outside_path, project_path.join("settings")).unwrap();
 
-        let result = record_daily_words_impl(project_path.to_string_lossy().to_string(), 1234);
+        let result = record_daily_words_impl(
+            project_path.to_string_lossy().to_string(),
+            &ProjectTokens::default(),
+            1234,
+        );
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert!(fs::read_dir(&outside_path).unwrap().next().is_none());

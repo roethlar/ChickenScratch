@@ -2,14 +2,14 @@
 //! `threads.yaml` at the project root. The format itself stays genre-agnostic;
 //! these commands let any frontend manage them with a typed API.
 
-use chickenscratch_core::core::project::{fidelity, reader, writer};
+use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::{ChiknError, Project, Thread};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
 use tauri::State;
 
-use super::ProjectWriteLocks;
+use super::{ProjectTokens, ProjectWriteLocks};
 
 /// A dangling reference from a scene to an entity that no longer exists.
 #[derive(Debug, Clone, Serialize)]
@@ -33,7 +33,8 @@ const MAX_ENTITY_PATH_DEPTH: usize = 8;
 /// keys are preserved as opaque UI-owned data and are not interpreted here.
 #[tauri::command]
 pub fn validate_references(project_path: String) -> Result<Vec<DanglingRef>, ChiknError> {
-    let project = reader::read_project(Path::new(&project_path))?;
+    // Pure query: the repairs-disabled read never touches the disk.
+    let project = reader::read_project_readonly(Path::new(&project_path))?;
 
     // Build slug → name lookups. Slug = filename stem under the entity folder.
     let character_slugs = collect_entity_slugs(&project, "characters")?;
@@ -123,7 +124,8 @@ fn collect_entity_slugs(project: &Project, folder: &str) -> Result<HashSet<Strin
 
 #[tauri::command]
 pub fn list_threads(project_path: String) -> Result<Vec<Thread>, ChiknError> {
-    let project = reader::read_project(Path::new(&project_path))?;
+    // Pure query: the repairs-disabled read never touches the disk.
+    let project = reader::read_project_readonly(Path::new(&project_path))?;
     Ok(project.threads)
 }
 
@@ -131,6 +133,7 @@ pub fn list_threads(project_path: String) -> Result<Vec<Thread>, ChiknError> {
 pub fn create_thread(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     name: String,
     color: Option<String>,
     description: Option<String>,
@@ -142,7 +145,7 @@ pub fn create_thread(
                 "Thread name cannot be empty".to_string(),
             ));
         }
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         let id = unique_thread_id(trimmed, &project.threads);
@@ -162,13 +165,14 @@ pub fn create_thread(
 pub fn update_thread(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     id: String,
     name: Option<String>,
     color: Option<String>,
     description: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         let thread = project
             .threads
@@ -196,10 +200,11 @@ pub fn update_thread(
 pub fn delete_thread(
     project_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
+    tokens: State<'_, ProjectTokens>,
     id: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        let token = tokens.checkout(&project_path)?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         project.threads.retain(|t| t.id != id);
 

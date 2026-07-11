@@ -16,7 +16,8 @@ pub fn search_project(
     project_path: String,
     query: String,
 ) -> Result<Vec<SearchResult>, ChiknError> {
-    let project = reader::read_project(Path::new(&project_path))?;
+    // Pure query: the repairs-disabled read never touches the disk.
+    let project = reader::read_project_readonly(Path::new(&project_path))?;
     let q = query.to_lowercase();
     let mut results = Vec::new();
 
