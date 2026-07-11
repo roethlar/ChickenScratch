@@ -18,6 +18,10 @@ decisions; `DEVLOG.md` holds history.
   handoff a second remote `github` (https://github.com/roethlar/ChickenScratch)
   exists alongside the Gitea `origin` (http://q:3000); pushes go to both.
   Push policy remains ask-first (`.agents/push-policy.md`).
+- **Deprecation cleanup plan drafted** (2026-07-10, owner approved drafting):
+  `docs/plans/PLAN_DEPRECATION_CLEANUP.md`, status Draft — awaiting owner
+  approval to execute. Covers goals G4–G6: trim CI/release gate to
+  engine + Tauri + converter + TUI, sweep README/ARCHITECTURE/ROADMAP.
 - No feature work in flight.
 
 ## Blockers
@@ -36,7 +40,10 @@ in `docs/CURRENT_PHASE.md`:
   execute. Re-verified red 2026-07-10 via `gh run list` against the
   `github` remote: Validation failed on `aabfd05` (and every earlier
   recorded run); the Tauri Bundles workflow is green.
-- `.github/workflows/windows.yml` and `macos-release.yml` target deleted trees.
+- `.github/workflows/windows.yml` targets the deleted `windows/` tree (its
+  path filter also means it never triggers). `macos-release.yml` was
+  previously listed here in error — re-checked 2026-07-10: it builds the
+  **Tauri** app (signed macOS release) and is fine as-is.
 - `scripts/check-release-metadata.sh` (line ~87) checks the deleted
   `linux/Cargo.toml`; `RELEASE.md` lists deleted files among release-version
   updates and runs Swift/.NET validation steps.
