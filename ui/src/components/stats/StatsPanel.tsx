@@ -19,6 +19,7 @@ interface StatsPanelProps {
 
 export function StatsPanel({ open, onClose }: StatsPanelProps) {
   const project = useProjectStore((s) => s.project);
+  const readOnly = useProjectStore((s) => s.readOnly);
   const [stats, setStats] = useState<ProjectStats | null>(null);
   const [history, setHistory] = useState<DayEntry[]>([]);
 
@@ -26,11 +27,14 @@ export function StatsPanel({ open, onClose }: StatsPanelProps) {
     if (!open || !project) return;
     getProjectStats(project.path).then((s) => {
       setStats(s);
-      // Record today's word count
-      recordDailyWords(project.path, s.manuscript_words).catch(() => {});
+      // Record today's word count. Read-only projects skip this — the
+      // backend refuses it anyway (no write token), so don't even ask.
+      if (!readOnly) {
+        recordDailyWords(project.path, s.manuscript_words).catch(() => {});
+      }
     }).catch(() => {});
     getWritingHistory(project.path).then((h) => setHistory(h.entries)).catch(() => {});
-  }, [open, project]);
+  }, [open, project, readOnly]);
 
   if (!open || !stats) return null;
 

@@ -817,6 +817,23 @@
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
+.view-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ── Read-only banner ──────────────────────────────── */
+/* Shown when a project opens read-only (made by an older or newer
+   version): one calm line, no dialog storm. */
+.readonly-banner {
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg));
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
 /* ── Editor Toolbar ────────────────────────────────── */
 
 .editor-toolbar {

@@ -89,6 +89,8 @@ type View = "editor" | "corkboard" | "preview" | "timeline";
 
 export default function App() {
   const project = useProjectStore((s) => s.project);
+  const readOnly = useProjectStore((s) => s.readOnly);
+  const readOnlyReasons = useProjectStore((s) => s.readOnlyReasons);
   const { theme, setTheme, focusMode, toggleFocusMode, loadSettings } = useSettingsStore();
 
   // Load app settings on startup
@@ -159,7 +161,7 @@ export default function App() {
       newDocument: () => {
         (async () => {
           const p = useProjectStore.getState().project;
-          if (!p) return;
+          if (!p || useProjectStore.getState().readOnly) return;
           const name = await dialogPrompt("Document name:");
           if (!name || !name.trim()) return;
           const updated = await docCmd.createDocument(p.path, name.trim());
@@ -254,7 +256,8 @@ export default function App() {
 
   // Auto-commit every 10 minutes if there are unsaved changes
   useEffect(() => {
-    if (!project) return;
+    // Read-only projects skip every auto-save timer: nothing may write.
+    if (!project || readOnly) return;
     const interval = setInterval(async () => {
       try {
         // Drain pending editor edits BEFORE asking git for working-tree
@@ -275,12 +278,13 @@ export default function App() {
     // Re-run only on project path change; full `project` object identity
     // updates on every edit, which would reset the 10-minute interval.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project?.path]);
+  }, [project?.path, readOnly]);
 
   // Periodic auto-backup based on settings interval
   useEffect(() => {
     const settings = useSettingsStore.getState().appSettings;
-    if (!project || !settings?.backup.backup_directory) return;
+    // Read-only projects skip the periodic backup too (backend refuses).
+    if (!project || readOnly || !settings?.backup.backup_directory) return;
 
     const minutes = settings.backup.auto_backup_minutes || 30;
     const interval = setInterval(async () => {
@@ -301,7 +305,7 @@ export default function App() {
     return () => clearInterval(interval);
     // Same rationale: tie interval to path, not full project identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project?.path]);
+  }, [project?.path, readOnly]);
 
   if (!project) {
     return <Welcome />;
@@ -346,6 +350,15 @@ export default function App() {
         </>
       )}
       <div className="main-area">
+        {readOnly && (
+          <div
+            className="readonly-banner"
+            title={readOnlyReasons.join("\n")}
+          >
+            This project was made by an older version and opens read-only —
+            nothing will be changed.
+          </div>
+        )}
         <div className="view-toolbar">
           <button
             className={`view-btn ${view === "editor" ? "active" : ""}`}
@@ -414,7 +427,8 @@ export default function App() {
           <button
             className={`view-btn ${showRevisions ? "active" : ""}`}
             onClick={() => setShowRevisions(!showRevisions)}
-            title="Revisions"
+            title={readOnly ? "Read-only project — revisions are disabled" : "Revisions"}
+            disabled={readOnly}
           >
             <History size={16} />
           </button>

@@ -52,6 +52,7 @@ export function Editor() {
   const activeDoc = useProjectStore((s) => s.activeDoc);
   const flowDocs = useProjectStore((s) => s.flowDocs);
   const saving = useProjectStore((s) => s.saving);
+  const readOnly = useProjectStore((s) => s.readOnly);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const docIdRef = useRef<string | null>(null);
   const flowIdsRef = useRef<string | null>(null);
@@ -257,6 +258,12 @@ export function Editor() {
   });
 
   useEffect(() => { editorRef.current = editor; }, [editor]);
+
+  // Read-only project: the buffer must never diverge from disk, so the
+  // editor itself is non-editable (no debounced saves can ever fire).
+  useEffect(() => {
+    if (editor) editor.setEditable(!readOnly);
+  }, [editor, readOnly]);
 
   // Ctrl+F / Ctrl+H shortcuts
   useEffect(() => {
