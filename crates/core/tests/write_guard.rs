@@ -474,9 +474,10 @@ hierarchy:
 }
 
 /// The writer must never emit document text into a non-.md file, even on a
-/// Full project with a valid token — assets are opaque.
+/// Full project with a valid token — asset content is opaque; only its
+/// sidecar metadata is the writer's to maintain.
 #[test]
-fn writer_refuses_document_content_into_asset_path() {
+fn writer_never_writes_content_into_asset_path() {
     let (_temp, root) = base_fixture();
     fs::write(root.join("research/sample.pdf"), b"%PDF-1.4 fake").unwrap();
 
@@ -489,14 +490,14 @@ fn writer_refuses_document_content_into_asset_path() {
     rogue.content = "this text must never reach the pdf".to_string();
     project.documents.insert(rogue.id.clone(), rogue);
 
-    let err = write_project(&mut project, &token).unwrap_err();
-    assert!(
-        matches!(err, ChiknError::InvalidFormat(ref m) if m.contains("non-markdown")),
-        "expected non-markdown refusal, got {err:?}"
-    );
+    write_project(&mut project, &token).unwrap();
     assert_eq!(
         fs::read(root.join("research/sample.pdf")).unwrap(),
         b"%PDF-1.4 fake",
-        "asset bytes must be untouched after the refused write"
+        "asset bytes must be untouched by document writes"
+    );
+    assert!(
+        root.join("research/sample.meta").is_file(),
+        "asset sidecar metadata is still maintained"
     );
 }

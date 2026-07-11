@@ -586,18 +586,14 @@ fn write_document(
 ) -> Result<(), ChiknError> {
     // Text content is only ever written to .md files. Anything else a
     // binder can reference (imported PDFs, images, audio) is an opaque
-    // asset this engine must never overwrite with document content.
+    // asset: its sidecar metadata is ours to maintain, its content bytes
+    // are not — they are copied verbatim at import time and never touched
+    // again (see `write_document_blobs` for byte-faithful restores).
     let is_md = Path::new(&document.path)
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.eq_ignore_ascii_case(super::format::DOCUMENT_EXTENSION))
         .unwrap_or(false);
-    if !is_md {
-        return Err(ChiknError::InvalidFormat(format!(
-            "Refusing to write document content to a non-markdown file: {}",
-            document.path
-        )));
-    }
 
     let (full_content_path, meta_path) = safe_document_write_paths(project_path, &document.path)?;
 
@@ -653,8 +649,10 @@ fn write_document(
 
     let meta_content = serde_yaml::to_string(&metadata)?;
 
-    // Write content (.md file)
-    atomic_write_file(&full_content_path, document.content.as_bytes())?;
+    // Write content (.md file) — never for opaque assets (see above).
+    if is_md {
+        atomic_write_file(&full_content_path, document.content.as_bytes())?;
+    }
     atomic_write_file(&meta_path, meta_content.as_bytes())?;
 
     Ok(())
