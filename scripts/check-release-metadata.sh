@@ -84,7 +84,6 @@ version_files=(
   crates/core/Cargo.toml
   crates/cli/Cargo.toml
   crates/tui/Cargo.toml
-  linux/Cargo.toml
 )
 
 for file in "${version_files[@]}"; do

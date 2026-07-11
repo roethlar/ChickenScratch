@@ -18,7 +18,6 @@ Files that must be updated for each release:
 - `crates/core/Cargo.toml`
 - `crates/cli/Cargo.toml`
 - `crates/tui/Cargo.toml`
-- `linux/Cargo.toml`
 - `pkg/arch/PKGBUILD`
 
 Do not tag until `scripts/check-release-metadata.sh --release <version>` passes and any remaining `rg '0\.1\.0-alpha|Alpha|alpha'` matches have been reviewed as intentional.
@@ -34,12 +33,9 @@ cargo metadata --locked --format-version 1 >/dev/null
 cargo clippy --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
 cargo test --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
 cd ui && npm ci && npm run lint && npm run build && cd ..
-swift package resolve --package-path macos
-git diff --exit-code -- macos/Package.resolved
-cd windows && dotnet restore ChickenScratch.slnx --locked-mode -p:EnableWindowsTargeting=true && cd ..
 ```
 
-Run cross-frontend format validation:
+Run format-harness validation (Rust converter → Rust reader):
 
 ```bash
 crates/core/tests/cross_frontend/run.sh
@@ -92,16 +88,11 @@ cargo tauri build --bundles appimage -- --locked
 test -n "$(find target/release/bundle/appimage -name '*.AppImage' -print -quit)"
 ```
 
-Windows:
+Windows: no Windows artifact build exists yet. Windows ships later as a
+Tauri bundle (`docs/CURRENT_PHASE.md` Step 5); the deprecated WinUI build was
+removed with the `windows/` tree (ADR-004).
 
-```powershell
-cd windows
-dotnet restore ChickenScratch.slnx --locked-mode
-dotnet build ChickenScratch.slnx /p:Configuration=Release --no-restore
-dotnet build ChickenScratch.App/ChickenScratch.App.csproj /p:Platform=x64 /p:Configuration=Release
-```
-
-Linux and Windows artifact builds must be validated on their native hosts or via CI.
+Linux artifact builds must be validated on their native hosts or via CI.
 
 ## 4. Prepare Arch Package Source
 
