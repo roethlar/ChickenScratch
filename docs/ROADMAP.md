@@ -1,20 +1,21 @@
 # ChickenScratch — Roadmap
 
-## Current State (v0.1.0-alpha)
+## Current State (v1.0.0 release target)
 
-ChickenScratch is a functional cross-platform writing app in alpha testing. Core features implemented. Seeking feedback from writers to identify issues, missing functionality, and UX problems before stable release.
+ChickenScratch is a functional cross-platform writing app. Core features implemented. Seeking feedback from writers to identify issues, missing functionality, and UX problems before stable release.
 
-**Five frontends, one canonical storage format:**
-- **Tauri + React + TipTap** — fullest feature set; daily-driver on macOS + Linux
-- **WinUI 3 + C#** (`windows/`) — native Windows app, alpha
-- **SwiftUI + Liquid Glass** (`macos/`, macOS 26+) — three-pane shell with format parity (fields/threads/session_target round-trip), Scene-section inspector, characters/locations binder sections, drafts & per-doc history, stats panel, timeline view; rich-text editor, AI, comments, compile, and remote-sync UIs not yet ported
-- **Qt6 + cxx-qt** (`linux/`, Wayland-native) — early scaffold with binder/editor/inspector/find-replace
+**One engine, one GUI, one canonical storage format** ([ADR-004](adr/ADR-004-deprecated-native-engines.md)):
+- **Rust engine** (`crates/core`) — the only `.chikn` reader/writer
+- **Tauri + React + TipTap** — the desktop app; daily-driver on macOS + Linux, Windows bundle planned ([CURRENT_PHASE.md](CURRENT_PHASE.md) Step 5)
 - **Ratatui TUI** (`chikn` binary, any OS) — keyboard-first terminal editor
+- **Converter CLI** (`chikn-converter`) — Scrivener → `.chikn`
 - **Canonical storage** — Pandoc Markdown (`.md` files on disk)
 
-Pandoc is a runtime dependency but only for compile/export and import — not for core editing. The Tauri editor uses `tiptap-markdown` for in-process markdown ↔ HTML. The TUI and SwiftUI edit markdown directly, no conversion at all.
+The earlier SwiftUI, WinUI, and Qt6 native experiments were removed per ADR-004; their history stays in git.
 
-Not every frontend is at feature parity with Tauri — the SwiftUI, Qt6, and WinUI apps are catching up. Where a feature below says just "Editor" it's shipped on all editor frontends; feature sections named "(Tauri)" are Tauri-only until ported.
+Pandoc is a runtime dependency but only for compile/export and import — not for core editing. The Tauri editor uses `tiptap-markdown` for in-process markdown ↔ HTML. The TUI edits markdown directly, no conversion at all.
+
+Feature sections named "(Tauri)" are desktop-app features; "(TUI)" sections describe the terminal editor.
 
 ### What's Built
 
@@ -101,11 +102,8 @@ Not every frontend is at feature parity with Tauri — the SwiftUI, Qt6, and Win
 ### Remote Sync — merge UX for conflicting pulls ✓
 `sync_pull` returns a tagged `PullResult` (up_to_date / fast_forward / merged / conflicts{files}); the UI surfaces a real merge-conflict dialog with abort / force-pull / resolve-manually paths. Draft merge gained the same treatment in fifth review batch — `merge_draft` returns a sibling `MergeResult` enum.
 
-### Frontend parity (SwiftUI + Qt6 + WinUI)
-Bring the newer native frontends up to Tauri's feature set. Highest-leverage gaps:
-- SwiftUI: rich-text editor (currently plain TextEditor — no markdown rendering or formatting toolbar), drag-drop reorder, comments, footnotes, find/replace, flow mode, compile/export UI, settings panel, AI streaming, remote sync UI. Foundation parity (fields/threads/session_target), inspector scene metadata, binder entities + thread dots, drafts, per-doc history, stats, and timeline are shipped.
-- Qt6/Linux: comments, footnotes, revisions UI, compile, AI, settings, templates
-- WinUI: ongoing — tracked in `windows/` commit history
+### Frontend parity (SwiftUI + Qt6 + WinUI) — superseded, will not ship
+Superseded by [ADR-004](adr/ADR-004-deprecated-native-engines.md) before completion: the native frontends were deprecated and later removed. Kept here as history; the partial-parity details are in git history of this file.
 
 ---
 
