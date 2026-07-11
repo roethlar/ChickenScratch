@@ -268,6 +268,22 @@ MyNovel.chikn/
 
 You can edit these files in any text editor if needed. The format is designed to be human-readable and git-friendly.
 
+### Projects from older versions open read-only
+
+If you open a project the current app cannot fully read — for example one
+made by a much older version, or by a newer version than you have
+installed — it opens **read-only**. A banner says so, the editor won't
+accept typing, and saving, revisions, and automatic backups are all
+switched off for that project. Nothing in the folder is ever changed,
+not even by opening it, closing it, or looking at Statistics.
+
+This protects your work: an app that can only see part of a project must
+never save that partial view over the real files. Your original project
+stays byte-for-byte intact. To keep working on an old project, re-import
+it from its original source (for Scrivener projects, use
+**Import Scrivener Project** on the welcome screen) — the read-only copy
+remains untouched as a backup.
+
 ---
 
 ## Terminal UI (`chikn`)
