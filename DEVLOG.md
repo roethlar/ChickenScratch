@@ -6,6 +6,25 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-07-10 — ADR-005: binary-only distribution; Arch packaging removed, release gate green
+
+**Change:** The owner settled distribution intent: writers install built
+binaries (Flathub / app stores / website installers); no in-repo
+source-package channels. Recorded as
+`docs/adr/ADR-005-binary-only-distribution.md` and executed per
+`docs/plans/PLAN_REMOVE_ARCH_PACKAGING.md`: `pkg/` (PKGBUILD + desktop
+file) and `scripts/create-release-source.sh` deleted;
+`scripts/check-release-metadata.sh` now validates version metadata, README
+status, `Cargo.lock` freshness, and tag existence under `--require-tag`.
+The R-13 archive-vs-pin gate (`REVIEW.md`) was retired **with its subject**
+— the pin it protected no longer exists — which resolves the pre-existing
+red "Release metadata" CI step recorded in the previous entry.
+
+**Verified:** the script passes default and `--release` modes ("release
+metadata ok for 1.0.0", first pass since 2026-05-18); `--require-tag`
+fails only on the genuinely missing tag; Arch references survive only in
+historical records; declared suite green at close-out.
+
 ## 2026-07-10 — Deprecation cleanup (G4/G5): CI, release gate, and docs match ADR-004 reality
 
 **Change:** Executed the owner-approved `docs/plans/PLAN_DEPRECATION_CLEANUP.md`,

@@ -16,8 +16,11 @@ decisions; `DEVLOG.md` holds history.
 - **Deprecation cleanup executed** (2026-07-10, owner-approved
   `docs/plans/PLAN_DEPRECATION_CLEANUP.md`): CI, release gate, and
   README/ARCHITECTURE/ROADMAP no longer reference the deleted native trees
-  (G4/G5 work done; DEVLOG top entry). Validation CI will stay red at one
-  step for a pre-existing reason — see Blockers.
+  (G4/G5 work done; DEVLOG entries).
+- **ADR-005 binary-only distribution executed** (2026-07-10): Arch
+  packaging (`pkg/`, `create-release-source.sh`, release-gate pin checks)
+  removed per owner decision; `check-release-metadata.sh` passes both
+  modes. Resolves the release-metadata blocker recorded earlier that day.
 - **Push status**: local `master` is ahead of both remotes by the cleanup
   commits (plan + slices + close-out); ask-first policy, owner not yet
   asked post-cleanup. Remotes: Gitea `origin` (http://q:3000) and `github`
@@ -26,15 +29,9 @@ decisions; `DEVLOG.md` holds history.
 
 ## Blockers
 
-- **Release-metadata gate red for a pre-existing reason** (found 2026-07-10
-  while executing the cleanup plan): `pkg/arch/PKGBUILD` sha256 was pinned
-  at `faa9d54` (2026-05-18) for a v1.0.0 release that was never tagged (the
-  repo has no tags). With version `1.0.0` (no prerelease suffix) the script
-  runs in release mode and compares a HEAD source archive against the pin —
-  only matchable at the frozen release commit. Validation CI stays red at
-  "Release metadata" until the owner decides: switch to a prerelease
-  version until release, restrict the archive comparison to `--release`
-  runs, or finish/cut the v1.0.0 release. Decision pending.
+- None. (The release-metadata blocker recorded here earlier on 2026-07-10
+  was resolved the same day by ADR-005: the Arch packaging and its pinned
+  checksum were removed; `check-release-metadata.sh` passes.)
 
 ## Known drift (recorded, not yet fixed)
 
@@ -53,10 +50,10 @@ the CI/release/README/ARCHITECTURE/ROADMAP entries formerly listed here
 
 ## Next
 
-1. Owner decision: how to resolve the pre-existing release-metadata
-   blocker above — it is the only thing keeping Validation CI red.
-2. Owner go for pushing the cleanup commits (ask-first policy).
-3. Owner decision: G4/G5 work is done and G2/G3/G6 look met — declare
+1. Owner go for pushing the ADR-005 commits (ask-first policy); after the
+   push, Validation CI on GitHub is expected fully green for the first
+   time since May — confirm and record.
+2. Owner decision: G4/G5 work is done and G2/G3/G6 look met — declare
    goals met / advance the phase via `SET PHASE`, or name the next work.
    Checkbox edits in `docs/CURRENT_PHASE.md` are the owner's call.
 

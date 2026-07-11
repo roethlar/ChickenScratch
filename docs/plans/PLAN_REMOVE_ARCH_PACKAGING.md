@@ -1,8 +1,10 @@
 # Plan: Remove Arch source-package channel (ADR-005)
 
-**Status:** Approved 2026-07-10 — owner's distribution statement quoted in
-`docs/adr/ADR-005-binary-only-distribution.md` selects removal of the Arch
-packaging ("option 1" of the choices presented in chat). Execution same day.
+**Status:** Executed 2026-07-10 (approved same day — owner's distribution
+statement quoted in `docs/adr/ADR-005-binary-only-distribution.md` selected
+removal of the Arch packaging, "option 1" of the choices presented in chat).
+All tests in the plan passed; awaiting push + GitHub confirmation of a fully
+green Validation run.
 
 **Owner request (quote):** see ADR-005 Context.
 
