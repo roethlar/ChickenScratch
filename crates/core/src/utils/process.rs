@@ -321,10 +321,17 @@ mod platform {
             }
 
             let err = io::Error::last_os_error();
-            if err.raw_os_error() == Some(libc::ESRCH) {
-                Ok(())
-            } else {
-                Err(err)
+            match err.raw_os_error() {
+                Some(libc::ESRCH) => Ok(()),
+                // Darwin quirk: signaling a process group whose leader has
+                // already exited but is not yet reaped (a zombie) can fail
+                // with EPERM even for our own child. When the leader is
+                // confirmed exited, the group is dead or dying and the
+                // caller's cap/timeout verdict must not be masked by this
+                // kill error. EPERM with a still-running leader remains an
+                // error.
+                Some(libc::EPERM) if matches!(self.child.try_wait(), Ok(Some(_))) => Ok(()),
+                _ => Err(err),
             }
         }
     }
