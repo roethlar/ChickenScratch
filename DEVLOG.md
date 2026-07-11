@@ -6,7 +6,43 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
-## 2026-07-09 — Format lock (engine): preservation contract, version marker, canonical bytes, spec alignment
+## 2026-07-10 — Deprecation cleanup (G4/G5): CI, release gate, and docs match ADR-004 reality
+
+**Change:** Executed the owner-approved `docs/plans/PLAN_DEPRECATION_CLEANUP.md`,
+one slice per commit:
+
+1. **Validation CI rust-only.** Removed the .NET setup, Swift package lock,
+   and Windows NuGet steps that resolved the deleted `macos/`/`windows/`
+   trees; `cross_frontend/run.sh` narrowed to the Rust converter → Rust
+   reader leg, gated on an unambiguous `harness-result: ok` manifest marker
+   (the old `writer-toolchains-ran:2/2` could never pass again).
+2. **Dead Windows CI deleted.** `windows.yml` (path-filtered on the deleted
+   tree, could never trigger) and `check-nuget-package-versions.ps1`.
+3. **Release gate.** `check-release-metadata.sh` no longer reads the deleted
+   `linux/Cargo.toml`; `RELEASE.md` drops Swift/.NET validation and the WinUI
+   artifact build (Windows ships later as a Tauri bundle, phase Step 5).
+4. **Docs (G4).** README platform table/build sections/tree/deps;
+   ARCHITECTURE (trees are removed, workspace-members line fixed); ROADMAP
+   (one engine + one GUI; the v1.1 frontend-parity section marked superseded
+   by ADR-004).
+
+**Found while verifying — still red, pre-existing, out of scope:**
+`pkg/arch/PKGBUILD`'s sha256 was pinned at `faa9d54` (2026-05-18) for a
+v1.0.0 release that was never tagged (the repo has no tags). With version
+`1.0.0` (no prerelease suffix) `check-release-metadata.sh` runs in release
+mode and compares a HEAD source archive against that pin — which can only
+match at the frozen release commit, so the Validation workflow's "Release
+metadata" step fails on every commit since. Owner decision pending
+(prerelease version vs. restrict the archive comparison to `--release` runs
+vs. finish the release).
+
+**Verified:** declared suite green on the slice-1 tree and re-run green at
+close-out; harness green locally under the CI env (`FAIL_ON_REPAIR=1` + CI
+grep); `check-release-metadata.sh` now reaches the checksum comparison with
+zero other errors; workflow YAML parse-checked. Straggler grep recorded in
+`.agents/state.md` (Known drift): `docs/USER_GUIDE.md`,
+`docs/EDITOR_DESIGN.md`, `TODO.md`, I3/glossary wording — reported, not
+swept (outside plan scope).
 
 **Change:** Completed `CURRENT_PHASE.md` Step 2 per the owner-approved
 `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md`. A six-agent audit first established

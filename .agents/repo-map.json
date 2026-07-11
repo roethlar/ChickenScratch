@@ -81,6 +81,6 @@
     "docs/adr/ remains the product/architecture decision log; .agents/decisions.md holds governance/layout-level decisions and follows the toolkit's Open/Active/Adopted/Superseded lifecycle, archiving closed entries verbatim to docs/history/decisions-archive.md.",
     "REVIEW.md and .review/ are the audit record of a completed 63-finding review cycle - history, not state.",
     "scripts/check-release-metadata.sh requires REVIEW.md to stay export-ignored in .gitattributes; never delete or rename REVIEW.md.",
-    "macos/, windows/, linux/ native trees were deleted 2026-06-07 (ADR-004); CI and release scripts still reference them - drift register in .agents/state.md."
+    "macos/, windows/, linux/ native trees were deleted 2026-06-07 (ADR-004); CI and release scripts were cleaned of their references 2026-07-10 (docs/plans/PLAN_DEPRECATION_CLEANUP.md). Remaining doc stragglers and the pre-existing release-checksum blocker: .agents/state.md."
   ]
 }

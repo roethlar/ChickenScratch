@@ -1,7 +1,10 @@
 # Plan: Deprecation cleanup — CI, release gate, and docs (G4–G6)
 
-**Status:** Approved 2026-07-10 — owner answered "yes" to the plain-English
-go/no-go ("Okay to proceed?"). Execution in progress.
+**Status:** Executed 2026-07-10 (approved same day — owner answered "yes" to
+the plain-English go/no-go). Slices A–G landed, one commit each. See
+"Execution notes" at the bottom for deviations and findings; the pre-existing
+release-checksum failure is recorded in `.agents/state.md` (Blockers) and
+awaits an owner decision.
 
 **Owner request (quote):**
 > Owner approved on 2026-07-10: "yes" to drafting this plan for the G4–G6
@@ -187,3 +190,26 @@ page now lists only the apps that actually exist.
   than deleting it) and deleting `windows.yml` +
   `check-nuget-package-versions.ps1` are within ADR-004's allowed
   maintenance; plan approval covers Step 4's deletion gate.
+
+---
+
+## Execution notes (2026-07-10)
+
+- **Marker tightened:** the harness/CI marker is `harness-result: ok`, not
+  the planned `result: ok` — the inner cargo test's own "test result: ok"
+  line would have satisfied the looser grep trivially.
+- **Pre-existing blocker found:** with every deleted-tree reference fixed,
+  `check-release-metadata.sh` still exits 1 — `pkg/arch/PKGBUILD` sha256 was
+  pinned at `faa9d54` (2026-05-18) for a v1.0.0 release that was never
+  tagged, and release mode compares a HEAD archive against it. Out of this
+  plan's scope; recorded in `.agents/state.md` (Blockers) for owner
+  decision. Until resolved, Validation CI is red at "Release metadata" only.
+- **Straggler grep:** non-historical files still naming the deleted trees
+  are listed in `.agents/state.md` (Known drift): `docs/USER_GUIDE.md`,
+  `docs/EDITOR_DESIGN.md`, `TODO.md`, and I3/glossary wording. Not swept —
+  outside the approved file list.
+- **Verification performed:** declared suite green on the Slice A tree and
+  re-run at close-out (Slices B–F touched only workflows, scripts, docs);
+  harness green under CI env; workflow YAML parse-checked (ruby);
+  `check-release-metadata.sh` reaches the checksum comparison with zero
+  other errors.

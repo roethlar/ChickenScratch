@@ -82,9 +82,11 @@ lives in `.agents/push-policy.md`, not here.
   bisect regressions. (This is also recorded as a candidate cross-repo
   harvest idea in `.agents/harvest.md`.)
 - **Deprecated trees get no new features.** `macos/`, `windows/`, `linux/`
-  are deprecated native experiments (`docs/adr/ADR-004-deprecated-native-engines.md`).
-  Do not extend them toward parity with the Tauri app; format I/O outside
-  `crates/core` is a hard stop requiring an explicit owner go.
+  were deprecated native experiments
+  (`docs/adr/ADR-004-deprecated-native-engines.md`), deleted from the
+  working tree (history stays in git). Do not recreate or extend them;
+  format I/O outside `crates/core` is a hard stop requiring an explicit
+  owner go.
 - **Marketing waits.** No marketing or website work before the format and
   the Tauri app are coherent, unless the owner explicitly says to skip ahead
   (`docs/PROJECT.md` priority order).

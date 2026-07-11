@@ -13,71 +13,69 @@ decisions; `DEVLOG.md` holds history.
   alignment (Step 3) was found already in place by the format-lock audit.
   What remains is deprecation cleanup (goals G4–G6). Landed-entry detail
   rotated to `docs/history/state-archive.md`.
-- **Push status**: in sync as of `a41bdab` (2026-07-10) — the owner approved
-  the push and local `master` now matches both remotes. Since the last
-  handoff a second remote `github` (https://github.com/roethlar/ChickenScratch)
-  exists alongside the Gitea `origin` (http://q:3000); pushes go to both.
-  Push policy remains ask-first (`.agents/push-policy.md`).
-- **Deprecation cleanup plan drafted** (2026-07-10, owner approved drafting):
-  `docs/plans/PLAN_DEPRECATION_CLEANUP.md`, status Draft — awaiting owner
-  approval to execute. Covers goals G4–G6: trim CI/release gate to
-  engine + Tauri + converter + TUI, sweep README/ARCHITECTURE/ROADMAP.
+- **Deprecation cleanup executed** (2026-07-10, owner-approved
+  `docs/plans/PLAN_DEPRECATION_CLEANUP.md`): CI, release gate, and
+  README/ARCHITECTURE/ROADMAP no longer reference the deleted native trees
+  (G4/G5 work done; DEVLOG top entry). Validation CI will stay red at one
+  step for a pre-existing reason — see Blockers.
+- **Push status**: local `master` is ahead of both remotes by the cleanup
+  commits (plan + slices + close-out); ask-first policy, owner not yet
+  asked post-cleanup. Remotes: Gitea `origin` (http://q:3000) and `github`
+  (https://github.com/roethlar/ChickenScratch); pushes go to both.
 - No feature work in flight.
 
 ## Blockers
 
-- None.
+- **Release-metadata gate red for a pre-existing reason** (found 2026-07-10
+  while executing the cleanup plan): `pkg/arch/PKGBUILD` sha256 was pinned
+  at `faa9d54` (2026-05-18) for a v1.0.0 release that was never tagged (the
+  repo has no tags). With version `1.0.0` (no prerelease suffix) the script
+  runs in release mode and compares a HEAD source archive against the pin —
+  only matchable at the frozen release commit. Validation CI stays red at
+  "Release metadata" until the owner decides: switch to a prerelease
+  version until release, restrict the archive comparison to `--release`
+  runs, or finish/cut the v1.0.0 release. Decision pending.
 
 ## Known drift (recorded, not yet fixed)
 
-Left over from the native-tree deletion; most are anticipated by goals G4–G6
-in `docs/CURRENT_PHASE.md`:
+The 2026-07-10 cleanup (`docs/plans/PLAN_DEPRECATION_CLEANUP.md`) resolved
+the CI/release/README/ARCHITECTURE/ROADMAP entries formerly listed here
+(archived detail: DEVLOG top entry). Remaining:
 
-- `.github/workflows/validation.yml` sets up Swift/.NET and resolves the
-  deleted `macos/` and `windows/` trees; the cross-frontend step calls
-  `crates/core/tests/cross_frontend/run.sh`, whose Swift/C# harnesses no
-  longer exist — so CI runs are expected to fail wherever these workflows
-  execute. Re-verified red 2026-07-10 via `gh run list` against the
-  `github` remote: Validation failed on `aabfd05` (and every earlier
-  recorded run); the Tauri Bundles workflow is green.
-- `.github/workflows/windows.yml` targets the deleted `windows/` tree (its
-  path filter also means it never triggers). `macos-release.yml` was
-  previously listed here in error — re-checked 2026-07-10: it builds the
-  **Tauri** app (signed macOS release) and is fine as-is.
-- `scripts/check-release-metadata.sh` (line ~87) checks the deleted
-  `linux/Cargo.toml`; `RELEASE.md` lists deleted files among release-version
-  updates and runs Swift/.NET validation steps.
-- `README.md` still shows the five-platform table (goal G4).
-- `docs/ARCHITECTURE.md` describes `macos/`, `windows/`, `linux/` as
-  present-but-deprecated; they are deleted. Its "Cargo workspace" line also
-  predates the 2026-07-09 manifest fix (`linux` is no longer a member).
-  `scripts/check-nuget-package-versions.ps1` is orphaned.
-- `docs/ROADMAP.md` was partially refreshed 2026-07-09 (What's Built +
-  current-phase section), but its header still says "Five frontends" and
-  the v1.1 "Frontend parity (SwiftUI + Qt6 + WinUI)" section survives —
-  G4 cleanup should sweep it too.
+- Doc stragglers still describing the deleted native trees:
+  `docs/USER_GUIDE.md` (build/usage sections for the deleted SwiftUI, Qt6,
+  and WinUI apps), `docs/EDITOR_DESIGN.md` (scope line + tree diagram),
+  `TODO.md` (WinUI parity item, line ~181), and "deprecated experiments"
+  wording in `docs/INVARIANTS.md` I3 / `docs/PROJECT.md` glossary where the
+  trees are now removed. `docs/GPT_Code_Review.md` is historical; only
+  sweep on owner request. `.gitignore` / `.gitattributes` patterns for the
+  deleted trees are harmless leftovers.
+- `docs/CURRENT_PHASE.md` Step 4 lists "Add `DEPRECATED.md` stubs in
+  `macos/`, `windows/`, `linux/`" — moot now the trees are deleted (G6 is
+  satisfied by deletion + ADR-004). Owner-controlled file; report-only.
 
 ## Next
 
-1. Owner decision: trim CI/release scripts to engine + Tauri + converter +
-   TUI (goals G5/G6). CI on `master` stays red until this lands — the
-   workflows still reference the deleted native trees (see Known drift).
-   Small, well-defined work request. README/ARCHITECTURE cleanup (G4) rides
-   along; ROADMAP's What's Built and phase sections were already refreshed
-   with the format lock.
-2. Owner decision: phase Step 2 (format lock) is done and Step 3 was found
-   already in place — declare G2 met / advance the phase via `SET PHASE`,
-   or name the next work.
+1. Owner decision: how to resolve the pre-existing release-metadata
+   blocker above — it is the only thing keeping Validation CI red.
+2. Owner go for pushing the cleanup commits (ask-first policy).
+3. Owner decision: G4/G5 work is done and G2/G3/G6 look met — declare
+   goals met / advance the phase via `SET PHASE`, or name the next work.
+   Checkbox edits in `docs/CURRENT_PHASE.md` are the owner's call.
+4. Optional, on owner yes: sweep the doc stragglers listed under Known
+   drift (docs-only, small).
 
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section (fmt check,
   clippy, core lib tests, Tauri bin tests, UI lint + build).
-- Last run green locally 2026-07-09 as of `35f721a` (format-lock slice E;
-  every slice A–E ran the full suite green before its commit; commits after
-  `35f721a` are docs-only), machine-local (owner's Mac). Remote CI is
-  expected red until the workflow drift above is fixed. Status recorded in
-  `.agents/repo-map.json`.
+- Last run green locally 2026-07-10 during the deprecation cleanup (on the
+  CI-trim slice tree and re-run at close-out; intervening commits touched
+  only workflows, scripts, and docs), machine-local (owner's Mac). The
+  rust-only format harness and `check-release-metadata.sh` (single
+  remaining pre-existing error, see Blockers) were exercised directly.
+  Remote Validation CI stays red only at the "Release metadata" step until
+  the blocker decision lands.
 
 ## Active Sources
 
