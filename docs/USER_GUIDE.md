@@ -301,28 +301,6 @@ The TUI edits markdown directly (no HTML conversion), so files written here are 
 
 ---
 
-## Native macOS (SwiftUI, Liquid Glass)
-
-A native macOS app in `macos/` using SwiftUI with Apple's Liquid Glass design language. Requires macOS 26 (Tahoe). Build via `cd macos && swift build && swift run ChickenScratch` or open `Package.swift` in Xcode 26.
-
-**What works today:** Open `.chikn` projects, three-pane window with binder / editor / inspector, writing with debounced save, auto-commit every 10 minutes, ⌘N for new document, rename via context menu, ⌘R to save a named revision.
-
-**Not yet:** delete/move/reorder in the binder, inspector editing, comments, footnotes, compile, AI, drafts, remote sync. Use the Tauri or TUI app for anything beyond basic writing.
-
-## Native Linux (Qt6, Wayland)
-
-A native Qt6 app in `linux/` using `cxx-qt` — Rust backend, QML frontend, Wayland-native. Requires Qt 6.x. Build via `cargo build --release -p chickenscratch-linux`.
-
-**What works today:** Three-pane layout (Material Dark), open project, click-to-load, Ctrl+S save, live word count, collapsible binder, inspector editing (title, synopsis, label, status, keywords, compile, word target), find/replace overlay (Ctrl+F / Ctrl+H).
-
-**Not yet:** revisions UI, comments, footnotes, compile, AI, settings, templates, drafts, remote sync.
-
-## Native Windows (WinUI 3)
-
-A native Windows app in `windows/` using WinUI 3 + C# with `LibGit2Sharp` for embedded git. Build via `cd windows && dotnet build ChickenScratch.slnx`. See the `windows/` directory for platform-specific notes; feature parity with Tauri is tracked there.
-
----
-
 ## Troubleshooting
 
 ### "Pandoc is not installed"
