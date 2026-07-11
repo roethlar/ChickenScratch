@@ -50,12 +50,18 @@ with no branch filter and so runs on `master`):
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p chickenscratch-core --all-targets -- -D warnings
-cargo test -p chickenscratch-core --lib
-cargo clippy -p chickenscratch --all-targets -- -D warnings
-cargo test -p chickenscratch --bins
+cargo clippy --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
+cargo test --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
+scripts/check-release-metadata.sh
 cd ui && npm run lint && npm run build
 ```
+
+The clippy/test lines mirror `.github/workflows/validation.yml` exactly — a
+narrower local list has twice let CI-only failures through (TUI clippy on a
+newer stable lint; converter tests on a writer change, both 2026-07-11).
+CI runs the newest stable Rust; when local stable is older, verify clippy
+with the CI version via `rustup toolchain install <ver>` and `cargo +<ver>
+clippy …` before pushing.
 
 Full release checklist: `RELEASE.md`.
 
