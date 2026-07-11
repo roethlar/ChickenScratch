@@ -43,7 +43,7 @@ All `.chikn` **read, write, git, compile, and Scrivener import** logic lives in 
 
 The shipping desktop GUI is **Tauri + React** (`src-tauri/` + `ui/`). It is the only GUI receiving new features unless the owner amends this invariant.
 
-Paths `macos/`, `windows/`, `linux/` are **deprecated experiments** (see [ADR-004](adr/ADR-004-deprecated-native-engines.md)). Do not extend them to reach parity with Tauri.
+The `macos/`, `windows/`, `linux/` native experiments are **deprecated and removed** (see [ADR-004](adr/ADR-004-deprecated-native-engines.md); history in git). Do not recreate or extend them to reach parity with Tauri.
 
 ## I4 — Format is genre-agnostic; domain data lives in UI conventions
 

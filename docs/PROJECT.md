@@ -54,7 +54,7 @@ Think: *Scrivener’s project model, but your novel is just files you can copy, 
 | “converter” | `chikn-converter` binary (`crates/cli/`) |
 | “terminal app” | `chikn` TUI (`crates/tui/`) |
 | “save a revision” | git commit via engine, writer-friendly label |
-| “deprecated UIs” | `macos/`, `windows/`, `linux/` native experiments |
+| “deprecated UIs” | the removed `macos/`, `windows/`, `linux/` native experiments (ADR-004; history in git) |
 
 ## Where to read next
 
