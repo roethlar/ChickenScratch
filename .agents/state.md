@@ -13,10 +13,11 @@ decisions; `DEVLOG.md` holds history.
   alignment (Step 3) was found already in place by the format-lock audit.
   What remains is deprecation cleanup (goals G4–G6). Landed-entry detail
   rotated to `docs/history/state-archive.md`.
-- **Unpushed work**: local `master` at `4b66baa` is 8 commits ahead of the
-  remote (remote HEAD `66f70ab`, checked at this handoff) — the plan,
-  format-lock slices, and closing bookkeeping. Push policy is ask-first
-  (`.agents/push-policy.md`); the owner was asked and has not yet answered.
+- **Push status**: in sync as of `a41bdab` (2026-07-10) — the owner approved
+  the push and local `master` now matches both remotes. Since the last
+  handoff a second remote `github` (https://github.com/roethlar/ChickenScratch)
+  exists alongside the Gitea `origin` (http://q:3000); pushes go to both.
+  Push policy remains ask-first (`.agents/push-policy.md`).
 - No feature work in flight.
 
 ## Blockers
@@ -32,11 +33,9 @@ in `docs/CURRENT_PHASE.md`:
   deleted `macos/` and `windows/` trees; the cross-frontend step calls
   `crates/core/tests/cross_frontend/run.sh`, whose Swift/C# harnesses no
   longer exist — so CI runs are expected to fail wherever these workflows
-  execute. Last directly observed red 2026-07-03 via `gh run list`; as of
-  this handoff (`4b66baa`) that observation is **not re-verifiable from
-  this clone** — `gh` reports no known host for the configured remote
-  (machine-local (owner's Mac): the only remote is a local Gitea at
-  `http://q:3000`).
+  execute. Re-verified red 2026-07-10 via `gh run list` against the
+  `github` remote: Validation failed on `aabfd05` (and every earlier
+  recorded run); the Tauri Bundles workflow is green.
 - `.github/workflows/windows.yml` and `macos-release.yml` target deleted trees.
 - `scripts/check-release-metadata.sh` (line ~87) checks the deleted
   `linux/Cargo.toml`; `RELEASE.md` lists deleted files among release-version
