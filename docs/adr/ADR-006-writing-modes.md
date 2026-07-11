@@ -49,3 +49,12 @@ approval vehicle for UI work.
   the format is genre-agnostic and most genres would not want a burn bag
   (same reasoning that kept domain-specific labels out of the format).
   Today's answer for that writer: export keepers, delete the project.
+- **Revision comparison has no One True Way** (owner ruling after three
+  prototyped forms): ship complementary options in one deliberate compare
+  mode — inline tracked-changes, in-place hold-to-peek with per-passage
+  history, and facing-pages reading — writer picks per task. All are
+  table-stakes forms that exist elsewhere; none is the differentiator.
+  Hard constraints that survived prototyping: the normal writing page is
+  never decorated; compare is an explicit mode; no git vocabulary
+  (hashes, +/-, HEAD) anywhere; a comparison must support reading whole
+  versions as flowing prose, not only per-line peeking.
