@@ -35,7 +35,6 @@ Output is in `target/release/bundle/`.
 
 - **macOS:** `.app` in `target/release/bundle/macos/`; `.dmg` in `target/release/bundle/dmg/`
 - **Linux:** AppImage in `target/release/bundle/appimage/`
-- **Arch Linux:** PKGBUILD in `pkg/arch/`
 
 #### Development
 
@@ -80,7 +79,6 @@ ChickenScratch/
 ├── crates/tui/         # Terminal UI (Ratatui)
 ├── src-tauri/          # Tauri app backend (commands, settings, AI)
 ├── ui/                 # React + TypeScript + TipTap frontend
-├── pkg/arch/           # Arch Linux PKGBUILD
 └── docs/               # Format spec, design docs, user guide
 ```
 

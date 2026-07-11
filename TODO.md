@@ -124,7 +124,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [x] Wayland compatibility (WebKitGTK DMA-BUF workaround)
 - [x] AI HTTP via reqwest (no curl dependency)
 - [x] App icon (chicken + quill)
-- [x] PKGBUILD for Arch Linux AUR
+- [x] PKGBUILD for Arch Linux AUR (later removed — binary-only distribution, [ADR-005](docs/adr/ADR-005-binary-only-distribution.md))
 - [x] User guide (docs/USER_GUIDE.md)
 
 ## Remaining
