@@ -977,21 +977,6 @@ fn read_document_metadata_or_default(
     match serde_yaml::from_str::<DocumentMetadata>(&meta_content) {
         Ok(mut metadata) => {
             lift_legacy_novelist_keys(&mut metadata);
-            // A sidecar that omits `id:` receives a serde-generated random
-            // id, which can never match the hierarchy — the load then
-            // hard-failed with an identity mismatch even though the file
-            // itself is fine (samples/Corn.chikn ships four such metas
-            // written by an older frontend). Inherit the hierarchy
-            // identity instead, exactly like the missing-sidecar fallback
-            // below (tolerant readers — I5).
-            if !sidecar_has_explicit_id(&meta_content) {
-                if let Some(identity) = fallback_identity {
-                    metadata.id = identity.id.clone();
-                    if metadata.name.is_none() {
-                        metadata.name = Some(identity.name.clone());
-                    }
-                }
-            }
             Ok(metadata)
         }
         Err(e) => {
@@ -1015,15 +1000,6 @@ fn read_document_metadata_or_default(
             Ok(default_document_metadata(fallback_identity))
         }
     }
-}
-
-/// True when the sidecar text carries an explicit top-level `id:` key (as
-/// opposed to the serde default generating one during deserialization).
-fn sidecar_has_explicit_id(meta_content: &str) -> bool {
-    serde_yaml::from_str::<serde_yaml::Value>(meta_content)
-        .ok()
-        .map(|value| value.get("id").is_some())
-        .unwrap_or(false)
 }
 
 fn default_document_metadata(
@@ -1701,30 +1677,6 @@ hierarchy: []
         // The normal open still self-heals (unchanged for Full projects).
         read_project(&project_path).unwrap();
         assert!(project_path.join(RESEARCH_FOLDER).exists());
-    }
-
-    #[test]
-    fn test_sidecar_without_id_inherits_hierarchy_identity() {
-        // Older frontends wrote sidecars with no `id:` key. The serde
-        // default generated a random id, which the identity validation
-        // then rejected as a mismatch — the whole project failed to load
-        // (samples/Corn.chikn shape). The hierarchy identity must win.
-        let (_temp, project_path) = create_test_project();
-        fs::write(
-            project_path.join("manuscript/chapter-01.meta"),
-            "synopsis: \nstatus: Draft\ncreated: \"2018-09-28T10:01:56Z\"\nmodified: \"2026-04-21T18:51:48Z\"\n",
-        )
-        .unwrap();
-
-        let project = read_project(&project_path).expect("id-less sidecar must load");
-
-        let document = project.documents.get("doc1").unwrap();
-        assert_eq!(document.id, "doc1", "hierarchy id must be inherited");
-        assert_eq!(
-            document.name, "Chapter 1",
-            "hierarchy name must be inherited"
-        );
-        assert_eq!(document.status.as_deref(), Some("Draft"));
     }
 
     #[test]
