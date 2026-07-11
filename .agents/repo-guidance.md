@@ -13,6 +13,8 @@ glossary.
 
 The owner is not a developer. Give plain-English handoffs: what changed, how
 to try it, and a yes/no question only if something is genuinely blocked.
+Keep them SHORT — a few lines, not essays; the owner does not read long
+responses (owner feedback 2026-07-11).
 Never ask the owner to read diffs, code, or governance files. See
 `docs/HUMAN-GATE.md` for how the owner directs work and how agents should
 interpret plain-English direction changes (e.g. "I changed my mind about …"
