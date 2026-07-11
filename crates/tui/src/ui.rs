@@ -147,7 +147,11 @@ fn render_comments_overlay(f: &mut Frame, area: Rect, app: &App) {
 }
 
 fn render_binder(f: &mut Frame, area: Rect, app: &App) {
-    let title = format!(" {} ", app.project.name);
+    let title = if app.read_only {
+        format!(" {} [read-only] ", app.project.name)
+    } else {
+        format!(" {} ", app.project.name)
+    };
     let border_style = if app.focus == Focus::Binder {
         Style::default().fg(Color::Cyan)
     } else {

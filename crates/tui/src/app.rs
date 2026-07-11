@@ -62,6 +62,11 @@ pub struct App<'a> {
     pub project: Project,
     pub project_path: PathBuf,
 
+    /// True when the fidelity probe classified the project Degraded: it
+    /// was loaded through the repairs-disabled read, no write token can
+    /// exist, and every save/revision key refuses with a status message.
+    pub read_only: bool,
+
     pub focus: Focus,
     pub mode: Mode,
 
@@ -90,8 +95,34 @@ pub struct App<'a> {
 
 impl<'a> App<'a> {
     pub fn new(project_path: PathBuf) -> Result<Self> {
-        let project = reader::read_project(&project_path)
-            .map_err(|e| anyhow!("Failed to read project: {:?}", e))?;
+        // Probe BEFORE anything touches the project: Full opens normally
+        // (self-heal unchanged); Degraded opens through the
+        // repairs-disabled read and the session is read-only.
+        let (project, read_only, status) = match fidelity::probe_project_fidelity(&project_path)
+            .map_err(|e| anyhow!("Failed to check project: {:?}", e))?
+        {
+            fidelity::Fidelity::Full => {
+                let project = reader::read_project(&project_path)
+                    .map_err(|e| anyhow!("Failed to read project: {:?}", e))?;
+                (
+                    project,
+                    false,
+                    "Ready. ?=help  Tab=switch pane  q=quit".to_string(),
+                )
+            }
+            fidelity::Fidelity::Degraded { reasons } => {
+                let project = reader::read_project_readonly(&project_path)
+                    .map_err(|e| anyhow!("Failed to read project: {:?}", e))?;
+                (
+                        project,
+                        true,
+                        format!(
+                            "READ-ONLY: this project was made by an older version and opens read-only — nothing will be changed ({})",
+                            fidelity::describe_reasons(&reasons)
+                        ),
+                    )
+            }
+        };
 
         let mut expanded = std::collections::HashSet::new();
         for node in &project.hierarchy {
@@ -103,6 +134,7 @@ impl<'a> App<'a> {
         let mut app = Self {
             project,
             project_path,
+            read_only,
             focus: Focus::Binder,
             mode: Mode::Normal,
             binder_items: Vec::new(),
@@ -113,7 +145,7 @@ impl<'a> App<'a> {
             dirty: false,
             view_mode: ViewMode::Edit,
             wrap: true,
-            status: "Ready. ?=help  Tab=switch pane  q=quit".to_string(),
+            status,
             prompt_input: String::new(),
             should_quit: false,
             new_item_parent_id: None,
@@ -124,6 +156,15 @@ impl<'a> App<'a> {
         app.rebuild_binder();
         app.apply_editor_settings();
         Ok(app)
+    }
+
+    /// Refuse a mutating action in a read-only session with a status
+    /// message. Returns true when the action must be skipped.
+    fn refuse_if_read_only(&mut self) -> bool {
+        if self.read_only {
+            self.status = "Read-only project: nothing can be changed or saved here.".to_string();
+        }
+        self.read_only
     }
 
     /// Acquire a write token and persist the project. A Degraded project
@@ -224,21 +265,33 @@ impl<'a> App<'a> {
             KeyCode::Char('n') | KeyCode::Char('a')
                 // New document-level comment (no anchor)
                 if self.active_doc_id.is_some() => {
+                    if self.refuse_if_read_only() {
+                        return Ok(());
+                    }
                     self.comment_edit_id = Some(String::new()); // empty id = new comment
                     self.prompt_input.clear();
                     self.mode = Mode::CommentEdit;
                 }
             KeyCode::Char('r') => {
+                if self.refuse_if_read_only() {
+                    return Ok(());
+                }
                 if let Some(id) = comments.get(self.comments_selected).map(|c| c.id.clone()) {
                     self.toggle_resolve_comment(&id);
                 }
             }
             KeyCode::Char('d') => {
+                if self.refuse_if_read_only() {
+                    return Ok(());
+                }
                 if let Some(id) = comments.get(self.comments_selected).map(|c| c.id.clone()) {
                     self.delete_comment(&id)?;
                 }
             }
             KeyCode::Char('e') | KeyCode::Enter => {
+                if self.refuse_if_read_only() {
+                    return Ok(());
+                }
                 if let Some(c) = comments.get(self.comments_selected) {
                     self.comment_edit_id = Some(c.id.clone());
                     self.prompt_input = c.body.clone();
@@ -532,6 +585,9 @@ impl<'a> App<'a> {
 
         // F3: add anchored comment on current editor selection
         if key.code == KeyCode::F(3) {
+            if self.refuse_if_read_only() {
+                return Ok(());
+            }
             if self.active_doc_id.is_some() && self.focus == Focus::Editor {
                 if let Some((start, end)) = self.editor.selection_range() {
                     self.pending_selection = Some((start.0, start.1, end.0, end.1));
@@ -550,10 +606,16 @@ impl<'a> App<'a> {
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
                 KeyCode::Char('s') => {
+                    if self.refuse_if_read_only() {
+                        return Ok(());
+                    }
                     self.save_active_doc()?;
                     return Ok(());
                 }
                 KeyCode::Char('r') => {
+                    if self.refuse_if_read_only() {
+                        return Ok(());
+                    }
                     self.prompt_input =
                         format!("Revision {}", chrono::Utc::now().format("%Y-%m-%d %H:%M"));
                     self.mode = Mode::RevisionPrompt;
@@ -605,11 +667,17 @@ impl<'a> App<'a> {
                 self.status = "Keys: ↑↓=nav Enter=open Tab=editor n=new doc N=new folder Ctrl+S=save Ctrl+R=rev Ctrl+T=view Ctrl+W=wrap F2=comments q=quit".to_string();
             }
             KeyCode::Char('n') => {
+                if self.refuse_if_read_only() {
+                    return Ok(());
+                }
                 self.new_item_parent_id = self.selected_folder_id();
                 self.prompt_input.clear();
                 self.mode = Mode::NewDocPrompt;
             }
             KeyCode::Char('N') => {
+                if self.refuse_if_read_only() {
+                    return Ok(());
+                }
                 self.new_item_parent_id = self.selected_folder_id();
                 self.prompt_input.clear();
                 self.mode = Mode::NewFolderPrompt;
@@ -668,6 +736,12 @@ impl<'a> App<'a> {
         }
         if self.view_mode == ViewMode::Preview {
             // Preview is read-only — no keys do anything here
+            return Ok(());
+        }
+        if self.read_only {
+            // Read-only project: the buffer must never diverge from disk,
+            // so typing is ignored entirely.
+            self.status = "Read-only project: nothing can be changed or saved here.".to_string();
             return Ok(());
         }
         let changed = self.editor.input(key);
