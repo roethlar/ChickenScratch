@@ -45,6 +45,15 @@ const LOADED_DOCUMENT_ROOTS: &[&str] = &[
     LOCATIONS_FOLDER,
 ];
 
+/// Binary asset types a binder may reference (imported research: documents,
+/// images, audio, video). The engine treats these as opaque — it never loads
+/// or writes their content (`writer` refuses non-.md document writes) — so
+/// their presence is fidelity-neutral as long as the file exists.
+const OPAQUE_ASSET_EXTENSIONS: &[&str] = &[
+    "pdf", "png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "svg", "mp3", "wav", "m4a", "ogg",
+    "flac", "mp4", "mov", "webm",
+];
+
 /// Result of a fidelity probe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Fidelity {
@@ -399,16 +408,37 @@ fn check_hierarchy_document_resolves(
     doc: &ProbeHierarchyDoc,
     reasons: &mut Vec<DegradedReason>,
 ) {
-    // Extension gate first: a non-.md path can never load in this engine.
-    let is_md = Path::new(&doc.path)
+    // Extension gate first: a non-.md path can never load as text in this
+    // engine. Known binary asset types (imported research: PDFs, images,
+    // audio) are legitimate binder references — the engine never loads or
+    // writes their content, so they only need to exist. Any other non-.md
+    // extension (e.g. the April-era .html text documents) is a text format
+    // this engine cannot read and marks the project Degraded.
+    let ext = Path::new(&doc.path)
         .extension()
         .and_then(|e| e.to_str())
-        .map(|e| e == DOCUMENT_EXTENSION)
-        .unwrap_or(false);
+        .map(|e| e.to_ascii_lowercase());
+    let is_md = ext.as_deref() == Some(DOCUMENT_EXTENSION);
     if !is_md {
-        reasons.push(DegradedReason::LegacyDocumentPath {
-            path: doc.path.clone(),
-        });
+        let is_asset = ext
+            .as_deref()
+            .is_some_and(|e| OPAQUE_ASSET_EXTENSIONS.contains(&e));
+        if is_asset {
+            let full = project_path.join(&doc.path);
+            match fs::symlink_metadata(&full) {
+                Ok(m) if m.is_file() && !m.file_type().is_symlink() => {}
+                _ => {
+                    reasons.push(DegradedReason::UnresolvedDocument {
+                        path: doc.path.clone(),
+                        detail: "the asset file is missing".to_string(),
+                    });
+                }
+            }
+        } else {
+            reasons.push(DegradedReason::LegacyDocumentPath {
+                path: doc.path.clone(),
+            });
+        }
         return;
     }
 

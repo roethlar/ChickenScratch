@@ -1,5 +1,8 @@
-id: c38b54c6-1259-4f84-8e65-3b759a4839fa
+id: 3cf79249-63ce-455d-b916-99b4b61c9284
 name: Corn's POV
 created: 2018-09-28 10:01:56 -0400
-modified: 2025-10-04T14:55:12.549081+00:00
-parent_id: 04261681-9294-42be-bbcb-184b57df2fd7
+modified: 2018-11-15 20:58:10 -0500
+parent_id: 3822b3c0-0b0a-4bcf-96cd-71d89f8c27a8
+include_in_compile: Yes
+word_count_target: 0
+compile_order: 0

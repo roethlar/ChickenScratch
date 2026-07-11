@@ -1,5 +1,8 @@
-id: 454aed9f-74c2-4390-8a80-d60bdfa15a2e
+id: 1b4191df-8178-469f-b2b4-170d14d47038
 name: Daddy's letter arrives
 created: 2018-10-01 12:44:50 -0400
-modified: 2025-10-04T14:55:12.548944+00:00
-parent_id: f86d2210-dc16-45e8-bf5f-8da667bf7e7e
+modified: 2019-10-21 15:15:55 -0400
+parent_id: 30e32a52-15e6-4ffa-9518-132228148851
+include_in_compile: Yes
+word_count_target: 0
+compile_order: 0

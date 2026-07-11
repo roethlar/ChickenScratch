@@ -1,0 +1,11 @@
+# Automatic snapshots (use git history instead)
+revs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor temp files
+*.tmp
+*.swp
+*~

@@ -584,6 +584,21 @@ fn write_document(
     project_path: &Path,
     document: &crate::models::Document,
 ) -> Result<(), ChiknError> {
+    // Text content is only ever written to .md files. Anything else a
+    // binder can reference (imported PDFs, images, audio) is an opaque
+    // asset this engine must never overwrite with document content.
+    let is_md = Path::new(&document.path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case(super::format::DOCUMENT_EXTENSION))
+        .unwrap_or(false);
+    if !is_md {
+        return Err(ChiknError::InvalidFormat(format!(
+            "Refusing to write document content to a non-markdown file: {}",
+            document.path
+        )));
+    }
+
     let (full_content_path, meta_path) = safe_document_write_paths(project_path, &document.path)?;
 
     // Read existing metadata to preserve fields we don't model in Document

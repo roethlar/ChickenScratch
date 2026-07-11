@@ -1,10 +1,7 @@
-synopsis: 
-label: 
-status: 
-keywords: 
-links: 
-include_in_compile: true
+id: cdf11353-7574-47d7-92cd-4c6dd54328ed
+name: Short Story Format
+created: 2018-09-28 10:01:56 -0400
+modified: 2018-09-28 10:01:56 -0400
+include_in_compile: Yes
 word_count_target: 0
 compile_order: 0
-created: 2018-09-28T10:01:56.0000000-04:00
-modified: 2026-04-21T18:51:48.3902717Z

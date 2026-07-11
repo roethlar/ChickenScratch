@@ -1,5 +1,8 @@
-id: e4a0f2f2-c0ac-4ea1-840c-006256852d81
+id: ff40ca11-3640-41fd-9bae-a09505bb4bb9
 name: Bits
 created: 2018-10-01 11:09:31 -0400
-modified: 2025-10-04T14:55:12.549212+00:00
-parent_id: 04261681-9294-42be-bbcb-184b57df2fd7
+modified: 2018-11-15 20:55:21 -0500
+parent_id: 3822b3c0-0b0a-4bcf-96cd-71d89f8c27a8
+include_in_compile: Yes
+word_count_target: 0
+compile_order: 0

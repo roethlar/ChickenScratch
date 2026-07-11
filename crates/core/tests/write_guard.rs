@@ -373,9 +373,10 @@ fn copy_dir(src: &Path, dest: &Path) {
     }
 }
 
-/// samples/Corn.chikn lacks research/templates/settings and contains two
-/// zero-byte documents — and must probe Full: missing standard folders are
-/// benign self-heal, valid emptiness is not damage.
+/// samples/Corn.chikn is current-converter output and must probe Full,
+/// open, and write normally. Missing standard folders stay covered here by
+/// deleting them from a scratch copy first: they are benign self-heal, not
+/// Degraded.
 #[test]
 fn corn_sample_probes_full_opens_and_writes_normally() {
     let sample = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/Corn.chikn");
@@ -394,21 +395,108 @@ fn corn_sample_probes_full_opens_and_writes_normally() {
         "probing the sample must not modify the repository"
     );
 
-    // Open + self-heal + write on a scratch copy.
+    // Open + self-heal + write on a scratch copy with the content-free
+    // standard folders removed (a project missing them must still probe
+    // Full and self-heal on a normal open). research/ stays: the sample's
+    // binder references an asset inside it, and a missing referenced asset
+    // is rightly Degraded.
     let temp = TempDir::new().unwrap();
     let root = temp.path().join("Corn.chikn");
     copy_dir(&sample, &root);
+    for folder in ["templates", "settings"] {
+        let dir = root.join(folder);
+        if dir.is_dir() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+    }
+    assert_eq!(
+        probe_project_fidelity(&root).unwrap(),
+        Fidelity::Full,
+        "missing standard folders must not degrade a project"
+    );
 
     let mut project = read_project(&root).unwrap();
     assert!(
-        root.join("research").is_dir(),
+        root.join("templates").is_dir(),
         "normal open must self-heal missing standard folders"
     );
-    assert!(root.join("templates").is_dir());
     assert!(root.join("settings").is_dir());
 
     let token = acquire_write_token(&root).unwrap();
     write_project(&mut project, &token).unwrap();
     let reread = read_project(&root).unwrap();
     assert_eq!(reread.documents.len(), project.documents.len());
+}
+
+/// A binder-referenced binary asset (imported research PDF etc.) is
+/// fidelity-neutral while it exists — and Degraded the moment it is missing.
+#[test]
+fn binder_asset_is_fidelity_neutral_until_missing() {
+    let (_temp, root) = base_fixture();
+    fs::write(
+        root.join("project.yaml"),
+        r#"format_version: '1.2'
+id: "prj"
+name: "Fixture"
+created: "2025-01-01T00:00:00Z"
+modified: "2025-01-01T00:00:00Z"
+hierarchy:
+  - type: Document
+    id: "doc1"
+    name: "Chapter 1"
+    path: "manuscript/chapter-01.md"
+  - type: Document
+    id: "asset1"
+    name: "Sample MS"
+    path: "research/sample.pdf"
+"#,
+    )
+    .unwrap();
+    fs::write(root.join("research/sample.pdf"), b"%PDF-1.4 fake").unwrap();
+
+    assert_eq!(
+        probe_project_fidelity(&root).unwrap(),
+        Fidelity::Full,
+        "an existing binder asset must not degrade the project"
+    );
+
+    fs::remove_file(root.join("research/sample.pdf")).unwrap();
+    match probe_project_fidelity(&root).unwrap() {
+        Fidelity::Degraded { reasons } => assert!(
+            reasons.iter().any(|r| matches!(
+                r,
+                DegradedReason::UnresolvedDocument { path, .. } if path == "research/sample.pdf"
+            )),
+            "missing asset must degrade, got {reasons:?}"
+        ),
+        other => panic!("expected Degraded for a missing asset, got {other:?}"),
+    }
+}
+
+/// The writer must never emit document text into a non-.md file, even on a
+/// Full project with a valid token — assets are opaque.
+#[test]
+fn writer_refuses_document_content_into_asset_path() {
+    let (_temp, root) = base_fixture();
+    fs::write(root.join("research/sample.pdf"), b"%PDF-1.4 fake").unwrap();
+
+    let mut project = read_project(&root).unwrap();
+    let token = acquire_write_token(&root).unwrap();
+
+    let mut rogue = project.documents.values().next().unwrap().clone();
+    rogue.id = "asset1".to_string();
+    rogue.path = "research/sample.pdf".to_string();
+    rogue.content = "this text must never reach the pdf".to_string();
+    project.documents.insert(rogue.id.clone(), rogue);
+
+    let err = write_project(&mut project, &token).unwrap_err();
+    assert!(
+        matches!(err, ChiknError::InvalidFormat(ref m) if m.contains("non-markdown")),
+        "expected non-markdown refusal, got {err:?}"
+    );
+    assert_eq!(
+        fs::read(root.join("research/sample.pdf")).unwrap(),
+        b"%PDF-1.4 fake",
+        "asset bytes must be untouched after the refused write"
+    );
 }

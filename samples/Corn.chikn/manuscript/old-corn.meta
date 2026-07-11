@@ -1,5 +1,8 @@
-id: b28b3dfd-d346-4d88-a1ef-b9e043f137c7
+id: 876f13d8-c69a-40d3-ba7d-3b0cbc88dedc
 name: Old Corn
 created: 2018-11-15 20:55:36 -0500
-modified: 2025-10-04T14:55:12.548037+00:00
-parent_id: 04261681-9294-42be-bbcb-184b57df2fd7
+modified: 2018-11-15 20:57:46 -0500
+parent_id: 3822b3c0-0b0a-4bcf-96cd-71d89f8c27a8
+include_in_compile: Yes
+word_count_target: 0
+compile_order: 0

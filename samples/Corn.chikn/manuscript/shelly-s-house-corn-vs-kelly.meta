@@ -1,5 +1,8 @@
-id: 1733badd-c3a3-4213-95c9-94e3b4a0470a
+id: d95b90d7-98ef-44fa-9bb6-c5978a3254e9
 name: Shelly's house, Corn vs Kelly
 created: 2018-10-01 12:45:32 -0400
-modified: 2025-10-04T14:55:12.549343+00:00
-parent_id: f86d2210-dc16-45e8-bf5f-8da667bf7e7e
+modified: 2019-10-21 15:15:55 -0400
+parent_id: 30e32a52-15e6-4ffa-9518-132228148851
+include_in_compile: Yes
+word_count_target: 0
+compile_order: 0
