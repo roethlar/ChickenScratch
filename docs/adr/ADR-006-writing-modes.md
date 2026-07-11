@@ -49,6 +49,16 @@ approval vehicle for UI work.
   the format is genre-agnostic and most genres would not want a burn bag
   (same reasoning that kept domain-specific labels out of the format).
   Today's answer for that writer: export keepers, delete the project.
+- **The lifecycle must be passive (design law).** Distilled from the Takes
+  discussion (auto-sharing edits across parallel versions → semantic
+  incoherence; prompted sharing → recurring-decision debt; "apply to take
+  3? take 5?" breeds resentment): no lifecycle feature may levy recurring
+  decisions on the writer. Differentiators must be passive promises —
+  undo across sessions ("past save, past quit, past last month"), full
+  history summonable and otherwise invisible, projects always plain
+  files. Parallel whole-manuscript versions ("Takes") are dead as a
+  marquee feature; the existing draft-versions option may remain,
+  unpromoted. Standout candidate on record: cross-session unlimited undo.
 - **Revision comparison has no One True Way** (owner ruling after three
   prototyped forms): ship complementary options in one deliberate compare
   mode — inline tracked-changes, in-place hold-to-peek with per-passage
