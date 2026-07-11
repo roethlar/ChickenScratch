@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Format harness: converts samples/Corn.scriv with the Rust converter, then
+# verifies the resulting project with the Rust reader (env-gated test in
+# cross_frontend_round_trip.rs), optionally failing on repair markers.
+# The Swift/C# writer legs were removed with the deprecated native trees
+# (ADR-004); see git history for the multi-toolchain version.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
@@ -14,9 +19,6 @@ MANIFEST="$WORKDIR/manifest.txt"
 HIERARCHY_DOCS="$WORKDIR/hierarchy-docs.txt"
 PANDOC_SHIM="$WORKDIR/pandoc-shim"
 FAIL_ON_REPAIR="${CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR:-0}"
-SWIFT_WRITER_RAN=0
-CSHARP_WRITER_RAN=0
-SKIPPED_TOOLCHAINS=()
 
 cleanup() {
   if [[ "$CLEANUP_WORKDIR" == "1" ]]; then
@@ -31,21 +33,6 @@ mkdir -p "$WORKDIR"
 log() {
   printf '%s\n' "$*"
   printf '%s\n' "$*" >> "$MANIFEST"
-}
-
-skip_toolchain() {
-  local toolchain="$1"
-  local reason="$2"
-  local message="SKIPPED: $toolchain ($reason)"
-
-  printf '%s\n' "$message" >&2
-  printf '%s\n' "$message" >> "$MANIFEST"
-  SKIPPED_TOOLCHAINS+=("$toolchain")
-}
-
-join_by_comma() {
-  local IFS=","
-  printf '%s' "$*"
 }
 
 run_and_capture() {
@@ -157,35 +144,5 @@ target/debug/chikn-converter --pandoc "$PANDOC_SHIM" samples/Corn.scriv "$PROJEC
 log "rust-converter: ok"
 CHIKN_CROSS_FRONTEND_DUMP_HIERARCHY_DOCS="$HIERARCHY_DOCS" verify_rust_reader "after-rust-converter"
 
-if command -v swift >/dev/null 2>&1; then
-  swift run --package-path macos --disable-automatic-resolution ChiknKitCrossFrontendHarness "$PROJECT"
-  SWIFT_WRITER_RAN=1
-  log "swift-chiknkit-writer: ok"
-  CHIKN_CROSS_FRONTEND_EXPECT_HIERARCHY_DOCS="$HIERARCHY_DOCS" verify_rust_reader "after-swift-writer" "cross_frontend_swift"
-else
-  skip_toolchain "swift-chiknkit-writer" "swift not found"
-fi
-
-if command -v dotnet >/dev/null 2>&1; then
-  dotnet restore windows/ChickenScratch.Core.Tests/CrossFrontendHarness/ChickenScratch.Core.CrossFrontendHarness.csproj --locked-mode -p:EnableWindowsTargeting=true
-  dotnet run --no-restore --project windows/ChickenScratch.Core.Tests/CrossFrontendHarness/ChickenScratch.Core.CrossFrontendHarness.csproj -- "$PROJECT"
-  CSHARP_WRITER_RAN=1
-  log "csharp-core-writer: ok"
-  CHIKN_CROSS_FRONTEND_EXPECT_HIERARCHY_DOCS="$HIERARCHY_DOCS" verify_rust_reader "after-csharp-writer" "cross_frontend_csharp"
-else
-  skip_toolchain "csharp-core-writer" "dotnet not found"
-fi
-
-if [[ "${#SKIPPED_TOOLCHAINS[@]}" -gt 0 ]]; then
-  log "skipped-toolchains:$(join_by_comma "${SKIPPED_TOOLCHAINS[@]}")"
-else
-  log "skipped-toolchains:none"
-fi
-log "writer-toolchains-ran:$((SWIFT_WRITER_RAN + CSHARP_WRITER_RAN))/2"
 log "manifest:$MANIFEST"
-if [[ "$SWIFT_WRITER_RAN" == "0" && "$CSHARP_WRITER_RAN" == "0" ]]; then
-  log "result: ok-with-skipped-toolchains"
-  printf 'SKIPPED: no optional frontend writer toolchains ran; only Rust converter/reader was verified\n' >&2
-else
-  log "result: ok"
-fi
+log "harness-result: ok"

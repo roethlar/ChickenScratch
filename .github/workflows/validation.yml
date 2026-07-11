@@ -24,25 +24,9 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
       - name: Install frontend dependencies
         run: npm ci
         working-directory: ui
-
-      - name: Swift package lock
-        run: |
-          swift package resolve --package-path macos
-          git diff --exit-code -- macos/Package.resolved
-
-      - name: Windows NuGet lock
-        run: |
-          ./scripts/check-nuget-package-versions.ps1
-          dotnet restore windows/ChickenScratch.slnx --locked-mode -p:EnableWindowsTargeting=true
-        shell: pwsh
 
       - name: Rust format
         run: cargo fmt --all -- --check
@@ -71,7 +55,7 @@ jobs:
         run: |
           rm -rf "$CHIKN_CROSS_FRONTEND_WORKDIR"
           crates/core/tests/cross_frontend/run.sh
-          grep -q 'writer-toolchains-ran:2/2' "$CHIKN_CROSS_FRONTEND_WORKDIR/manifest.txt"
+          grep -q 'harness-result: ok' "$CHIKN_CROSS_FRONTEND_WORKDIR/manifest.txt"
 
   rust-process-windows:
     name: Rust process helper on Windows
