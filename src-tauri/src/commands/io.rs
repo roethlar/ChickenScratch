@@ -634,6 +634,30 @@ mod tests {
     }
 
     #[test]
+    fn record_daily_words_refuses_degraded_project_and_writes_nothing() {
+        // Opening Statistics on a Degraded project must write nothing —
+        // the writing-history path obeys the same gate as document writes.
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("DegradedStats.chikn");
+        chickenscratch_core::core::project::writer::create_project(&project_path, "Degraded Stats")
+            .unwrap();
+        // Degrade the project: an orphan document (present on disk, absent
+        // from the hierarchy) is a content-threatening self-heal condition.
+        fs::write(project_path.join("manuscript/orphan.md"), "stranded work").unwrap();
+
+        let result = record_daily_words_impl(project_path.to_string_lossy().to_string(), 1234);
+
+        assert!(
+            matches!(result, Err(ChiknError::ReadOnly(_))),
+            "expected ReadOnly refusal, got {result:?}"
+        );
+        assert!(
+            !project_path.join("settings/writing-history.json").exists(),
+            "no writing history may be written for a Degraded project"
+        );
+    }
+
+    #[test]
     fn record_daily_words_writes_safe_settings_dir() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let project_path = temp_dir.path().join("SafeHistory.chikn");
