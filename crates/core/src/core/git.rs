@@ -3,6 +3,7 @@
 //! All revision control uses embedded git2 — no system git required.
 //! Writers see "Save Revision" / "Revision History" — never "git".
 
+use crate::core::project::fidelity::WriteToken;
 use crate::core::project::writer;
 use crate::utils::error::{ChiknError, GitError, GitErrorKind};
 use git2::{
@@ -213,7 +214,12 @@ pub fn init_repo(path: &Path) -> Result<Repository, ChiknError> {
 }
 
 /// Stage all changes and commit with the given message.
-pub fn save_revision(path: &Path, message: &str) -> Result<Revision, ChiknError> {
+pub fn save_revision(
+    path: &Path,
+    message: &str,
+    token: &WriteToken,
+) -> Result<Revision, ChiknError> {
+    token.ensure_valid_for(path)?;
     let repo = Repository::open(path)
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
 
@@ -339,11 +345,17 @@ pub fn document_history(project_path: &Path, doc_path: &str) -> Result<Vec<Revis
 
 /// Restore a single document from a past commit. Writes that file's blob
 /// content to disk, then creates a new commit recording the restore.
+///
+/// Replaces working-tree content: bumps the project's write epoch on
+/// success, so every outstanding token (including this one) goes stale and
+/// callers must re-probe fidelity before writing again.
 pub fn restore_document(
     project_path: &Path,
     doc_path: &str,
     commit_id: &str,
+    token: &WriteToken,
 ) -> Result<Revision, ChiknError> {
+    token.ensure_valid_for(project_path)?;
     let repo = Repository::open(project_path)
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
     reject_dirty_worktree(&repo, "restore this document")?;
@@ -400,12 +412,22 @@ pub fn restore_document(
 
     let short = &commit_id[..8.min(commit_id.len())];
     let msg = format!("Restore {} to {}", doc_path, short);
-    save_revision(project_path, &msg)
+    let revision = save_revision(project_path, &msg, token)?;
+    token.bump_epoch();
+    Ok(revision)
 }
 
 /// Restore a previous revision by creating a new commit with that state.
 /// Never rewrites history — always moves forward.
-pub fn restore_revision(path: &Path, commit_id: &str) -> Result<Revision, ChiknError> {
+///
+/// Replaces working-tree content: bumps the project's write epoch on
+/// success (stale tokens are refused until the project is re-probed).
+pub fn restore_revision(
+    path: &Path,
+    commit_id: &str,
+    token: &WriteToken,
+) -> Result<Revision, ChiknError> {
+    token.ensure_valid_for(path)?;
     let repo = Repository::open(path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     reject_dirty_worktree(&repo, "restore this revision")?;
@@ -432,11 +454,14 @@ pub fn restore_revision(path: &Path, commit_id: &str) -> Result<Revision, ChiknE
         "Restored to: {}",
         commit.message().unwrap_or("(no message)")
     );
-    save_revision(path, &msg)
+    let revision = save_revision(path, &msg, token)?;
+    token.bump_epoch();
+    Ok(revision)
 }
 
 /// Create a new draft version (branch).
-pub fn create_draft(path: &Path, name: &str) -> Result<(), ChiknError> {
+pub fn create_draft(path: &Path, name: &str, token: &WriteToken) -> Result<(), ChiknError> {
+    token.ensure_valid_for(path)?;
     let repo = Repository::open(path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     reject_dirty_worktree(&repo, "create a draft")?;
@@ -491,7 +516,11 @@ pub fn list_drafts(path: &Path) -> Result<Vec<DraftVersion>, ChiknError> {
 }
 
 /// Switch to a different draft version (branch).
-pub fn switch_draft(path: &Path, name: &str) -> Result<(), ChiknError> {
+///
+/// Replaces working-tree content: bumps the project's write epoch on
+/// success (stale tokens are refused until the project is re-probed).
+pub fn switch_draft(path: &Path, name: &str, token: &WriteToken) -> Result<(), ChiknError> {
+    token.ensure_valid_for(path)?;
     let repo = Repository::open(path)
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
     reject_dirty_worktree(&repo, "switch drafts")?;
@@ -502,6 +531,7 @@ pub fn switch_draft(path: &Path, name: &str) -> Result<(), ChiknError> {
     repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
         .map_err(|e| ChiknError::Unknown(format!("Failed to switch: {}", e)))?;
 
+    token.bump_epoch();
     Ok(())
 }
 
@@ -532,7 +562,8 @@ pub enum MergeResult {
 /// Now mirrors `sync_pull`'s shape: analyze first, fast-forward when possible,
 /// detect `index.has_conflicts()` before committing, return a `MergeResult`
 /// the UI can dispatch on. (F-009)
-pub fn merge_draft(path: &Path, name: &str) -> Result<MergeResult, ChiknError> {
+pub fn merge_draft(path: &Path, name: &str, token: &WriteToken) -> Result<MergeResult, ChiknError> {
+    token.ensure_valid_for(path)?;
     let repo = Repository::open(path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
 
@@ -572,6 +603,7 @@ pub fn merge_draft(path: &Path, name: &str) -> Result<MergeResult, ChiknError> {
         co.force();
         repo.checkout_head(Some(&mut co))
             .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Checkout", e))?;
+        token.bump_epoch();
         return Ok(MergeResult::FastForward);
     }
 
@@ -594,6 +626,7 @@ pub fn merge_draft(path: &Path, name: &str) -> Result<MergeResult, ChiknError> {
                     .and_then(|e| String::from_utf8(e.path).ok())
             })
             .collect();
+        token.bump_epoch();
         return Ok(MergeResult::Conflicts { files });
     }
 
@@ -632,11 +665,17 @@ pub fn merge_draft(path: &Path, name: &str) -> Result<MergeResult, ChiknError> {
     repo.cleanup_state()
         .map_err(|e| ChiknError::Unknown(format!("Cleanup: {}", e)))?;
 
+    token.bump_epoch();
     Ok(MergeResult::Merged)
 }
 
 /// Push to a backup remote. Creates the bare repo and remote if needed.
-pub fn push_backup(project_path: &Path, backup_dir: &Path) -> Result<(), ChiknError> {
+pub fn push_backup(
+    project_path: &Path,
+    backup_dir: &Path,
+    token: &WriteToken,
+) -> Result<(), ChiknError> {
+    token.ensure_valid_for(project_path)?;
     let repo = Repository::open(project_path)
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
 
@@ -689,14 +728,16 @@ pub fn backup_current_work(
     project_path: &Path,
     backup_dir: &Path,
     message: &str,
+    token: &WriteToken,
 ) -> Result<Option<Revision>, ChiknError> {
+    token.ensure_valid_for(project_path)?;
     let revision = if has_changes(project_path)? {
-        Some(save_revision(project_path, message)?)
+        Some(save_revision(project_path, message, token)?)
     } else {
         None
     };
 
-    push_backup(project_path, backup_dir)?;
+    push_backup(project_path, backup_dir, token)?;
     Ok(revision)
 }
 
@@ -777,7 +818,13 @@ fn current_branch_name(repo: &Repository) -> Result<String, ChiknError> {
 }
 
 /// Push the current branch to the configured remote.
-pub fn push_remote(project_path: &Path, url: &str, auth: &RemoteAuth) -> Result<(), ChiknError> {
+pub fn push_remote(
+    project_path: &Path,
+    url: &str,
+    auth: &RemoteAuth,
+    token: &WriteToken,
+) -> Result<(), ChiknError> {
+    token.ensure_valid_for(project_path)?;
     let repo = Repository::open(project_path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     let mut remote = ensure_sync_remote(&repo, url)?;
@@ -795,7 +842,13 @@ pub fn push_remote(project_path: &Path, url: &str, auth: &RemoteAuth) -> Result<
 }
 
 /// Fetch the current branch from the configured remote. Does not merge.
-pub fn fetch_remote(project_path: &Path, url: &str, auth: &RemoteAuth) -> Result<(), ChiknError> {
+pub fn fetch_remote(
+    project_path: &Path,
+    url: &str,
+    auth: &RemoteAuth,
+    token: &WriteToken,
+) -> Result<(), ChiknError> {
+    token.ensure_valid_for(project_path)?;
     let repo = Repository::open(project_path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     let mut remote = ensure_sync_remote(&repo, url)?;
@@ -836,8 +889,10 @@ pub fn sync_pull(
     project_path: &Path,
     url: &str,
     auth: &RemoteAuth,
+    token: &WriteToken,
 ) -> Result<PullResult, ChiknError> {
-    fetch_remote(project_path, url, auth)?;
+    token.ensure_valid_for(project_path)?;
+    fetch_remote(project_path, url, auth, token)?;
 
     let repo = Repository::open(project_path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
@@ -878,6 +933,7 @@ pub fn sync_pull(
         co.force();
         repo.checkout_head(Some(&mut co))
             .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Checkout", e))?;
+        token.bump_epoch();
         return Ok(PullResult::FastForward);
     }
 
@@ -898,6 +954,7 @@ pub fn sync_pull(
                     .and_then(|e| String::from_utf8(e.path).ok())
             })
             .collect();
+        token.bump_epoch();
         return Ok(PullResult::Conflicts { files });
     }
 
@@ -933,12 +990,17 @@ pub fn sync_pull(
     .map_err(|e| ChiknError::Unknown(format!("Merge commit: {}", e)))?;
     repo.cleanup_state()
         .map_err(|e| ChiknError::Unknown(format!("Cleanup: {}", e)))?;
+    token.bump_epoch();
     Ok(PullResult::Merged)
 }
 
 /// Abort an in-progress merge (e.g. after `sync_pull` reported conflicts).
 /// Restores the working tree to the pre-merge state.
-pub fn sync_abort_pull(project_path: &Path) -> Result<(), ChiknError> {
+///
+/// Replaces working-tree content: bumps the project's write epoch on
+/// success (stale tokens are refused until the project is re-probed).
+pub fn sync_abort_pull(project_path: &Path, token: &WriteToken) -> Result<(), ChiknError> {
+    token.ensure_valid_for(project_path)?;
     let repo = Repository::open(project_path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     let head = repo
@@ -951,21 +1013,27 @@ pub fn sync_abort_pull(project_path: &Path) -> Result<(), ChiknError> {
         .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Reset", e))?;
     repo.cleanup_state()
         .map_err(|e| classified_git_error("Cleanup", e))?;
+    token.bump_epoch();
     Ok(())
 }
 
 /// Overwrite local with remote — discards every local change since the last
 /// shared commit. Used as the "their wins" escape hatch.
+///
+/// Replaces working-tree content: bumps the project's write epoch on
+/// success (stale tokens are refused until the project is re-probed).
 pub fn sync_pull_force(
     project_path: &Path,
     url: &str,
     auth: &RemoteAuth,
+    token: &WriteToken,
 ) -> Result<(), ChiknError> {
+    token.ensure_valid_for(project_path)?;
     let repo = Repository::open(project_path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     reject_dirty_worktree(&repo, "force pull")?;
 
-    fetch_remote(project_path, url, auth)?;
+    fetch_remote(project_path, url, auth, token)?;
     let branch = current_branch_name(&repo)?;
     let remote_oid = repo
         .refname_to_id(&format!("refs/remotes/{SYNC_REMOTE}/{branch}"))
@@ -981,6 +1049,7 @@ pub fn sync_pull_force(
         .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Reset", e))?;
     repo.cleanup_state()
         .map_err(|e| classified_git_error("Cleanup", e))?;
+    token.bump_epoch();
     Ok(())
 }
 
@@ -1369,6 +1438,21 @@ fn oid_to_revision(repo: &Repository, oid: Oid) -> Revision {
 mod tests {
     use super::*;
 
+    /// Give a bare test directory just enough project shape to probe Full,
+    /// then acquire a write token for it. Mirrors a session that opened a
+    /// healthy project before mutating it.
+    fn token_for_test_project(project_path: &Path) -> WriteToken {
+        let project_file = project_path.join("project.yaml");
+        if !project_file.exists() {
+            std::fs::write(
+                &project_file,
+                "id: prj\nname: Test\ncreated: '2025-01-01T00:00:00Z'\nmodified: '2025-01-01T00:00:00Z'\nhierarchy: []\n",
+            )
+            .unwrap();
+        }
+        crate::core::project::fidelity::acquire_write_token(project_path).expect("write token")
+    }
+
     fn words(text: &str) -> Vec<String> {
         text.split_whitespace()
             .map(|word| word.to_string())
@@ -1415,11 +1499,12 @@ mod tests {
         let project_path = temp_dir.path().join("BackupFailure.chikn");
         std::fs::create_dir(&project_path).unwrap();
         init_repo(&project_path).unwrap();
+        let token = token_for_test_project(&project_path);
 
         let backup_file = temp_dir.path().join("not-a-dir");
         std::fs::write(&backup_file, "not a directory").unwrap();
 
-        let result = push_backup(&project_path, &backup_file);
+        let result = push_backup(&project_path, &backup_file, &token);
 
         assert!(
             matches!(result, Err(ChiknError::Unknown(message)) if message.contains("Failed to create backup directory"))
@@ -1433,15 +1518,17 @@ mod tests {
         std::fs::create_dir(&project_path).unwrap();
         std::fs::create_dir(project_path.join("manuscript")).unwrap();
         init_repo(&project_path).unwrap();
+        let token = token_for_test_project(&project_path);
 
         let doc_path = project_path.join("manuscript").join("one.md");
         std::fs::write(&doc_path, "baseline").unwrap();
-        save_revision(&project_path, "Baseline").unwrap();
+        save_revision(&project_path, "Baseline", &token).unwrap();
 
         std::fs::write(&doc_path, "edited before manual backup").unwrap();
         let backup_dir = temp_dir.path().join("backups");
 
-        let revision = backup_current_work(&project_path, &backup_dir, "Manual backup").unwrap();
+        let revision =
+            backup_current_work(&project_path, &backup_dir, "Manual backup", &token).unwrap();
 
         assert!(revision.is_some());
         let bare_repo = Repository::open_bare(backup_dir.join("ManualBackup.git")).unwrap();
@@ -1465,12 +1552,14 @@ mod tests {
         std::fs::create_dir(&project_path).unwrap();
         std::fs::create_dir(project_path.join("manuscript")).unwrap();
         init_repo(&project_path).unwrap();
+        let token = token_for_test_project(&project_path);
 
         std::fs::write(project_path.join("manuscript").join("one.md"), "baseline").unwrap();
-        let baseline = save_revision(&project_path, "Baseline").unwrap();
+        let baseline = save_revision(&project_path, "Baseline", &token).unwrap();
         let backup_dir = temp_dir.path().join("backups");
 
-        let revision = backup_current_work(&project_path, &backup_dir, "Manual backup").unwrap();
+        let revision =
+            backup_current_work(&project_path, &backup_dir, "Manual backup", &token).unwrap();
 
         assert!(revision.is_none());
         let local_head = Repository::open(&project_path)

@@ -34,7 +34,7 @@ fn main() -> Result<()> {
         let token = fidelity::acquire_write_token(&project_path)
             .map_err(|e| anyhow::anyhow!("Failed to acquire write access: {e}"))?;
         writer::write_project(&mut project, &token).context("Failed to write project")?;
-        let _ = git::save_revision(&project_path, &format!("Created project: {}", name));
+        let _ = git::save_revision(&project_path, &format!("Created project: {}", name), &token);
         println!("Created: {}", project_path.display());
         return Ok(());
     }

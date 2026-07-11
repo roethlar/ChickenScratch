@@ -879,12 +879,19 @@ impl<'a> App<'a> {
         if self.dirty {
             self.save_active_doc()?;
         }
-        match git::save_revision(&self.project_path, message) {
+        let token = match fidelity::acquire_write_token(&self.project_path) {
+            Ok(token) => token,
+            Err(e) => {
+                self.status = format!("Revision refused: {e}");
+                return Ok(());
+            }
+        };
+        match git::save_revision(&self.project_path, message, &token) {
             Ok(rev) => {
                 let short = rev.short_id.clone();
                 // After a named revision: push to backup if configured.
                 let backup_msg = match read_backup_directory() {
-                    Some(dir) => match git::push_backup(&self.project_path, &dir) {
+                    Some(dir) => match git::push_backup(&self.project_path, &dir, &token) {
                         Ok(()) => " · backed up".to_string(),
                         Err(e) => format!(" · backup failed: {:?}", e),
                     },

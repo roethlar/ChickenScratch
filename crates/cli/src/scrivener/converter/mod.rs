@@ -136,6 +136,7 @@ pub fn import_scriv(
     let _ = chickenscratch_core::core::git::save_revision(
         output_path,
         &format!("Imported from Scrivener: {}", scriv_project.name),
+        &token,
     );
 
     Ok(chikn_project)

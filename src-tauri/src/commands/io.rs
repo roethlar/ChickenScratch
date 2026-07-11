@@ -327,7 +327,7 @@ fn import_markdown_folder_impl(
     }
 
     writer::write_project(&mut project, &token)?;
-    let _ = git::save_revision(output, &format!("Imported from: {}", name));
+    let _ = git::save_revision(output, &format!("Imported from: {}", name), &token);
 
     // Partial success: log skipped files to stderr so the operator sees them
     // even though the import returned the project. A future API revision

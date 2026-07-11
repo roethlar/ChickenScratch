@@ -22,7 +22,7 @@ pub fn create_project(
         // construction, so the token acquisition doubles as a self-check.
         let token = fidelity::acquire_write_token(&project_path)?;
         writer::write_project(&mut project, &token)?;
-        let _ = git::save_revision(&project_path, &format!("Created project: {}", name));
+        let _ = git::save_revision(&project_path, &format!("Created project: {}", name), &token);
         Ok(project)
     })
 }

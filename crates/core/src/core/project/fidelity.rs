@@ -143,9 +143,6 @@ fn current_epoch(canonical_root: &Path) -> u64 {
 
 /// Bump the write epoch for a project root. Every outstanding token for
 /// that root becomes stale; callers must re-probe and re-acquire.
-// TODO(write-guard slice): the `dead_code` allow disappears when the git
-// mutators start bumping epochs in the gating commit.
-#[allow(dead_code)]
 pub(crate) fn bump_write_epoch(canonical_root: &Path) {
     if let Ok(mut map) = epochs().lock() {
         *map.entry(canonical_root.to_path_buf()).or_insert(0) += 1;
@@ -210,8 +207,6 @@ impl WriteToken {
 
     /// Mark the token's project as tree-replaced: bumps the epoch, which
     /// invalidates every outstanding token (including this one).
-    // TODO(write-guard slice): allow disappears when git gating lands.
-    #[allow(dead_code)]
     pub(crate) fn bump_epoch(&self) {
         bump_write_epoch(&self.root);
     }
