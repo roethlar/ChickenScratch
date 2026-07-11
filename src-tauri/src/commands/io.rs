@@ -1,7 +1,7 @@
 use chickenscratch_core::core::compile;
 use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::hierarchy;
-use chickenscratch_core::core::project::{reader, safe_path, writer};
+use chickenscratch_core::core::project::{fidelity, reader, writer};
 use chickenscratch_core::utils::process::{
     output_bounded, PANDOC_OUTPUT_LIMIT_BYTES, PANDOC_TIMEOUT,
 };
@@ -115,6 +115,7 @@ pub fn import_file(
     };
 
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         let doc_id = uuid::Uuid::new_v4().to_string();
@@ -147,7 +148,7 @@ pub fn import_file(
             None => hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node),
         }
 
-        writer::write_project(&mut project)?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }
@@ -227,6 +228,8 @@ fn import_markdown_folder_impl(
         .to_string();
 
     let mut project = writer::create_project(output, &name)?;
+    // Freshly created by the engine — probes Full by construction.
+    let token = fidelity::acquire_write_token(output)?;
 
     let mut entries: Vec<_> = fs::read_dir(folder)?
         .filter_map(|e| e.ok())
@@ -323,7 +326,7 @@ fn import_markdown_folder_impl(
         )));
     }
 
-    writer::write_project(&mut project)?;
+    writer::write_project(&mut project, &token)?;
     let _ = git::save_revision(output, &format!("Imported from: {}", name));
 
     // Partial success: log skipped files to stderr so the operator sees them
@@ -434,9 +437,13 @@ pub fn record_daily_words(
 }
 
 fn record_daily_words_impl(project_path: String, words: usize) -> Result<(), ChiknError> {
-    let dir =
-        safe_path::ensure_project_subdir_safe(Path::new(&project_path), Path::new("settings"))?;
-    let path = dir.join("writing-history.json");
+    // Project-internal app files obey the same write gate as documents: a
+    // Degraded project never yields a token, so opening Statistics on one
+    // writes nothing.
+    let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+    let path = Path::new(&project_path)
+        .join("settings")
+        .join("writing-history.json");
 
     let mut history: WritingHistory = if path.exists() {
         let data = fs::read_to_string(&path)?;
@@ -467,7 +474,11 @@ fn record_daily_words_impl(project_path: String, words: usize) -> Result<(), Chi
 
     let json = serde_json::to_string_pretty(&history)
         .map_err(|e| ChiknError::Unknown(format!("Failed to serialize history: {}", e)))?;
-    fs::write(&path, json)?;
+    writer::write_project_app_file(
+        &token,
+        Path::new("settings/writing-history.json"),
+        json.as_bytes(),
+    )?;
     Ok(())
 }
 

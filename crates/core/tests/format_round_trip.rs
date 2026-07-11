@@ -6,6 +6,7 @@
 //! WHOLE document — every field at once — and whole-project state survive
 //! write→read, and that consecutive saves produce one canonical byte form.
 
+use chickenscratch_core::core::project::fidelity::acquire_write_token;
 use chickenscratch_core::core::project::reader::read_project;
 use chickenscratch_core::core::project::writer::{create_project, write_project};
 use chickenscratch_core::models::{Comment, Document, Project, SessionTarget, Thread, TreeNode};
@@ -74,10 +75,11 @@ fn whole_document_survives_round_trip() {
     let temp = TempDir::new().unwrap();
     let project_path = temp.path().join("Full.chikn");
     let mut project = create_project(&project_path, "Full").unwrap();
+    let token = acquire_write_token(&project_path).unwrap();
     let folder_id = manuscript_folder_id(&project);
     let doc = full_document(&folder_id);
     attach(&mut project, doc.clone());
-    write_project(&mut project).unwrap();
+    write_project(&mut project, &token).unwrap();
 
     let reread = read_project(&project_path).unwrap();
     assert_eq!(
@@ -92,6 +94,7 @@ fn whole_project_survives_round_trip() {
     let temp = TempDir::new().unwrap();
     let project_path = temp.path().join("Whole.chikn");
     let mut project = create_project(&project_path, "Whole").unwrap();
+    let token = acquire_write_token(&project_path).unwrap();
 
     project.metadata.title = Some("The Letter".into());
     project.metadata.author = Some("M. Coelho".into());
@@ -122,7 +125,7 @@ fn whole_project_survives_round_trip() {
     ];
     let folder_id = manuscript_folder_id(&project);
     attach(&mut project, full_document(&folder_id));
-    write_project(&mut project).unwrap();
+    write_project(&mut project, &token).unwrap();
 
     let first = read_project(&project_path).unwrap();
     assert_eq!(
@@ -135,7 +138,7 @@ fn whole_project_survives_round_trip() {
 
     // And the whole state is stable across a second save+load.
     let mut first_again = first.clone();
-    write_project(&mut first_again).unwrap();
+    write_project(&mut first_again, &token).unwrap();
     let second = read_project(&project_path).unwrap();
     assert_eq!(second.metadata, first.metadata);
     assert_eq!(second.threads, first.threads);
@@ -152,6 +155,7 @@ fn second_save_is_byte_stable() {
     let temp = TempDir::new().unwrap();
     let project_path = temp.path().join("Stable.chikn");
     let mut project = create_project(&project_path, "Stable").unwrap();
+    let token = acquire_write_token(&project_path).unwrap();
     let folder_id = manuscript_folder_id(&project);
     attach(&mut project, full_document(&folder_id));
     project.threads = vec![Thread {
@@ -161,7 +165,7 @@ fn second_save_is_byte_stable() {
         description: None,
         extra: Default::default(),
     }];
-    write_project(&mut project).unwrap();
+    write_project(&mut project, &token).unwrap();
 
     let meta_path = project_path.join("manuscript/chapter-one.meta");
     let threads_path = project_path.join("threads.yaml");
@@ -171,7 +175,7 @@ fn second_save_is_byte_stable() {
     let project_1 = std::fs::read_to_string(&project_file).unwrap();
 
     let mut reloaded = read_project(&project_path).unwrap();
-    write_project(&mut reloaded).unwrap();
+    write_project(&mut reloaded, &token).unwrap();
 
     let meta_2 = std::fs::read_to_string(&meta_path).unwrap();
     let threads_2 = std::fs::read_to_string(&threads_path).unwrap();
@@ -204,6 +208,7 @@ fn foreign_and_legacy_keys_survive_full_cycle() {
     let temp = TempDir::new().unwrap();
     let project_path = temp.path().join("Foreign.chikn");
     let mut project = create_project(&project_path, "Foreign").unwrap();
+    let token = acquire_write_token(&project_path).unwrap();
     project.metadata.title = Some("Foreign".into());
     let folder_id = manuscript_folder_id(&project);
     attach(&mut project, full_document(&folder_id));
@@ -214,7 +219,7 @@ fn foreign_and_legacy_keys_survive_full_cycle() {
         description: None,
         extra: Default::default(),
     }];
-    write_project(&mut project).unwrap();
+    write_project(&mut project, &token).unwrap();
 
     // Simulate foreign/newer tools and the legacy 10ec683-era writer.
     let append = |path: &Path, s: &str| {
@@ -232,7 +237,7 @@ fn foreign_and_legacy_keys_survive_full_cycle() {
     append(&threads_path, "  arc_stage: rising-action");
 
     let mut reloaded = read_project(&project_path).unwrap();
-    write_project(&mut reloaded).unwrap();
+    write_project(&mut reloaded, &token).unwrap();
     let final_project = read_project(&project_path).unwrap();
 
     let doc = final_project.documents.get("doc-full").unwrap();

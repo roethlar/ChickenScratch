@@ -5,6 +5,7 @@
 //! descendant document sidecars, and drop the corresponding document-map
 //! entries so later project writes cannot recreate deleted files.
 
+use crate::core::project::fidelity::WriteToken;
 use crate::core::project::{hierarchy, writer};
 use crate::models::{Project, TreeNode};
 use crate::ChiknError;
@@ -16,15 +17,21 @@ use std::path::Path;
 /// deleted before the in-memory hierarchy/map are pruned, so a filesystem
 /// error leaves the loaded project structurally intact and no smaller manifest
 /// is written by callers that propagate the error.
-pub fn delete_node(project: &mut Project, node_id: &str) -> Result<Vec<String>, ChiknError> {
+pub fn delete_node(
+    project: &mut Project,
+    node_id: &str,
+    token: &WriteToken,
+) -> Result<Vec<String>, ChiknError> {
+    let project_path = Path::new(&project.path);
+    token.ensure_valid_for(project_path)?;
+
     let removed = hierarchy::find_node(&project.hierarchy, node_id)
         .cloned()
         .ok_or_else(|| ChiknError::NotFound(format!("Node not found: {}", node_id)))?;
 
     let deletions = collect_document_deletions(&removed, project);
-    let project_path = Path::new(&project.path);
     for (_, path) in &deletions {
-        writer::delete_document(project_path, path)?;
+        writer::delete_document(project_path, path, token)?;
     }
 
     hierarchy::remove_node(&mut project.hierarchy, node_id)?;
@@ -64,6 +71,8 @@ mod tests {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let project_path = temp_dir.path().join("DeleteFolder.chikn");
         let mut project = writer::create_project(&project_path, "Delete Folder").unwrap();
+        let token =
+            crate::core::project::fidelity::acquire_write_token(&project_path).expect("token");
 
         let doc = Document {
             id: "nested-doc".to_string(),
@@ -85,21 +94,21 @@ mod tests {
                 path: "manuscript/folder/nested.md".to_string(),
             }],
         });
-        writer::write_project(&mut project).unwrap();
+        writer::write_project(&mut project, &token).unwrap();
 
         let doc_path = project_path.join("manuscript/folder/nested.md");
         let meta_path = project_path.join("manuscript/folder/nested.meta");
         assert!(doc_path.exists());
         assert!(meta_path.exists());
 
-        let deleted_ids = delete_node(&mut project, "folder").unwrap();
+        let deleted_ids = delete_node(&mut project, "folder", &token).unwrap();
         assert_eq!(deleted_ids, vec!["nested-doc".to_string()]);
         assert!(!doc_path.exists());
         assert!(!meta_path.exists());
         assert!(!project.documents.contains_key("nested-doc"));
         assert!(hierarchy::find_node(&project.hierarchy, "folder").is_none());
 
-        writer::write_project(&mut project).unwrap();
+        writer::write_project(&mut project, &token).unwrap();
         let reread = reader::read_project(&project_path).unwrap();
         assert!(!reread.documents.contains_key("nested-doc"));
         assert!(hierarchy::find_node(&reread.hierarchy, "nested-doc").is_none());

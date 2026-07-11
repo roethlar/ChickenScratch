@@ -8,5 +8,5 @@ pub mod fidelity;
 pub mod format;
 pub mod hierarchy;
 pub mod reader;
-pub mod safe_path;
+pub(crate) mod safe_path;
 pub mod writer;

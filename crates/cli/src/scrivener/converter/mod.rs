@@ -39,7 +39,7 @@ use uuid::Uuid;
 
 use super::parser::scrivx::sanitize_file_extension;
 use super::parser::{get_media_path, get_rtf_path, parse_scrivx, rtf_to_html, BinderItem};
-use chickenscratch_core::core::project::writer;
+use chickenscratch_core::core::project::{fidelity, writer};
 use chickenscratch_core::models::{Document, Project, TreeNode};
 use chickenscratch_core::utils::error::ChiknError;
 
@@ -77,8 +77,10 @@ pub fn import_scriv(
     let scriv_project = parse_scrivx(&scrivx_file)?;
     validate_media_file_extensions(&scriv_project.binder)?;
 
-    // Create .chikn project
+    // Create .chikn project. A project the engine itself just initialized
+    // probes Full by construction, so it yields a write token.
     let mut chikn_project = writer::create_project(output_path, &scriv_project.name)?;
+    let token = fidelity::acquire_write_token(output_path)?;
 
     // Pre-pass: build Scrivener UUID -> chikn path map from the entire binder tree
     // This must happen before conversion so all links can be resolved
@@ -111,7 +113,7 @@ pub fn import_scriv(
     chikn_project.documents = documents;
 
     // Save the converted project
-    writer::write_project(&mut chikn_project)?;
+    writer::write_project(&mut chikn_project, &token)?;
 
     // Copy media files into the project
     for (key, value) in &uuid_to_path {

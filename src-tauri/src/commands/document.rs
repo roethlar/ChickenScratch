@@ -1,4 +1,5 @@
-use chickenscratch_core::core::project::{hierarchy, reader, safe_path, writer};
+use chickenscratch_core::core::project::fidelity::{self, WriteToken};
+use chickenscratch_core::core::project::{hierarchy, reader, writer};
 use chickenscratch_core::models::Comment;
 use chickenscratch_core::utils::slug;
 use chickenscratch_core::{ChiknError, Document, Project, TreeNode};
@@ -21,11 +22,12 @@ pub fn update_document_content(
     content: String,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         if let Some(doc) = project.documents.get_mut(&doc_id) {
             doc.content = content;
             doc.modified = chrono::Utc::now().to_rfc3339();
-            writer::write_project(&mut project)?;
+            writer::write_project(&mut project, &token)?;
             Ok(())
         } else {
             Err(ChiknError::NotFound(format!(
@@ -48,6 +50,7 @@ pub fn add_comment(
     new_content: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         if let Some(doc) = project.documents.get_mut(&doc_id) {
             let now = chrono::Utc::now().to_rfc3339();
@@ -60,7 +63,7 @@ pub fn add_comment(
                 modified: now.clone(),
             });
             doc.modified = now;
-            writer::write_project(&mut project)?;
+            writer::write_project(&mut project, &token)?;
             Ok(project)
         } else {
             Err(ChiknError::NotFound(format!(
@@ -81,6 +84,7 @@ pub fn update_comment(
     resolved: Option<bool>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         if let Some(doc) = project.documents.get_mut(&doc_id) {
             if let Some(c) = doc.comments.iter_mut().find(|c| c.id == comment_id) {
@@ -92,7 +96,7 @@ pub fn update_comment(
                 }
                 c.modified = chrono::Utc::now().to_rfc3339();
                 doc.modified = chrono::Utc::now().to_rfc3339();
-                writer::write_project(&mut project)?;
+                writer::write_project(&mut project, &token)?;
                 Ok(project)
             } else {
                 Err(ChiknError::NotFound(format!(
@@ -119,12 +123,13 @@ pub fn delete_comment(
     new_content: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         if let Some(doc) = project.documents.get_mut(&doc_id) {
             doc.comments.retain(|c| c.id != comment_id);
             doc.content = new_content;
             doc.modified = chrono::Utc::now().to_rfc3339();
-            writer::write_project(&mut project)?;
+            writer::write_project(&mut project, &token)?;
             Ok(project)
         } else {
             Err(ChiknError::NotFound(format!(
@@ -178,6 +183,7 @@ pub fn update_document_metadata(
     fields: Option<FieldUpdates>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         if let Some(doc) = project.documents.get_mut(&doc_id) {
             doc.synopsis = synopsis;
@@ -197,7 +203,7 @@ pub fn update_document_metadata(
                 apply_field_updates(doc, updates);
             }
             doc.modified = chrono::Utc::now().to_rfc3339();
-            writer::write_project(&mut project)?;
+            writer::write_project(&mut project, &token)?;
             Ok(project)
         } else {
             Err(ChiknError::NotFound(format!(
@@ -216,6 +222,7 @@ pub fn rename_node(
     new_name: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         // Rename in hierarchy
@@ -227,7 +234,7 @@ pub fn rename_node(
             doc.modified = chrono::Utc::now().to_rfc3339();
         }
 
-        writer::write_project(&mut project)?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }
@@ -259,6 +266,7 @@ pub fn link_documents(
     doc_id_b: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         let now = chrono::Utc::now().to_rfc3339();
 
@@ -276,7 +284,7 @@ pub fn link_documents(
             }
         }
 
-        writer::write_project(&mut project)?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }
@@ -289,6 +297,7 @@ pub fn create_document(
     parent_id: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         let doc_id = uuid::Uuid::new_v4().to_string();
@@ -320,7 +329,7 @@ pub fn create_document(
             None => hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node),
         }
 
-        writer::write_project(&mut project)?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }
@@ -357,7 +366,8 @@ fn create_entity_impl(
         }
     };
 
-    safe_path::ensure_project_subdir_safe(project_path, Path::new(folder))?;
+    let token = fidelity::acquire_write_token(project_path)?;
+    writer::ensure_project_subdir(&token, Path::new(folder))?;
 
     let mut project = reader::read_project(project_path)?;
 
@@ -384,7 +394,7 @@ fn create_entity_impl(
     };
 
     project.documents.insert(doc_id, document);
-    writer::write_project(&mut project)?;
+    writer::write_project(&mut project, &token)?;
     Ok(project)
 }
 
@@ -396,6 +406,7 @@ pub fn create_folder(
     parent_id: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         let folder_id = uuid::Uuid::new_v4().to_string();
@@ -410,7 +421,7 @@ pub fn create_folder(
             None => hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node),
         }
 
-        writer::write_project(&mut project)?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }
@@ -422,6 +433,7 @@ pub fn delete_node(
     node_id: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         let path = Path::new(&project_path);
 
@@ -431,9 +443,9 @@ pub fn delete_node(
         // Delete files AND drop entries from `project.documents`. Without the
         // map cleanup, `write_project` below would iterate the still-present
         // documents and recreate the .md / .meta files we just deleted.
-        delete_node_files(&removed, &mut project, path)?;
+        delete_node_files(&removed, &mut project, path, &token)?;
 
-        writer::write_project(&mut project)?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }
@@ -442,6 +454,7 @@ fn delete_node_files(
     node: &TreeNode,
     project: &mut Project,
     project_path: &Path,
+    token: &WriteToken,
 ) -> Result<(), ChiknError> {
     match node {
         TreeNode::Document { id, .. } => {
@@ -451,13 +464,13 @@ fn delete_node_files(
             // disk while the binder thinks they're gone — and the next
             // reload's repair pass would re-import them as orphans.
             if let Some(doc) = project.documents.get(id) {
-                writer::delete_document(project_path, &doc.path)?;
+                writer::delete_document(project_path, &doc.path, token)?;
             }
             project.documents.remove(id);
         }
         TreeNode::Folder { children, .. } => {
             for child in children {
-                delete_node_files(child, project, project_path)?;
+                delete_node_files(child, project, project_path, token)?;
             }
         }
     }
@@ -473,6 +486,7 @@ pub fn move_node(
     new_index: Option<usize>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         // `None` from the UI means "keep current parent" — used for in-place
@@ -495,7 +509,7 @@ pub fn move_node(
             hierarchy::reorder_node(&mut project.hierarchy, &node_id, idx)?;
         }
 
-        writer::write_project(&mut project)?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }
@@ -545,7 +559,10 @@ mod tests {
             "character".to_string(),
         );
 
-        assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        // The fidelity probe now refuses the write token before the
+        // safe-path machinery is even reached: a symlinked entity folder
+        // classifies the project Degraded (ReadOnly refusal).
+        assert!(matches!(result, Err(ChiknError::ReadOnly(_))));
         assert!(fs::read_dir(&outside_path).unwrap().next().is_none());
         assert!(fs::symlink_metadata(project_path.join("characters"))
             .unwrap()

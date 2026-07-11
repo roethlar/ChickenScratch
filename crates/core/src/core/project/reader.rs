@@ -1671,7 +1671,8 @@ hierarchy: []
                 extra: Default::default(),
             },
         ];
-        super::super::writer::write_project(&mut project).expect("write");
+        let token = super::super::fidelity::acquire_write_token(&project_path).expect("token");
+        super::super::writer::write_project(&mut project, &token).expect("write");
 
         let reread = read_project(&project_path).expect("re-read");
         assert_eq!(reread.threads.len(), 2);

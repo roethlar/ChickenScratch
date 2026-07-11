@@ -1,4 +1,4 @@
-use chickenscratch_core::core::project::{hierarchy, reader, writer};
+use chickenscratch_core::core::project::{fidelity, hierarchy, reader, writer};
 use chickenscratch_core::{ChiknError, Document, Project, TreeNode};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -57,6 +57,7 @@ pub fn create_from_template(
     parent_id: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         let template = default_templates()
@@ -112,7 +113,7 @@ pub fn create_from_template(
             }
         }
 
-        writer::write_project(&mut project)?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }

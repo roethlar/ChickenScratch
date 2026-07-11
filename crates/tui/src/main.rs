@@ -3,7 +3,10 @@ mod convert;
 mod ui;
 
 use anyhow::{Context, Result};
-use chickenscratch_core::core::{git, project::writer};
+use chickenscratch_core::core::{
+    git,
+    project::{fidelity, writer},
+};
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
@@ -28,7 +31,9 @@ fn main() -> Result<()> {
         let project_path = dir.join(format!("{}.chikn", name));
         let mut project = writer::create_project(&project_path, &name)
             .with_context(|| format!("Failed to create project at {:?}", project_path))?;
-        writer::write_project(&mut project).context("Failed to write project")?;
+        let token = fidelity::acquire_write_token(&project_path)
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write access: {e}"))?;
+        writer::write_project(&mut project, &token).context("Failed to write project")?;
         let _ = git::save_revision(&project_path, &format!("Created project: {}", name));
         println!("Created: {}", project_path.display());
         return Ok(());

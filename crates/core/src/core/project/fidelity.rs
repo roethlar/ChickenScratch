@@ -178,8 +178,6 @@ impl WriteToken {
     }
 
     /// Refuse unless the token is still current for its own root.
-    // TODO(write-guard slice): allow disappears when writer/git gating lands.
-    #[allow(dead_code)]
     pub(crate) fn ensure_fresh(&self) -> Result<(), ChiknError> {
         if self.is_stale() {
             return Err(ChiknError::ReadOnly(format!(
@@ -193,8 +191,6 @@ impl WriteToken {
     /// Refuse unless `project_path` resolves to exactly this token's root
     /// and the token is still current. Every mutating engine API calls
     /// this before touching disk.
-    // TODO(write-guard slice): allow disappears when writer/git gating lands.
-    #[allow(dead_code)]
     pub(crate) fn ensure_valid_for(&self, project_path: &Path) -> Result<(), ChiknError> {
         let canonical = project_path.canonicalize().map_err(|e| {
             ChiknError::ReadOnly(format!(

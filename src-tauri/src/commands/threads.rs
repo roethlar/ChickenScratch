@@ -2,7 +2,7 @@
 //! `threads.yaml` at the project root. The format itself stays genre-agnostic;
 //! these commands let any frontend manage them with a typed API.
 
-use chickenscratch_core::core::project::{reader, writer};
+use chickenscratch_core::core::project::{fidelity, reader, writer};
 use chickenscratch_core::{ChiknError, Project, Thread};
 use serde::Serialize;
 use std::collections::HashSet;
@@ -142,6 +142,7 @@ pub fn create_thread(
                 "Thread name cannot be empty".to_string(),
             ));
         }
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
 
         let id = unique_thread_id(trimmed, &project.threads);
@@ -152,7 +153,7 @@ pub fn create_thread(
             description: description.and_then(non_empty),
             extra: Default::default(),
         });
-        writer::write_project(&mut project)?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }
@@ -167,6 +168,7 @@ pub fn update_thread(
     description: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         let thread = project
             .threads
@@ -183,7 +185,7 @@ pub fn update_thread(
         if let Some(d) = description {
             thread.description = non_empty(d);
         }
-        writer::write_project(&mut project)?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }
@@ -197,6 +199,7 @@ pub fn delete_thread(
     id: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         project.threads.retain(|t| t.id != id);
 
@@ -207,7 +210,7 @@ pub fn delete_thread(
                 }
             }
         }
-        writer::write_project(&mut project)?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }

@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use chickenscratch_core::core::git;
-use chickenscratch_core::core::project::{hierarchy, reader, writer};
+use chickenscratch_core::core::project::{fidelity, hierarchy, reader, writer};
 use chickenscratch_core::utils::slug;
-use chickenscratch_core::{Document, Project, TreeNode};
+use chickenscratch_core::{ChiknError, Document, Project, TreeNode};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{backend::Backend, Terminal};
 use ratatui_textarea::{TextArea, WrapMode};
@@ -124,6 +124,13 @@ impl<'a> App<'a> {
         app.rebuild_binder();
         app.apply_editor_settings();
         Ok(app)
+    }
+
+    /// Acquire a write token and persist the project. A Degraded project
+    /// never yields a token, so the TUI can never save over one.
+    fn write_project_guarded(&mut self) -> std::result::Result<(), ChiknError> {
+        let token = fidelity::acquire_write_token(&self.project_path)?;
+        writer::write_project(&mut self.project, &token)
     }
 
     fn apply_editor_settings(&mut self) {
@@ -338,7 +345,8 @@ impl<'a> App<'a> {
             doc.modified = now;
         }
 
-        writer::write_project(&mut self.project).map_err(|e| anyhow!("Write failed: {:?}", e))?;
+        self.write_project_guarded()
+            .map_err(|e| anyhow!("Write failed: {:?}", e))?;
         self.dirty = false;
         self.status = "Comment anchored to selection".to_string();
         Ok(())
@@ -372,7 +380,7 @@ impl<'a> App<'a> {
             // silenced them, so a failed disk write left the in-memory comment
             // looking saved while the on-disk `.meta` was unchanged — the
             // comment vanished on next reload (F-017).
-            match writer::write_project(&mut self.project) {
+            match self.write_project_guarded() {
                 Ok(()) => {
                     self.comments_selected = self.current_comments().len().saturating_sub(1);
                     self.status = "Comment added".to_string();
@@ -437,7 +445,7 @@ impl<'a> App<'a> {
             }
         };
         if let Some(r) = resolved_after {
-            match writer::write_project(&mut self.project) {
+            match self.write_project_guarded() {
                 Ok(()) => {
                     self.status = format!("Comment {}", if r { "resolved" } else { "reopened" });
                 }
@@ -468,7 +476,7 @@ impl<'a> App<'a> {
             }
         };
         if did_update {
-            match writer::write_project(&mut self.project) {
+            match self.write_project_guarded() {
                 Ok(()) => {
                     self.status = "Comment updated".to_string();
                 }
@@ -493,7 +501,8 @@ impl<'a> App<'a> {
             None
         };
 
-        writer::write_project(&mut self.project).map_err(|e| anyhow!("Write failed: {:?}", e))?;
+        self.write_project_guarded()
+            .map_err(|e| anyhow!("Write failed: {:?}", e))?;
 
         if let Some(md) = new_content {
             if self.view_mode == ViewMode::Edit {
@@ -784,7 +793,8 @@ impl<'a> App<'a> {
             None => hierarchy::add_document_to_hierarchy(&mut self.project.hierarchy, node),
         }
 
-        writer::write_project(&mut self.project).map_err(|e| anyhow!("Write failed: {:?}", e))?;
+        self.write_project_guarded()
+            .map_err(|e| anyhow!("Write failed: {:?}", e))?;
         self.rebuild_binder();
         self.status = format!("Created document: {}", name);
         Ok(())
@@ -803,7 +813,8 @@ impl<'a> App<'a> {
             None => hierarchy::add_document_to_hierarchy(&mut self.project.hierarchy, node),
         }
         self.expanded.insert(folder_id);
-        writer::write_project(&mut self.project).map_err(|e| anyhow!("Write failed: {:?}", e))?;
+        self.write_project_guarded()
+            .map_err(|e| anyhow!("Write failed: {:?}", e))?;
         self.rebuild_binder();
         self.status = format!("Created folder: {}", name);
         Ok(())
@@ -856,7 +867,8 @@ impl<'a> App<'a> {
             doc.content = md.clone();
             doc.modified = chrono::Utc::now().to_rfc3339();
         }
-        writer::write_project(&mut self.project).map_err(|e| anyhow!("Write failed: {:?}", e))?;
+        self.write_project_guarded()
+            .map_err(|e| anyhow!("Write failed: {:?}", e))?;
         self.dirty = false;
         let word_count = convert::count_words(&md);
         self.status = format!("Saved. {} words.", word_count);

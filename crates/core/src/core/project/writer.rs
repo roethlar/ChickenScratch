@@ -12,11 +12,13 @@
 //! ## Example
 //! ```no_run
 //! use std::path::Path;
+//! use chickenscratch_core::core::project::fidelity::acquire_write_token;
 //! use chickenscratch_core::core::project::writer::{create_project, write_project};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut project = create_project(Path::new("MyNovel.chikn"), "My Novel")?;
-//! write_project(&mut project)?;
+//! let token = acquire_write_token(Path::new("MyNovel.chikn"))?;
+//! write_project(&mut project, &token)?;
 //! println!("Project saved successfully");
 //! # Ok(()) }
 //! ```
@@ -28,11 +30,13 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
+use super::fidelity::WriteToken;
 use super::format::{
     get_document_meta_path, get_project_file_path, get_threads_path, FORMAT_VERSION,
     REQUIRED_FOLDERS,
 };
 use super::reader::{lift_legacy_novelist_keys, DocumentMetadata, ProjectMetadata};
+use super::safe_path;
 use crate::models::{Project, TreeNode};
 use crate::utils::error::ChiknError;
 
@@ -40,26 +44,33 @@ use crate::utils::error::ChiknError;
 ///
 /// # Arguments
 /// * `project` - Mutable reference to project (modified timestamp will be updated)
+/// * `token` - Write capability for this project's root (see
+///   [`super::fidelity::acquire_write_token`]) — a Degraded project can
+///   never obtain one, so it can never be saved over.
 ///
 /// # Returns
 /// * `Ok(())` on success
 /// * `Err(ChiknError)` on failure
 ///
 /// # Errors
+/// - `ReadOnly`: token is for another project or stale
 /// - `Io`: File system errors during writing
 /// - `Serialization`: YAML serialization errors
 ///
 /// # Example
 /// ```no_run
 /// # use std::path::Path;
+/// # use chickenscratch_core::core::project::fidelity::acquire_write_token;
 /// # use chickenscratch_core::core::project::writer::{create_project, write_project};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # let mut project = create_project(Path::new("MyNovel.chikn"), "My Novel")?;
-/// write_project(&mut project)?;
+/// # let token = acquire_write_token(Path::new("MyNovel.chikn"))?;
+/// write_project(&mut project, &token)?;
 /// # Ok(()) }
 /// ```
-pub fn write_project(project: &mut Project) -> Result<(), ChiknError> {
+pub fn write_project(project: &mut Project, token: &WriteToken) -> Result<(), ChiknError> {
     let project_path = Path::new(&project.path);
+    token.ensure_valid_for(project_path)?;
 
     // Update modified timestamp
     project.modified = Utc::now().to_rfc3339();
@@ -732,11 +743,17 @@ fn sync_parent_directory(_parent: &Path) -> Result<(), ChiknError> {
 /// # Arguments
 /// * `project_path` - Root path of project
 /// * `document_path` - Document's relative path (from Document.path)
+/// * `token` - Write capability for this project's root
 ///
 /// # Returns
 /// * `Ok(())` on success
 /// * `Err(ChiknError)` if file doesn't exist or can't be deleted
-pub fn delete_document(project_path: &Path, document_path: &str) -> Result<(), ChiknError> {
+pub fn delete_document(
+    project_path: &Path,
+    document_path: &str,
+    token: &WriteToken,
+) -> Result<(), ChiknError> {
+    token.ensure_valid_for(project_path)?;
     validate_relative_document_path(document_path)?;
 
     // Resolve full paths
@@ -784,6 +801,54 @@ pub fn delete_document(project_path: &Path, document_path: &str) -> Result<(), C
     Ok(())
 }
 
+/// Token-gated write of a project-internal application file (for example
+/// `settings/writing-history.json`). App-side writes into the project obey
+/// the same gate as document writes: without a `Full` probe there is no
+/// token, and nothing can be written. Missing parent folders are created
+/// through the same symlink-refusing safe-path machinery as document
+/// writes, and the file itself is written atomically.
+pub fn write_project_app_file(
+    token: &WriteToken,
+    relative_path: &Path,
+    contents: &[u8],
+) -> Result<(), ChiknError> {
+    token.ensure_fresh()?;
+    let project_path = token.root().to_path_buf();
+
+    let file_name = relative_path.file_name().ok_or_else(|| {
+        ChiknError::InvalidFormat(format!(
+            "App file path must name a file: {}",
+            relative_path.display()
+        ))
+    })?;
+    let parent = relative_path.parent().filter(|p| !p.as_os_str().is_empty());
+
+    let dir = match parent {
+        Some(parent) => safe_path::ensure_project_subdir_safe(&project_path, parent)?,
+        None => project_path.clone(),
+    };
+    let target = dir.join(file_name);
+    let project_root = canonical_project_root(&project_path)?;
+    ensure_existing_path_safe(
+        &target,
+        &project_root,
+        &relative_path.to_string_lossy(),
+        "app file",
+    )?;
+    atomic_write_file(&target, contents)
+}
+
+/// Token-gated creation of a project subdirectory (for example the
+/// `characters/` entity folder). The former public `safe_path` helpers are
+/// engine-private now; this is the sanctioned caller-facing surface.
+pub fn ensure_project_subdir(
+    token: &WriteToken,
+    relative_path: &Path,
+) -> Result<PathBuf, ChiknError> {
+    token.ensure_fresh()?;
+    safe_path::ensure_project_subdir_safe(token.root(), relative_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -791,6 +856,14 @@ mod tests {
     use crate::core::project::reader::read_project;
     use crate::models::{Document, TreeNode};
     use tempfile::TempDir;
+
+    /// Acquire a write token for a freshly created (Full) test project.
+    /// Tests that exercise the writer's own internal guards acquire the
+    /// token BEFORE corrupting the fixture, mirroring a real session that
+    /// opened a healthy project and then hit damage mid-flight.
+    fn test_token(project_path: &Path) -> WriteToken {
+        crate::core::project::fidelity::acquire_write_token(project_path).expect("write token")
+    }
 
     #[test]
     fn test_create_project() {
@@ -826,6 +899,7 @@ mod tests {
         let project_path = temp_dir.path().join("TestProject.chikn");
 
         let mut project = create_project(&project_path, "Test Project").unwrap();
+        let token = test_token(&project_path);
 
         // Add a document
         let doc = Document {
@@ -847,7 +921,7 @@ mod tests {
         });
 
         // Write project
-        let result = write_project(&mut project);
+        let result = write_project(&mut project, &token);
         assert!(result.is_ok());
 
         // Verify files exist
@@ -863,6 +937,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("DuplicatePathProject.chikn");
         let mut project = create_project(&project_path, "Duplicate Path Project").unwrap();
+        let token = test_token(&project_path);
 
         let content_path = get_manuscript_path(&project_path).join("chapter-01.md");
         fs::write(&content_path, "original").unwrap();
@@ -889,7 +964,7 @@ mod tests {
         project.documents.insert(first.id.clone(), first);
         project.documents.insert(second.id.clone(), second);
 
-        let result = write_project(&mut project);
+        let result = write_project(&mut project, &token);
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert_eq!(fs::read_to_string(content_path).unwrap(), "original");
@@ -902,6 +977,7 @@ mod tests {
 
         // Create and write project
         let mut original_project = create_project(&project_path, "Round Trip Test").unwrap();
+        let token = test_token(&project_path);
 
         let doc = Document {
             id: "doc1".to_string(),
@@ -923,7 +999,7 @@ mod tests {
             path: doc.path.clone(),
         });
 
-        write_project(&mut original_project).unwrap();
+        write_project(&mut original_project, &token).unwrap();
 
         // Read project back
         let loaded_project = read_project(&project_path).unwrap();
@@ -951,6 +1027,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("FieldsMap.chikn");
         let mut project = create_project(&project_path, "Fields Map Test").unwrap();
+        let token = test_token(&project_path);
 
         let mut fields = std::collections::BTreeMap::new();
         // A novelist-convention string.
@@ -991,7 +1068,7 @@ mod tests {
             name: doc.name.clone(),
             path: doc.path.clone(),
         });
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         let loaded = read_project(&project_path).unwrap();
         let back = loaded.documents.get("doc1").expect("loaded");
@@ -1006,6 +1083,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("Clean.chikn");
         let mut project = create_project(&project_path, "Clean").unwrap();
+        let token = test_token(&project_path);
 
         let doc = Document {
             id: "basic".to_string(),
@@ -1022,7 +1100,7 @@ mod tests {
             name: doc.name.clone(),
             path: doc.path.clone(),
         });
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         let meta_path = project_path.join("manuscript/basic.meta");
         let meta_text = std::fs::read_to_string(&meta_path).unwrap();
@@ -1043,6 +1121,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("Preserve.chikn");
         let mut project = create_project(&project_path, "Preserve").unwrap();
+        let token = test_token(&project_path);
 
         let doc = Document {
             id: "session-7".to_string(),
@@ -1059,7 +1138,7 @@ mod tests {
             name: doc.name.clone(),
             path: doc.path.clone(),
         });
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         // Hand-inject a foreign UI field into the .meta on disk.
         let meta_path = project_path.join("manuscript/session-seven.meta");
@@ -1075,7 +1154,7 @@ mod tests {
 
         // Read, write, read again. The foreign keys must survive.
         let mut reloaded = read_project(&project_path).unwrap();
-        write_project(&mut reloaded).unwrap();
+        write_project(&mut reloaded, &token).unwrap();
         let final_load = read_project(&project_path).unwrap();
 
         let d = final_load.documents.get("session-7").unwrap();
@@ -1098,6 +1177,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("TopLevel.chikn");
         let mut project = create_project(&project_path, "TopLevel").unwrap();
+        let token = test_token(&project_path);
 
         let doc = Document {
             id: "doc1".to_string(),
@@ -1114,7 +1194,7 @@ mod tests {
             name: doc.name.clone(),
             path: doc.path.clone(),
         });
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         let meta_path = project_path.join("manuscript/chapter-01.meta");
         let existing = std::fs::read_to_string(&meta_path).unwrap();
@@ -1128,7 +1208,7 @@ mod tests {
         .unwrap();
 
         let mut reloaded = read_project(&project_path).unwrap();
-        write_project(&mut reloaded).unwrap();
+        write_project(&mut reloaded, &token).unwrap();
 
         let rewritten = std::fs::read_to_string(&meta_path).unwrap();
         assert!(
@@ -1148,9 +1228,10 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("ProjExtra.chikn");
         let mut project = create_project(&project_path, "ProjExtra").unwrap();
+        let token = test_token(&project_path);
         // Ensure the metadata: block exists as a mapping we can patch below.
         project.metadata.title = Some("ProjExtra".into());
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         let project_file = project_path.join("project.yaml");
         let existing = std::fs::read_to_string(&project_file).unwrap();
@@ -1168,7 +1249,7 @@ mod tests {
             Some("keep-me-too"),
             "metadata-block unknown key must load into the model's extras"
         );
-        write_project(&mut reloaded).unwrap();
+        write_project(&mut reloaded, &token).unwrap();
 
         let rewritten = std::fs::read_to_string(&project_file).unwrap();
         assert!(
@@ -1187,6 +1268,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("ThreadExtra.chikn");
         let mut project = create_project(&project_path, "ThreadExtra").unwrap();
+        let token = test_token(&project_path);
         project.threads = vec![crate::models::Thread {
             id: "main-plot".into(),
             name: "Main Plot".into(),
@@ -1194,7 +1276,7 @@ mod tests {
             description: None,
             extra: Default::default(),
         }];
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         let threads_path = project_path.join("threads.yaml");
         let existing = std::fs::read_to_string(&threads_path).unwrap();
@@ -1205,7 +1287,7 @@ mod tests {
         .unwrap();
 
         let mut reloaded = read_project(&project_path).unwrap();
-        write_project(&mut reloaded).unwrap();
+        write_project(&mut reloaded, &token).unwrap();
 
         let rewritten = std::fs::read_to_string(&threads_path).unwrap();
         assert!(
@@ -1242,7 +1324,8 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("Legacy.chikn");
         let mut project = create_project(&project_path, "Legacy").unwrap();
-        write_project(&mut project).unwrap();
+        let token = test_token(&project_path);
+        write_project(&mut project, &token).unwrap();
 
         // Simulate a pre-marker project.yaml.
         let project_file = project_path.join("project.yaml");
@@ -1255,7 +1338,7 @@ mod tests {
         std::fs::write(&project_file, format!("{stripped}\n")).unwrap();
 
         let mut reloaded = read_project(&project_path).expect("version-less project must load");
-        write_project(&mut reloaded).unwrap();
+        write_project(&mut reloaded, &token).unwrap();
         let yaml: serde_yaml::Value =
             serde_yaml::from_str(&std::fs::read_to_string(&project_file).unwrap()).unwrap();
         assert_eq!(
@@ -1288,6 +1371,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("Canonical.chikn");
         let mut project = create_project(&project_path, "Canonical").unwrap();
+        let token = test_token(&project_path);
 
         let mut doc = Document {
             id: "doc1".to_string(),
@@ -1308,7 +1392,7 @@ mod tests {
             name: doc.name.clone(),
             path: doc.path.clone(),
         });
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         let meta = std::fs::read_to_string(project_path.join("manuscript/canon.meta")).unwrap();
         let field_keys: Vec<String> = meta
@@ -1333,6 +1417,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("Legacy.chikn");
         let mut project = create_project(&project_path, "Legacy").unwrap();
+        let token = test_token(&project_path);
 
         let doc = Document {
             id: "scene-1".to_string(),
@@ -1349,7 +1434,7 @@ mod tests {
             name: doc.name.clone(),
             path: doc.path.clone(),
         });
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         let meta_path = project_path.join("manuscript/scene-one.meta");
         let existing = std::fs::read_to_string(&meta_path).unwrap();
@@ -1377,7 +1462,7 @@ mod tests {
         );
 
         // Write: keys must relocate under fields:, not duplicate at top level.
-        write_project(&mut reloaded).unwrap();
+        write_project(&mut reloaded, &token).unwrap();
         let rewritten = std::fs::read_to_string(&meta_path).unwrap();
         assert!(
             !rewritten
@@ -1409,6 +1494,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("LegacyConflict.chikn");
         let mut project = create_project(&project_path, "LegacyConflict").unwrap();
+        let token = test_token(&project_path);
 
         let doc = Document {
             id: "scene-1".to_string(),
@@ -1425,7 +1511,7 @@ mod tests {
             name: doc.name.clone(),
             path: doc.path.clone(),
         });
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         let meta_path = project_path.join("manuscript/scene-one.meta");
         let existing = std::fs::read_to_string(&meta_path).unwrap();
@@ -1446,7 +1532,7 @@ mod tests {
             "fields: value must win over the legacy top-level duplicate"
         );
 
-        write_project(&mut reloaded).unwrap();
+        write_project(&mut reloaded, &token).unwrap();
         let rewritten = std::fs::read_to_string(&meta_path).unwrap();
         assert!(
             !rewritten.lines().any(|l| l.starts_with("pov_character:")),
@@ -1465,13 +1551,14 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("CorruptProj.chikn");
         let mut project = create_project(&project_path, "CorruptProj").unwrap();
-        write_project(&mut project).unwrap();
+        let token = test_token(&project_path);
+        write_project(&mut project, &token).unwrap();
 
         let project_file = project_path.join("project.yaml");
         let corrupt = "id: [unclosed\n";
         std::fs::write(&project_file, corrupt).unwrap();
 
-        let result = write_project(&mut project);
+        let result = write_project(&mut project, &token);
         assert!(result.is_err(), "write over corrupt project.yaml must fail");
         assert_eq!(
             std::fs::read_to_string(&project_file).unwrap(),
@@ -1486,6 +1573,7 @@ mod tests {
         let project_path = temp_dir.path().join("DeleteTest.chikn");
 
         let mut project = create_project(&project_path, "Delete Test").unwrap();
+        let token = test_token(&project_path);
 
         // Create a document
         let doc = Document {
@@ -1500,14 +1588,14 @@ mod tests {
         };
 
         project.documents.insert(doc.id.clone(), doc.clone());
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         // Verify file exists
         let content_path = get_manuscript_path(&project_path).join("to-delete.md");
         assert!(content_path.exists());
 
         // Delete document using its path
-        delete_document(&project_path, "manuscript/to-delete.md").unwrap();
+        delete_document(&project_path, "manuscript/to-delete.md", &token).unwrap();
 
         // Verify files are gone
         assert!(!content_path.exists());
@@ -1539,6 +1627,7 @@ mod tests {
         let project_path = temp_dir.path().join("NestedWrite.chikn");
 
         let mut project = create_project(&project_path, "Nested Write Test").unwrap();
+        let token = test_token(&project_path);
 
         // Create document with nested path
         let doc = Document {
@@ -1553,7 +1642,7 @@ mod tests {
         };
 
         project.documents.insert(doc.id.clone(), doc.clone());
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         // Verify nested file exists
         let nested_path = project_path
@@ -1580,6 +1669,7 @@ mod tests {
         let project_path = temp_dir.path().join("ResearchWrite.chikn");
 
         let mut project = create_project(&project_path, "Research Test").unwrap();
+        let token = test_token(&project_path);
 
         // Create document in research folder
         let doc = Document {
@@ -1594,7 +1684,7 @@ mod tests {
         };
 
         project.documents.insert(doc.id.clone(), doc);
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         // Verify file in research folder
         let research_path = project_path.join("research").join("characters.md");
@@ -1607,6 +1697,7 @@ mod tests {
         let project_path = temp_dir.path().join("SecurityTest.chikn");
 
         let mut project = create_project(&project_path, "Security Test").unwrap();
+        let token = test_token(&project_path);
 
         // Try to create document with absolute path
         let doc = Document {
@@ -1621,7 +1712,7 @@ mod tests {
         };
 
         project.documents.insert(doc.id.clone(), doc);
-        let result = write_project(&mut project);
+        let result = write_project(&mut project, &token);
 
         // Should fail with InvalidFormat error
         assert!(result.is_err());
@@ -1633,6 +1724,7 @@ mod tests {
         let project_path = temp_dir.path().join("TraversalTest.chikn");
 
         let mut project = create_project(&project_path, "Traversal Test").unwrap();
+        let token = test_token(&project_path);
 
         // Try to escape project directory
         let doc = Document {
@@ -1647,7 +1739,7 @@ mod tests {
         };
 
         project.documents.insert(doc.id.clone(), doc);
-        let result = write_project(&mut project);
+        let result = write_project(&mut project, &token);
 
         // Should fail with InvalidFormat error
         assert!(result.is_err());
@@ -1659,6 +1751,7 @@ mod tests {
         let project_path = temp_dir.path().join("DotDotName.chikn");
 
         let mut project = create_project(&project_path, "Dot Dot Name").unwrap();
+        let token = test_token(&project_path);
 
         let doc = Document {
             id: "doc-dotdot".to_string(),
@@ -1672,7 +1765,7 @@ mod tests {
         };
 
         project.documents.insert(doc.id.clone(), doc);
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         assert!(project_path.join("manuscript/chapter..01.md").exists());
     }
@@ -1688,6 +1781,7 @@ mod tests {
         fs::create_dir(&outside_path).unwrap();
 
         let mut project = create_project(&project_path, "Symlink Parent").unwrap();
+        let token = test_token(&project_path);
         unix_fs::symlink(&outside_path, project_path.join("manuscript/link")).unwrap();
 
         let doc = Document {
@@ -1702,7 +1796,7 @@ mod tests {
         };
 
         project.documents.insert(doc.id.clone(), doc);
-        let result = write_project(&mut project);
+        let result = write_project(&mut project, &token);
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert!(!outside_path.join("pwned.md").exists());
@@ -1719,6 +1813,7 @@ mod tests {
         fs::write(&outside_file, "original").unwrap();
 
         let mut project = create_project(&project_path, "Symlink Target").unwrap();
+        let token = test_token(&project_path);
         unix_fs::symlink(&outside_file, project_path.join("manuscript/linked.md")).unwrap();
 
         let doc = Document {
@@ -1733,7 +1828,7 @@ mod tests {
         };
 
         project.documents.insert(doc.id.clone(), doc);
-        let result = write_project(&mut project);
+        let result = write_project(&mut project, &token);
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert_eq!(fs::read_to_string(&outside_file).unwrap(), "original");
@@ -1752,9 +1847,10 @@ mod tests {
         fs::write(&outside_file, "do not delete").unwrap();
 
         create_project(&project_path, "Delete Symlink Parent").unwrap();
+        let token = test_token(&project_path);
         unix_fs::symlink(&outside_path, project_path.join("manuscript/link")).unwrap();
 
-        let result = delete_document(&project_path, "manuscript/link/victim.md");
+        let result = delete_document(&project_path, "manuscript/link/victim.md", &token);
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert!(outside_file.exists());
@@ -1771,9 +1867,10 @@ mod tests {
         fs::write(&outside_file, "do not delete").unwrap();
 
         create_project(&project_path, "Delete Symlink Target").unwrap();
+        let token = test_token(&project_path);
         unix_fs::symlink(&outside_file, project_path.join("manuscript/linked.md")).unwrap();
 
-        let result = delete_document(&project_path, "manuscript/linked.md");
+        let result = delete_document(&project_path, "manuscript/linked.md", &token);
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert!(outside_file.exists());
@@ -1791,6 +1888,7 @@ mod tests {
         let project_path = temp_dir.path().join("DeleteNested.chikn");
 
         let mut project = create_project(&project_path, "Delete Nested Test").unwrap();
+        let token = test_token(&project_path);
 
         // Create nested document
         let doc = Document {
@@ -1805,7 +1903,7 @@ mod tests {
         };
 
         project.documents.insert(doc.id.clone(), doc.clone());
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         // Verify it exists
         let nested_path = project_path
@@ -1815,7 +1913,7 @@ mod tests {
         assert!(nested_path.exists());
 
         // Delete it
-        delete_document(&project_path, "manuscript/part-one/chapter.md").unwrap();
+        delete_document(&project_path, "manuscript/part-one/chapter.md", &token).unwrap();
 
         // Verify it's gone
         assert!(!nested_path.exists());
@@ -1827,13 +1925,14 @@ mod tests {
         let project_path = temp_dir.path().join("TimestampTest.chikn");
 
         let mut project = create_project(&project_path, "Timestamp Test").unwrap();
+        let token = test_token(&project_path);
         let original_modified = project.modified.clone();
 
         // Wait a bit to ensure timestamp difference
         std::thread::sleep(std::time::Duration::from_millis(10));
 
         // Write project
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         // Verify modified timestamp was updated
         assert_ne!(project.modified, original_modified);
@@ -1849,6 +1948,7 @@ mod tests {
         let project_path = temp_dir.path().join("ModifiedPreserve.chikn");
 
         let mut project = create_project(&project_path, "Modified Preserve").unwrap();
+        let token = test_token(&project_path);
         let frozen = "2020-01-01T00:00:00Z".to_string();
         let doc = Document {
             id: "doc1".to_string(),
@@ -1861,7 +1961,7 @@ mod tests {
             ..Default::default()
         };
         project.documents.insert(doc.id.clone(), doc);
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         // Reload and confirm the writer kept the historical timestamp.
         let reloaded = read_project(&project_path).unwrap();
@@ -1875,6 +1975,7 @@ mod tests {
         let project_path = temp_dir.path().join("CorruptMeta.chikn");
 
         let mut project = create_project(&project_path, "Corrupt Meta").unwrap();
+        let token = test_token(&project_path);
         let doc = Document {
             id: "doc1".to_string(),
             name: "Stable".to_string(),
@@ -1886,7 +1987,7 @@ mod tests {
             ..Default::default()
         };
         project.documents.insert(doc.id.clone(), doc);
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         let meta_path = get_manuscript_path(&project_path).join("stable.meta");
         let content_path = get_manuscript_path(&project_path).join("stable.md");
@@ -1901,7 +2002,7 @@ mod tests {
             .content
             .push_str("\nupdated");
 
-        let result = write_project(&mut project);
+        let result = write_project(&mut project, &token);
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert_eq!(fs::read_to_string(&meta_path).unwrap(), "id: [");
@@ -1943,6 +2044,7 @@ mod tests {
         let project_path = temp_dir.path().join("AtomicTempCleanup.chikn");
 
         let mut project = create_project(&project_path, "Atomic Temp Cleanup").unwrap();
+        let token = test_token(&project_path);
         let doc = Document {
             id: "doc1".to_string(),
             name: "Stable".to_string(),
@@ -1954,7 +2056,7 @@ mod tests {
             ..Default::default()
         };
         project.documents.insert(doc.id.clone(), doc);
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         project
             .documents
@@ -1962,7 +2064,7 @@ mod tests {
             .unwrap()
             .content
             .push_str("\nupdated");
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
 
         assert_no_atomic_temp_files(&project_path);
         assert_no_atomic_temp_files(&get_manuscript_path(&project_path));
@@ -1990,6 +2092,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("EmptyThreads.chikn");
         let mut project = create_project(&project_path, "Empty Threads").unwrap();
+        let token = test_token(&project_path);
 
         project.threads = vec![crate::models::Thread {
             id: "main".into(),
@@ -1998,7 +2101,7 @@ mod tests {
             description: None,
             extra: Default::default(),
         }];
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
         let threads_path = project_path.join("threads.yaml");
         assert!(
             threads_path.exists(),
@@ -2006,7 +2109,7 @@ mod tests {
         );
 
         project.threads.clear();
-        write_project(&mut project).unwrap();
+        write_project(&mut project, &token).unwrap();
         assert!(
             !threads_path.exists(),
             "threads.yaml removed when project drops to zero threads"

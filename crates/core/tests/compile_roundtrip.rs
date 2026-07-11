@@ -1,4 +1,5 @@
 use chickenscratch_core::core::compile::{compile, CompileOptions, FORMATS};
+use chickenscratch_core::core::project::fidelity::acquire_write_token;
 use chickenscratch_core::core::project::writer::{create_project, write_project};
 use chickenscratch_core::models::{Document, TreeNode};
 use chickenscratch_core::ChiknError;
@@ -119,6 +120,7 @@ fn compile_without_includable_manuscript_content_fails_cleanly() {
 fn create_compile_project(root: &Path, with_includable_content: bool) -> PathBuf {
     let project_path = root.join(format!("CompileFixture-{}.chikn", uuid::Uuid::new_v4()));
     let mut project = create_project(&project_path, "Compile Fixture").unwrap();
+    let token = acquire_write_token(&project_path).unwrap();
     project.metadata.author = Some("Project Author".to_string());
 
     let first = Document {
@@ -192,7 +194,7 @@ fn create_compile_project(root: &Path, with_includable_content: bool) -> PathBuf
         path: research.path.clone(),
     });
 
-    write_project(&mut project).unwrap();
+    write_project(&mut project, &token).unwrap();
     project_path
 }
 

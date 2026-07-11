@@ -1,5 +1,5 @@
 use chickenscratch_core::core::git;
-use chickenscratch_core::core::project::{reader, writer};
+use chickenscratch_core::core::project::{fidelity, reader, writer};
 use chickenscratch_core::{ChiknError, Project};
 use chikn_converter;
 use std::path::Path;
@@ -18,7 +18,10 @@ pub fn create_project(
     let project_path = Path::new(&path).join(format!("{}.chikn", name));
     write_locks.with_project_lock(&project_path, || {
         let mut project = writer::create_project(&project_path, &name)?;
-        writer::write_project(&mut project)?;
+        // A project the engine itself just initialized probes Full by
+        // construction, so the token acquisition doubles as a self-check.
+        let token = fidelity::acquire_write_token(&project_path)?;
+        writer::write_project(&mut project, &token)?;
         let _ = git::save_revision(&project_path, &format!("Created project: {}", name));
         Ok(project)
     })
@@ -35,8 +38,9 @@ pub fn save_project(
     write_locks: State<'_, ProjectWriteLocks>,
 ) -> Result<Project, ChiknError> {
     let project_path = project.path.clone();
-    write_locks.with_project_lock(project_path, || {
-        writer::write_project(&mut project)?;
+    write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }
@@ -72,6 +76,7 @@ pub fn update_project_metadata(
     session_target: Option<chickenscratch_core::SessionTarget>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
+        let token = fidelity::acquire_write_token(Path::new(&project_path))?;
         let mut project = reader::read_project(Path::new(&project_path))?;
         project.metadata.title = title;
         project.metadata.author = author;
@@ -80,7 +85,7 @@ pub fn update_project_metadata(
         project.metadata.theme = theme;
         project.metadata.summary = summary;
         project.metadata.session_target = session_target.filter(|t| !t.is_empty());
-        writer::write_project(&mut project)?;
+        writer::write_project(&mut project, &token)?;
         Ok(project)
     })
 }
