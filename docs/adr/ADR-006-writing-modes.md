@@ -1,9 +1,7 @@
 # ADR-006: The UI is organized around switchable writing modes
 
-**Status:** UNAPPROVED WORKING NOTES — not a decision. This file captures a
-2026-07-11 brainstorm and was recorded without owner approval (a governance
-error the owner called out; downgraded at owner instruction). Nothing in it
-authorizes work. A real decision requires the owner's explicit word.  
+**Status:** Proposed — draft design notes, not an accepted decision.
+Authorizes no work.  
 **Date:** 2026-07-11
 
 ## Context
