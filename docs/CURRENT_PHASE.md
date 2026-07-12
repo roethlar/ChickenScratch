@@ -30,8 +30,8 @@ supported Rust applications.
 - [ ] Re-verify that all `.chikn` writes remain centralized in
   `chickenscratch-core`; no duplicate writer or app-level format I/O exists.
 - [ ] Confirm project mutation paths preserve user data and cannot bypass the
-  write guard, safe paths, per-file atomic document writes, or dirty-worktree
-  protections.
+  write guard, safe paths, the I6 atomic document-write guarantee, or
+  dirty-worktree protections.
 - [ ] Keep the declared validation suite and release-metadata check green for
   every landed slice.
 - [ ] Record the owner's declaration when hardening is complete.
