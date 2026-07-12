@@ -63,13 +63,13 @@ decisions; `DEVLOG.md` holds history.
 
 ## Next
 
-1. **Proposed Slice 1 — NOT approved:** seal the fresh-fidelity boundary.
-   Make the public/default reader side-effect-free, put self-heal behind valid
-   write authority, and make mutation-time token validation detect current
-   disk fidelity rather than only the in-process epoch. Guard proof: acquire a
-   token, externally degrade the fixture, then every public read/mutation must
-   leave the tree byte-identical. Draft the implementation plan only after
-   owner approval.
+1. **Slice 1 approved 2026-07-12; implementation pending:** seal the
+   fresh-fidelity operation boundary per
+   `docs/plans/PLAN_FRESH_FIDELITY_BOUNDARY.md`. Public/default reads become
+   side-effect-free; every logical mutation receives one freshly probed,
+   operation-scoped permit reused across its internal steps. Guard proof:
+   acquire a session token, externally degrade the fixture, then permit
+   issuance and every public read leave the tree byte-identical.
 2. After Slice 1, propose the Scrivener asset-import boundary as the next
    single concern; keep the remaining ranked findings parked above.
 3. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
