@@ -6,6 +6,14 @@ decisions; `DEVLOG.md` holds history.
 
 ## Now
 
+- Phase **Engine hardening — protect writers' work** is active as of
+  2026-07-12 (`docs/CURRENT_PHASE.md` is authoritative). The first step is a
+  read-only re-verification and prioritization of the existing integrity-risk
+  record; advancing the phase does not approve a code slice.
+- **Coherence is complete.** The owner confirmed on 2026-07-12 that completion
+  had already been declared but not saved. Format lock, Tauri alignment,
+  deprecation cleanup, and goals G1–G6 are recorded as completed in
+  `docs/CURRENT_PHASE.md` and the shipped plans/DEVLOG entries it points to.
 - **Write-guard shipped** (2026-07-11, `docs/plans/PLAN_TRUST_FOUNDATIONS.md`
   Slice 1; DEVLOG top entry has the slice-by-slice detail and guard
   proofs): side-effect-free fidelity probe + non-forgeable root-bound,
@@ -19,50 +27,34 @@ decisions; `DEVLOG.md` holds history.
   (research PDFs etc.) are now fidelity-neutral while present, and the
   writer structurally refuses text writes into non-.md paths (DEVLOG top
   entry, follow-up paragraph).
-- Phase **Coherence** (`docs/CURRENT_PHASE.md` is authoritative): Steps 1–3
-  effectively done; deprecation cleanup (G4–G6) and ADR-005 binary-only
-  distribution executed 2026-07-10 (DEVLOG entries; archived detail in
-  `docs/history/state-archive.md`).
-- **Push status** (verified 2026-07-11 via git + `gh`): the accumulated
-  commits are pushed; local `master`, Gitea `origin` (http://q:3000), and
-  `github` (https://github.com/roethlar/ChickenScratch) are all at
-  `e17ceeb`. GitHub CI at the tip is green — Validation (run 29147248690)
-  and Tauri Bundles (run 29147248729) both succeeded, all four check-runs
-  passing. Note: three intermediate Slice 1 commits have red Validation
-  runs (Darwin EPERM killing an exited-leader process group, fixed by
-  `e17ceeb` itself), so mid-stack commits on master are not individually
-  green; the branch tip is.
+- **Push status** (verified 2026-07-12 before this phase-transition commit):
+  local `master`, Gitea `origin`, and `github` were all at `d99bf79`;
+  Validation at that bookkeeping tip is green. The latest code tip
+  (`e17ceeb`) also has green Validation and Tauri Bundles runs. This
+  phase-transition commit remains local until the owner gives a push go.
 
 ## Blockers
 
-- None. (The release-metadata blocker recorded here earlier on 2026-07-10
-  was resolved the same day by ADR-005: the Arch packaging and its pinned
-  checksum were removed; `check-release-metadata.sh` passes.)
+- None. Vault remote design is deliberately paused work, not a blocker to
+  the active engine-hardening phase.
 
 ## Known drift (recorded, not yet fixed)
 
-The 2026-07-10 cleanup (`docs/plans/PLAN_DEPRECATION_CLEANUP.md`) resolved
-the CI/release/README/ARCHITECTURE/ROADMAP entries formerly listed here
-(archived detail: DEVLOG top entry). Remaining:
-
-- ~~Doc stragglers~~ swept 2026-07-10 on owner yes (USER_GUIDE,
-  EDITOR_DESIGN scope line, TODO parity section, I3/glossary wording —
-  one commit each). Remaining mentions are intentional: historical docs
-  (`docs/GPT_Code_Review.md`, EDITOR_DESIGN's date-stamped April tree),
-  and harmless `.gitignore` / `.gitattributes` patterns.
-- `docs/CURRENT_PHASE.md` Step 4 lists "Add `DEPRECATED.md` stubs in
-  `macos/`, `windows/`, `linux/`" — moot now the trees are deleted (G6 is
-  satisfied by deletion + ADR-004). Owner-controlled file; report-only.
+- `.agents/repo-map.json` still carries a 2026-07-09 verification snapshot
+  that says CI/release metadata are red and lists the earlier narrow command
+  set. Current CI and `.agents/repo-guidance.md` show those claims are stale.
+- `docs/AGENT-WORKFLOW.md` section 5 still lists the earlier narrow command
+  set while `.agents/repo-guidance.md` records the current CI-matching suite.
+  Reconcile both in a deliberate drift pass; neither blocks this phase
+  transition.
 
 ## Next
 
-1. Slice 2 (vault) is pending and NOT approved: the owner said "we're
-   nowhere near deciding how remotes will work". No vault work until a
-   fresh owner decision on remote design (and the plan's open v1
-   guided-token question).
-2. Owner decision: G4/G5 work is done and G2/G3/G6 look met — declare
-   goals met / advance the phase via `SET PHASE`, or name the next work.
-   Checkbox edits in `docs/CURRENT_PHASE.md` are the owner's call.
+1. Run the read-only hardening audit defined in `docs/CURRENT_PHASE.md`:
+   re-verify existing integrity findings against current code, then present
+   one highest-risk proposed slice in plain English for approval.
+2. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
+   decision on remote design and the plan's open v1 guided-token question.
 
 ## Verification
 

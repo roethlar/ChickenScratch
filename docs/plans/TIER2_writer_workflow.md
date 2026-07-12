@@ -1,7 +1,9 @@
 # Tier 2 — Writer Workflow
 
 **Priority:** v1.2
-**Status:** Paused until [format finalization](PHASE_FORMAT_FINALIZATION.md) ships
+**Status:** Tauri scope shipped before the Engine hardening phase; tracked as
+completed in [`TODO.md`](../../TODO.md).
+[Format finalization](PHASE_FORMAT_FINALIZATION.md) is complete
 **Layer:** UI-only. Anything that looks like format schema below (e.g., `session_target` in `project.yaml`) lands as a convention the novelist UI owns and the format preserves through its generic-fields mechanism.
 **Depends on:** Tier 1 (same phase, sequential)
 

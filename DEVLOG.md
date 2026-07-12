@@ -6,6 +6,20 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-07-12 — Coherence closed; Engine hardening is active
+
+**Change:** Recorded the owner's confirmation that Coherence had already been
+declared complete but the transition was never saved. `CURRENT_PHASE.md` now
+advances to Engine hardening, the next established project priority, with a
+read-only integrity audit as its first step and no code slice implicitly
+approved. Current-state, roadmap, TODO, and plan-status references were
+aligned so completed format work cannot be mistaken for an active phase or an
+automatic go-ahead for later novelist features. Vault/remote work remains
+explicitly unapproved pending a remote-design decision.
+
+**Verified:** documentation links and phase/status searches; `git diff
+--check`. No runtime code changed, so the code validation suite was not run.
+
 ## 2026-07-11 — Write-guard shipped (PLAN_TRUST_FOUNDATIONS Slice 1): the app can no longer save over a project it cannot fully read
 
 **Change:** Executed the owner-approved

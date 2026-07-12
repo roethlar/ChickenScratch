@@ -133,21 +133,12 @@ See [ROADMAP.md](docs/ROADMAP.md) for feature plans and [DEVLOG.md](DEVLOG.md) f
 - [x] AI streaming responses — `ai_transform_stream` emits `ai:chunk`/`ai:done`/`ai:error` events; AiMenu replaces selection incrementally as tokens arrive (Ollama, Anthropic, OpenAI)
 - [x] Remote sync pull + merge UX — `sync_pull` returns up_to_date / fast_forward / merged / conflicts; conflict dialog offers Resolve manually / Abort / Overwrite local with remote
 
-### Current phase — Format finalization
-See [docs/plans/PHASE_FORMAT_FINALIZATION.md](docs/plans/PHASE_FORMAT_FINALIZATION.md).
-- [x] Replace novelist-typed fields with generic `fields` map in `crates/core` (Document + DocumentMetadata)
-- [x] Round-trip + foreign-key-preservation tests in core (53/53 lib tests pass)
-- [x] Format spec v1.2 reframed as "generic UI extensibility via `fields`"
-- [x] Novelist-UI convention doc (`docs/UI_CONVENTIONS_NOVELIST.md`)
-- [x] Tauri: Inspector Scene section writes through generic `fields` payload
-- [x] Audit all 5 UIs for round-trip preservation
-- [x] Patch Windows WinUI for `Fields` map preservation
-- [x] Patch Windows WinUI for full identity + format-data preservation (`Id`/`Name`/`ParentId` + `comments`/`section_type`/`scrivener_uuid`/`session_target`/`threads.yaml`); fix `include_in_compile` wire-type drift; switch reader to disk-walking for entity folders (fifth review pass batch 1, see DEVLOG 2026-05-07)
-- [x] Cross-frontend Rust regression test (`crates/core/tests/cross_frontend_round_trip.rs`) covers Windows-shaped writer output + legacy bool `include_in_compile` + self-heal-on-missing-folder
-- [ ] Windows host smoke test (local `dotnet build` blocked on macOS by .NET 10.0.7 CoreCLR crash)
-- [ ] End-to-end round-trip test scripted across all 5 UIs (manual procedure documented; automated test deferred)
+### Current phase — Engine hardening
+See [docs/CURRENT_PHASE.md](docs/CURRENT_PHASE.md) for the authoritative work
+order. Coherence and format finalization are complete; their shipped detail
+lives in DEVLOG and the completed plans rather than this current-work list.
 
-### v1.2 — Novelist UI features (paused, resumes after format finalization)
+### v1.2 — Novelist UI feature record (Tier 1/2 shipped; Tier 3 later)
 Reframed: these are UI-layer plans now. The format ships generic extensibility; UIs implement novelist conventions on top.
 
 **Tier 1 — Novel structure** ([plan](docs/plans/TIER1_novel_structure.md)):

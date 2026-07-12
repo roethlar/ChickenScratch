@@ -1,7 +1,9 @@
 # Tier 1 — Novel Structure
 
 **Priority:** v1.2, highest leverage
-**Status:** Paused until [format finalization](PHASE_FORMAT_FINALIZATION.md) ships
+**Status:** Tauri scope shipped before the Engine hardening phase; tracked as
+completed in [`TODO.md`](../../TODO.md).
+[Format finalization](PHASE_FORMAT_FINALIZATION.md) is complete
 **Layer:** UI-only — the `.chikn` format stays genre-agnostic; this plan writes through the generic `fields` map and filesystem conventions. Key names for the novelist UI are frozen in `docs/UI_CONVENTIONS_NOVELIST.md`, not in the format spec.
 **Depends on:** Format finalization (generic `fields` map landed in core)
 

@@ -88,8 +88,8 @@ test -n "$(find target/release/bundle/appimage -name '*.AppImage' -print -quit)"
 ```
 
 Windows: no Windows artifact build exists yet. Windows ships later as a
-Tauri bundle (`docs/CURRENT_PHASE.md` Step 5); the deprecated WinUI build was
-removed with the `windows/` tree (ADR-004).
+Tauri bundle (`docs/PROJECT.md` priority order); the deprecated WinUI build
+was removed with the `windows/` tree (ADR-004).
 
 Linux artifact builds must be validated on their native hosts or via CI.
 

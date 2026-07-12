@@ -1,13 +1,23 @@
-# Phase — Format Finalization, Then UI Sync
+# Phase — Format Finalization (completed; UI sync superseded)
 
 > **Governance update (2026-06-07):** Step 2 (“Sync the five UIs”) is **superseded** by [ADR-004](../adr/ADR-004-deprecated-native-engines.md). Format work applies to the **Rust engine** and **Tauri reference UI** only. Swift/C#/Qt parity is no longer a goal. See [CURRENT_PHASE.md](../CURRENT_PHASE.md).
 
-**Status:** Active (engine + Tauri scope only)
-**Scope:** Replace all current feature work until complete.
+**Status:** Completed. Engine format lock shipped 2026-07-09; the owner later
+confirmed the enclosing Coherence phase complete, durably recorded
+2026-07-12. The five-UI sync scope remains superseded by ADR-004.
 
-The `.chikn` format is one concept. The five frontends are separate things that agree on it. This phase solidifies that split: lock the format as genre-agnostic, then bring every UI into lockstep with the locked schema.
+**Scope:** Historical phase record; it no longer replaces current work.
 
-A recent commit (`10ec683`) put novelist vocabulary (`pov_character`, `location`, `story_time`, `duration_minutes`, `threads`, `characters_in_scene`) directly into the `.chikn` schema. That's wrong. The format has no domain. Novelist concepts belong in the UIs that interpret the format, not in the format itself. This phase fixes that and sets the rule going forward.
+The `.chikn` format is one concept shared through the canonical Rust engine.
+This phase locked the format as genre-agnostic, then aligned the Tauri
+reference UI. The original five-independent-frontend sync scope was
+superseded before completion by ADR-004; it did not ship and is not an active
+instruction.
+
+Commit `10ec683` had put novelist vocabulary (`pov_character`, `location`,
+`story_time`, `duration_minutes`, `threads`, `characters_in_scene`) directly
+into the `.chikn` schema. The phase removed that coupling: the format has no
+domain, and novelist concepts belong in UIs that interpret generic fields.
 
 ---
 
@@ -16,7 +26,9 @@ A recent commit (`10ec683`) put novelist vocabulary (`pov_character`, `location`
 1. **Genre-agnostic.** No POV, no scene, no plot thread at the format level. No room-of-requirement, no lab experiment, no session date either — if it's a domain concept, it's a UI concept.
 2. **One generic extensibility point.** UIs write their domain-specific data into a single typed map. The format stores and preserves the map; it does not interpret.
 3. **Tolerant readers, preserving writers.** Same rule as the [Folder-First Documents pattern](../FOLDER_FIRST_DOCUMENTS.md). Unknown keys round-trip untouched. Schema additions are non-breaking by construction.
-4. **One format, five UIs.** Every frontend reads and writes through the same contract. An entry a UI doesn't understand survives a round-trip through that UI without loss.
+4. **One engine, many interfaces.** Supported applications call
+   `chickenscratch-core`; an interface that does not understand a field must
+   still preserve it through the engine.
 
 ---
 
@@ -41,22 +53,27 @@ A recent commit (`10ec683`) put novelist vocabulary (`pov_character`, `location`
 ### Step 1 — Lock the schema
 
 - Remove the six novelist-typed fields from `Document` and `DocumentMetadata` in `crates/core`.
-- Add a single `fields: HashMap<String, serde_yaml::Value>` to both structs, `#[serde(default, skip_serializing_if = "HashMap::is_empty")]` so documents not using it write an identical `.meta` to today's.
+- Add a single ordered `fields` map to both structs, omitted from serialized
+  metadata when empty so documents not using it retain their prior shape.
 - Update the reader to parse tolerantly (already does), and the writer to preserve the map.
 - Round-trip test: set arbitrary keys → write → read → keys preserved. No-keys test: scene with empty map writes no `fields:` line.
 - Publish the updated `CHIKN_FORMAT_SPEC.md` — v1.2 section reframed as "Generic UI extensibility via the `fields` map," not a list of domain-specific field names.
 
-### Step 2 — Sync the five UIs
+### Step 2 — Align supported applications
 
-For each UI, the required behavior is the same: **read `.meta` tolerantly, preserve `fields` on every write.** Display and editing of `fields` contents is optional per-UI.
+Supported applications read and write through the same engine contract:
+**read `.meta` tolerantly and preserve `fields` on every write.** Display and
+editing of `fields` contents remains optional per interface.
 
-- **Tauri (`src-tauri/` + `ui/`)** — already the fullest frontend. Rewire the Inspector's Scene section to write known novelist keys into `doc.fields`, not into typed struct fields. Same UX.
-- **TUI (`crates/tui/`)** — uses `chickenscratch-core` directly. Preservation is free. Editing `fields` is optional; v1.2 TUI just preserves.
-- **Linux Qt6 (`linux/`)** — uses `chickenscratch-core` via the `cxx-qt` bridge. Preservation is free.
-- **macOS SwiftUI (`macos/`)** — has its own `ChiknKit` in Swift. The current `touchMeta` path loads YAML into `[String: Any]` and writes it back, which preserves unknown keys for the save-doc path. Verify; ensure `createDocument` writes `fields: {}` (or just omits the key); ensure the Codable-based project.yaml writer also preserves unknown top-level keys when we get there.
-- **Windows WinUI 3 (`windows/`)** — has its own `ChickenScratch.Core` in C# using `YamlDotNet`. Verify deserializer preserves unknowns; implement an extra-fields bag on the C# Document model if needed. Patch the reader and writer to round-trip.
+- **Tauri (`src-tauri/` + `ui/`)** — the Inspector's Scene section writes
+  known novelist keys into `doc.fields`, not typed format fields.
+- **TUI (`crates/tui/`)** and **converter (`crates/cli/`)** — use
+  `chickenscratch-core` directly and preserve the engine contract.
+- **Qt6, SwiftUI, and WinUI experiments** — removed under ADR-004. Their
+  original sync tasks were superseded and were not part of phase completion.
 
-Where a UI's reader is strict (drops unknown keys), that's a data-loss bug this phase fixes. No UI ships until it preserves.
+Dropping unknown keys is a data-loss bug. Supported applications ship only
+through the preserving engine contract.
 
 ### Step 3 — Publish a novelist-UI convention doc
 
@@ -69,31 +86,43 @@ Separate from the format spec. `docs/UI_CONVENTIONS_NOVELIST.md` lists the agree
 - `threads` — list of thread ids the UI tracks
 - `characters_in_scene` — list of character slugs/ids
 
-Any novelist UI (Tauri Inspector, future SwiftUI scene inspector, etc.) that chooses to implement scene metadata uses these exact keys, so the data interoperates. Other domains (D&D, lab notebook, case file) publish their own convention docs when they arrive.
+Any novelist UI that chooses to implement scene metadata uses these exact
+keys, so the data interoperates. Other domains (D&D, lab notebook, case file)
+publish their own convention docs when they arrive.
 
 ### Step 4 — Verify and lock
 
-- All five UIs build clean.
-- Round-trip a project through each UI: open in Tauri, save in TUI, edit in SwiftUI, open in Tauri again — the `fields` map survives every hop unchanged except for fields the writer UI explicitly modified.
-- One end-to-end integration test scripted in the repo.
+- Engine round-trip tests prove the `fields` map and unknown keys survive
+  read/write cycles.
+- Tauri, TUI, and converter validation use the canonical engine contract.
+- The declared suite passes for the supported applications.
 
 ---
 
-## What comes after this phase
+## What followed this phase
 
-The three [tier plans](README.md) for novelist features (`TIER1_novel_structure.md`, `TIER2_writer_workflow.md`, `TIER3_polish.md`) resume — but reframed as *novelist-UI* work, not format work:
+The three [tier plans](README.md) for novelist features were reframed as
+*novelist-UI* work, not format work. The Tauri scope of Tier 1 and Tier 2
+later shipped; the unfinished Tier 3 items remain a later priority:
 
 - **Scene-level metadata** (Tier 1) — Tauri writes/reads the convention keys in `fields`. Format has nothing to add.
-- **Characters and locations as entities** (Tier 1) — format gets *one* generic mechanism for entity-like folders with sidecars (maybe `entities/` is a convention for "folder of cross-referenceable items," maybe not — we decide post-finalization). Novelist UI makes `characters/` and `locations/` folders inside it by convention.
-- **Plot threads** (Tier 1) — `threads.yaml` is novelist-UI convention, not format. The format preserves any additional YAML file it doesn't know about as long as git tracks it.
-- **Timeline, scrivenings, session targets, snapshots, collections, rich research, split editor** (Tiers 2–3) — all UI-layer.
+- **Characters and locations as entities** (Tier 1) — shipped as novelist
+  conventions in `characters/` and `locations/` folders.
+- **Plot threads** (Tier 1) — shipped through the novelist-UI
+  `threads.yaml` convention, not as typed format schema.
+- **Flow mode, timeline, session targets, and snapshots** (Tier 2) — shipped
+  in Tauri; **collections, rich research, and split editor** (Tier 3) remain
+  UI-layer work for a later priority.
 
-Doing format finalization first means these features slot in cleanly without the "oops, we need to extend the format schema again" pattern that just cost us a commit.
+Format finalization let those features use generic conventions without
+reopening the core schema.
 
 ---
 
 ## Out of scope this phase
 
 - Visual novelist features. Not shipping new UX; shipping correctness.
-- Other frontends gaining new capabilities. TUI, Qt6, SwiftUI, WinUI preserve `fields` this phase; they don't gain editing UI for it.
-- AI streaming and remote-sync v1.1 items. Those resume after.
+- Removed native experiments gaining new capabilities; ADR-004 superseded
+  that scope.
+- AI streaming and remote-sync v1.1 items, which proceeded separately and
+  are now shipped.

@@ -8,12 +8,28 @@ These sit alongside [ROADMAP.md](../ROADMAP.md) (forward-looking feature catalog
 
 **Authoritative:** [`CURRENT_PHASE.md`](../CURRENT_PHASE.md) · [`INVARIANTS.md`](../INVARIANTS.md)
 
-**[PHASE_FORMAT_FINALIZATION.md](PHASE_FORMAT_FINALIZATION.md)** — lock the `.chikn` format as genre-agnostic (`fields` map per document). **Engine + Tauri only** — five-frontend sync is deprecated per [ADR-004](../adr/ADR-004-deprecated-native-engines.md).
+**Engine hardening** is active. The authoritative scope and work order live in
+[`CURRENT_PHASE.md`](../CURRENT_PHASE.md); no code slice is approved merely by
+advancing the phase.
 
-**v1.2 — Novelist features** *(UI-layer, paused until format finalization ships).* Bring ChickenScratch up to parity with (and past) the best open-source Scrivener alternatives on the features that actually matter for long-form fiction. Sourced from a comparative survey of Scrivener, Manuskript, bibisco, oStorybook, and yWriter. These are **novelist-UI** plans — the format stays genre-agnostic; novelist UIs write their domain-specific data into the generic `fields` extensibility that format finalization introduces.
+**Completed predecessor:**
+[PHASE_FORMAT_FINALIZATION.md](PHASE_FORMAT_FINALIZATION.md) locked the
+`.chikn` format as genre-agnostic (`fields` map per document). **Engine +
+Tauri only** — five-frontend sync is deprecated per
+[ADR-004](../adr/ADR-004-deprecated-native-engines.md).
 
-- **[TIER1_novel_structure.md](TIER1_novel_structure.md)** — scene-level metadata, characters/locations as entities, plot threads.
-- **[TIER2_writer_workflow.md](TIER2_writer_workflow.md)** — scrivenings mode, session targets with deadlines, per-document snapshots, timeline view.
-- **[TIER3_polish.md](TIER3_polish.md)** — collections, rich research (inline PDF/image preview), split editor.
+**v1.2 — Novelist feature plans** are UI-layer work: the format stays
+genre-agnostic and the Tauri novelist UI writes domain-specific data into the
+generic `fields` extensibility that format finalization introduced. The
+Tauri scope of Tier 1 and Tier 2 shipped before the Engine hardening phase;
+unfinished Tier 3 work is a later priority.
+
+- **[TIER1_novel_structure.md](TIER1_novel_structure.md)** — Tauri scope
+  shipped:
+  scene-level metadata, characters/locations as entities, plot threads.
+- **[TIER2_writer_workflow.md](TIER2_writer_workflow.md)** — Tauri scope
+  shipped: flow mode, session targets, per-document snapshots, timeline view.
+- **[TIER3_polish.md](TIER3_polish.md)** — later priority: collections, rich
+  research (inline PDF/image preview), split editor.
 
 Deliberately **not** on the roadmap: name generators, deep character-psychology forms, snowflake-method spreadsheets. These bloat the UI with features that look good in a feature list and then nobody uses.

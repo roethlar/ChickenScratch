@@ -6,7 +6,9 @@ ChickenScratch is a functional cross-platform writing app. Core features impleme
 
 **One engine, one GUI, one canonical storage format** ([ADR-004](adr/ADR-004-deprecated-native-engines.md)):
 - **Rust engine** (`crates/core`) — the only `.chikn` reader/writer
-- **Tauri + React + TipTap** — the desktop app; daily-driver on macOS + Linux, Windows bundle planned ([CURRENT_PHASE.md](CURRENT_PHASE.md) Step 5)
+- **Tauri + React + TipTap** — the desktop app; daily-driver on macOS + Linux,
+  with a Windows bundle remaining a later project priority
+  ([PROJECT.md](PROJECT.md))
 - **Ratatui TUI** (`chikn` binary, any OS) — keyboard-first terminal editor
 - **Converter CLI** (`chikn-converter`) — Scrivener → `.chikn`
 - **Canonical storage** — Pandoc Markdown (`.md` files on disk)
@@ -107,30 +109,40 @@ Superseded by [ADR-004](adr/ADR-004-deprecated-native-engines.md) before complet
 
 ---
 
-## Current phase — Format finalization, then UI sync
+## Current phase — Engine hardening
 
-The `.chikn` format is one concept, genre-agnostic. This phase solidifies that split: lock the format schema and give UIs a single generic extensibility point (`fields` map per document). See [plans/PHASE_FORMAT_FINALIZATION.md](plans/PHASE_FORMAT_FINALIZATION.md) for the original plan and [plans/PLAN_FORMAT_LOCK_ENGINE.md](plans/PLAN_FORMAT_LOCK_ENGINE.md) for the engine lock that shipped 2026-07-09 (see "Format (engine)" under What's Built). Multi-frontend sync was superseded by [ADR-004](adr/ADR-004-deprecated-native-engines.md) — engine + Tauri only.
+Coherence and format finalization are complete. The active phase now focuses
+on the canonical Rust engine's data-safety, save, revision, recovery, and
+write-guard guarantees before more reference-app expansion. See
+[CURRENT_PHASE.md](CURRENT_PHASE.md) for the authoritative work order.
 
-Remaining phase work is cleanup, not format: CI/release scripts and docs still referencing the deleted native trees (goals G4–G6 in [CURRENT_PHASE.md](CURRENT_PHASE.md)). Feature work below (including the Tier 1/2/3 novelist plans) resumes once the owner closes the phase.
+The completed format work remains documented in
+[plans/PHASE_FORMAT_FINALIZATION.md](plans/PHASE_FORMAT_FINALIZATION.md) and
+[plans/PLAN_FORMAT_LOCK_ENGINE.md](plans/PLAN_FORMAT_LOCK_ENGINE.md).
+Multi-frontend sync was superseded by
+[ADR-004](adr/ADR-004-deprecated-native-engines.md).
 
 ---
 
-## v1.2 — Novelist features (UI-layer, resumes after format finalization)
+## v1.2 — Novelist feature record and remaining polish
 
 Comparative survey across Scrivener, Manuskript, bibisco, oStorybook, and yWriter identified features that genuinely change novelist workflows. These are **UI-layer** plans now — the format stays genre-agnostic; the novelist UIs interpret generic `fields` entries per the convention in `docs/UI_CONVENTIONS_NOVELIST.md`.
 
-**Tier 1 — [Novel Structure](plans/TIER1_novel_structure.md)** (highest leverage):
+The Tauri scope of Tier 1 and Tier 2 is shipped. Tier 3 remains a later
+priority after Engine hardening and further reference-app work.
+
+**Tier 1 — [Novel Structure](plans/TIER1_novel_structure.md)** (shipped):
 - Scene-level metadata (POV, location, story time, duration, threads) — novelist UI reads/writes known keys in `doc.fields`
 - Characters and locations as first-class entities — convention: `characters/` and `locations/` folders, handled by novelist UIs that opt in
 - Plot threads — `threads.yaml` as a novelist-UI convention file, format preserves it like any other tracked file
 
-**Tier 2 — [Writer Workflow](plans/TIER2_writer_workflow.md)**:
+**Tier 2 — [Writer Workflow](plans/TIER2_writer_workflow.md)** (shipped):
 - Scrivenings mode (edit multiple documents as continuous prose)
 - Session targets with deadlines (floating progress badge + welcome-card)
 - Per-document snapshots (git log scoped to one file + one-doc restore)
 - Timeline view (chronological scene view using the novelist `story_time` convention)
 
-**Tier 3 — [Polish](plans/TIER3_polish.md)**:
+**Tier 3 — [Polish](plans/TIER3_polish.md)** (later priority):
 - Collections (saved structured queries — operate over `fields` keys too)
 - Rich research (inline PDF/image/audio preview)
 - Split editor (two panes, independent editors)

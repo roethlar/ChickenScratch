@@ -1,65 +1,80 @@
 # Current Phase
 
-**Status:** Active — change only when owner says `SET PHASE`  
-**Started:** 2026-06-07
+**Status:** Active — advanced by the owner on 2026-07-12
+**Started:** 2026-07-12
 
 ---
 
-## Name: Coherence — single engine, one GUI
+## Name: Engine hardening — protect writers' work
 
-Stop drift. Align the repository with [INVARIANTS.md](INVARIANTS.md) and ADRs 001–004 before new features or marketing.
+Strengthen the canonical Rust engine's safety and recovery guarantees before
+expanding the reference app. This is the next unfinished priority in
+[PROJECT.md](PROJECT.md): Governance/Coherence and format finalization were
+completed in the preceding phase.
+
+## Previous phase
+
+**Coherence — single engine, one GUI** is complete. The owner confirmed that
+completion had already been declared and this durable record was missing.
+Its exit criteria landed through the format-lock and deprecation-cleanup
+plans: agent guidance is established, the format is locked and tested, all
+format I/O is centralized in `chickenscratch-core`, Tauri is the reference
+GUI, deprecated native trees are removed, and CI/release guidance follows the
+supported Rust applications.
 
 ## Goals (exit criteria)
 
-- [ ] **G1** — Agent docs complete; owner can assign plain-English tasks (`AGENTS.md`, this file, `HUMAN-GATE.md`)
-- [ ] **G2** — Format finalization complete per schema rules below (engine + spec + tests)
-- [ ] **G3** — No new code in deprecated `ChiknKit` / `ChickenScratch.Core` format paths
-- [ ] **G4** — README and `docs/ROADMAP.md` reflect Tauri + engine (not “five frontends at parity”)
-- [ ] **G5** — CI validation focuses on engine + Tauri + converter + TUI (deprecate WinUI workflow as release gate — optional sub-task)
-- [ ] **G6** — Deprecated directories archived or clearly marked in-tree
+- [ ] Re-verify and prioritize the remaining recorded engine-integrity risks.
+- [ ] Close each approved high-risk item one concern at a time, with a guard
+  test that fails when the protection is removed.
+- [ ] Re-verify that all `.chikn` writes remain centralized in
+  `chickenscratch-core`; no duplicate writer or app-level format I/O exists.
+- [ ] Confirm project mutation paths preserve user data and cannot bypass the
+  write guard, safe paths, per-file atomic document writes, or dirty-worktree
+  protections.
+- [ ] Keep the declared validation suite and release-metadata check green for
+  every landed slice.
+- [ ] Record the owner's declaration when hardening is complete.
 
 ## Active work order
 
-### Step 1 — Governance (this commit)
+### Step 1 — Hardening audit
 
-Agent files, invariants, ADRs, architecture map.
+Re-verify the integrity findings already recorded under "Out of scope" in
+[PLAN_FORMAT_LOCK_ENGINE.md](plans/PLAN_FORMAT_LOCK_ENGINE.md) against the
+current engine. Inspect current save, revision, restore, and recovery paths
+for equivalent risks. Rank findings by plausible data loss, not convenience.
 
-### Step 2 — Format lock (engine)
+This audit is read-only. Present one proposed safety slice at a time in plain
+English; advancing the phase does not itself approve a code change.
 
-From [PHASE_FORMAT_FINALIZATION.md](plans/PHASE_FORMAT_FINALIZATION.md), **engine scope only**:
+### Step 2 — Approved safety slices
 
-- Genre-agnostic `fields` map on documents (no typed novelist fields in core)
-- `CHIKN_FORMAT_SPEC.md` matches engine behavior
-- Round-trip tests in `chickenscratch-core`
+For each approved slice: write or identify the guarding test, prove it fails
+without the protection, implement inside `chickenscratch-core` first, update
+Tauri/TUI surfaces only where required, run the declared suite, and commit the
+single concern.
 
-**Out of scope for Step 2:** Syncing Swift/C#/Qt UIs (superseded by ADR-004).
+### Step 3 — Close-out
 
-### Step 3 — Tauri alignment
-
-- Inspector scene metadata → `doc.fields` per [UI_CONVENTIONS_NOVELIST.md](UI_CONVENTIONS_NOVELIST.md)
-- Any engine feature exposed only through Tauri commands
-
-### Step 4 — Deprecation cleanup
-
-- README platform table
-- Add `DEPRECATED.md` stubs in `macos/`, `windows/`, `linux/`
-- Trim `cross_frontend` CI requirements (owner approval for deletion)
-
-### Step 5 — Windows Tauri (after 1–4)
-
-Add Windows bundle to CI — same app as macOS/Linux.
+Re-audit engine mutation entry points, resolve or explicitly park the
+remaining findings with current evidence, then ask the owner whether to move
+to the Tauri reference-app phase.
 
 ## Explicitly paused
 
-- Novelist tier features ([plans/TIER1](plans/TIER1_novel_structure.md), etc.) until G2 complete
-- Marketing materials
-- WinUI / SwiftUI / Qt feature parity
-- Multi-repo split (revisit after G2 + G3)
+- Vault/remote work: remote design is not settled and Slice 2 of
+  [PLAN_TRUST_FOUNDATIONS.md](plans/PLAN_TRUST_FOUNDATIONS.md) is not approved.
+- Windows Tauri, novelist feature expansion, and marketing remain later
+  priorities unless the owner changes direction.
+- WinUI, SwiftUI, and Qt feature parity remain superseded by ADR-004.
 
 ## How agents pick up a task
 
-1. Read [`INVARIANTS.md`](INVARIANTS.md)
-2. Read this file — if the task is in **Paused**, stop and tell the owner
-3. Read [`ARCHITECTURE.md`](ARCHITECTURE.md) for where to edit
-4. Follow [`AGENT-WORKFLOW.md`](AGENT-WORKFLOW.md)
-5. Use [`templates/Plan-Template.md`](templates/Plan-Template.md) for non-trivial work
+1. Read [`INVARIANTS.md`](INVARIANTS.md).
+2. Read this file and do not start anything listed under **Explicitly paused**.
+3. Read [`ARCHITECTURE.md`](ARCHITECTURE.md) for the engine boundary.
+4. Follow [`AGENT-WORKFLOW.md`](AGENT-WORKFLOW.md).
+5. Use [`templates/Plan-Template.md`](templates/Plan-Template.md) before code
+   work that touches the engine, git writes, the format spec, or more than two
+   files.

@@ -18,8 +18,9 @@ compare views, Draft-mode redesign, and the ChickenCoop server are OUT of
 scope (see ADR-006, status Proposed — authorizes no work; coop is direction
 only).
 
-**Phase check:** [x] Not paused. Current phase goals G1–G6 are met or
-pending owner `SET PHASE`; this plan is the first post-cleanup work request.
+**Phase check:** [x] Slice 1 was allowed as the first post-cleanup safety
+work. Coherence was later recorded complete and Engine hardening became the
+active phase on 2026-07-12. Slice 2 remains explicitly paused above.
 
 **Invariants touched:** I5/I6 (this plan *strengthens* them), I2 (all format
 I/O stays in `crates/core`), I7 (git invisible: vault UX uses no git
