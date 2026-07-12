@@ -6,6 +6,48 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-07-12 — Fresh-fidelity operation boundary shipped
+
+**Change:** Shipped the owner-approved
+`docs/plans/PLAN_FRESH_FIDELITY_BOUNDARY.md` in `a0e7621`. A cached,
+root/epoch-bound `WriteToken` is now session identity only; every logical
+existing-project mutation must enter through a short-lived `WritePermit`
+issued after a fresh, side-effect-free fidelity probe. Nested deletion,
+restore, backup, and other composite steps reuse that permit instead of
+re-probing an intentionally intermediate tree. Both normal and force pull
+revalidate after network fetch before touching the worktree, and force pull
+also repeats its dirty-worktree check at the last safe point before reset.
+
+Public/default project reads are now side-effect-free. Missing benign folders
+are created only by the explicit permit-backed Full-open path, and corrupt
+sidecars remain byte-for-byte at their original paths rather than being
+quarantine-renamed. Tauri opens one permit inside each per-project lock and
+evicts cached authority after a fidelity refusal; TUI saves/revisions and the
+converter import use one operation permit; CLI export uses the pure reader.
+
+**Guard proofs (temporary local changes, never committed):** routing the
+public reader through folder repair and restoring a quarantine rename made
+both the combined corrupt-sidecar/missing-folder test and CLI source-tree
+identity test fail; restoring the pure reader made both pass. Bypassing the
+fresh permit probe made the old-session mutation-family test and Tauri cache
+eviction test fail; restoring the probe made both pass. Replacing shared
+deletion authority with a fresh permit per child made the two-document folder
+deletion fail after the first unlink; restoring one shared permit made it
+pass and left the final project Full.
+
+**Verified:** all targeted plan tests, including the combined pure read,
+two-document deletion, restore-forward commit, Corn sample, cross-root, and
+stale-epoch guards; then the complete declared suite: formatting, clippy with
+warnings denied across all four Rust packages/all targets, all library/bin/
+integration tests, release metadata, UI lint, and UI production build.
+
+**Follow-ups exposed, not widened into this slice:** a permitted
+`write_project` can currently accept an in-memory document omitted from the
+hierarchy, return success, and leave the next fidelity probe Degraded; and
+tree-replacing Git operations bump the epoch only after all later steps
+succeed, so a partial failure after a worktree mutation can leave cached UI
+state apparently current. `.agents/state.md` owns their current priority.
+
 ## 2026-07-12 — Coherence closed; Engine hardening is active
 
 **Change:** Recorded the owner's confirmation that Coherence had already been

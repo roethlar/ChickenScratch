@@ -1,6 +1,7 @@
 # Plan: Fresh-fidelity operation boundary
 
-**Status:** Approved 2026-07-12; implementation authorized, not yet shipped.
+**Status:** Shipped 2026-07-12 in `a0e7621`; guard proofs and verification are
+recorded in `DEVLOG.md`.
 
 **Owner request (quote):**
 > yes
@@ -118,30 +119,30 @@ only through an explicitly permitted initial-open path.
 
 ## [MODEL] Tests
 
-- [ ] Public/default read of a corrupt-sidecar + missing-folder fixture returns
+- [x] Public/default read of a corrupt-sidecar + missing-folder fixture returns
   a browsable in-memory project while the source tree stays byte-identical;
   corrupt bytes remain at the original path and no `.corrupt-*` appears.
-- [ ] Full project -> acquire session token -> externally change
+- [x] Full project -> acquire session token -> externally change
   `format_version` to `9.9` (and separately corrupt a sidecar) -> fresh permit
   issuance returns `ReadOnly`, keeps the old in-process epoch distinguishable,
   invalidates the Tauri cached token, and changes no bytes.
-- [ ] Representative mutation families cannot be invoked after external
+- [x] Representative mutation families cannot be invoked after external
   degradation: project write, document delete, app-file write, project-subdir
   creation, and revision save. Their shared permit gate covers the remaining
   same-family entry points without network-heavy duplicate tests.
-- [ ] One permit successfully deletes a folder containing at least two
+- [x] One permit successfully deletes a folder containing at least two
   documents and writes the final manifest; the result probes Full and neither
   document resurrects. This prevents accidental nested re-probing.
-- [ ] One permit successfully completes restore -> forward revision commit;
+- [x] One permit successfully completes restore -> forward revision commit;
   internal continuation must not request a second fidelity probe after the
   intentional tree replacement.
-- [ ] Full projects missing benign standard folders still repair only through
+- [x] Full projects missing benign standard folders still repair only through
   `read_project_with_repair`; the Corn sample remains Full, opens normally,
   and writes.
-- [ ] CLI `.chikn` export given a corrupt-sidecar source and a deliberately
+- [x] CLI `.chikn` export given a corrupt-sidecar source and a deliberately
   failing output path errors without changing the source tree or creating a
   quarantine file.
-- [ ] Retain existing cross-root and epoch-stale token tests, adapted to the
+- [x] Retain existing cross-root and epoch-stale token tests, adapted to the
   permit boundary.
 
 Targeted verification:
@@ -151,6 +152,9 @@ cargo test --locked -p chickenscratch-core --test write_guard fresh_fidelity -- 
 cargo test --locked -p chickenscratch-core --lib fresh_fidelity -- --nocapture
 cargo test --locked -p chickenscratch --bin chickenscratch fresh_fidelity -- --nocapture
 cargo test --locked -p chikn-converter --bin chikn-converter chikn_export_does_not_mutate_corrupt_source -- --nocapture
+cargo test --locked -p chickenscratch-core --test write_guard public_read_of_corrupt_sidecar_and_missing_folders_is_browsable_and_pure -- --nocapture
+cargo test --locked -p chickenscratch-core --lib operation_permit_deletes_multiple_documents_and_prevents_resurrection -- --nocapture
+cargo test --locked -p chickenscratch-core --test remote_sync restore_revision_clean_worktree_restores_and_commits_forward -- --nocapture
 ```
 
 Guard proofs (temporary local reversions, never committed):

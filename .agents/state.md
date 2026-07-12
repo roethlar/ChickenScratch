@@ -7,22 +7,26 @@ decisions; `DEVLOG.md` holds history.
 ## Now
 
 - Phase **Engine hardening — protect writers' work** is active as of
-  2026-07-12 (`docs/CURRENT_PHASE.md` is authoritative). Its read-only first
-  step is complete; advancing the phase did not approve a code slice.
-- **Engine-hardening audit completed** 2026-07-12 (read-only; verified
-  against `e4acb69`, whose code is unchanged from `e17ceeb`). Highest risk:
-  cached `WriteToken`s detect only in-process epoch changes, not external disk
-  changes, while public `read_project` still performs repair/quarantine writes
-  without a probe or token; CLI export calls that reader directly. A project
-  can therefore open Full, become Degraded outside the app, then have newer
-  format data downgraded or corrupt metadata replaced on a later read/write.
-  Ranked follow-ups: Scrivener asset import writes directly into `.chikn`
-  outside core and reports copy failures only to stderr; public `init_repo`
-  mutates without a token and creation suppresses its errors; multi-file saves
-  remain non-transactional; revision saves stage quarantine/crash-temp
-  artifacts; `include_in_compile` strings are case-sensitive. The old
-  stderr-only quarantine finding is resolved for reference-app opens, and a
-  project-level `fields` map is an extensibility choice, not an integrity bug.
+  2026-07-12 (`docs/CURRENT_PHASE.md` is authoritative). Its read-only audit
+  and first approved safety slice are complete; the phase remains active.
+- **Fresh-fidelity operation boundary shipped** 2026-07-12 in `a0e7621`
+  (`docs/plans/PLAN_FRESH_FIDELITY_BOUNDARY.md`; guard proofs and full
+  verification in the DEVLOG). Cached `WriteToken`s can no longer authorize a
+  later operation by themselves: each logical mutation receives one freshly
+  probed, short-lived `WritePermit`. Public/default reads and CLI export are
+  pure; benign folder repair is explicit and permit-backed; corrupt sidecars
+  stay in place. Tauri invalidates cached authority on refusal and opens each
+  permit inside its project lock; TUI and converter boundaries match.
+- **Ranked unapproved hardening follow-ups** (current evidence as of
+  `a0e7621`): first, tree-replacing Git operations bump the write epoch only
+  after every later step succeeds, so a partial post-mutation error can leave
+  stale UI state authorized; second, `write_project` can return success for an
+  in-memory document omitted from the hierarchy and leave the project
+  immediately Degraded; third, Scrivener asset import still copies directly
+  into `.chikn` outside core and reports failures only to stderr. Also parked:
+  public `init_repo`, non-transactional multi-file saves, revision staging of
+  recovery artifacts, and case-sensitive `include_in_compile`. None is
+  approved for implementation yet.
 - **Coherence is complete.** The owner confirmed on 2026-07-12 that completion
   had already been declared but not saved. Format lock, Tauri alignment,
   deprecation cleanup, and goals G1–G6 are recorded as completed in
@@ -30,7 +34,8 @@ decisions; `DEVLOG.md` holds history.
 - **Write-guard shipped** (2026-07-11, `docs/plans/PLAN_TRUST_FOUNDATIONS.md`
   Slice 1; DEVLOG top entry has the slice-by-slice detail and guard
   proofs): side-effect-free fidelity probe + non-forgeable root-bound,
-  epoch-stamped `WriteToken` gate every mutating engine API; Degraded
+  epoch-stamped `WriteToken` established the original gate (now extended by
+  the operation-scoped `WritePermit` above); Degraded
   projects open read-only in Tauri (banner + disabled affordances +
   skipped auto-saves), TUI (status + refused keys), and never receive a
   byte of writes — including the Statistics writing-history path.
@@ -40,11 +45,11 @@ decisions; `DEVLOG.md` holds history.
   (research PDFs etc.) are now fidelity-neutral while present, and the
   writer structurally refuses text writes into non-.md paths (DEVLOG top
   entry, follow-up paragraph).
-- **Push status** (verified 2026-07-12 before this phase-transition commit):
-  local `master`, Gitea `origin`, and `github` were all at `d99bf79`;
-  Validation at that bookkeeping tip is green. The latest code tip
-  (`e17ceeb`) also has green Validation and Tauri Bundles runs. This
-  phase-transition commit remains local until the owner gives a push go.
+- **Push status:** Gitea `origin` and `github` were both verified at `d99bf79`
+  on 2026-07-12. After this close-out, local `master` is six commits ahead,
+  including code tip `a0e7621`; nothing has been pushed because push policy
+  requires the owner's explicit go. Remote CI has therefore not run on these
+  local commits.
 
 ## Blockers
 
@@ -63,27 +68,22 @@ decisions; `DEVLOG.md` holds history.
 
 ## Next
 
-1. **Slice 1 approved 2026-07-12; implementation pending:** seal the
-   fresh-fidelity operation boundary per
-   `docs/plans/PLAN_FRESH_FIDELITY_BOUNDARY.md`. Public/default reads become
-   side-effect-free; every logical mutation receives one freshly probed,
-   operation-scoped permit reused across its internal steps. Guard proof:
-   acquire a session token, externally degrade the fixture, then permit
-   issuance and every public read leave the tree byte-identical.
-2. After Slice 1, propose the Scrivener asset-import boundary as the next
-   single concern; keep the remaining ranked findings parked above.
+1. Present **tree-replacement epoch invalidation on partial failure** as the
+   next single safety concern. Do not plan or implement it until the owner
+   approves that scope; it needs an error-path guard that proves stale UI
+   state cannot save after a worktree mutation followed by failure.
+2. Keep writer end-state coherence and the Scrivener asset-import boundary
+   parked behind that decision, one concern per later approval.
 3. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
    decision on remote design and the plan's open v1 guided-token question.
 
 ## Verification
 
-- Declared suite: `.agents/repo-guidance.md` Verification section (fmt check,
-  clippy, core lib tests, Tauri bin tests, UI lint + build).
-- Last run green locally 2026-07-11 before every Slice 1 commit (owner's
-  Mac), plus `cargo test -p chickenscratch-core --tests` (write_guard,
-  remote_sync, round-trip suites) and clippy on the TUI and converter
-  crates. Guard proofs for the new write-guard tests are recorded in the
-  DEVLOG top entry.
+- Declared suite: `.agents/repo-guidance.md` Verification section (canonical
+  command set; do not copy a second enumeration here).
+- Last run green locally 2026-07-12 at code tip `a0e7621`: the exact declared
+  suite, all targeted fresh-fidelity tests, and the three temporary red/green
+  guard drills. Remote CI has not run because the commits remain unpushed.
 
 ## Active Sources
 

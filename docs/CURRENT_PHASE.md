@@ -48,8 +48,9 @@ for equivalent risks. Rank findings by plausible data loss, not convenience.
 This audit is read-only. Present one proposed safety slice at a time in plain
 English; advancing the phase does not itself approve a code change.
 
-The audit is complete. Its ranked findings and first proposed slice are
-recorded in `.agents/state.md`; no code slice is approved yet.
+The audit is complete. Its first approved slice — the fresh-fidelity operation
+boundary — shipped in `a0e7621`; remaining ranked findings and the next
+proposed single concern are recorded in `.agents/state.md`.
 
 ### Step 2 — Approved safety slices
 
