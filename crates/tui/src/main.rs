@@ -33,8 +33,17 @@ fn main() -> Result<()> {
             .with_context(|| format!("Failed to create project at {:?}", project_path))?;
         let token = fidelity::acquire_write_token(&project_path)
             .map_err(|e| anyhow::anyhow!("Failed to acquire write access: {e}"))?;
-        writer::write_project(&mut project, &token).context("Failed to write project")?;
-        let _ = git::save_revision(&project_path, &format!("Created project: {}", name), &token);
+        token
+            .with_write_permit(&project_path, |permit| {
+                writer::write_project(&mut project, permit)?;
+                let _ = git::save_revision(
+                    &project_path,
+                    &format!("Created project: {}", name),
+                    permit,
+                );
+                Ok(())
+            })
+            .context("Failed to write project")?;
         println!("Created: {}", project_path.display());
         return Ok(());
     }

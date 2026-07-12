@@ -119,3 +119,81 @@ fn chikn_to_scriv(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn tree_snapshot(root: &Path) -> BTreeMap<String, Vec<u8>> {
+        fn visit(root: &Path, dir: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
+            for entry in fs::read_dir(dir).unwrap() {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                let relative = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let metadata = fs::symlink_metadata(&path).unwrap();
+                if metadata.is_dir() {
+                    out.insert(format!("{relative}/"), Vec::new());
+                    visit(root, &path, out);
+                } else if metadata.is_file() {
+                    out.insert(relative, fs::read(&path).unwrap());
+                }
+            }
+        }
+
+        let mut snapshot = BTreeMap::new();
+        visit(root, root, &mut snapshot);
+        snapshot
+    }
+
+    #[test]
+    fn chikn_export_does_not_mutate_corrupt_source() {
+        let temp = TempDir::new().unwrap();
+        let project = temp.path().join("Corrupt.chikn");
+        fs::create_dir(&project).unwrap();
+        for folder in ["manuscript", "research", "templates", "settings"] {
+            fs::create_dir(project.join(folder)).unwrap();
+        }
+        fs::write(
+            project.join("project.yaml"),
+            r#"format_version: '1.2'
+id: "project"
+name: "Corrupt"
+created: "2025-01-01T00:00:00Z"
+modified: "2025-01-01T00:00:00Z"
+hierarchy:
+  - type: Document
+    id: "chapter"
+    name: "Chapter"
+    path: "manuscript/chapter.md"
+"#,
+        )
+        .unwrap();
+        fs::write(project.join("manuscript/chapter.md"), "# Chapter\n").unwrap();
+        let sidecar = project.join("manuscript/chapter.meta");
+        fs::write(&sidecar, "id: [").unwrap();
+
+        let before = tree_snapshot(&project);
+        // An existing file makes Scrivener output-directory creation fail
+        // before Pandoc is needed. Source loading must nevertheless remain
+        // a byte-for-byte read-only operation.
+        let blocked_output = temp.path().join("blocked.scriv");
+        fs::write(&blocked_output, "not a directory").unwrap();
+
+        let result = chikn_to_scriv(&project, Some(&blocked_output), None);
+
+        assert!(result.is_err(), "blocked output path must fail export");
+        assert_eq!(
+            before,
+            tree_snapshot(&project),
+            "export must not create folders or quarantine corrupt metadata in its source"
+        );
+        assert_eq!(fs::read(&sidecar).unwrap(), b"id: [");
+    }
+}

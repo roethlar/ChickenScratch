@@ -13,7 +13,8 @@
 //! including `CHIKN_CROSS_FRONTEND_FAIL_ON_REPAIR=1` detection of reader
 //! repair markers on stdout/stderr.
 
-use chickenscratch_core::core::project::reader::read_project;
+use chickenscratch_core::core::project::fidelity::acquire_write_token;
+use chickenscratch_core::core::project::reader::{read_project, read_project_with_repair};
 use chickenscratch_core::models::TreeNode;
 use std::fs;
 use tempfile::TempDir;
@@ -334,7 +335,15 @@ hierarchy: []
     )
     .unwrap();
 
-    let project = read_project(&root).expect("project should self-heal");
+    let pure = read_project(&root).expect("pure read should stay available");
+    assert_eq!(pure.name, "Healing");
+    assert!(!root.join("research").exists());
+    assert!(!root.join("templates").exists());
+
+    let token = acquire_write_token(&root).expect("missing benign folders remain Full");
+    let project = token
+        .with_write_permit(&root, |permit| read_project_with_repair(&root, permit))
+        .expect("permit-backed open should self-heal");
     assert_eq!(project.name, "Healing");
     assert!(
         root.join("research").is_dir(),

@@ -102,7 +102,12 @@ impl<'a> App<'a> {
             .map_err(|e| anyhow!("Failed to check project: {:?}", e))?
         {
             fidelity::Fidelity::Full => {
-                let project = reader::read_project(&project_path)
+                let token = fidelity::acquire_write_token(&project_path)
+                    .map_err(|e| anyhow!("Failed to acquire write access: {e}"))?;
+                let project = token
+                    .with_write_permit(&project_path, |permit| {
+                        reader::read_project_with_repair(&project_path, permit)
+                    })
                     .map_err(|e| anyhow!("Failed to read project: {:?}", e))?;
                 (
                     project,
@@ -111,7 +116,7 @@ impl<'a> App<'a> {
                 )
             }
             fidelity::Fidelity::Degraded { reasons } => {
-                let project = reader::read_project_readonly(&project_path)
+                let project = reader::read_project(&project_path)
                     .map_err(|e| anyhow!("Failed to read project: {:?}", e))?;
                 (
                         project,
@@ -170,8 +175,11 @@ impl<'a> App<'a> {
     /// Acquire a write token and persist the project. A Degraded project
     /// never yields a token, so the TUI can never save over one.
     fn write_project_guarded(&mut self) -> std::result::Result<(), ChiknError> {
-        let token = fidelity::acquire_write_token(&self.project_path)?;
-        writer::write_project(&mut self.project, &token)
+        let project_path = self.project_path.clone();
+        let token = fidelity::acquire_write_token(&project_path)?;
+        token.with_write_permit(&project_path, |permit| {
+            writer::write_project(&mut self.project, permit)
+        })
     }
 
     fn apply_editor_settings(&mut self) {
@@ -960,17 +968,24 @@ impl<'a> App<'a> {
                 return Ok(());
             }
         };
-        match git::save_revision(&self.project_path, message, &token) {
-            Ok(rev) => {
+        let project_path = self.project_path.clone();
+        let backup_dir = read_backup_directory();
+        let result = token.with_write_permit(&project_path, |permit| {
+            let rev = git::save_revision(&project_path, message, permit)?;
+            // A backup failure should not turn a successfully saved revision
+            // into an apparent revision failure.
+            let backup_msg = match backup_dir.as_deref() {
+                Some(dir) => match git::push_backup(&project_path, dir, permit) {
+                    Ok(()) => " · backed up".to_string(),
+                    Err(e) => format!(" · backup failed: {:?}", e),
+                },
+                None => String::new(),
+            };
+            Ok((rev, backup_msg))
+        });
+        match result {
+            Ok((rev, backup_msg)) => {
                 let short = rev.short_id.clone();
-                // After a named revision: push to backup if configured.
-                let backup_msg = match read_backup_directory() {
-                    Some(dir) => match git::push_backup(&self.project_path, &dir, &token) {
-                        Ok(()) => " · backed up".to_string(),
-                        Err(e) => format!(" · backup failed: {:?}", e),
-                    },
-                    None => String::new(),
-                };
                 self.status = format!("Revision saved: {} ({}){}", message, short, backup_msg);
             }
             Err(e) => {

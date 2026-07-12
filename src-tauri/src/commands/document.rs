@@ -1,4 +1,4 @@
-use chickenscratch_core::core::project::fidelity::WriteToken;
+use chickenscratch_core::core::project::fidelity::WritePermit;
 use chickenscratch_core::core::project::{hierarchy, reader, writer};
 use chickenscratch_core::models::Comment;
 use chickenscratch_core::utils::slug;
@@ -24,19 +24,20 @@ pub fn update_document_content(
     content: String,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
-        if let Some(doc) = project.documents.get_mut(&doc_id) {
-            doc.content = content;
-            doc.modified = chrono::Utc::now().to_rfc3339();
-            writer::write_project(&mut project, &token)?;
-            Ok(())
-        } else {
-            Err(ChiknError::NotFound(format!(
-                "Document not found: {}",
-                doc_id
-            )))
-        }
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
+            if let Some(doc) = project.documents.get_mut(&doc_id) {
+                doc.content = content;
+                doc.modified = chrono::Utc::now().to_rfc3339();
+                writer::write_project(&mut project, permit)?;
+                Ok(())
+            } else {
+                Err(ChiknError::NotFound(format!(
+                    "Document not found: {}",
+                    doc_id
+                )))
+            }
+        })
     })
 }
 
@@ -53,27 +54,28 @@ pub fn add_comment(
     new_content: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
-        if let Some(doc) = project.documents.get_mut(&doc_id) {
-            let now = chrono::Utc::now().to_rfc3339();
-            doc.content = new_content;
-            doc.comments.push(Comment {
-                id: comment_id,
-                body,
-                resolved: false,
-                created: now.clone(),
-                modified: now.clone(),
-            });
-            doc.modified = now;
-            writer::write_project(&mut project, &token)?;
-            Ok(project)
-        } else {
-            Err(ChiknError::NotFound(format!(
-                "Document not found: {}",
-                doc_id
-            )))
-        }
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
+            if let Some(doc) = project.documents.get_mut(&doc_id) {
+                let now = chrono::Utc::now().to_rfc3339();
+                doc.content = new_content;
+                doc.comments.push(Comment {
+                    id: comment_id,
+                    body,
+                    resolved: false,
+                    created: now.clone(),
+                    modified: now.clone(),
+                });
+                doc.modified = now;
+                writer::write_project(&mut project, permit)?;
+                Ok(project)
+            } else {
+                Err(ChiknError::NotFound(format!(
+                    "Document not found: {}",
+                    doc_id
+                )))
+            }
+        })
     })
 }
 
@@ -88,32 +90,33 @@ pub fn update_comment(
     resolved: Option<bool>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
-        if let Some(doc) = project.documents.get_mut(&doc_id) {
-            if let Some(c) = doc.comments.iter_mut().find(|c| c.id == comment_id) {
-                if let Some(b) = body {
-                    c.body = b;
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
+            if let Some(doc) = project.documents.get_mut(&doc_id) {
+                if let Some(c) = doc.comments.iter_mut().find(|c| c.id == comment_id) {
+                    if let Some(b) = body {
+                        c.body = b;
+                    }
+                    if let Some(r) = resolved {
+                        c.resolved = r;
+                    }
+                    c.modified = chrono::Utc::now().to_rfc3339();
+                    doc.modified = chrono::Utc::now().to_rfc3339();
+                    writer::write_project(&mut project, permit)?;
+                    Ok(project)
+                } else {
+                    Err(ChiknError::NotFound(format!(
+                        "Comment not found: {}",
+                        comment_id
+                    )))
                 }
-                if let Some(r) = resolved {
-                    c.resolved = r;
-                }
-                c.modified = chrono::Utc::now().to_rfc3339();
-                doc.modified = chrono::Utc::now().to_rfc3339();
-                writer::write_project(&mut project, &token)?;
-                Ok(project)
             } else {
                 Err(ChiknError::NotFound(format!(
-                    "Comment not found: {}",
-                    comment_id
+                    "Document not found: {}",
+                    doc_id
                 )))
             }
-        } else {
-            Err(ChiknError::NotFound(format!(
-                "Document not found: {}",
-                doc_id
-            )))
-        }
+        })
     })
 }
 
@@ -128,20 +131,21 @@ pub fn delete_comment(
     new_content: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
-        if let Some(doc) = project.documents.get_mut(&doc_id) {
-            doc.comments.retain(|c| c.id != comment_id);
-            doc.content = new_content;
-            doc.modified = chrono::Utc::now().to_rfc3339();
-            writer::write_project(&mut project, &token)?;
-            Ok(project)
-        } else {
-            Err(ChiknError::NotFound(format!(
-                "Document not found: {}",
-                doc_id
-            )))
-        }
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
+            if let Some(doc) = project.documents.get_mut(&doc_id) {
+                doc.comments.retain(|c| c.id != comment_id);
+                doc.content = new_content;
+                doc.modified = chrono::Utc::now().to_rfc3339();
+                writer::write_project(&mut project, permit)?;
+                Ok(project)
+            } else {
+                Err(ChiknError::NotFound(format!(
+                    "Document not found: {}",
+                    doc_id
+                )))
+            }
+        })
     })
 }
 
@@ -189,34 +193,35 @@ pub fn update_document_metadata(
     fields: Option<FieldUpdates>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
-        if let Some(doc) = project.documents.get_mut(&doc_id) {
-            doc.synopsis = synopsis;
-            doc.label = label;
-            doc.status = status;
-            doc.keywords = keywords;
-            if let Some(inc) = include_in_compile {
-                doc.include_in_compile = inc;
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
+            if let Some(doc) = project.documents.get_mut(&doc_id) {
+                doc.synopsis = synopsis;
+                doc.label = label;
+                doc.status = status;
+                doc.keywords = keywords;
+                if let Some(inc) = include_in_compile {
+                    doc.include_in_compile = inc;
+                }
+                if let Some(target) = word_count_target {
+                    doc.word_count_target = target;
+                }
+                if let Some(order) = compile_order {
+                    doc.compile_order = order;
+                }
+                if let Some(updates) = fields {
+                    apply_field_updates(doc, updates);
+                }
+                doc.modified = chrono::Utc::now().to_rfc3339();
+                writer::write_project(&mut project, permit)?;
+                Ok(project)
+            } else {
+                Err(ChiknError::NotFound(format!(
+                    "Document not found: {}",
+                    doc_id
+                )))
             }
-            if let Some(target) = word_count_target {
-                doc.word_count_target = target;
-            }
-            if let Some(order) = compile_order {
-                doc.compile_order = order;
-            }
-            if let Some(updates) = fields {
-                apply_field_updates(doc, updates);
-            }
-            doc.modified = chrono::Utc::now().to_rfc3339();
-            writer::write_project(&mut project, &token)?;
-            Ok(project)
-        } else {
-            Err(ChiknError::NotFound(format!(
-                "Document not found: {}",
-                doc_id
-            )))
-        }
+        })
     })
 }
 
@@ -229,20 +234,21 @@ pub fn rename_node(
     new_name: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
 
-        // Rename in hierarchy
-        rename_in_hierarchy(&mut project.hierarchy, &node_id, &new_name);
+            // Rename in hierarchy
+            rename_in_hierarchy(&mut project.hierarchy, &node_id, &new_name);
 
-        // Rename document if it exists
-        if let Some(doc) = project.documents.get_mut(&node_id) {
-            doc.name = new_name;
-            doc.modified = chrono::Utc::now().to_rfc3339();
-        }
+            // Rename document if it exists
+            if let Some(doc) = project.documents.get_mut(&node_id) {
+                doc.name = new_name;
+                doc.modified = chrono::Utc::now().to_rfc3339();
+            }
 
-        writer::write_project(&mut project, &token)?;
-        Ok(project)
+            writer::write_project(&mut project, permit)?;
+            Ok(project)
+        })
     })
 }
 
@@ -274,26 +280,27 @@ pub fn link_documents(
     doc_id_b: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
-        let now = chrono::Utc::now().to_rfc3339();
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
+            let now = chrono::Utc::now().to_rfc3339();
 
-        // Add bidirectional link. Both endpoints are mutated so both must
-        // bump `modified` — the writer now preserves the existing timestamp,
-        // so without an explicit bump the .meta files would record the link
-        // change with stale dates.
-        for (from, to) in [(&doc_id_a, &doc_id_b), (&doc_id_b, &doc_id_a)] {
-            if let Some(doc) = project.documents.get_mut(from) {
-                let links = doc.links.get_or_insert_with(Vec::new);
-                if !links.contains(to) {
-                    links.push(to.clone());
-                    doc.modified = now.clone();
+            // Add bidirectional link. Both endpoints are mutated so both must
+            // bump `modified` — the writer now preserves the existing timestamp,
+            // so without an explicit bump the .meta files would record the link
+            // change with stale dates.
+            for (from, to) in [(&doc_id_a, &doc_id_b), (&doc_id_b, &doc_id_a)] {
+                if let Some(doc) = project.documents.get_mut(from) {
+                    let links = doc.links.get_or_insert_with(Vec::new);
+                    if !links.contains(to) {
+                        links.push(to.clone());
+                        doc.modified = now.clone();
+                    }
                 }
             }
-        }
 
-        writer::write_project(&mut project, &token)?;
-        Ok(project)
+            writer::write_project(&mut project, permit)?;
+            Ok(project)
+        })
     })
 }
 
@@ -306,40 +313,41 @@ pub fn create_document(
     parent_id: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
 
-        let doc_id = uuid::Uuid::new_v4().to_string();
-        let s = slug::unique_slug(&name, "manuscript/", &project.documents);
-        let doc_path = format!("manuscript/{}.md", s);
-        let now = chrono::Utc::now().to_rfc3339();
+            let doc_id = uuid::Uuid::new_v4().to_string();
+            let s = slug::unique_slug(&name, "manuscript/", &project.documents);
+            let doc_path = format!("manuscript/{}.md", s);
+            let now = chrono::Utc::now().to_rfc3339();
 
-        let document = Document {
-            id: doc_id.clone(),
-            name: name.clone(),
-            path: doc_path.clone(),
-            content: String::new(),
-            parent_id: parent_id.clone(),
-            created: now.clone(),
-            modified: now,
-            ..Default::default()
-        };
+            let document = Document {
+                id: doc_id.clone(),
+                name: name.clone(),
+                path: doc_path.clone(),
+                content: String::new(),
+                parent_id: parent_id.clone(),
+                created: now.clone(),
+                modified: now,
+                ..Default::default()
+            };
 
-        project.documents.insert(doc_id.clone(), document);
+            project.documents.insert(doc_id.clone(), document);
 
-        let node = TreeNode::Document {
-            id: doc_id,
-            name,
-            path: doc_path,
-        };
+            let node = TreeNode::Document {
+                id: doc_id,
+                name,
+                path: doc_path,
+            };
 
-        match parent_id {
-            Some(pid) => hierarchy::add_child_to_folder(&mut project.hierarchy, &pid, node)?,
-            None => hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node),
-        }
+            match parent_id {
+                Some(pid) => hierarchy::add_child_to_folder(&mut project.hierarchy, &pid, node)?,
+                None => hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node),
+            }
 
-        writer::write_project(&mut project, &token)?;
-        Ok(project)
+            writer::write_project(&mut project, permit)?;
+            Ok(project)
+        })
     })
 }
 
@@ -356,13 +364,15 @@ pub fn create_entity(
 ) -> Result<Project, ChiknError> {
     let project_path = PathBuf::from(project_path);
     write_locks.with_project_lock(&project_path, || {
-        create_entity_impl(&project_path, &tokens, name, kind)
+        tokens.with_write_permit(&project_path, |permit| {
+            create_entity_impl(&project_path, permit, name, kind)
+        })
     })
 }
 
 fn create_entity_impl(
     project_path: &Path,
-    tokens: &ProjectTokens,
+    permit: &WritePermit<'_>,
     name: String,
     kind: String,
 ) -> Result<Project, ChiknError> {
@@ -377,8 +387,7 @@ fn create_entity_impl(
         }
     };
 
-    let token = tokens.checkout(project_path)?;
-    writer::ensure_project_subdir(&token, Path::new(folder))?;
+    writer::ensure_project_subdir(permit, Path::new(folder))?;
 
     let mut project = reader::read_project(project_path)?;
 
@@ -405,7 +414,7 @@ fn create_entity_impl(
     };
 
     project.documents.insert(doc_id, document);
-    writer::write_project(&mut project, &token)?;
+    writer::write_project(&mut project, permit)?;
     Ok(project)
 }
 
@@ -418,23 +427,24 @@ pub fn create_folder(
     parent_id: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
 
-        let folder_id = uuid::Uuid::new_v4().to_string();
-        let node = TreeNode::Folder {
-            id: folder_id,
-            name,
-            children: Vec::new(),
-        };
+            let folder_id = uuid::Uuid::new_v4().to_string();
+            let node = TreeNode::Folder {
+                id: folder_id,
+                name,
+                children: Vec::new(),
+            };
 
-        match parent_id {
-            Some(pid) => hierarchy::add_child_to_folder(&mut project.hierarchy, &pid, node)?,
-            None => hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node),
-        }
+            match parent_id {
+                Some(pid) => hierarchy::add_child_to_folder(&mut project.hierarchy, &pid, node)?,
+                None => hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node),
+            }
 
-        writer::write_project(&mut project, &token)?;
-        Ok(project)
+            writer::write_project(&mut project, permit)?;
+            Ok(project)
+        })
     })
 }
 
@@ -446,20 +456,21 @@ pub fn delete_node(
     node_id: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
-        let path = Path::new(&project_path);
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
+            let path = Path::new(&project_path);
 
-        // Remove from hierarchy
-        let removed = hierarchy::remove_node(&mut project.hierarchy, &node_id)?;
+            // Remove from hierarchy
+            let removed = hierarchy::remove_node(&mut project.hierarchy, &node_id)?;
 
-        // Delete files AND drop entries from `project.documents`. Without the
-        // map cleanup, `write_project` below would iterate the still-present
-        // documents and recreate the .md / .meta files we just deleted.
-        delete_node_files(&removed, &mut project, path, &token)?;
+            // Delete files AND drop entries from `project.documents`. Without the
+            // map cleanup, `write_project` below would iterate the still-present
+            // documents and recreate the .md / .meta files we just deleted.
+            delete_node_files(&removed, &mut project, path, permit)?;
 
-        writer::write_project(&mut project, &token)?;
-        Ok(project)
+            writer::write_project(&mut project, permit)?;
+            Ok(project)
+        })
     })
 }
 
@@ -467,7 +478,7 @@ fn delete_node_files(
     node: &TreeNode,
     project: &mut Project,
     project_path: &Path,
-    token: &WriteToken,
+    permit: &WritePermit<'_>,
 ) -> Result<(), ChiknError> {
     match node {
         TreeNode::Document { id, .. } => {
@@ -477,13 +488,13 @@ fn delete_node_files(
             // disk while the binder thinks they're gone — and the next
             // reload's repair pass would re-import them as orphans.
             if let Some(doc) = project.documents.get(id) {
-                writer::delete_document(project_path, &doc.path, token)?;
+                writer::delete_document(project_path, &doc.path, permit)?;
             }
             project.documents.remove(id);
         }
         TreeNode::Folder { children, .. } => {
             for child in children {
-                delete_node_files(child, project, project_path, token)?;
+                delete_node_files(child, project, project_path, permit)?;
             }
         }
     }
@@ -500,37 +511,39 @@ pub fn move_node(
     new_index: Option<usize>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
 
-        // `None` from the UI means "keep current parent" — used for in-place
-        // reorder via Move Up / Move Down and drag-drop within the same
-        // sibling list. Without this guard the node would get pulled out of
-        // its folder onto the root every time the user nudges it. Use the
-        // dedicated reorder path in that case; only call the parent-changing
-        // move when a parent was specified.
-        if let Some(parent_id) = new_parent_id.as_deref() {
-            hierarchy::move_node(&mut project.hierarchy, &node_id, Some(parent_id))?;
-            if let Some(idx) = new_index {
-                // Propagate reorder errors instead of silently leaving the
-                // node at the parent's tail with `Ok(())`. An invalid index
-                // (e.g. UI passing a stale position from before another
-                // user reordered) used to return success here while the
-                // actual position was wrong.
+            // `None` from the UI means "keep current parent" — used for in-place
+            // reorder via Move Up / Move Down and drag-drop within the same
+            // sibling list. Without this guard the node would get pulled out of
+            // its folder onto the root every time the user nudges it. Use the
+            // dedicated reorder path in that case; only call the parent-changing
+            // move when a parent was specified.
+            if let Some(parent_id) = new_parent_id.as_deref() {
+                hierarchy::move_node(&mut project.hierarchy, &node_id, Some(parent_id))?;
+                if let Some(idx) = new_index {
+                    // Propagate reorder errors instead of silently leaving the
+                    // node at the parent's tail with `Ok(())`. An invalid index
+                    // (e.g. UI passing a stale position from before another
+                    // user reordered) used to return success here while the
+                    // actual position was wrong.
+                    hierarchy::reorder_node(&mut project.hierarchy, &node_id, idx)?;
+                }
+            } else if let Some(idx) = new_index {
                 hierarchy::reorder_node(&mut project.hierarchy, &node_id, idx)?;
             }
-        } else if let Some(idx) = new_index {
-            hierarchy::reorder_node(&mut project.hierarchy, &node_id, idx)?;
-        }
 
-        writer::write_project(&mut project, &token)?;
-        Ok(project)
+            writer::write_project(&mut project, permit)?;
+            Ok(project)
+        })
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chickenscratch_core::core::project::fidelity;
     use std::fs;
     use tempfile::TempDir;
 
@@ -539,14 +552,18 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join("Entities.chikn");
         writer::create_project(&project_path, "Entities").unwrap();
+        let token = fidelity::acquire_write_token(&project_path).unwrap();
 
-        let project = create_entity_impl(
-            &project_path,
-            &ProjectTokens::default(),
-            "Sarah Bennett".to_string(),
-            "character".to_string(),
-        )
-        .unwrap();
+        let project = token
+            .with_write_permit(&project_path, |permit| {
+                create_entity_impl(
+                    &project_path,
+                    permit,
+                    "Sarah Bennett".to_string(),
+                    "character".to_string(),
+                )
+            })
+            .unwrap();
 
         assert!(project_path.join("characters/sarah-bennett.md").exists());
         assert!(project
@@ -566,14 +583,17 @@ mod tests {
         fs::create_dir(&outside_path).unwrap();
 
         writer::create_project(&project_path, "Hostile").unwrap();
+        let token = fidelity::acquire_write_token(&project_path).unwrap();
         unix_fs::symlink(&outside_path, project_path.join("characters")).unwrap();
 
-        let result = create_entity_impl(
-            &project_path,
-            &ProjectTokens::default(),
-            "Mallory".to_string(),
-            "character".to_string(),
-        );
+        let result = token.with_write_permit(&project_path, |permit| {
+            create_entity_impl(
+                &project_path,
+                permit,
+                "Mallory".to_string(),
+                "character".to_string(),
+            )
+        });
 
         // The fidelity probe now refuses the write token before the
         // safe-path machinery is even reached: a symlinked entity folder

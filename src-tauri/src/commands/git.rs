@@ -14,26 +14,27 @@ pub fn save_revision(
 ) -> Result<git::Revision, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
         let path = Path::new(&project_path);
-        let token = tokens.checkout(path)?;
-        let rev = git::save_revision(path, &message, &token)?;
+        tokens.with_write_permit(path, |permit| {
+            let rev = git::save_revision(path, &message, permit)?;
 
-        // After named revision: push to backup remote and remote-sync if configured.
-        // Both are fire-and-forget — a failed push must not fail the revision.
-        let settings = super::settings::get_app_settings_hydrated();
-        if let Some(ref backup_dir) = settings.backup.backup_directory {
-            let _ = git::push_backup(path, Path::new(backup_dir), &token);
-        }
-        if settings.remote.auto_push_on_revision {
-            if let Some(ref url) = settings.remote.url {
-                let auth = git::RemoteAuth {
-                    username: settings.remote.username.clone(),
-                    token: settings.remote.token.clone(),
-                };
-                let _ = git::push_remote(path, url, &auth, &token);
+            // After named revision: push to backup remote and remote-sync if configured.
+            // Both are fire-and-forget — a failed push must not fail the revision.
+            let settings = super::settings::get_app_settings_hydrated();
+            if let Some(ref backup_dir) = settings.backup.backup_directory {
+                let _ = git::push_backup(path, Path::new(backup_dir), permit);
             }
-        }
+            if settings.remote.auto_push_on_revision {
+                if let Some(ref url) = settings.remote.url {
+                    let auth = git::RemoteAuth {
+                        username: settings.remote.username.clone(),
+                        token: settings.remote.token.clone(),
+                    };
+                    let _ = git::push_remote(path, url, &auth, permit);
+                }
+            }
 
-        Ok(rev)
+            Ok(rev)
+        })
     })
 }
 
@@ -50,8 +51,9 @@ pub fn restore_revision(
     commit_id: String,
 ) -> Result<git::Revision, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let result = git::restore_revision(Path::new(&project_path), &commit_id, &token);
+        let result = tokens.with_write_permit(&project_path, |permit| {
+            git::restore_revision(Path::new(&project_path), &commit_id, permit)
+        });
         // Tree replaced on success: re-probe and reissue (or drop) the token.
         if result.is_ok() {
             tokens.refresh(Path::new(&project_path));
@@ -68,8 +70,9 @@ pub fn create_draft(
     name: String,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        git::create_draft(Path::new(&project_path), &name, &token)
+        tokens.with_write_permit(&project_path, |permit| {
+            git::create_draft(Path::new(&project_path), &name, permit)
+        })
     })
 }
 
@@ -86,8 +89,9 @@ pub fn switch_draft(
     name: String,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let result = git::switch_draft(Path::new(&project_path), &name, &token);
+        let result = tokens.with_write_permit(&project_path, |permit| {
+            git::switch_draft(Path::new(&project_path), &name, permit)
+        });
         if result.is_ok() {
             tokens.refresh(Path::new(&project_path));
         }
@@ -103,8 +107,9 @@ pub fn merge_draft(
     name: String,
 ) -> Result<git::MergeResult, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let result = git::merge_draft(Path::new(&project_path), &name, &token);
+        let result = tokens.with_write_permit(&project_path, |permit| {
+            git::merge_draft(Path::new(&project_path), &name, permit)
+        });
         if result.is_ok() {
             tokens.refresh(Path::new(&project_path));
         }
@@ -120,8 +125,9 @@ pub fn push_backup(
     backup_dir: String,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        git::push_backup(Path::new(&project_path), Path::new(&backup_dir), &token)
+        tokens.with_write_permit(&project_path, |permit| {
+            git::push_backup(Path::new(&project_path), Path::new(&backup_dir), permit)
+        })
     })
 }
 
@@ -133,13 +139,14 @@ pub fn manual_backup(
     backup_dir: String,
 ) -> Result<Option<git::Revision>, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        git::backup_current_work(
-            Path::new(&project_path),
-            Path::new(&backup_dir),
-            "Manual backup",
-            &token,
-        )
+        tokens.with_write_permit(&project_path, |permit| {
+            git::backup_current_work(
+                Path::new(&project_path),
+                Path::new(&backup_dir),
+                "Manual backup",
+                permit,
+            )
+        })
     })
 }
 
@@ -151,9 +158,10 @@ pub fn sync_push(
     tokens: State<'_, ProjectTokens>,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let (url, auth) = remote_from_settings()?;
-        git::push_remote(Path::new(&project_path), &url, &auth, &token)
+        tokens.with_write_permit(&project_path, |permit| {
+            let (url, auth) = remote_from_settings()?;
+            git::push_remote(Path::new(&project_path), &url, &auth, permit)
+        })
     })
 }
 
@@ -165,9 +173,10 @@ pub fn sync_fetch(
     tokens: State<'_, ProjectTokens>,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let (url, auth) = remote_from_settings()?;
-        git::fetch_remote(Path::new(&project_path), &url, &auth, &token)
+        tokens.with_write_permit(&project_path, |permit| {
+            let (url, auth) = remote_from_settings()?;
+            git::fetch_remote(Path::new(&project_path), &url, &auth, permit)
+        })
     })
 }
 
@@ -194,8 +203,9 @@ pub fn restore_document(
     commit_id: String,
 ) -> Result<git::Revision, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let result = git::restore_document(Path::new(&project_path), &doc_path, &commit_id, &token);
+        let result = tokens.with_write_permit(&project_path, |permit| {
+            git::restore_document(Path::new(&project_path), &doc_path, &commit_id, permit)
+        });
         if result.is_ok() {
             tokens.refresh(Path::new(&project_path));
         }
@@ -214,9 +224,10 @@ pub fn sync_pull(
     tokens: State<'_, ProjectTokens>,
 ) -> Result<git::PullResult, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let (url, auth) = remote_from_settings()?;
-        let result = git::sync_pull(Path::new(&project_path), &url, &auth, &token);
+        let result = tokens.with_write_permit(&project_path, |permit| {
+            let (url, auth) = remote_from_settings()?;
+            git::sync_pull(Path::new(&project_path), &url, &auth, permit)
+        });
         if result.is_ok() {
             tokens.refresh(Path::new(&project_path));
         }
@@ -231,8 +242,9 @@ pub fn sync_abort_pull(
     tokens: State<'_, ProjectTokens>,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let result = git::sync_abort_pull(Path::new(&project_path), &token);
+        let result = tokens.with_write_permit(&project_path, |permit| {
+            git::sync_abort_pull(Path::new(&project_path), permit)
+        });
         if result.is_ok() {
             tokens.refresh(Path::new(&project_path));
         }
@@ -247,9 +259,10 @@ pub fn sync_pull_force(
     tokens: State<'_, ProjectTokens>,
 ) -> Result<(), ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let (url, auth) = remote_from_settings()?;
-        let result = git::sync_pull_force(Path::new(&project_path), &url, &auth, &token);
+        let result = tokens.with_write_permit(&project_path, |permit| {
+            let (url, auth) = remote_from_settings()?;
+            git::sync_pull_force(Path::new(&project_path), &url, &auth, permit)
+        });
         if result.is_ok() {
             tokens.refresh(Path::new(&project_path));
         }
@@ -322,26 +335,25 @@ pub fn backup_on_close(
         let path = Path::new(&project_path);
         let settings = super::settings::get_app_settings();
 
-        // A Degraded project yields no token: the close-time auto-save is
+        // A Degraded project yields no permit: the close-time auto-save is
         // SKIPPED entirely, never surfaced as an error. This is the exact
         // path that once committed "Auto-save on close" over a legacy
         // project it had loaded as empty.
-        let Ok(token) = tokens.checkout(path) else {
-            return Ok(());
-        };
-
-        // Auto-commit any uncommitted changes
-        if git::has_changes(path).unwrap_or(false) {
-            let _ = git::save_revision(path, "Auto-save on close", &token);
-        }
-
-        // Push to backup remote if configured
-        if settings.backup.auto_backup_on_close {
-            if let Some(ref backup_dir) = settings.backup.backup_directory {
-                let _ = git::push_backup(path, Path::new(backup_dir), &token);
+        let _ = tokens.with_write_permit(path, |permit| {
+            // Auto-commit any uncommitted changes
+            if git::has_changes(path).unwrap_or(false) {
+                let _ = git::save_revision(path, "Auto-save on close", permit);
             }
-        }
 
+            // Push to backup remote if configured
+            if settings.backup.auto_backup_on_close {
+                if let Some(ref backup_dir) = settings.backup.backup_directory {
+                    let _ = git::push_backup(path, Path::new(backup_dir), permit);
+                }
+            }
+
+            Ok(())
+        });
         Ok(())
     })
 }

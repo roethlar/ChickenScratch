@@ -112,32 +112,35 @@ pub fn import_scriv(
     chikn_project.hierarchy = ensure_project_structure(hierarchy);
     chikn_project.documents = documents;
 
-    // Save the converted project
-    writer::write_project(&mut chikn_project, &token)?;
+    let revision_message = format!("Imported from Scrivener: {}", scriv_project.name);
+    token.with_write_permit(output_path, |permit| {
+        // Save the converted project.
+        writer::write_project(&mut chikn_project, permit)?;
 
-    // Copy media files into the project
-    for (key, value) in &uuid_to_path {
-        if let Some(uuid) = key.strip_prefix("__media__") {
-            let parts: Vec<&str> = value.splitn(2, '|').collect();
-            if parts.len() == 2 {
-                let src = Path::new(parts[0]);
-                let dest = output_path.join(parts[1]);
-                if let Some(parent) = dest.parent() {
-                    let _ = fs::create_dir_all(parent);
-                }
-                if let Err(e) = fs::copy(src, &dest) {
-                    eprintln!("Failed to copy media file {}: {}", uuid, e);
+        // Copy media files into the project as part of the same logical
+        // import operation. The operation permit is intentionally reused
+        // through the initial revision so no intermediate tree is re-probed.
+        for (key, value) in &uuid_to_path {
+            if let Some(uuid) = key.strip_prefix("__media__") {
+                let parts: Vec<&str> = value.splitn(2, '|').collect();
+                if parts.len() == 2 {
+                    let src = Path::new(parts[0]);
+                    let dest = output_path.join(parts[1]);
+                    if let Some(parent) = dest.parent() {
+                        let _ = fs::create_dir_all(parent);
+                    }
+                    if let Err(e) = fs::copy(src, &dest) {
+                        eprintln!("Failed to copy media file {}: {}", uuid, e);
+                    }
                 }
             }
         }
-    }
 
-    // Initial commit with all converted content
-    let _ = chickenscratch_core::core::git::save_revision(
-        output_path,
-        &format!("Imported from Scrivener: {}", scriv_project.name),
-        &token,
-    );
+        // Initial commit with all converted content.
+        let _ =
+            chickenscratch_core::core::git::save_revision(output_path, &revision_message, permit);
+        Ok(())
+    })?;
 
     Ok(chikn_project)
 }

@@ -1,5 +1,6 @@
 use chickenscratch_core::core::compile;
 use chickenscratch_core::core::git;
+use chickenscratch_core::core::project::fidelity::WritePermit;
 use chickenscratch_core::core::project::hierarchy;
 use chickenscratch_core::core::project::{reader, writer};
 use chickenscratch_core::utils::process::{
@@ -116,41 +117,45 @@ pub fn import_file(
     };
 
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
 
-        let doc_id = uuid::Uuid::new_v4().to_string();
-        let slug =
-            chickenscratch_core::utils::slug::unique_slug(&name, "manuscript/", &project.documents);
-        let doc_path = format!("manuscript/{}.md", slug);
-        let now = chrono::Utc::now().to_rfc3339();
+            let doc_id = uuid::Uuid::new_v4().to_string();
+            let slug = chickenscratch_core::utils::slug::unique_slug(
+                &name,
+                "manuscript/",
+                &project.documents,
+            );
+            let doc_path = format!("manuscript/{}.md", slug);
+            let now = chrono::Utc::now().to_rfc3339();
 
-        let document = Document {
-            id: doc_id.clone(),
-            name: name.clone(),
-            path: doc_path.clone(),
-            content,
-            parent_id: parent_id.clone(),
-            created: now.clone(),
-            modified: now,
-            ..Default::default()
-        };
+            let document = Document {
+                id: doc_id.clone(),
+                name: name.clone(),
+                path: doc_path.clone(),
+                content,
+                parent_id: parent_id.clone(),
+                created: now.clone(),
+                modified: now,
+                ..Default::default()
+            };
 
-        project.documents.insert(doc_id.clone(), document);
+            project.documents.insert(doc_id.clone(), document);
 
-        let node = TreeNode::Document {
-            id: doc_id,
-            name,
-            path: doc_path,
-        };
+            let node = TreeNode::Document {
+                id: doc_id,
+                name,
+                path: doc_path,
+            };
 
-        match parent_id {
-            Some(pid) => hierarchy::add_child_to_folder(&mut project.hierarchy, &pid, node)?,
-            None => hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node),
-        }
+            match parent_id {
+                Some(pid) => hierarchy::add_child_to_folder(&mut project.hierarchy, &pid, node)?,
+                None => hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node),
+            }
 
-        writer::write_project(&mut project, &token)?;
-        Ok(project)
+            writer::write_project(&mut project, permit)?;
+            Ok(project)
+        })
     })
 }
 
@@ -231,8 +236,6 @@ fn import_markdown_folder_impl(
         .to_string();
 
     let mut project = writer::create_project(output, &name)?;
-    // Freshly created by the engine — probes Full by construction.
-    let token = tokens.checkout(output)?;
 
     let mut entries: Vec<_> = fs::read_dir(folder)?
         .filter_map(|e| e.ok())
@@ -329,8 +332,11 @@ fn import_markdown_folder_impl(
         )));
     }
 
-    writer::write_project(&mut project, &token)?;
-    let _ = git::save_revision(output, &format!("Imported from: {}", name), &token);
+    tokens.with_write_permit(output, |permit| {
+        writer::write_project(&mut project, permit)?;
+        let _ = git::save_revision(output, &format!("Imported from: {}", name), permit);
+        Ok(())
+    })?;
 
     // Partial success: log skipped files to stderr so the operator sees them
     // even though the import returned the project. A future API revision
@@ -438,19 +444,18 @@ pub fn record_daily_words(
 ) -> Result<(), ChiknError> {
     let lock_path = project_path.clone();
     write_locks.with_project_lock(lock_path, || {
-        record_daily_words_impl(project_path, &tokens, words)
+        let record_path = project_path.clone();
+        tokens.with_write_permit(&project_path, |permit| {
+            record_daily_words_impl(record_path, permit, words)
+        })
     })
 }
 
 fn record_daily_words_impl(
     project_path: String,
-    tokens: &ProjectTokens,
+    permit: &WritePermit<'_>,
     words: usize,
 ) -> Result<(), ChiknError> {
-    // Project-internal app files obey the same write gate as documents: a
-    // Degraded project never yields a token, so opening Statistics on one
-    // writes nothing.
-    let token = tokens.checkout(&project_path)?;
     let path = Path::new(&project_path)
         .join("settings")
         .join("writing-history.json");
@@ -485,7 +490,7 @@ fn record_daily_words_impl(
     let json = serde_json::to_string_pretty(&history)
         .map_err(|e| ChiknError::Unknown(format!("Failed to serialize history: {}", e)))?;
     writer::write_project_app_file(
-        &token,
+        permit,
         Path::new("settings/writing-history.json"),
         json.as_bytes(),
     )?;
@@ -659,11 +664,10 @@ mod tests {
         // from the hierarchy) is a content-threatening self-heal condition.
         fs::write(project_path.join("manuscript/orphan.md"), "stranded work").unwrap();
 
-        let result = record_daily_words_impl(
-            project_path.to_string_lossy().to_string(),
-            &ProjectTokens::default(),
-            1234,
-        );
+        let tokens = ProjectTokens::default();
+        let result = tokens.with_write_permit(&project_path, |permit| {
+            record_daily_words_impl(project_path.to_string_lossy().to_string(), permit, 1234)
+        });
 
         assert!(
             matches!(result, Err(ChiknError::ReadOnly(_))),
@@ -682,12 +686,12 @@ mod tests {
         chickenscratch_core::core::project::writer::create_project(&project_path, "Safe History")
             .unwrap();
 
-        record_daily_words_impl(
-            project_path.to_string_lossy().to_string(),
-            &ProjectTokens::default(),
-            1234,
-        )
-        .unwrap();
+        let tokens = ProjectTokens::default();
+        tokens
+            .with_write_permit(&project_path, |permit| {
+                record_daily_words_impl(project_path.to_string_lossy().to_string(), permit, 1234)
+            })
+            .unwrap();
 
         assert!(project_path.join("settings/writing-history.json").exists());
     }
@@ -709,11 +713,10 @@ mod tests {
         fs::remove_dir(project_path.join("settings")).unwrap();
         unix_fs::symlink(&outside_path, project_path.join("settings")).unwrap();
 
-        let result = record_daily_words_impl(
-            project_path.to_string_lossy().to_string(),
-            &ProjectTokens::default(),
-            1234,
-        );
+        let tokens = ProjectTokens::default();
+        let result = tokens.with_write_permit(&project_path, |permit| {
+            record_daily_words_impl(project_path.to_string_lossy().to_string(), permit, 1234)
+        });
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert!(fs::read_dir(&outside_path).unwrap().next().is_none());

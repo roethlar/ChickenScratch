@@ -28,6 +28,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::fidelity::WritePermit;
 use super::format::{
     get_characters_path, get_document_meta_path, get_locations_path, get_manuscript_path,
     get_project_file_path, get_research_path, get_threads_path, DOCUMENT_EXTENSION,
@@ -227,6 +228,10 @@ fn current_timestamp() -> String {
 
 /// Reads a .chikn project from disk.
 ///
+/// Side-effect-free: missing folders and corrupt sidecars are represented in
+/// memory without creating, renaming, or rewriting anything on disk. Use
+/// [`read_project_with_repair`] only for an explicitly authorized Full open.
+///
 /// # Arguments
 /// * `path` - Path to .chikn project directory
 ///
@@ -248,27 +253,34 @@ fn current_timestamp() -> String {
 /// # Ok(()) }
 /// ```
 pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
+    read_project_impl(path, RepairMode::ReadOnly)
+}
+
+/// Explicit, permit-backed repair for a project that freshly probed Full.
+///
+/// This retains benign self-heal for missing standard folders. Corrupt
+/// sidecars are Degraded and are never quarantine-renamed by a read.
+pub fn read_project_with_repair(
+    path: &Path,
+    permit: &WritePermit<'_>,
+) -> Result<Project, ChiknError> {
+    permit.ensure_valid_for(path)?;
     read_project_impl(path, RepairMode::SelfHeal)
 }
 
-/// Repairs-disabled read for Degraded opens (see
-/// `super::fidelity::probe_project_fidelity`).
+/// Source-compatible name for an explicitly side-effect-free read.
 ///
-/// Byte-for-byte side-effect-free: no missing-folder creation on disk and
-/// no corrupt-sidecar quarantine renames — corrupt metadata is treated as
-/// missing in memory instead. In-memory reconciliation (orphan adoption,
-/// binder folders) still happens so the read-only UI shows everything, but
-/// nothing on disk changes. Normal `read_project` self-heal is unchanged
-/// for Full projects.
+/// Public [`read_project`] now has the same behavior; this alias remains for
+/// callers that want to state read-only intent at the call site.
 pub fn read_project_readonly(path: &Path) -> Result<Project, ChiknError> {
-    read_project_impl(path, RepairMode::ReadOnly)
+    read_project(path)
 }
 
 /// Whether a load may touch the disk to self-heal.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RepairMode {
-    /// Normal open: recreate missing standard folders, quarantine corrupt
-    /// sidecars.
+    /// Explicitly authorized Full-project open: recreate missing standard
+    /// folders. Corrupt sidecars are never mutated by a read.
     SelfHeal,
     /// Degraded open: pure read, disk stays byte-identical.
     ReadOnly,
@@ -967,7 +979,7 @@ fn read_document_metadata_or_default(
     meta_path: &Path,
     project_root: &Path,
     fallback_identity: Option<&HierarchyDocumentIdentity>,
-    repair_mode: RepairMode,
+    _repair_mode: RepairMode,
 ) -> Result<DocumentMetadata, ChiknError> {
     if !ensure_optional_read_file_safe(meta_path, project_root, "document metadata")? {
         return Ok(default_document_metadata(fallback_identity));
@@ -980,21 +992,9 @@ fn read_document_metadata_or_default(
             Ok(metadata)
         }
         Err(e) => {
-            // A read-only (Degraded) open must not rename anything on
-            // disk: treat the corrupt sidecar as missing in memory only.
-            if repair_mode == RepairMode::ReadOnly {
-                eprintln!(
-                    "Corrupt document metadata treated as missing (read-only open): {} ({})",
-                    meta_path.display(),
-                    e
-                );
-                return Ok(default_document_metadata(fallback_identity));
-            }
-            let quarantine_path = quarantine_corrupt_document_metadata(meta_path)?;
             eprintln!(
-                "Corrupt document metadata quarantined: {} -> {} ({})",
+                "Corrupt document metadata treated as missing without changing the file: {} ({})",
                 meta_path.display(),
-                quarantine_path.display(),
                 e
             );
             Ok(default_document_metadata(fallback_identity))
@@ -1027,27 +1027,6 @@ fn default_document_metadata(
         fields: std::collections::BTreeMap::new(),
         extra: Default::default(),
     }
-}
-
-fn quarantine_corrupt_document_metadata(meta_path: &Path) -> Result<PathBuf, ChiknError> {
-    let parent = meta_path.parent().ok_or_else(|| {
-        ChiknError::InvalidFormat(format!(
-            "Document metadata has no parent folder: {}",
-            meta_path.display()
-        ))
-    })?;
-    let file_name = meta_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| {
-            ChiknError::InvalidFormat(format!(
-                "Invalid document metadata filename: {}",
-                meta_path.display()
-            ))
-        })?;
-    let quarantine_path = parent.join(format!("{}.corrupt-{}", file_name, uuid::Uuid::new_v4()));
-    fs::rename(meta_path, &quarantine_path)?;
-    Ok(quarantine_path)
 }
 
 fn validate_relative_document_path(document_path: &str) -> Result<(), ChiknError> {
@@ -1616,12 +1595,13 @@ hierarchy: []
     }
 
     #[test]
-    fn test_read_project_quarantines_corrupt_document_meta_and_keeps_hierarchy_identity() {
+    fn test_public_read_preserves_corrupt_document_meta_and_keeps_hierarchy_identity() {
         let (_temp, project_path) = create_test_project();
         let project_file = project_path.join(PROJECT_FILE);
         let project_yaml_before = fs::read_to_string(&project_file).unwrap();
         let meta_path = project_path.join("manuscript/chapter-01.meta");
         fs::write(&meta_path, "id: [").unwrap();
+        let corrupt_bytes = fs::read(&meta_path).unwrap();
 
         let project = read_project(&project_path).unwrap();
 
@@ -1629,12 +1609,13 @@ hierarchy: []
         assert_eq!(document.id, "doc1");
         assert_eq!(document.name, "Chapter 1");
         assert_eq!(document.path, "manuscript/chapter-01.md");
-        assert!(!meta_path.exists());
-        assert_eq!(count_corrupt_meta_quarantines(&project_path), 1);
+        assert!(meta_path.exists(), "corrupt meta must stay in place");
+        assert_eq!(fs::read(&meta_path).unwrap(), corrupt_bytes);
+        assert_eq!(count_corrupt_meta_quarantines(&project_path), 0);
         assert_eq!(
             fs::read_to_string(&project_file).unwrap(),
             project_yaml_before,
-            "quarantining corrupt metadata must not rewrite project.yaml"
+            "reading corrupt metadata must not rewrite project.yaml"
         );
     }
 
@@ -1658,13 +1639,13 @@ hierarchy: []
     }
 
     #[test]
-    fn test_readonly_read_does_not_create_missing_folders() {
+    fn test_public_read_does_not_create_missing_folders() {
         let (_temp, project_path) = create_test_project();
         fs::remove_dir(project_path.join(RESEARCH_FOLDER)).unwrap();
         fs::remove_dir(project_path.join(TEMPLATES_FOLDER)).unwrap();
         fs::remove_dir(project_path.join(SETTINGS_FOLDER)).unwrap();
 
-        let project = read_project_readonly(&project_path).unwrap();
+        let project = read_project(&project_path).unwrap();
 
         assert_eq!(project.documents.len(), 1);
         assert!(
@@ -1674,8 +1655,13 @@ hierarchy: []
         assert!(!project_path.join(TEMPLATES_FOLDER).exists());
         assert!(!project_path.join(SETTINGS_FOLDER).exists());
 
-        // The normal open still self-heals (unchanged for Full projects).
-        read_project(&project_path).unwrap();
+        // Explicitly authorized Full-project open retains benign self-heal.
+        let token = super::super::fidelity::acquire_write_token(&project_path).unwrap();
+        token
+            .with_write_permit(&project_path, |permit| {
+                read_project_with_repair(&project_path, permit).map(|_| ())
+            })
+            .unwrap();
         assert!(project_path.join(RESEARCH_FOLDER).exists());
     }
 
@@ -1755,7 +1741,11 @@ hierarchy: []
             },
         ];
         let token = super::super::fidelity::acquire_write_token(&project_path).expect("token");
-        super::super::writer::write_project(&mut project, &token).expect("write");
+        token
+            .with_write_permit(&project_path, |permit| {
+                super::super::writer::write_project(&mut project, permit)
+            })
+            .expect("write");
 
         let reread = read_project(&project_path).expect("re-read");
         assert_eq!(reread.threads.len(), 2);

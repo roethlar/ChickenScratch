@@ -3,7 +3,7 @@
 //! The write-guard: the engine must never save over a project it cannot
 //! fully read (INVARIANTS.md I5/I6, PLAN_TRUST_FOUNDATIONS.md Slice 1).
 //!
-//! Two pieces:
+//! Three pieces:
 //!
 //! 1. [`probe_project_fidelity`] — a side-effect-free preflight that
 //!    classifies a project as [`Fidelity::Full`] (safe to write) or
@@ -11,12 +11,12 @@
 //!    resolve, or that load-time self-heal would mutate in a
 //!    content-threatening way). The probe performs no folder creation, no
 //!    sidecar quarantine renames, no writes of any kind.
-//! 2. [`WriteToken`] — a non-`Clone`, engine-issued capability required by
-//!    every mutating engine API. Tokens are bound to a canonical project
-//!    root (a token for project A can never authorize writes into project
-//!    B) and stamped with a per-project write epoch (operations that
-//!    replace working-tree content bump the epoch, so tokens issued before
-//!    the replacement are refused until the project is re-probed).
+//! 2. [`WriteToken`] — a non-`Clone`, engine-issued session capability bound
+//!    to a canonical project root and stamped with a write epoch.
+//! 3. [`WritePermit`] — a short-lived operation capability issued only after
+//!    a cached token re-probes current fidelity. Mutating APIs require the
+//!    permit, so an externally degraded project cannot reuse yesterday's
+//!    `Full` classification.
 //!
 //! A token is only issued when the probe returns `Full`. A freshly created
 //! project probes `Full` by construction, so the project-creation path
@@ -78,8 +78,8 @@ pub enum DegradedReason {
     /// is missing, unreadable, outside the folders the engine reads, or
     /// has bytes that yield no content.
     UnresolvedDocument { path: String, detail: String },
-    /// A document sidecar (`.meta`) exists but cannot be parsed. A normal
-    /// load would quarantine-rename it on disk.
+    /// A document sidecar (`.meta`) exists but cannot be parsed. It remains
+    /// untouched on disk and the project can only be read side-effect-free.
     CorruptSidecar { path: String },
     /// A document file exists on disk but is not referenced by the
     /// hierarchy. A normal load would adopt it and the next save would
@@ -160,9 +160,11 @@ pub(crate) fn bump_write_epoch(canonical_root: &Path) {
 
 // ── WriteToken ───────────────────────────────────────────────────────────────
 
-/// Engine-issued write capability. Non-`Clone` and non-constructible
+/// Engine-issued session capability. Non-`Clone` and non-constructible
 /// outside the engine: the only way to obtain one is
-/// [`acquire_write_token`], which probes fidelity first.
+/// [`acquire_write_token`], which probes fidelity first. A token cannot
+/// directly authorize a mutation; callers must open a fresh
+/// [`WritePermit`] for each logical operation.
 #[derive(Debug)]
 pub struct WriteToken {
     /// Canonical (symlink-resolved) project root this token authorizes.
@@ -183,8 +185,34 @@ impl WriteToken {
         current_epoch(&self.root) != self.epoch
     }
 
-    /// Refuse unless the token is still current for its own root.
-    pub(crate) fn ensure_fresh(&self) -> Result<(), ChiknError> {
+    /// Run one logical write operation after re-checking current fidelity.
+    ///
+    /// The permit is scoped to the closure so application code cannot cache
+    /// it as session state. Nested steps reuse the same permit and perform
+    /// cheap root/epoch checks rather than re-probing an intentionally
+    /// intermediate tree (for example halfway through folder deletion).
+    pub fn with_write_permit<T>(
+        &self,
+        project_path: &Path,
+        operation: impl FnOnce(&WritePermit<'_>) -> Result<T, ChiknError>,
+    ) -> Result<T, ChiknError> {
+        self.ensure_valid_root(project_path)?;
+        self.ensure_epoch_fresh()?;
+
+        match probe_project_fidelity(&self.root)? {
+            Fidelity::Full => {}
+            Fidelity::Degraded { reasons } => {
+                return Err(ChiknError::ReadOnly(describe_reasons(&reasons)));
+            }
+        }
+
+        // Catch an in-process tree replacement that raced the probe.
+        self.ensure_epoch_fresh()?;
+        let permit = WritePermit { token: self };
+        operation(&permit)
+    }
+
+    fn ensure_epoch_fresh(&self) -> Result<(), ChiknError> {
         if self.is_stale() {
             return Err(ChiknError::ReadOnly(format!(
                 "the project at {} changed on disk after this session started; reopen it to continue",
@@ -194,10 +222,7 @@ impl WriteToken {
         Ok(())
     }
 
-    /// Refuse unless `project_path` resolves to exactly this token's root
-    /// and the token is still current. Every mutating engine API calls
-    /// this before touching disk.
-    pub(crate) fn ensure_valid_for(&self, project_path: &Path) -> Result<(), ChiknError> {
+    fn ensure_valid_root(&self, project_path: &Path) -> Result<(), ChiknError> {
         let canonical = project_path.canonicalize().map_err(|e| {
             ChiknError::ReadOnly(format!(
                 "cannot resolve project path {}: {e}",
@@ -211,13 +236,57 @@ impl WriteToken {
                 canonical.display()
             )));
         }
+        Ok(())
+    }
+}
+
+/// Fresh, operation-scoped write authority.
+///
+/// Only [`WriteToken::with_write_permit`] can construct this type. Mutating
+/// engine APIs accept a permit rather than a session token, which makes a
+/// current fidelity check a structural precondition of every logical write.
+#[derive(Debug)]
+pub struct WritePermit<'token> {
+    token: &'token WriteToken,
+}
+
+impl WritePermit<'_> {
+    /// Canonical project root authorized for this operation.
+    pub fn root(&self) -> &Path {
+        self.token.root()
+    }
+
+    /// Refuse unless the operation still targets its authorized root and no
+    /// in-process tree replacement has invalidated the underlying token.
+    pub(crate) fn ensure_valid_for(&self, project_path: &Path) -> Result<(), ChiknError> {
+        self.token.ensure_valid_root(project_path)?;
         self.ensure_fresh()
     }
 
-    /// Mark the token's project as tree-replaced: bumps the epoch, which
-    /// invalidates every outstanding token (including this one).
+    /// Cheap nested-step check. Fidelity was probed once when the operation
+    /// permit was issued; repeating it here would reject valid intermediate
+    /// states inside composite mutations.
+    pub(crate) fn ensure_fresh(&self) -> Result<(), ChiknError> {
+        self.token.ensure_epoch_fresh()
+    }
+
+    /// Re-probe at a deliberate sub-boundary that has not changed project
+    /// content (for example after a network fetch, before a merge).
+    pub(crate) fn revalidate_fidelity(&self) -> Result<(), ChiknError> {
+        self.ensure_fresh()?;
+        match probe_project_fidelity(self.root())? {
+            Fidelity::Full => {}
+            Fidelity::Degraded { reasons } => {
+                return Err(ChiknError::ReadOnly(describe_reasons(&reasons)));
+            }
+        }
+        self.ensure_fresh()
+    }
+
+    /// Mark the project as tree-replaced: every session token and this permit
+    /// become stale once the authorized composite operation is complete.
     pub(crate) fn bump_epoch(&self) {
-        bump_write_epoch(&self.root);
+        bump_write_epoch(self.root());
     }
 }
 
@@ -250,9 +319,9 @@ pub fn acquire_write_token(project_path: &Path) -> Result<WriteToken, ChiknError
 /// - hierarchy documents that can never resolve to loaded content
 ///   (missing, unreadable, outside the loaded folders, or nonzero bytes
 ///   yielding empty content — zero-byte files are VALID);
-/// - content-threatening self-heal conditions: corrupt sidecars (load
-///   quarantine-renames them), orphan documents (load adopts them),
-///   conflicting identities;
+/// - content-threatening or incomplete-read conditions: corrupt sidecars,
+///   orphan documents (read adopts them only in memory), conflicting
+///   identities;
 /// - a `format_version` newer than, or unintelligible to, this engine.
 ///
 /// Missing standard folders are NOT Degraded: recreating an empty
@@ -1044,8 +1113,8 @@ hierarchy:
         let (_ta, root_a) = create_probe_project();
         let (_tb, root_b) = create_probe_project();
         let token_a = acquire_write_token(&root_a).unwrap();
-        assert!(token_a.ensure_valid_for(&root_a).is_ok());
-        let result = token_a.ensure_valid_for(&root_b);
+        assert!(token_a.with_write_permit(&root_a, |_| Ok(())).is_ok());
+        let result = token_a.with_write_permit(&root_b, |_| Ok(()));
         assert!(
             matches!(result, Err(ChiknError::ReadOnly(_))),
             "token for project A must not validate against project B: {result:?}"
@@ -1056,16 +1125,40 @@ hierarchy:
     fn token_stale_after_epoch_bump() {
         let (_t, root) = create_probe_project();
         let token = acquire_write_token(&root).unwrap();
-        assert!(token.ensure_fresh().is_ok());
-        token.bump_epoch();
+        token
+            .with_write_permit(&root, |permit| {
+                permit.ensure_fresh()?;
+                permit.bump_epoch();
+                Ok(())
+            })
+            .unwrap();
         assert!(token.is_stale());
-        assert!(matches!(token.ensure_fresh(), Err(ChiknError::ReadOnly(_))));
         assert!(matches!(
-            token.ensure_valid_for(&root),
+            token.with_write_permit(&root, |_| Ok(())),
             Err(ChiknError::ReadOnly(_))
         ));
         // Re-acquiring after the bump yields a fresh, valid token.
         let fresh = acquire_write_token(&root).unwrap();
-        assert!(fresh.ensure_valid_for(&root).is_ok());
+        assert!(fresh.with_write_permit(&root, |_| Ok(())).is_ok());
+    }
+
+    #[test]
+    fn fresh_fidelity_old_session_cannot_begin_operation() {
+        let (_t, root) = create_probe_project();
+        let token = acquire_write_token(&root).unwrap();
+
+        let yaml = fs::read_to_string(root.join(PROJECT_FILE))
+            .unwrap()
+            .replace("format_version: '1.2'", "format_version: '9.9'");
+        fs::write(root.join(PROJECT_FILE), yaml).unwrap();
+        let before = tree_snapshot(&root);
+
+        assert!(
+            !token.is_stale(),
+            "external edits do not change the in-process epoch"
+        );
+        let result = token.with_write_permit(&root, |_| Ok(()));
+        assert!(matches!(result, Err(ChiknError::ReadOnly(_))));
+        assert_eq!(before, tree_snapshot(&root));
     }
 }

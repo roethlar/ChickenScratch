@@ -8,7 +8,7 @@ pub mod settings;
 pub mod templates;
 pub mod threads;
 
-use chickenscratch_core::core::project::fidelity::{self, WriteToken};
+use chickenscratch_core::core::project::fidelity::{self, WritePermit, WriteToken};
 use chickenscratch_core::ChiknError;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,12 +20,11 @@ pub struct ProjectWriteLocks {
 }
 
 /// Per-project write tokens held in app state (PLAN_TRUST_FOUNDATIONS
-/// Slice 1). A token enters the map when a project opens Full (or on
-/// demand via [`ProjectTokens::checkout`]); a Degraded project never
-/// yields one, so every mutating command cleanly refuses. Tokens are
-/// shared via `Arc` — `WriteToken` itself stays non-`Clone`, and a stale
-/// token (after a tree-replacing operation bumped the project's write
-/// epoch) is dropped and re-acquired through a fresh fidelity probe.
+/// Slice 1). A token enters the map when a project opens Full (or is
+/// acquired on demand); a Degraded project never yields a permit, so every
+/// mutating command cleanly refuses. Tokens are shared via `Arc` —
+/// `WriteToken` itself stays non-`Clone` — while each operation receives a
+/// scoped [`WritePermit`] only after a fresh fidelity probe.
 #[derive(Default)]
 pub struct ProjectTokens {
     tokens: Mutex<HashMap<PathBuf, Arc<WriteToken>>>,
@@ -43,7 +42,7 @@ impl ProjectTokens {
     /// Fetch the cached token for a project, re-probing when it is
     /// missing or stale. Errors with `ReadOnly` for Degraded projects —
     /// the single refusal path for every mutating command.
-    pub fn checkout(&self, project_path: impl AsRef<Path>) -> Result<Arc<WriteToken>, ChiknError> {
+    fn checkout(&self, project_path: impl AsRef<Path>) -> Result<Arc<WriteToken>, ChiknError> {
         let path = project_path.as_ref();
         let key = project_lock_key(path)?;
         {
@@ -65,6 +64,23 @@ impl ProjectTokens {
                 Err(e)
             }
         }
+    }
+
+    /// Run one project mutation under a freshly validated, operation-scoped
+    /// permit. A fidelity refusal also evicts the cached session token so a
+    /// later operation must start from a new checkout.
+    pub fn with_write_permit<T>(
+        &self,
+        project_path: impl AsRef<Path>,
+        operation: impl FnOnce(&WritePermit<'_>) -> Result<T, ChiknError>,
+    ) -> Result<T, ChiknError> {
+        let path = project_path.as_ref();
+        let token = self.checkout(path)?;
+        let result = token.with_write_permit(path, operation);
+        if matches!(&result, Err(ChiknError::ReadOnly(_))) {
+            self.invalidate(path);
+        }
+        result
     }
 
     /// Record a freshly issued token for an opened project.
@@ -124,11 +140,41 @@ fn project_lock_key(path: &Path) -> Result<PathBuf, ChiknError> {
 
 #[cfg(test)]
 mod tests {
-    use super::ProjectWriteLocks;
+    use super::{ProjectTokens, ProjectWriteLocks};
+    use chickenscratch_core::core::project::writer;
     use chickenscratch_core::ChiknError;
+    use std::collections::BTreeMap;
+    use std::fs;
+    use std::path::{Path, PathBuf};
     use std::sync::mpsc;
     use std::sync::Arc;
     use std::time::Duration;
+
+    fn snapshot_tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+        fn visit(root: &Path, path: &Path, snapshot: &mut BTreeMap<PathBuf, Vec<u8>>) {
+            let mut entries = fs::read_dir(path)
+                .unwrap()
+                .map(|entry| entry.unwrap())
+                .collect::<Vec<_>>();
+            entries.sort_by_key(|entry| entry.file_name());
+
+            for entry in entries {
+                let entry_path = entry.path();
+                if entry.file_type().unwrap().is_dir() {
+                    visit(root, &entry_path, snapshot);
+                } else {
+                    snapshot.insert(
+                        entry_path.strip_prefix(root).unwrap().to_path_buf(),
+                        fs::read(&entry_path).unwrap(),
+                    );
+                }
+            }
+        }
+
+        let mut snapshot = BTreeMap::new();
+        visit(root, root, &mut snapshot);
+        snapshot
+    }
 
     #[test]
     fn same_project_lock_serializes_operations() {
@@ -215,5 +261,35 @@ mod tests {
 
         first.join().unwrap();
         second.join().unwrap();
+    }
+
+    #[test]
+    fn fresh_fidelity_refusal_invalidates_cached_token() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("FreshPermit.chikn");
+        writer::create_project(&project_path, "Fresh Permit").unwrap();
+
+        let tokens = ProjectTokens::default();
+        tokens.checkout(&project_path).unwrap();
+        assert_eq!(tokens.lock().unwrap().len(), 1);
+
+        let project_file = project_path.join("project.yaml");
+        let original = fs::read_to_string(&project_file).unwrap();
+        let future = original.replace("format_version: '1.2'", "format_version: '9.9'");
+        assert_ne!(future, original);
+        fs::write(&project_file, future).unwrap();
+        let before = snapshot_tree(&project_path);
+
+        let result = tokens.with_write_permit(&project_path, |permit| {
+            writer::write_project_app_file(
+                permit,
+                Path::new("settings/should-not-exist"),
+                b"blocked",
+            )
+        });
+
+        assert!(matches!(result, Err(ChiknError::ReadOnly(_))));
+        assert_eq!(snapshot_tree(&project_path), before);
+        assert!(tokens.lock().unwrap().is_empty());
     }
 }

@@ -139,25 +139,26 @@ pub fn create_thread(
     description: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let trimmed = name.trim();
-        if trimmed.is_empty() {
-            return Err(ChiknError::InvalidFormat(
-                "Thread name cannot be empty".to_string(),
-            ));
-        }
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
+        tokens.with_write_permit(&project_path, |permit| {
+            let trimmed = name.trim();
+            if trimmed.is_empty() {
+                return Err(ChiknError::InvalidFormat(
+                    "Thread name cannot be empty".to_string(),
+                ));
+            }
+            let mut project = reader::read_project(Path::new(&project_path))?;
 
-        let id = unique_thread_id(trimmed, &project.threads);
-        project.threads.push(Thread {
-            id,
-            name: trimmed.to_string(),
-            color: color.and_then(non_empty),
-            description: description.and_then(non_empty),
-            extra: Default::default(),
-        });
-        writer::write_project(&mut project, &token)?;
-        Ok(project)
+            let id = unique_thread_id(trimmed, &project.threads);
+            project.threads.push(Thread {
+                id,
+                name: trimmed.to_string(),
+                color: color.and_then(non_empty),
+                description: description.and_then(non_empty),
+                extra: Default::default(),
+            });
+            writer::write_project(&mut project, permit)?;
+            Ok(project)
+        })
     })
 }
 
@@ -172,25 +173,26 @@ pub fn update_thread(
     description: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
-        let thread = project
-            .threads
-            .iter_mut()
-            .find(|t| t.id == id)
-            .ok_or_else(|| ChiknError::NotFound(format!("Thread not found: {}", id)))?;
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
+            let thread = project
+                .threads
+                .iter_mut()
+                .find(|t| t.id == id)
+                .ok_or_else(|| ChiknError::NotFound(format!("Thread not found: {}", id)))?;
 
-        if let Some(n) = name.and_then(non_empty) {
-            thread.name = n;
-        }
-        if let Some(c) = color {
-            thread.color = non_empty(c);
-        }
-        if let Some(d) = description {
-            thread.description = non_empty(d);
-        }
-        writer::write_project(&mut project, &token)?;
-        Ok(project)
+            if let Some(n) = name.and_then(non_empty) {
+                thread.name = n;
+            }
+            if let Some(c) = color {
+                thread.color = non_empty(c);
+            }
+            if let Some(d) = description {
+                thread.description = non_empty(d);
+            }
+            writer::write_project(&mut project, permit)?;
+            Ok(project)
+        })
     })
 }
 
@@ -204,19 +206,20 @@ pub fn delete_thread(
     id: String,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
-        project.threads.retain(|t| t.id != id);
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
+            project.threads.retain(|t| t.id != id);
 
-        for doc in project.documents.values_mut() {
-            if let Some(value) = doc.fields.get_mut("threads") {
-                if let Some(seq) = value.as_sequence_mut() {
-                    seq.retain(|v| v.as_str().map(|s| s != id).unwrap_or(true));
+            for doc in project.documents.values_mut() {
+                if let Some(value) = doc.fields.get_mut("threads") {
+                    if let Some(seq) = value.as_sequence_mut() {
+                        seq.retain(|v| v.as_str().map(|s| s != id).unwrap_or(true));
+                    }
                 }
             }
-        }
-        writer::write_project(&mut project, &token)?;
-        Ok(project)
+            writer::write_project(&mut project, permit)?;
+            Ok(project)
+        })
     })
 }
 
