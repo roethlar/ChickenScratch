@@ -24,7 +24,7 @@ supported Rust applications.
 
 ## Goals (exit criteria)
 
-- [ ] Re-verify and prioritize the remaining recorded engine-integrity risks.
+- [x] Re-verify and prioritize the remaining recorded engine-integrity risks.
 - [ ] Close each approved high-risk item one concern at a time, with a guard
   test that fails when the protection is removed.
 - [ ] Re-verify that all `.chikn` writes remain centralized in
@@ -38,7 +38,7 @@ supported Rust applications.
 
 ## Active work order
 
-### Step 1 — Hardening audit
+### Step 1 — Hardening audit (completed 2026-07-12)
 
 Re-verify the integrity findings already recorded under "Out of scope" in
 [PLAN_FORMAT_LOCK_ENGINE.md](plans/PLAN_FORMAT_LOCK_ENGINE.md) against the
@@ -47,6 +47,9 @@ for equivalent risks. Rank findings by plausible data loss, not convenience.
 
 This audit is read-only. Present one proposed safety slice at a time in plain
 English; advancing the phase does not itself approve a code change.
+
+The audit is complete. Its ranked findings and first proposed slice are
+recorded in `.agents/state.md`; no code slice is approved yet.
 
 ### Step 2 — Approved safety slices
 

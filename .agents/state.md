@@ -7,9 +7,22 @@ decisions; `DEVLOG.md` holds history.
 ## Now
 
 - Phase **Engine hardening — protect writers' work** is active as of
-  2026-07-12 (`docs/CURRENT_PHASE.md` is authoritative). The first step is a
-  read-only re-verification and prioritization of the existing integrity-risk
-  record; advancing the phase does not approve a code slice.
+  2026-07-12 (`docs/CURRENT_PHASE.md` is authoritative). Its read-only first
+  step is complete; advancing the phase did not approve a code slice.
+- **Engine-hardening audit completed** 2026-07-12 (read-only; verified
+  against `e4acb69`, whose code is unchanged from `e17ceeb`). Highest risk:
+  cached `WriteToken`s detect only in-process epoch changes, not external disk
+  changes, while public `read_project` still performs repair/quarantine writes
+  without a probe or token; CLI export calls that reader directly. A project
+  can therefore open Full, become Degraded outside the app, then have newer
+  format data downgraded or corrupt metadata replaced on a later read/write.
+  Ranked follow-ups: Scrivener asset import writes directly into `.chikn`
+  outside core and reports copy failures only to stderr; public `init_repo`
+  mutates without a token and creation suppresses its errors; multi-file saves
+  remain non-transactional; revision saves stage quarantine/crash-temp
+  artifacts; `include_in_compile` strings are case-sensitive. The old
+  stderr-only quarantine finding is resolved for reference-app opens, and a
+  project-level `fields` map is an extensibility choice, not an integrity bug.
 - **Coherence is complete.** The owner confirmed on 2026-07-12 that completion
   had already been declared but not saved. Format lock, Tauri alignment,
   deprecation cleanup, and goals G1–G6 are recorded as completed in
@@ -50,10 +63,16 @@ decisions; `DEVLOG.md` holds history.
 
 ## Next
 
-1. Run the read-only hardening audit defined in `docs/CURRENT_PHASE.md`:
-   re-verify existing integrity findings against current code, then present
-   one highest-risk proposed slice in plain English for approval.
-2. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
+1. **Proposed Slice 1 — NOT approved:** seal the fresh-fidelity boundary.
+   Make the public/default reader side-effect-free, put self-heal behind valid
+   write authority, and make mutation-time token validation detect current
+   disk fidelity rather than only the in-process epoch. Guard proof: acquire a
+   token, externally degrade the fixture, then every public read/mutation must
+   leave the tree byte-identical. Draft the implementation plan only after
+   owner approval.
+2. After Slice 1, propose the Scrivener asset-import boundary as the next
+   single concern; keep the remaining ranked findings parked above.
+3. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
    decision on remote design and the plan's open v1 guided-token question.
 
 ## Verification
