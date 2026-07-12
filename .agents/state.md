@@ -23,11 +23,15 @@ decisions; `DEVLOG.md` holds history.
   effectively done; deprecation cleanup (G4–G6) and ADR-005 binary-only
   distribution executed 2026-07-10 (DEVLOG entries; archived detail in
   `docs/history/state-archive.md`).
-- **Push status** (as of the Slice 1 close-out commit): local `master` is
-  ahead of both remotes by the 2026-07-10 cleanup commits plus the Slice 1
-  commits; ask-first policy, owner not yet asked. Remotes: Gitea `origin`
-  (http://q:3000) and `github` (https://github.com/roethlar/ChickenScratch);
-  pushes go to both.
+- **Push status** (verified 2026-07-11 via git + `gh`): the accumulated
+  commits are pushed; local `master`, Gitea `origin` (http://q:3000), and
+  `github` (https://github.com/roethlar/ChickenScratch) are all at
+  `e17ceeb`. GitHub CI at the tip is green — Validation (run 29147248690)
+  and Tauri Bundles (run 29147248729) both succeeded, all four check-runs
+  passing. Note: three intermediate Slice 1 commits have red Validation
+  runs (Darwin EPERM killing an exited-leader process group, fixed by
+  `e17ceeb` itself), so mid-stack commits on master are not individually
+  green; the branch tip is.
 
 ## Blockers
 
@@ -56,10 +60,7 @@ the CI/release/README/ARCHITECTURE/ROADMAP entries formerly listed here
    nowhere near deciding how remotes will work". No vault work until a
    fresh owner decision on remote design (and the plan's open v1
    guided-token question).
-2. Owner go for pushing the accumulated commits (ask-first policy); after
-   the push, Validation CI on GitHub is expected fully green — confirm
-   and record.
-3. Owner decision: G4/G5 work is done and G2/G3/G6 look met — declare
+2. Owner decision: G4/G5 work is done and G2/G3/G6 look met — declare
    goals met / advance the phase via `SET PHASE`, or name the next work.
    Checkbox edits in `docs/CURRENT_PHASE.md` are the owner's call.
 
