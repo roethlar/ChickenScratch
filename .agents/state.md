@@ -85,7 +85,9 @@ decisions; `DEVLOG.md` holds history.
 - Last run green locally 2026-07-16 at code tip `354fbc0` (rustc 1.97.0,
   current stable — no CI-version gap): the exact declared suite plus the
   slice-4 red/green guard drills (per finding and per protection; DEVLOG
-  top entry). Remote CI state: check live at push time.
+  top entry).
+- Remote CI green as of `c6993a9` (2026-07-16): GitHub Validation (6m07s)
+  and Tauri Bundles (13m08s) both passed on the pushed epoch-guard work.
 
 ## Active Sources
 
