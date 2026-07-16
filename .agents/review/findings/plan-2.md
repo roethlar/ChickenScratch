@@ -268,3 +268,20 @@ Findings and triage:
 5. `PLAN:242` — inline epoch bump invalidates the caller's live permit. **ADMITTED**: `backup_current_work` calls `push_backup` with the same permit (`git.rs:744` → `ensure_valid_for` `:682` → stale → ReadOnly error after the commit landed); the Tauri `save_revision` command's backup/remote pushes (`src-tauri git.rs:24`/`:32`) are silently lost. Ordering constraint recorded: restore helpers are safe only because nothing validates the permit after their internal save.
 
 Round-8 redesign folded in (replaces the round-7 completion shape): `save_revision` refuses during any merge state, all callers, no provenance; new explicit core `complete_merge` (stage, two-parent commit, `cleanup_state`; epoch bump via the step-2 drop guard at scope exit, never inline); backend merge-state query + persistent merge-in-progress UI with Complete/Abort (the user's explicit act replaces the impossible index-state detection); lingering `MERGE_HEAD` migrates via the same prompt. Owner-admission clause/Files/Tests now cover the post-op reload; Inspector joins the forms bullet with generation-keyed resync; regressions updated (reload-under-handle, post-release Inspector clobber, complete_merge continuation with live permit). Decisions: conflict sub-slice re-flagged as the largest separable piece (now a real sub-feature: command + query + UI state). Round 9 to verify.
+
+## Round 9 dispatch
+
+- **Reviewer**: codex-cli 0.144.4, standard invocation
+  (`codex exec --ephemeral -s read-only --json --output-schema ... -o ...`)
+- **Reviewed SHA**: `d851a8f5f75274d8f3378c312298d436ad53f302` (round-8
+  redesign commit)
+- **Base SHA**: `066a2a81d796b92dd68721cfb05bf8356b66c492` (unchanged)
+- **Bound**: 1800 s
+- **Dispatched**: 2026-07-16 (prompt `/tmp/plan2-r9-prompt.md`; verdict ->
+  `/tmp/plan2-r9-review-last.json`; round-8 findings quoted verbatim;
+  reviewer asked to probe the redesign's own seams: does blanket
+  save_revision refusal break creation/import/TUI flows, how does
+  complete_merge interact with the dirty guards and the lease, does the
+  merge-state query survive restarts; explicit note that after eight
+  rounds a clean pass is the honest signal if the plan now holds)
+- **Verdict**: pending
