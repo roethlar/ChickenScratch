@@ -373,4 +373,17 @@ Round 12 to verify.
   quoted; reviewer asked to probe the four commit boundaries (independent
   greenness and honest temporary exposures), placeholder-leak risk in the
   recovery-mode load, and re-attestation fallback semantics)
-- **Verdict**: pending
+- **Verdict**: `reopened` (envelope valid; see Round 12 record below)
+
+## Round 12 — reopened (all three findings admitted)
+
+- Verdict received 2026-07-16: `reopened`, `guard_confirmed: true`, envelope valid (SHAs echo dispatch `0a830e9`/`066a2a8`). Verdict file `/tmp/plan2-r12-review-last.json`.
+- Triage method: inline single-agent verification; all three findings checked against plan text and evidence already gathered this session (step-5 dependency DAG; `sync_pull_force`'s remote-only target `git.rs:1044–:1051`; the conflict dialog serving both pull and draft origins, `Revisions.tsx:38–:40`; clean-tree-passes-ordinary-checks logic).
+
+Findings and triage:
+
+1. `PLAN:434` — the "independently green" boundary order was impossible: the merge/recovery UI needs the barrier (deferred to iii) and its regressions need vitest (deferred to iv); the core-guard boundary silently left the app-layer clobber live. **ADMITTED**: step 5 reordered into dependency order — (1) vitest+CI, (2) core guard (with the intermediate exposures stated: UI clobber until (3), conflict commit until (4)), (3) UI barrier, (4) merge/recovery. Decisions entry renumbered to match.
+2. `PLAN:572` — the recovery test promised Force for both conflict origins, but `sync_pull_force` fetches/resets to `refs/remotes/sync/<branch>`; after a draft conflict there may be no sync remote, or an unrelated one. **ADMITTED**: attested force is now source-aware (remote tracking ref for pull; `MERGE_HEAD` for draft merges), with per-origin resulting-tree assertions. (Latent-wrong-source is masked today by live bug #2 — the dirty check fires first — so no new state.md entry.)
+3. `PLAN:379` — failed re-attestation must fail closed: another process completing/aborting the merge leaves a clean Full tree, so the round-11 "fall back to ordinary checks" would pass and the reset would discard the new state (and contradict outside-merge-refused). **ADMITTED**: fail closed with fresh authority/confirmation; race regression covers clean-completion and abort states.
+
+Round 13 to verify.

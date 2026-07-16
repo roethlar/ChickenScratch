@@ -379,11 +379,24 @@ on-disk state cannot be clobbered by a half-finished operation.
      Round 11: attestation must be *re-checked at the last safe
      point* immediately before the hard reset, exactly where today's
      code re-runs its dirty check (`git.rs:1057`–`:1059` — the fetch
-     can block while another process edits the project). If the
-     merge was completed or aborted between capability validation
-     and the reset, the attested bypass would otherwise hard-reset
-     unrelated new work; on failed re-attestation the force falls
-     back to the ordinary checks. Race regression required.
+     can block while another process edits the project). Round 12:
+     failed re-attestation **fails closed** — abort the force with an
+     error requiring fresh authority/confirmation, never fall back to
+     the ordinary checks: if another process completed or aborted the
+     merge, the tree can be clean and Full-fidelity, so the ordinary
+     checks all pass while the hard reset would still discard the
+     newly committed or restored state (and a fallback would
+     contradict the outside-merge-state-refused rule). The race
+     regression covers both the clean-completion and the abort state.
+     The attested force is also *source-aware* (round 12): the
+     conflict dialog serves both pull and draft-merge conflicts, but
+     `sync_pull_force` fetches and resets to
+     `refs/remotes/sync/<branch>` — after a *draft* conflict there
+     may be no sync remote at all, or worse an unrelated one, so the
+     force target derives from the conflict origin (remote tracking
+     ref for pull conflicts; `MERGE_HEAD` — the draft being merged —
+     for draft conflicts), with the regression asserting the
+     resulting tree per origin.
      The read-only open path tolerates an unparsable `project.yaml`
      while `MERGE_HEAD` is present (fall back to the pre-merge
      `HEAD` version for display). Reachability (round 10): today's
@@ -435,14 +448,25 @@ on-disk state cannot be clobbered by a half-finished operation.
    implementation starts** (round 11: after ten review rounds the
    original "one concern, one branch, one commit" claim is no longer
    honest while three splits sit open in Decisions). The proposed
-   boundaries, each independently green under the declared suite:
-   (i) core epoch guard + arming points (steps 1–3);
-   (ii) merge completion/recovery sub-feature (`save_revision`
-   refusal, `complete_merge`, recovery capability, merge-state query,
-   merge-in-progress UI, reader recovery entry, TUI error rendering) —
-   also fixes the two recorded live bugs;
-   (iii) UI barrier (dispatch gate, forms, editor lifecycle, timers);
-   (iv) vitest harness + CI/declared-suite wiring.
+   boundaries in dependency order (round 12 — the earlier ordering was
+   impossible: the merge/recovery UI needs the barrier, and every UI
+   regression needs the harness). Each lands green under the declared
+   suite, with its intermediate exposure stated honestly:
+   (1) vitest harness + CI/declared-suite wiring (infra + smoke test;
+   no product change);
+   (2) core epoch guard + arming points (steps 1–3; core tests only).
+   *Documented exposure:* the app-layer clobber paths (rounds 1–5)
+   stay live until (3), and the today-reachable conflict commit stays
+   live until (4) — this boundary narrows the window, it does not
+   close it;
+   (3) UI barrier (dispatch gate, forms, editor lifecycle, timers;
+   regressions run on (1));
+   (4) merge completion/recovery sub-feature (`save_revision` refusal,
+   restore preflight, `complete_merge`, recovery capability,
+   merge-state query, merge-in-progress UI, reader recovery entry, TUI
+   error rendering) — depends on (2) for guard arming and (3) for the
+   Complete action's barrier lifecycle; also fixes the two recorded
+   live bugs.
    The owner picks: one sweep commit in the listed order (explicit
    sweep approval per `.agents/repo-guidance.md` Earned Practices), or
    separate slices at these boundaries. A cold implementer must not
@@ -569,11 +593,15 @@ on-disk state cannot be clobbered by a half-finished operation.
   and nothing typed is discarded; shown to fail without
   freeze-before-drain + flush-under-owner-handle on the Complete
   action.
-- [ ] Format-file-conflict recovery regression (rounds 9–10): a
+- [ ] Format-file-conflict recovery regression (rounds 9–12): a
   `sync_pull`/`merge_draft` conflict touching `project.yaml` (and,
   separately, only a `.meta`) can still be Aborted, Completed, AND
   Force-overwritten through a fresh command boundary (fresh
-  `ProjectTokens`, simulating restart) via the recovery capability —
+  `ProjectTokens`, simulating restart) via the recovery capability;
+  the force is source-aware — the resulting tree is asserted per
+  conflict origin (remote tracking ref for pull, `MERGE_HEAD` for
+  draft merge), shown to fail while both origins route to
+  `sync_pull_force`'s remote target —
   shown to fail today and under an ordinary-permit-only design
   (probe errors or Degraded → no permit → recovery unreachable;
   force additionally blocked by its own dirty checks on every
@@ -587,11 +615,14 @@ on-disk state cannot be clobbered by a half-finished operation.
   the epoch — after an abort/force/complete under the capability
   (including an injected partial failure), a pre-operation token is
   refused (shown to fail while the guard arms only from
-  `WritePermit`); force race — merge completed/aborted between
-  attestation and the hard reset falls back to the ordinary checks
-  instead of resetting unrelated new work; HEAD/worktree hierarchy
-  skew (remote delete/recreate at the same path) loads in recovery
-  mode as unlinked/placeholder instead of failing the open.
+  `WritePermit`); force race (amended round 12) — merge completed or
+  aborted between attestation and the hard reset **fails closed**
+  (error requiring fresh authority/confirmation; nothing is reset),
+  covering both the clean-completion and the abort state — shown to
+  fail under an ordinary-checks fallback, which passes on the now-
+  clean tree and still discards the new state; HEAD/worktree
+  hierarchy skew (remote delete/recreate at the same path) loads in
+  recovery mode as unlinked/placeholder instead of failing the open.
 - [ ] Timer/close overlap regression (round 6): an auto-commit or
   backup continuation that queued behind `ProjectWriteLocks` during a
   guarded operation must not commit a half-replaced or conflicted
@@ -619,13 +650,14 @@ an operation breaks partway."
 ## [YOU] Decisions needed
 
 - Approval to implement this plan (yes/no).
-- Commit structure (round 11 — supersedes the separate round-3/4/6
+- Commit structure (rounds 11–12 — supersedes the separate round-3/4/6
   split questions, which all collapse into this one): approach step 5
-  enumerates four proposed boundaries — (i) core epoch guard,
-  (ii) merge completion/recovery (also fixes the two recorded live
-  bugs), (iii) UI barrier, (iv) vitest harness + CI wiring. Choose one
-  sweep in that order (explicit sweep approval) or separate slices at
-  those boundaries. Implementation must not start until this choice is
+  enumerates four proposed boundaries in dependency order — (1) vitest
+  harness + CI wiring, (2) core epoch guard, (3) UI barrier, (4) merge
+  completion/recovery (also fixes the two recorded live bugs) — each
+  with its intermediate exposure stated. Choose one sweep in that
+  order (explicit sweep approval) or separate slices at those
+  boundaries. Implementation must not start until this choice is
   recorded on this plan's status line.
 - Background for that choice — why the merge/recovery piece exists at
   all: the unresolved-conflict commit (auto-commit/backup can bake
