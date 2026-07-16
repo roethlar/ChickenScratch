@@ -27,6 +27,18 @@ decisions; `DEVLOG.md` holds history.
   public `init_repo`, non-transactional multi-file saves, revision staging of
   recovery artifacts, and case-sensitive `include_in_compile`. None is
   approved for implementation yet.
+- **New ranked finding (2026-07-16, plan-2 review round 9, verified against
+  the working tree at `d851a8f`): merge-abort is unreachable after a
+  format-file conflict.** A sync/merge conflict touching `project.yaml`
+  makes the fidelity probe error (`fidelity.rs:333–:335`; `load_project`
+  then fails outright after restart), and one touching a `.meta` probes
+  Degraded — either way `ProjectTokens` cannot reissue a permit, and
+  `sync_abort_pull` is permit-gated (`src-tauri/src/commands/git.rs:238–
+  :253`), so the user's only exit from the conflict is external git
+  surgery. Live today, independent of the epoch-guard plan;
+  `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md` (round-9 revision, design
+  point (e)) carries the fix as a recovery-scoped capability. Not
+  separately approved for implementation.
 - **Coherence is complete.** The owner confirmed on 2026-07-12 that completion
   had already been declared but not saved. Format lock, Tauri alignment,
   deprecation cleanup, and goals G1–G6 are recorded as completed in

@@ -276,11 +276,34 @@ on-disk state cannot be clobbered by a half-finished operation.
      `push_backup` (`git.rs:744`) and the Tauri command's
      backup/remote pushes (`src-tauri/src/commands/git.rs:24`/`:32`)
      fail or are silently lost after the merge-completing commit.
-     The design that survives (round 8):
+     The design that survives (rounds 8–9):
      (a) `save_revision` refuses during *any* merge state
      (`MERGE_HEAD` present or index conflicts) — for every caller,
-     no provenance needed; project creation/import/TUI saves never
-     run under merge state, so they are unaffected.
+     no provenance needed. Refusal alone is too low in the call
+     graph for composite operations (round 9): `restore_document`
+     and `restore_revision` pass the status-only dirty guard under a
+     clean tree + lingering `MERGE_HEAD`, replace disk content
+     (`git.rs:406`–`:411`, `:446`–`:450`), and only *then* hit the
+     internal refusal — a half-completed restore whose only exits
+     would falsify history (Complete folds the restored tree into a
+     fake merge resolution) or discard it (Abort). Both restore
+     helpers therefore run a merge-state preflight next to
+     `reject_dirty_worktree`, before any disk write. Backup is
+     different (round-9 triage): `push_backup` sends only the branch
+     ref — a push during lingering `MERGE_HEAD` is benign and
+     refusing it would reduce backup protection for zero integrity
+     gain — so manual backup refuses only the *commit* half and
+     still pushes; `backup_on_close` must not swallow the refusal
+     silently (today it discards errors with `let _`).
+     Project creation and import never run under merge state and are
+     unaffected. The TUI (round 9): document saves are pure file
+     writes and genuinely unaffected, but TUI *revision* saves call
+     core `save_revision` directly (`tui/app.rs:974`) with no
+     merge-state UI at all — the refusal must carry a
+     self-describing message ("a merge is in progress — complete or
+     abort it in ChickenScratch") which the TUI status line already
+     prints verbatim; full TUI Complete/Abort parity is not
+     warranted (the TUI cannot create merge state).
      (b) A new core `complete_merge(path, message, permit)` is the
      *only* completion path: requires merge state; the user's
      explicit invocation is the resolution signal (replacing the
@@ -288,16 +311,52 @@ on-disk state cannot be clobbered by a half-finished operation.
      with two parents (`HEAD`, `MERGE_HEAD`), `cleanup_state`; the
      epoch bump rides the step-2 drop-scope guard at operation exit
      (never inline), so no caller continuation loses its permit.
+     `complete_merge` is an **epoch-bumping operation** and gets the
+     full barrier lifecycle (round 9): the plan's barrier rules key
+     on epoch-bumping operations, not only tree-replacing ones —
+     lease, freeze-before-drain, editor flush and dispatch under the
+     owner handle, reload+rebuild, release. Without the flush, a
+     writer who resolves markers in the editor and clicks Complete
+     before the debounce fires (up to `auto_save_seconds`) commits
+     the still-marker-laden disk state as the permanent two-parent
+     merge commit, with the real resolution landing afterwards as an
+     ordinary edit. Note for implementers: the pre-Complete flush is
+     NOT blocked by (a)'s refusal — the editor drain goes through
+     `update_document_content` → the writer, never `save_revision`.
+     Abort deliberately skips the flush (the buffer holds edits
+     being discarded); do not blanket-apply one rule to both exits.
      (c) UI: "Resolve manually" no longer just closes the dialog —
      the app enters a persistent merge-in-progress state (backend
      merge-state query added; none exists today, and the UI must
      survive restart) offering *Complete merge* (→ the new command,
-     with confirmation) and *Abort*. Restore/backup refusing during
-     merge state is correct behavior, and the stranded-writer exit
-     is Complete merge.
+     with confirmation — which narrows but does not close the
+     debounce race; the flush in (b) closes it) and *Abort*.
+     Restore refusing during merge state (pre-mutation) is correct
+     behavior, and the stranded-writer exit is Complete merge.
+     (e) Recovery-scoped authority (round 9): `complete_merge`,
+     `sync_abort_pull`, and `sync_pull_force` cannot ride an
+     ordinary Full-fidelity `WritePermit` — a merge conflict that
+     touches `project.yaml` makes the fidelity probe *error*
+     (`fidelity.rs:333`–`:335`, so `load_project` won't even open
+     the project after restart), and one in a `.meta` probes
+     Degraded; either way `ProjectTokens` cannot reissue a permit
+     and the promised recovery is unreachable exactly when the
+     conflict hits a format file. (This is a live bug today —
+     `sync_abort_pull` is already permit-gated — recorded as its own
+     ranked finding.) Issue a narrow recovery capability when the
+     merge-state query attests an in-progress merge (keyed on
+     `MERGE_HEAD`/index conflicts — `DegradedReason` has no merge
+     variant and the `project.yaml` case errors before
+     classification, so fidelity reasons cannot carry this),
+     authorizing only those three commands; the read-only open path
+     tolerates an unparsable `project.yaml` while `MERGE_HEAD` is
+     present (fall back to the pre-merge `HEAD` version for
+     display).
      (d) Migration: projects carrying a lingering `MERGE_HEAD` from
-     today's code hit the refusal once and are prompted to Complete
-     (two-parent commit heals the history) or Abort — not bricked.
+     today's code hit the preflight/refusal once and are prompted to
+     Complete (two-parent commit heals the history) or Abort — not
+     bricked. The migration prompt invokes the same `complete_merge`
+     and gets the same (b) lifecycle.
      Ordering constraint, stated so it does not rot: any operation
      that uses its permit *after* an internal `save_revision`/
      `complete_merge` call must sequence those uses before any epoch
@@ -337,7 +396,7 @@ on-disk state cannot be clobbered by a half-finished operation.
 | `ui/src/commands/*.ts` (one shared dispatch gate) | One shared gate: non-owner project-mutating dispatches during a lease are **refused/cancelled** (never deferred with captured args); barrier entry returns a lease handle whose dispatches (drain, the operation itself, **the post-operation reload** — `load_project` is permit-backed and conditionally disk-mutating, round 8) bypass the gate; pre-lease in-flight dispatches drain at barrier entry (rounds 6–8 — supersedes round 5's per-file gating; `Preview.tsx` `saveMeta` migrates into this layer, and an ESLint `no-restricted-imports` rule keeps components off direct `invoke`) |
 | `ui/src/components/preview/Preview.tsx`, `ui/src/commands/session.ts`, `ui/src/components/stats/StatsPanel.tsx`, `ui/src/components/inspector/Inspector.tsx` (round 8) | Stale-snapshot writers: forms frozen (inputs + Save disabled) while a lease is held; on reload resync only non-dirty fields, keyed on reload generation/content — Inspector's id-keyed resync (`:280`–`:307`) misses same-doc restores and its debounce/immediate handlers/title blur then clobber post-release; dirty drafts that cannot be preserved are dropped loudly, never silently (rounds 6–8) |
 | `ui/src/App.tsx` (auto-commit `:261`, backup timer `:290`, close path `:196`) | Git-write continuations gated by the lease and skipped/cancelled while a lease is held or conflicts are unresolved (round 6) |
-| `crates/core/src/core/git.rs` `save_revision` + new `complete_merge` (+ Tauri commands: merge-state query, `complete_merge`) | Round 8 redesign: `save_revision` refuses during any merge state, all callers, no provenance; new explicit `complete_merge` (stage, two-parent commit, `cleanup_state`; epoch via drop guard at scope exit, never inline — permits stay live for caller continuations); UI merge-in-progress state (survives restart via the new query) offers Complete/Abort; lingering `MERGE_HEAD` migrates via the same prompt |
+| `crates/core/src/core/git.rs` `save_revision` + new `complete_merge` (+ Tauri commands: merge-state query, `complete_merge`, recovery capability) | Rounds 8–9: `save_revision` refuses during any merge state (self-describing error — the TUI prints it verbatim); merge-state preflight in `restore_document`/`restore_revision` before any disk write; manual backup refuses only the commit half (push is benign) and `backup_on_close` surfaces the refusal instead of `let _`; new explicit `complete_merge` (stage, two-parent commit, `cleanup_state`; epoch via drop guard at scope exit; full barrier lifecycle incl. pre-dispatch editor flush); recovery-scoped capability keyed on merge state authorizes `complete_merge`/`sync_abort_pull`/`sync_pull_force` when the fidelity probe fails on format-file conflicts; read-only open tolerates unparsable `project.yaml` under `MERGE_HEAD`; UI merge-in-progress state (survives restart) offers Complete/Abort; lingering `MERGE_HEAD` migrates via the same prompt |
 | `ui/package.json` (+ vitest harness, added by this plan) | UI has no test runner today (scripts: dev/build/lint/preview only); add vitest + a `test` script so the regressions below are executable, and fold it into the declared verification suite |
 | UI tests (new vitest harness) | Regressions: reload-on-failure, queued-save barrier, flow mode, conflict paths, edit overlap, comment-command gating, programmatic-dispatch gating, overlapping operations (assert final buffer contents), preflight typing, dispatch-gate refuse-not-defer + owner admission, form freeze/loud-drop, timer/close overlap |
 | `.github/workflows/validation.yml`, `.agents/repo-guidance.md` (Verification) | CI currently runs only UI lint/build; add a UI test step and fold the vitest suite into the declared-suite guidance so the regressions cannot fail unnoticed (round 4) |
@@ -414,21 +473,40 @@ on-disk state cannot be clobbered by a half-finished operation.
   resync keyed on reload generation), and a subsequent debounce tick
   or immediate handler does not re-submit pre-operation fields —
   shown to fail with id-keyed resync.
-- [ ] Unresolved-conflict regression (rounds 6–8): during merge
+- [ ] Unresolved-conflict regression (rounds 6–9): during merge
   state, `save_revision` refuses for *every* caller — the
   auto-commit timer, `backup_on_close`, manual save,
   `backup_current_work`, and the restore helpers' internal saves —
   shown to fail today (conflict markers are staged wholesale by
   `add_all(["*"])` and committed; `backup_current_work` has no dirty
   guard; restore under a lingering `MERGE_HEAD` would mint a false
-  merge parent). Completion path (round 8): explicit
-  `complete_merge` stages, commits with two parents
-  (`HEAD`, `MERGE_HEAD`), clears merge state; the epoch bump fires
-  at scope exit so a caller continuation (e.g. `push_backup`) still
-  holds a valid permit — shown to fail with an inline bump. A
+  merge parent). Restore preflight (round 9): restore under merge
+  state refuses with **zero worktree mutation** — the tree contents
+  are asserted unchanged; shown to fail with the refusal only inside
+  the internal `save_revision` (post-mutation failure passes the
+  weaker test). Manual backup during lingering `MERGE_HEAD` still
+  pushes (commit half refused, push half proceeds);
+  `backup_on_close` surfaces the refusal. Completion path
+  (round 8): explicit `complete_merge` stages, commits with two
+  parents (`HEAD`, `MERGE_HEAD`), clears merge state; the epoch bump
+  fires at scope exit so a caller continuation (e.g. `push_backup`)
+  still holds a valid permit — shown to fail with an inline bump. A
   lingering pre-existing `MERGE_HEAD` surfaces the
   Complete-or-Abort prompt rather than bricking; `complete_merge`
   outside merge state refuses.
+- [ ] Complete-merge lifecycle regression (round 9): resolve markers
+  in the editor, click Complete before the debounce fires — the
+  merge commit's tree contains the resolved content, not markers,
+  and nothing typed is discarded; shown to fail without
+  freeze-before-drain + flush-under-owner-handle on the Complete
+  action.
+- [ ] Format-file-conflict recovery regression (round 9): a
+  `sync_pull`/`merge_draft` conflict touching `project.yaml` (and,
+  separately, only a `.meta`) can still be Aborted AND Completed
+  through a fresh command boundary (fresh `ProjectTokens`,
+  simulating restart) via the recovery capability — shown to fail
+  today and under an ordinary-permit-only design (probe errors or
+  Degraded → no permit → recovery unreachable).
 - [ ] Timer/close overlap regression (round 6): an auto-commit or
   backup continuation that queued behind `ProjectWriteLocks` during a
   guarded operation must not commit a half-replaced or conflicted
