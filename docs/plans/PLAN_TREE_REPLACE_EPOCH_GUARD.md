@@ -46,10 +46,23 @@ on-disk state cannot be clobbered by a half-finished operation.
    operation scope ends.
 3. **Apply to every tree-replacing operation** in `core/git.rs`
    (`restore_document`, `restore_revision`, draft switch/merge, sync/pull):
-   arm the guard immediately before the first working-tree mutation and
-   remove the end-of-function `permit.bump_epoch()` calls it replaces.
-   Failures *before* any mutation still bump nothing (unchanged behavior).
-4. **Surfaces (revised after plan-2 review rounds 1–2):** the original claim
+   arm the guard immediately before the first mutation of *ref, HEAD, or
+   working tree — whichever comes first* — and remove the end-of-function
+   `permit.bump_epoch()` calls it replaces. Ref moves count as mutations
+   (round 6): in the fast-forward branches of `merge_draft` and
+   `sync_pull`, `reference.set_target` (`git.rs:601`, `:935`) advances
+   the branch ref — which HEAD already resolves through — before the
+   fallible `set_head`/`checkout_head` calls. A failure between them
+   would leave HEAD effectively advanced under an un-bumped epoch, and
+   the next `save_revision` (stages everything, commits onto HEAD —
+   `git.rs:230`–`:251`, no dirty/staleness check) would silently revert
+   the pulled/merged content with the stale working tree. Arm before
+   `set_target` in those two branches. `switch_draft` needs no special
+   arming point: its only fallible step after the HEAD move is the
+   checkout itself, which the drop guard armed before `checkout_head`
+   already covers (round-6 triage narrowed the finding here). Failures
+   before any ref/HEAD/tree mutation still bump nothing.
+4. **Surfaces (revised across plan-2 review rounds 1–6):** the original claim
    that no app changes are needed was **false**. `ProjectTokens::checkout`
    (`src-tauri/src/commands/mod.rs:45`) treats a stale token as a cache miss
    and transparently re-issues a fresh one; tree-replacing commands refresh
@@ -58,7 +71,7 @@ on-disk state cannot be clobbered by a half-finished operation.
    after a guarded partial failure the epoch bump refuses the *old* token,
    but the next auto-save silently acquires a *fresh* token and writes stale
    editor content over the partially-replaced tree. Fix at the app layer —
-   revised after rounds 2–5: reload alone is neither a save barrier nor
+   revised after rounds 2–6: reload alone is neither a save barrier nor
    a buffer reset, and auto-save is not the only stale-content writer:
    - **Save barrier around every tree-replacing operation.** Reloading
      after the fact does not establish "before any further save can run":
@@ -132,16 +145,55 @@ on-disk state cannot be clobbered by a half-finished operation.
      rebuild discards the keystrokes. Barrier entry must freeze
      editing and command dispatch *before* the pre-operation drain,
      with the drain itself running under the lease (round 5).
-   - **Gate non-TipTap stale writers too.** The barrier as specified
-     covers TipTap-derived content, but `Inspector.tsx` owns an
-     independent debounced metadata buffer (`setTimeout(save, 1500)`,
-     ~`:361`) and `Corkboard.tsx` `handleSummarizeAll` (`:65`–`:93`)
-     writes `updateDocumentMetadata` with *captured* pre-operation
-     `label`/`status`/`keywords` per doc. Both queue behind
-     `ProjectWriteLocks`, re-probe under the fresh epoch, and
-     overwrite restored metadata with pre-operation values. Gate or
-     drain these user/AI mutation sources at barrier entry like the
-     editor paths (round 5).
+   - **Gate the mutation dispatch layer, not an allowlist of writers.**
+     Round 5 named `Inspector.tsx`'s debounced metadata buffer
+     (`setTimeout(save, 1500)`, `:364`) and `Corkboard.tsx`
+     `handleSummarizeAll` (`:65`–`:93`). Round 6 showed enumeration
+     cannot converge: `StatsPanel.tsx:33` (`recordDailyWords` →
+     `settings/writing-history.json`), `Preview.tsx:79` `saveMeta` and
+     `session.ts:20` `updateSessionTarget` (each re-submits a whole
+     captured metadata snapshot via `update_project_metadata`), comment
+     updates (`CommentsPanel.tsx:43`/`:78`), thread ops, Corkboard
+     linking (`:97`), every Binder mutation, Inspector's *immediate*
+     onChange handlers (`:595`/`:622`/`:665`), and App's Ctrl+N handler
+     all dispatch project mutations from captured UI state, queue
+     behind `ProjectWriteLocks`, and re-probe under the fresh epoch.
+     There is no barrier seam today — all ten `ui/src/commands/*.ts`
+     modules call `invoke` directly — so add one shared gate in that
+     layer: every project-mutating dispatch awaits (or is refused
+     while) the lease, and pre-lease in-flight dispatches drain at
+     barrier entry (round 6).
+   - **Stale-snapshot forms survive reload — resync them.** The
+     `Preview.tsx` metadata form resyncs only when `project.path`
+     changes (`:66`–`:77`), and `SessionTargetSection` re-submits the
+     entire captured `project.metadata` (`session.ts:26`–`:35`). A
+     same-path reload after a tree operation therefore leaves them
+     holding pre-operation values that one Save click writes wholesale
+     over restored state — no queue race required, untouched by
+     reload+rebuild. Resync captured-snapshot forms on project reload,
+     or version their snapshots so post-reload stale submissions are
+     refused (round 6).
+   - **App-level revision writers and unresolved conflicts.** The
+     auto-commit interval (`App.tsx:261`–`:276`; flush `:267`,
+     `saveRevision` `:273`), the periodic backup timer (`:290`–`:303`,
+     reusing `backup_on_close` at `:298`), and the close path
+     (`flushAndBackupOnClose` `:196`–`:215`) continue past the editor
+     flush into git writes that carry no editor content and so escape
+     every buffer-level gate. `backup_on_close`
+     (`src-tauri/src/commands/git.rs:329`; dirty check `:344`,
+     `save_revision` `:345`) and core `save_revision`
+     (`git.rs:217`–`:255`, `add_all(["*"])`) check nothing about merge
+     state, so after `Ok(Conflicts)` — which refreshes the token
+     because it is `is_ok()` — a timer tick or app close commits
+     conflict markers wholesale into history (the F-009 fix rerouted
+     only `merge_draft`'s internal path). Reachable *today* with no
+     operation overlap: any unresolved-conflict window longer than the
+     10-minute timer, or a close during resolution. Fix in two layers:
+     (a) core-side, per I2 — `save_revision`, and therefore
+     `backup_on_close`, refuses while merge state is unresolved
+     (`repo.state()` / `MERGE_HEAD` / `index.has_conflicts()`);
+     (b) app-side belt-and-suspenders — timer and close continuations
+     are skipped/cancelled while a lease is held (round 6).
    - **Explicit editor-buffer reset/rebuild after reload.** `openProject`
      (`ui/src/stores/projectStore.ts:71`) clears `activeDoc` but leaves
      `flowDocs` intact, and the editor's buffer-load effect does not
@@ -172,9 +224,12 @@ on-disk state cannot be clobbered by a half-finished operation.
 | `ui/src/components/editor/Editor.tsx` | Owns `saveTimer`/`dirtyRef`/`flowDocsRef`/`saveCurrent`: implements the awaitable suspend/resume + rebuild contract; editor non-editable while the barrier is up; freeze-before-drain — barrier entry precedes the pre-operation flush, whose unconditional mark-clean (`:121`, `:195`) otherwise loses mid-drain keystrokes (round 5) |
 | `ui/src/stores/projectStore.ts`, `ui/src/components/editor/editorRef.ts` | Awaitable save-barrier seam; reset `flowDocs` and rebuild the editor buffer on reload |
 | `ui/src/components/editor/Toolbar.tsx`, `ui/src/components/comments/CommentsPanel.tsx`, `ui/src/components/editor/FindReplace.tsx` | Comment commands carry `getEditorMarkdown` content; Toolbar formatting/AI and FindReplace mutate the buffer via command dispatch — all check the barrier-active state; in-flight AI streams cancelled/awaited at barrier entry (round 4) |
-| `ui/src/components/inspector/Inspector.tsx`, `ui/src/components/corkboard/Corkboard.tsx` | Non-TipTap stale writers: debounced metadata save and `aiSummarize` batch write captured pre-operation metadata — gated or drained at barrier entry (round 5) |
+| `ui/src/commands/*.ts` (one shared dispatch gate) | No barrier seam exists — all ten command modules call `invoke` directly. One shared gate: every project-mutating dispatch awaits/refuses the lease; in-flight dispatches drain at barrier entry (round 6 — supersedes round 5's per-file gating of `Inspector.tsx`/`Corkboard.tsx`, which remain covered through the seam) |
+| `ui/src/components/preview/Preview.tsx`, `ui/src/commands/session.ts`, `ui/src/components/stats/StatsPanel.tsx` | Stale-snapshot writers: meta form resyncs only on path change (`:66`–`:77`); session target re-submits captured metadata wholesale; stats effect fire-and-forgets `recordDailyWords` (`:33`) — resync on reload or refuse post-reload stale submissions (round 6) |
+| `ui/src/App.tsx` (auto-commit `:261`, backup timer `:290`, close path `:196`) | Git-write continuations gated by the lease and skipped/cancelled while a lease is held or conflicts are unresolved (round 6) |
+| `crates/core/src/core/git.rs` `save_revision` (+ `src-tauri/src/commands/git.rs` `backup_on_close`) | Refuse to commit while merge state is unresolved (`MERGE_HEAD` / `has_conflicts`) — closes the today-reachable conflict-markers commit; core-side per I2 (round 6) |
 | `ui/package.json` (+ vitest harness, added by this plan) | UI has no test runner today (scripts: dev/build/lint/preview only); add vitest + a `test` script so the regressions below are executable, and fold it into the declared verification suite |
-| UI tests (new vitest harness) | Regressions: reload-on-failure, queued-save barrier, flow mode, conflict paths, edit overlap, comment-command gating, programmatic-dispatch gating, overlapping operations (assert final buffer contents), preflight typing, metadata-writer gating |
+| UI tests (new vitest harness) | Regressions: reload-on-failure, queued-save barrier, flow mode, conflict paths, edit overlap, comment-command gating, programmatic-dispatch gating, overlapping operations (assert final buffer contents), preflight typing, dispatch-gate + stale-snapshot-form gating, timer/close overlap |
 | `.github/workflows/validation.yml`, `.agents/repo-guidance.md` (Verification) | CI currently runs only UI lint/build; add a UI test step and fold the vitest suite into the declared-suite guidance so the regressions cannot fail unnoticed (round 4) |
 
 ## [MODEL] Tests
@@ -221,6 +276,27 @@ on-disk state cannot be clobbered by a half-finished operation.
   debounced metadata save or an in-flight `Corkboard.tsx`
   `aiSummarize` batch spanning a tree-replacing operation must not
   overwrite restored metadata with pre-operation values.
+- [ ] Ref-move boundary test (round 6): in the `merge_draft` and
+  `sync_pull` fast-forward branches, inject a failure between
+  `reference.set_target` and the checkout (simulating `set_head`
+  failure) — the epoch must already be bumped and the stale permit
+  refused; shown to fail while the guard arms only before the
+  working-tree write.
+- [ ] Dispatch-gate regression (round 6): a representative
+  snapshot-clobber writer (session-target save re-submitting six
+  captured metadata fields) queued behind a tree-replacing operation
+  must not land under a fresh token; and a post-reload stale
+  `Preview.tsx` meta submission is refused or the form has been
+  resynced.
+- [ ] Unresolved-conflict regression (round 6): with merge state in
+  progress (`MERGE_HEAD` present / `index.has_conflicts()`), the
+  auto-commit timer, `backup_on_close`, and manual `save_revision`
+  all refuse to commit — shown to fail today (conflict markers are
+  staged wholesale by `add_all(["*"])` and committed).
+- [ ] Timer/close overlap regression (round 6): an auto-commit or
+  backup continuation that queued behind `ProjectWriteLocks` during a
+  guarded operation must not commit a half-replaced or conflicted
+  tree after the lock releases.
 - [ ] Comment-command regression (round 3): `addComment`/`deleteComment`
   issued around a guarded failure must not write the pre-operation
   buffer.
@@ -251,3 +327,9 @@ an operation breaks partway."
   (`.github/workflows/validation.yml` gains a UI test step) and the
   declared-suite guidance in `.agents/repo-guidance.md` — confirm these
   ride in this plan's single commit or direct a split.
+- Round 6: the unresolved-conflict commit (auto-commit/backup can bake
+  conflict markers permanently into history) is reachable **today**,
+  independent of this plan's failure window. Its core-side fix
+  (`save_revision` refuses during merge state) rides in this slice
+  because the slice's promise is hollow without it — but it is
+  separable; direct a split into its own slice if preferred.
