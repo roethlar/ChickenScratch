@@ -344,4 +344,18 @@ Revision folded in: design point (a) TUI sentence corrected (+ Display fix in sc
   attestation; pre-merge uncommitted edits), the widened guard-arming
   surface, the reader HEAD-metadata entry's interaction with hierarchy/
   safe-path validation, and overall internal consistency after ten rounds)
-- **Verdict**: pending
+- **Verdict**: `reopened` (envelope valid; see Round 11 record below)
+
+## Round 11 — reopened (all four findings admitted)
+
+- Verdict received 2026-07-16: `reopened`, `guard_confirmed: true`, envelope valid (SHAs echo dispatch `72326e4`/`066a2a8`). Verdict file `/tmp/plan2-r11-review-last.json`.
+- Triage method: inline single-agent verification (subagent pool still capped); r11-1/r11-2/r11-4 confirmed from evidence already gathered this session, r11-3 confirmed by fresh reads of `reader.rs:310–:324` and `:855–:882`.
+
+Findings and triage:
+
+1. `PLAN:43` — step 2 and the Files `fidelity.rs` row still restricted guard arming to `WritePermit`, contradicting round-10's permit-or-recovery requirement; no test asserted epoch invalidation after recovery-authority operations. **ADMITTED** (internal-consistency defect — round 10 widened only point (e)). Fixed in step 2, the Files row, and a new epoch-invalidation-after-recovery test (incl. injected partial failure).
+2. `PLAN:372` — merge-attested force path lacked last-safe-point re-attestation. **ADMITTED**: today's code deliberately re-checks after the blocking fetch (`git.rs:1057–:1059`); the attested bypass without re-attestation could hard-reset unrelated new work if the merge completed/aborted between validation and reset. Fixed: re-attest before the reset, fall back to ordinary checks on failure; race regression.
+3. `PLAN:382` — HEAD-metadata fallback still fails on HEAD/worktree hierarchy skew. **ADMITTED**: identities derive from the hierarchy (`reader.rs:315`) but sidecars load from the worktree (`:316`), and `:317`'s strict matching (`:861–:875`) hard-errors on ID/path mismatch (e.g. remote delete/recreate at the same path). Fixed: recovery-mode (display-only) load relaxes strict matching — skewed entries load as unlinked/placeholder, never an open failure; ordinary load unchanged; skew test.
+4. `PLAN:413` — "one concern, one branch, one commit" no longer honest with three splits open in Decisions. **ADMITTED** (governance): step 5 now enumerates four commit boundaries (core guard; merge/recovery; UI barrier; vitest+CI) and requires the owner's sweep-or-split choice recorded on the plan status line before implementation; the round-3/4/6 Decisions questions collapse into that single choice.
+
+Round 12 to verify.

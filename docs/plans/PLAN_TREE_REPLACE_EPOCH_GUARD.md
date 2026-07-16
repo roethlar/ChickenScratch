@@ -40,10 +40,13 @@ on-disk state cannot be clobbered by a half-finished operation.
    can drive (or a `#[cfg(test)]` failpoint if the refactor is heavier than
    the fix — decided at implementation, whichever is smaller).
 2. **Arm the bump at the point of no return.** Add a drop-scope guard in
-   `fidelity.rs` (armed from the `WritePermit`) that bumps the project's
-   write epoch when the scope exits — on success *and* on error. The
-   in-flight operation itself is unaffected: the bump happens when the
-   operation scope ends.
+   `fidelity.rs` — armable from the `WritePermit` *or* the round-9
+   recovery capability (round 11: point (e)'s recovery operations must
+   bump the epoch too, or a valid token stays authorized after a
+   recovery tree replacement or its partial failure) — that bumps the
+   project's write epoch when the scope exits, on success *and* on
+   error. The in-flight operation itself is unaffected: the bump
+   happens when the operation scope ends.
 3. **Apply to every tree-replacing operation** in `core/git.rs`
    (`restore_document`, `restore_revision`, draft switch/merge, sync/pull):
    arm the guard immediately before the first mutation of *ref, HEAD, or
@@ -373,6 +376,14 @@ on-disk state cannot be clobbered by a half-finished operation.
      force path replaces those checks (the dirty tree is the
      conflict being discarded — that is the command's purpose);
      ordinary force-pull outside merge state keeps them unchanged.
+     Round 11: attestation must be *re-checked at the last safe
+     point* immediately before the hard reset, exactly where today's
+     code re-runs its dirty check (`git.rs:1057`–`:1059` — the fetch
+     can block while another process edits the project). If the
+     merge was completed or aborted between capability validation
+     and the reset, the attested bypass would otherwise hard-reset
+     unrelated new work; on failed re-attestation the force falls
+     back to the ordinary checks. Race regression required.
      The read-only open path tolerates an unparsable `project.yaml`
      while `MERGE_HEAD` is present (fall back to the pre-merge
      `HEAD` version for display). Reachability (round 10): today's
@@ -383,7 +394,17 @@ on-disk state cannot be clobbered by a half-finished operation.
      metadata while preserving the root/safe-read checks, and the
      recovery test must assert `load_project` itself succeeds after
      restart with a conflicted `project.yaml`, not only that the
-     recovery commands run.
+     recovery commands run. Round 11: HEAD metadata + worktree
+     documents can *skew* — the reader derives identities from the
+     hierarchy (`reader.rs:315`) but loads worktree sidecars
+     (`:316`), and `:317`'s strict matching hard-errors when a
+     path's loaded ID differs from the hierarchy's
+     (`:861`–`:875`) — e.g. a remote delete/recreate at the same
+     path. The recovery-mode load is display-only and mid-merge
+     state is definitionally inconsistent, so it relaxes that
+     strict matching (skewed entries load as unlinked/placeholder,
+     never an open failure), while the ordinary load path keeps it
+     unchanged. Test HEAD/worktree hierarchy skew explicitly.
      (d) Migration: projects carrying a lingering `MERGE_HEAD` from
      today's code hit the preflight/refusal once and are prompted to
      Complete (two-parent commit heals the history) or Abort — not
@@ -410,14 +431,28 @@ on-disk state cannot be clobbered by a half-finished operation.
      an editable stale buffer. Conflict branches get the same
      barrier/reload/rebuild treatment as error and success paths.
    Add coverage at this layer (see Tests).
-5. Land as **one concern, one branch, one commit**, per
-   `.agents/repo-guidance.md` Earned Practices.
+5. **Commit structure is fixed by the owner's Decisions answers before
+   implementation starts** (round 11: after ten review rounds the
+   original "one concern, one branch, one commit" claim is no longer
+   honest while three splits sit open in Decisions). The proposed
+   boundaries, each independently green under the declared suite:
+   (i) core epoch guard + arming points (steps 1–3);
+   (ii) merge completion/recovery sub-feature (`save_revision`
+   refusal, `complete_merge`, recovery capability, merge-state query,
+   merge-in-progress UI, reader recovery entry, TUI error rendering) —
+   also fixes the two recorded live bugs;
+   (iii) UI barrier (dispatch gate, forms, editor lifecycle, timers);
+   (iv) vitest harness + CI/declared-suite wiring.
+   The owner picks: one sweep commit in the listed order (explicit
+   sweep approval per `.agents/repo-guidance.md` Earned Practices), or
+   separate slices at these boundaries. A cold implementer must not
+   start before that decision is recorded on this plan's status line.
 
 ## [MODEL] Files
 
 | File / area | Change |
 |-------------|--------|
-| `crates/core/src/core/project/fidelity.rs` | Epoch-bump-on-scope-exit guard, armed via `WritePermit` |
+| `crates/core/src/core/project/fidelity.rs` | Epoch-bump-on-scope-exit guard, armable via `WritePermit` or the recovery capability (round 11) |
 | `crates/core/src/core/git.rs` | Arm guard before first tree mutation in each tree-replacing op; drop the success-only `bump_epoch()` calls |
 | `crates/core` tests (fidelity/git) | New guard test proving stale state is refused after a partial failure |
 | `ui/src/components/revisions/Revisions.tsx` (draft/sync handlers) | Barrier + reload + buffer rebuild on *every* tree-mutating result — failure, `Ok(Conflicts)` (lines 144, 228), success; disable restore/draft-switch/merge triggers while any barrier lease is held (round 4) |
@@ -548,7 +583,15 @@ on-disk state cannot be clobbered by a half-finished operation.
   path. Capability negative tests: wrong-root use refused;
   issue/use outside merge state refused. TUI: the merge-state
   refusal renders as Display text in the status line, not a `{:?}`
-  wrapper.
+  wrapper. Round 11 additions: recovery-authority operations bump
+  the epoch — after an abort/force/complete under the capability
+  (including an injected partial failure), a pre-operation token is
+  refused (shown to fail while the guard arms only from
+  `WritePermit`); force race — merge completed/aborted between
+  attestation and the hard reset falls back to the ordinary checks
+  instead of resetting unrelated new work; HEAD/worktree hierarchy
+  skew (remote delete/recreate at the same path) loads in recovery
+  mode as unlinked/placeholder instead of failing the open.
 - [ ] Timer/close overlap regression (round 6): an auto-commit or
   backup continuation that queued behind `ProjectWriteLocks` during a
   guarded operation must not commit a half-replaced or conflicted
@@ -576,24 +619,21 @@ an operation breaks partway."
 ## [YOU] Decisions needed
 
 - Approval to implement this plan (yes/no).
-- Round 3: the app-layer regressions need a UI test harness the repo does
-  not have. Approve adding vitest (dev dependency + `test` script) inside
-  this plan's single commit, or direct a separate preparatory commit.
-- Round 4: durable verification touches CI
-  (`.github/workflows/validation.yml` gains a UI test step) and the
-  declared-suite guidance in `.agents/repo-guidance.md` — confirm these
-  ride in this plan's single commit or direct a split.
-- Round 6 (amended rounds 7–8): the unresolved-conflict commit
-  (auto-commit/backup can bake conflict markers permanently into
-  history) is reachable **today**, independent of this plan's failure
-  window. Round 7 established a blanket refusal would strand manual
-  resolution; round 8 established the round-7 repair (completion
-  inside `save_revision`) is unimplementable (`add_all` clears
-  conflict entries unconditionally; no caller provenance; inline
-  epoch bump breaks caller continuations). The surviving design is
-  a blanket `save_revision` refusal plus a new explicit
-  `complete_merge` command, a backend merge-state query, and a
-  merge-in-progress UI state with Complete/Abort. That is a real
-  sub-feature riding in this slice because the slice's promise is
-  hollow without it — but it is now clearly the largest separable
-  sub-slice; direct a split into its own slice if preferred.
+- Commit structure (round 11 — supersedes the separate round-3/4/6
+  split questions, which all collapse into this one): approach step 5
+  enumerates four proposed boundaries — (i) core epoch guard,
+  (ii) merge completion/recovery (also fixes the two recorded live
+  bugs), (iii) UI barrier, (iv) vitest harness + CI wiring. Choose one
+  sweep in that order (explicit sweep approval) or separate slices at
+  those boundaries. Implementation must not start until this choice is
+  recorded on this plan's status line.
+- Background for that choice — why the merge/recovery piece exists at
+  all: the unresolved-conflict commit (auto-commit/backup can bake
+  conflict markers permanently into history) is reachable **today**,
+  independent of this plan's failure window; a blanket refusal alone
+  would strand manual resolution (no continue-merge path exists), and
+  completion inside `save_revision` is unimplementable (`add_all`
+  clears conflict entries unconditionally; no caller provenance;
+  inline epoch bump breaks caller continuations). Hence the explicit
+  `complete_merge` command, merge-state query, recovery capability,
+  and merge-in-progress UI (rounds 6–11).
