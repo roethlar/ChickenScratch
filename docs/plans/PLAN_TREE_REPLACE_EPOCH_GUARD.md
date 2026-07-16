@@ -49,9 +49,21 @@ on-disk state cannot be clobbered by a half-finished operation.
    arm the guard immediately before the first working-tree mutation and
    remove the end-of-function `permit.bump_epoch()` calls it replaces.
    Failures *before* any mutation still bump nothing (unchanged behavior).
-4. **Surfaces:** no Tauri/TUI changes expected — both already re-probe and
-   reload when a write is refused as stale. Verify that path still holds;
-   touch app code only if a call site demonstrably needs it.
+4. **Surfaces (revised after plan-2 review round 1):** the original claim
+   that no app changes are needed was **false**. `ProjectTokens::checkout`
+   (`src-tauri/src/commands/mod.rs:45`) treats a stale token as a cache miss
+   and transparently re-issues a fresh one; tree-replacing commands refresh
+   only on success (`src-tauri/src/commands/git.rs:57`); and the UI reloads
+   only on success (`ui/src/components/revisions/Revisions.tsx:108`). So
+   after a guarded partial failure the epoch bump refuses the *old* token,
+   but the next auto-save silently acquires a *fresh* token and writes stale
+   editor content over the partially-replaced tree. Fix at the app layer:
+   error paths of every tree-replacing UI operation (restore revision /
+   restore document, draft switch/merge, sync) must reload project state
+   (`openProject` + `refresh`) exactly as the success paths do, *before* any
+   further save can run — so the editor buffer is never stale relative to
+   the on-disk tree when a fresh token is issued. Add coverage at this
+   layer (see Tests).
 5. Land as **one concern, one branch, one commit**, per
    `.agents/repo-guidance.md` Earned Practices.
 
@@ -62,12 +74,19 @@ on-disk state cannot be clobbered by a half-finished operation.
 | `crates/core/src/core/project/fidelity.rs` | Epoch-bump-on-scope-exit guard, armed via `WritePermit` |
 | `crates/core/src/core/git.rs` | Arm guard before first tree mutation in each tree-replacing op; drop the success-only `bump_epoch()` calls |
 | `crates/core` tests (fidelity/git) | New guard test proving stale state is refused after a partial failure |
+| `ui/src/components/revisions/Revisions.tsx` (and draft/sync handlers) | Reload project state on tree-replacing command *failure*, not just success |
+| UI tests (or command-layer integration test) | Regression: after a failed restore, editor state reloads and no stale auto-save lands |
 
 ## [MODEL] Tests
 
 - [ ] New guard test: authorization issued pre-operation is refused after an
   injected post-mutation failure — shown to fail without the protection,
   pass with it.
+- [ ] App-layer regression (added in round 1 revision): after a
+  tree-replacing operation fails post-mutation, the UI reloads project
+  state and a subsequent auto-save does **not** write the pre-operation
+  editor buffer — shown to fail against current error paths, pass with
+  the reload fix.
 - [ ] Existing epoch tests (e.g. `token_stale_after_epoch_bump`) still pass.
 - [ ] Full declared suite from `.agents/repo-guidance.md` Verification
   (fmt, clippy, tests, release-metadata check, ui lint/build).
