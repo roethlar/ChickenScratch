@@ -87,13 +87,17 @@ decisions; `DEVLOG.md` holds history.
 ## Next
 
 1. **Tree-replacement epoch invalidation on partial failure — APPROVED,
-   in flight.** Owner chose "4 pieces" on 2026-07-16 (recorded on the
-   plan's status line): four dependency-ordered slices, one commit
-   each — (1) vitest harness + CI wiring, (2) core epoch guard,
-   (3) UI barrier, (4) merge completion/recovery. Plan:
+   in flight; slices 1–3 of 4 landed 2026-07-16.** Owner chose
+   "4 pieces" (recorded on the plan's status line). Landed: slice 1
+   vitest harness + CI (`cd6afdd`), slice 2 core epoch guard with
+   red/green-proven error-path tests (`db8095a`), slice 3 UI operation
+   barrier — counted lease, refuse-never-defer dispatch gate, owner
+   admission, generation-keyed rebuilds, form freeze/loud-drop, timer
+   gating, 26 vitest regressions (`977095b`). Remaining: slice 4 merge
+   completion/recovery (plan design points a–e), which also fixes the
+   two live defects in the ranked-findings entry above. Plan:
    `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md` (review accepted
-   round 14; trail in `.agents/review/findings/plan-2.md`). Slice 4
-   also fixes the two live defects in the ranked-findings entry above.
+   round 14; trail in `.agents/review/findings/plan-2.md`).
 2. Keep writer end-state coherence and the Scrivener asset-import boundary
    parked behind that decision, one concern per later approval.
 3. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
