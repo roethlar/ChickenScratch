@@ -58,17 +58,38 @@ on-disk state cannot be clobbered by a half-finished operation.
    after a guarded partial failure the epoch bump refuses the *old* token,
    but the next auto-save silently acquires a *fresh* token and writes stale
    editor content over the partially-replaced tree. Fix at the app layer —
-   revised again after round 2, which showed reload alone is neither a
-   save barrier nor a buffer reset:
+   revised after rounds 2–3: reload alone is neither a save barrier nor
+   a buffer reset, and auto-save is not the only stale-content writer:
    - **Save barrier around every tree-replacing operation.** Reloading
      after the fact does not establish "before any further save can run":
      a debounced save already queued behind `ProjectWriteLocks` re-probes
      via `ProjectTokens::checkout` and acquires a fresh token during or
      after the reload, and `openProject` clearing `activeDoc` can itself
      trigger the editor's dirty-buffer flush. Suspend editor auto-save and
-     flushes (`ui/src/components/editor/editorRef.ts` seam) from before
-     the first tree mutation until project reload *and* editor-buffer
-     rebuild complete; only then resume saving.
+     flushes from before the first tree mutation until project reload
+     *and* editor-buffer rebuild complete; only then resume saving. The
+     barrier must live where the timers and buffers live: the debounce
+     (`saveTimer`), dirty flag (`dirtyRef`), flush logic (`saveCurrent`),
+     and flow buffers (`flowDocsRef`) are owned by
+     `ui/src/components/editor/Editor.tsx`, so the
+     `ui/src/components/editor/editorRef.ts` /
+     `ui/src/stores/projectStore.ts` seam must expose an *awaitable*
+     suspend/resume + rebuild-complete contract that `Editor.tsx`
+     implements and every tree-replacing operation awaits (round 3).
+   - **Gate every editor-content-bearing command, not only auto-save.**
+     `ui/src/components/editor/Toolbar.tsx:116` (`addComment`) and
+     `ui/src/components/comments/CommentsPanel.tsx:66` (`deleteComment`)
+     serialize the live buffer (`getEditorMarkdown`) and write it via
+     `docCmd.*`; invoked while a tree operation holds
+     `ProjectWriteLocks` they queue, re-probe after the epoch bump, and
+     land the stale buffer under a fresh token. The barrier blocks or
+     defers every command that carries editor-derived content (round 3).
+   - **Editing is disabled while the barrier is up.** Suspending saves
+     while leaving TipTap editable creates silent data loss: keystrokes
+     during an awaited restore/pull live only in the old buffer and are
+     discarded by the required rebuild. Set the editor non-editable for
+     the barrier window (`editor.setEditable(false)`), restoring it
+     after rebuild — no reconciliation is attempted (round 3).
    - **Explicit editor-buffer reset/rebuild after reload.** `openProject`
      (`ui/src/stores/projectStore.ts:71`) clears `activeDoc` but leaves
      `flowDocs` intact, and the editor's buffer-load effect does not
@@ -96,8 +117,11 @@ on-disk state cannot be clobbered by a half-finished operation.
 | `crates/core` tests (fidelity/git) | New guard test proving stale state is refused after a partial failure |
 | `ui/src/components/revisions/Revisions.tsx` (draft/sync handlers) | Barrier + reload + buffer rebuild on *every* tree-mutating result — failure, `Ok(Conflicts)` (lines 144, 228), success |
 | `ui/src/components/revisions/DocumentHistory.tsx` | Same treatment for `restore_document` (currently reloads only in its success path) |
-| `ui/src/stores/projectStore.ts`, `ui/src/components/editor/editorRef.ts` | Save-barrier seam; reset `flowDocs` and rebuild the editor buffer on reload |
-| UI tests (or command-layer integration test) | Regression: after a failed restore, editor state reloads and no stale auto-save lands |
+| `ui/src/components/editor/Editor.tsx` | Owns `saveTimer`/`dirtyRef`/`flowDocsRef`/`saveCurrent`: implements the awaitable suspend/resume + rebuild contract; editor non-editable while the barrier is up |
+| `ui/src/stores/projectStore.ts`, `ui/src/components/editor/editorRef.ts` | Awaitable save-barrier seam; reset `flowDocs` and rebuild the editor buffer on reload |
+| `ui/src/components/editor/Toolbar.tsx`, `ui/src/components/comments/CommentsPanel.tsx` | Comment commands carry `getEditorMarkdown` content — gated behind the same barrier |
+| `ui/package.json` (+ vitest harness, added by this plan) | UI has no test runner today (scripts: dev/build/lint/preview only); add vitest + a `test` script so the regressions below are executable, and fold it into the declared verification suite |
+| UI tests (new vitest harness) | Regressions: reload-on-failure, queued-save barrier, flow mode, conflict paths, edit overlap, comment-command gating |
 
 ## [MODEL] Tests
 
@@ -118,9 +142,18 @@ on-disk state cannot be clobbered by a half-finished operation.
 - [ ] Conflict-path regression (round 2): draft-merge and sync-pull
   returning conflicts, then "Resolve manually" and an edit, must not save
   the pre-merge buffer.
+- [ ] Edit-overlap regression (round 3): typing during an awaited
+  tree-replacing operation cannot land — the editor is non-editable for
+  the barrier window, and nothing typed is silently replayed or saved
+  against the replaced tree.
+- [ ] Comment-command regression (round 3): `addComment`/`deleteComment`
+  issued around a guarded failure must not write the pre-operation
+  buffer.
 - [ ] Existing epoch tests (e.g. `token_stale_after_epoch_bump`) still pass.
 - [ ] Full declared suite from `.agents/repo-guidance.md` Verification
-  (fmt, clippy, tests, release-metadata check, ui lint/build).
+  (fmt, clippy, tests, release-metadata check, ui lint/build), plus the
+  new UI vitest script (round 3: the repo has no UI test runner today —
+  the app-layer regressions run on the harness this plan introduces).
 
 ## [MODEL] Owner verification (plain English)
 
@@ -132,4 +165,7 @@ an operation breaks partway."
 
 ## [YOU] Decisions needed
 
-- Approval to implement this plan (yes/no). No other open questions.
+- Approval to implement this plan (yes/no).
+- Round 3: the app-layer regressions need a UI test harness the repo does
+  not have. Approve adding vitest (dev dependency + `test` script) inside
+  this plan's single commit, or direct a separate preparatory commit.

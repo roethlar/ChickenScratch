@@ -4,7 +4,7 @@
 proof — the artifact is a plan document on `master`. The doc-review analog of
 the guard proof: the reviewer verifies the plan's factual claims against the
 actual code, and `guard_confirmed` attests that verification.)
-**Status**: In progress — rounds 1–2 reopened, plan revised twice, round 3 pending
+**Status**: In progress — rounds 1–2 reopened, plan revised twice, round 3 dispatched
 **Subject**: `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md`
 
 ## Round 1 dispatch
@@ -108,4 +108,61 @@ regressions. Committed for round 3.
 
 ## Round 3 dispatch
 
-- **Verdict**: pending
+- **Reviewer**: codex-cli 0.144.4, same invocation as rounds 1–2
+  (`codex exec --ephemeral -s read-only --json --output-schema … -o …`)
+- **Reviewed SHA**: `108fb2a3c7de6cab8e301e4f2e4c955dac5209b9` (round-2
+  plan revision commit)
+- **Base SHA**: `066a2a81d796b92dd68721cfb05bf8356b66c492` (unchanged —
+  the plan-less parent, so the full plan stays in scope each round)
+- **Bound**: 1800 s
+- **Dispatched**: 2026-07-15 (prompt: `/tmp/plan2-r3-prompt.md`; verdict →
+  `/tmp/plan2-r3-review-last.json`; all four round-2 findings quoted
+  verbatim so the reviewer verifies the revision resolves them without
+  re-litigating; explicitly asked to probe for REMAINING stale-buffer
+  paths the barrier-as-specified does not close)
+- **Verdict**: `reopened` (envelope valid: verdict in enum,
+  `guard_confirmed: true`, reviewed/base SHAs match dispatch, exit 0;
+  job 3, ~10 min, usage 2.59M in / 27.0k out)
+
+## Round 3 findings
+
+Four comments, each verified independently against the working tree before
+accepting (anti-capitulation gate). All four **ADMITTED**:
+
+1. **`Toolbar.tsx:116` / `CommentsPanel.tsx:66` — comment commands carry
+   editor content around the barrier.** Confirmed: `addComment` serializes
+   the live buffer (`getEditorMarkdown(editor)`, Toolbar.tsx:119) and sends
+   it as `newContent` via `docCmd.addComment`; `handleDelete` does the same
+   (CommentsPanel.tsx:68) via `docCmd.deleteComment`. Neither goes through
+   the auto-save/flush path the barrier gates; queued behind
+   `ProjectWriteLocks` during a tree op they re-probe after the epoch bump
+   and write the stale buffer. Step 4 must gate every editor-content-bearing
+   command, with a regression.
+2. **Plan leaves TipTap editable during the barrier — silent data loss.**
+   Confirmed as a plan gap: nothing in step 4 disables or reconciles live
+   edits during an awaited tree op, so the required buffer rebuild discards
+   anything typed in the window. Plan must disable editing (or specify
+   reconciliation) during the barrier, plus an edit-overlap regression.
+3. **File map omits `ui/src/components/editor/Editor.tsx`.** Confirmed: it
+   owns `saveTimer` (:56), `flowDocsRef` (:63), `dirtyRef` (:70),
+   `saveCurrent` (:79), and the debounce/flush logic; `projectStore.ts` /
+   `editorRef.ts` alone cannot suppress those paths or signal rebuild
+   completion. Include Editor.tsx and an awaitable barrier/rebuild contract.
+4. **No app-layer test harness exists.** Confirmed: `ui/package.json`
+   scripts are only dev/build/lint/preview; no vitest/jest/playwright in
+   devDependencies. The plan's queued-save, flow-mode, and conflict
+   regressions are not executable as declared. Plan must select and scope
+   the harness and its verification/CI command.
+
+**Plan revision (round 3)**: step 4 gains three requirements — the save
+barrier is an *awaitable* suspend/resume + rebuild-complete contract
+implemented by `Editor.tsx` (owner of `saveTimer`/`dirtyRef`/
+`flowDocsRef`/`saveCurrent`); every editor-content-bearing command
+(`addComment`/`deleteComment`) is gated behind the same barrier; the
+editor is non-editable while the barrier is up (no reconciliation).
+Files table gains `Editor.tsx`, `Toolbar.tsx`/`CommentsPanel.tsx`, and
+`ui/package.json` + vitest harness (UI has no test runner today). Tests
+checklist gains edit-overlap and comment-command regressions; declared
+suite extended with the new UI test script. Decisions section asks the
+owner whether vitest lands in the same commit or a preparatory one.
+Committed for round 4.
