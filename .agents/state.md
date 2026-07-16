@@ -86,16 +86,14 @@ decisions; `DEVLOG.md` holds history.
 
 ## Next
 
-1. **Tree-replacement epoch invalidation on partial failure** — owner
-   approved planning this scope 2026-07-15; plan at
-   `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md` passed a 14-round
-   cross-harness review loop (accepted 2026-07-16; full trail in
-   `.agents/review/findings/plan-2.md`). Implement only on an explicit
-   owner yes PLUS the owner's commit-structure choice (plan step 5:
-   one sweep or four dependency-ordered slices), recorded on the
-   plan's status line. The review also surfaced two live pre-existing
-   defects (see the ranked-findings entry above) that the plan's
-   merge/recovery boundary fixes.
+1. **Tree-replacement epoch invalidation on partial failure — APPROVED,
+   in flight.** Owner chose "4 pieces" on 2026-07-16 (recorded on the
+   plan's status line): four dependency-ordered slices, one commit
+   each — (1) vitest harness + CI wiring, (2) core epoch guard,
+   (3) UI barrier, (4) merge completion/recovery. Plan:
+   `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md` (review accepted
+   round 14; trail in `.agents/review/findings/plan-2.md`). Slice 4
+   also fixes the two live defects in the ranked-findings entry above.
 2. Keep writer end-state coherence and the Scrivener asset-import boundary
    parked behind that decision, one concern per later approval.
 3. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
