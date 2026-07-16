@@ -5,6 +5,7 @@ import { Welcome } from "./components/welcome/Welcome";
 import { Binder } from "./components/binder/Binder";
 import { Editor } from "./components/editor/Editor";
 import { getCurrentEditor, flushPendingEditorSave } from "./components/editor/editorRef";
+import { isBarrierActive } from "./commands/barrier";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as gitCmd from "./commands/git";
@@ -194,6 +195,10 @@ export default function App() {
   // Auto-backup on close and warn if unsaved
   useEffect(() => {
     const flushAndBackupOnClose = async (): Promise<boolean> => {
+      // Never continue past an in-flight epoch-bumping operation: the
+      // tree may be half-replaced or conflicted, and backup_on_close
+      // would commit that state wholesale (plan slice 3, round 6).
+      if (isBarrierActive()) return true;
       // Flush any pending debounced editor save FIRST. Without this,
       // typing-then-quitting would leave the last 2s of edits in
       // memory only, and `backup_on_close` would auto-commit whatever
@@ -260,6 +265,11 @@ export default function App() {
     if (!project || readOnly) return;
     const interval = setInterval(async () => {
       try {
+        // Skip the tick entirely while an epoch-bumping operation holds
+        // the barrier: its continuation would resume after the backend
+        // lock releases and commit a half-replaced or conflicted tree
+        // (plan slice 3, round 6).
+        if (isBarrierActive()) return;
         // Drain pending editor edits BEFORE asking git for working-tree
         // status. Otherwise hasChanges() reflects only what's already on
         // disk and the auto-commit captures a snapshot that's missing the
@@ -291,6 +301,9 @@ export default function App() {
       const store = useProjectStore.getState();
       if (store.project) {
         try {
+          // Skip while an epoch-bumping operation holds the barrier —
+          // same rationale as the auto-commit timer (plan slice 3).
+          if (isBarrierActive()) return;
           // Same rationale as the auto-commit timer: flush in-flight
           // editor edits before backing up so the snapshot reflects
           // what the writer just typed, not what was on disk 2s ago.

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { mutatingInvoke } from "./gateway";
 import type { Project } from "../types";
 
 export interface DocStats {
@@ -39,7 +40,7 @@ export async function getWritingHistory(projectPath: string): Promise<WritingHis
 }
 
 export async function recordDailyWords(projectPath: string, words: number): Promise<void> {
-  return invoke("record_daily_words", { projectPath, words });
+  return mutatingInvoke("record_daily_words", { projectPath, words });
 }
 
 export async function compileProject(
@@ -71,7 +72,7 @@ export async function importFile(
   filePath: string,
   parentId?: string
 ): Promise<Project> {
-  return invoke("import_file", {
+  return mutatingInvoke("import_file", {
     projectPath,
     filePath,
     parentId: parentId ?? null,
@@ -82,5 +83,5 @@ export async function importMarkdownFolder(
   folderPath: string,
   outputPath: string
 ): Promise<Project> {
-  return invoke("import_markdown_folder", { folderPath, outputPath });
+  return mutatingInvoke("import_markdown_folder", { folderPath, outputPath });
 }

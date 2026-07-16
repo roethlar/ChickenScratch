@@ -35,8 +35,9 @@ import { toastError, toastSuccess } from "../shared/Toast";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
-import { getEditorMarkdown } from "./editorRef";
+import { getEditorMarkdown, registerAiStreamCanceller } from "./editorRef";
 import { exitFlowWithEditorFlush } from "./navigationGuards";
+import { useBarrierActive } from "../../hooks/useBarrier";
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -55,11 +56,17 @@ function ToolbarButton({
   title: string;
   children: React.ReactNode;
 }) {
+  // Every toolbar action dispatches TipTap commands programmatically,
+  // which setEditable(false) does NOT block — so the single shared
+  // button is where the barrier freezes formatting, links, footnotes,
+  // comments, and AI while an epoch-bumping operation runs
+  // (plan slice 3, round 4).
+  const barrierActive = useBarrierActive();
   return (
     <button
       className={`toolbar-btn ${active ? "active" : ""}`}
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || barrierActive}
       title={title}
       onMouseDown={(e) => e.preventDefault()} // prevent editor blur
     >
@@ -386,6 +393,14 @@ function AiMenu({ editor }: { editor: Editor }) {
         unsubscribe?.();
       }
     });
+    // The barrier lifecycle cancels in-flight streams at barrier entry —
+    // deltas landing during/after a tree operation would mutate a buffer
+    // the rebuild is about to replace (plan slice 3, round 4).
+    const unregisterCanceller = registerAiStreamCanceller(() => {
+      cancelledForContext = true;
+      cancelAiTransformStream(requestId).catch(() => {});
+      abortController.abort();
+    });
 
     try {
       if (!stillOnOriginDoc()) return;
@@ -453,6 +468,7 @@ function AiMenu({ editor }: { editor: Editor }) {
         toastError(`AI failed: ${e}`);
       }
     } finally {
+      unregisterCanceller();
       unsubscribe?.();
       setWorking(false);
     }

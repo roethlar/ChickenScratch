@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { mutatingInvoke } from "./gateway";
+import type { LeaseHandle } from "./barrier";
 
 export interface Revision {
   id: string;
@@ -17,7 +19,7 @@ export async function saveRevision(
   projectPath: string,
   message: string
 ): Promise<Revision> {
-  return invoke("save_revision", { projectPath, message });
+  return mutatingInvoke("save_revision", { projectPath, message });
 }
 
 export async function listRevisions(
@@ -28,16 +30,18 @@ export async function listRevisions(
 
 export async function restoreRevision(
   projectPath: string,
-  commitId: string
+  commitId: string,
+  lease?: LeaseHandle
 ): Promise<Revision> {
-  return invoke("restore_revision", { projectPath, commitId });
+  return mutatingInvoke("restore_revision", { projectPath, commitId }, lease);
 }
 
 export async function createDraft(
   projectPath: string,
-  name: string
+  name: string,
+  lease?: LeaseHandle
 ): Promise<void> {
-  return invoke("create_draft", { projectPath, name });
+  return mutatingInvoke("create_draft", { projectPath, name }, lease);
 }
 
 export async function listDrafts(
@@ -48,9 +52,10 @@ export async function listDrafts(
 
 export async function switchDraft(
   projectPath: string,
-  name: string
+  name: string,
+  lease?: LeaseHandle
 ): Promise<void> {
-  return invoke("switch_draft", { projectPath, name });
+  return mutatingInvoke("switch_draft", { projectPath, name }, lease);
 }
 
 /** Result of a draft merge. Same four cases as `PullResult` so the UI can
@@ -63,23 +68,24 @@ export type MergeResult =
 
 export async function mergeDraft(
   projectPath: string,
-  name: string
+  name: string,
+  lease?: LeaseHandle
 ): Promise<MergeResult> {
-  return invoke("merge_draft", { projectPath, name });
+  return mutatingInvoke("merge_draft", { projectPath, name }, lease);
 }
 
 export async function pushBackup(
   projectPath: string,
   backupDir: string
 ): Promise<void> {
-  return invoke("push_backup", { projectPath, backupDir });
+  return mutatingInvoke("push_backup", { projectPath, backupDir });
 }
 
 export async function manualBackup(
   projectPath: string,
   backupDir: string
 ): Promise<Revision | null> {
-  return invoke("manual_backup", { projectPath, backupDir });
+  return mutatingInvoke("manual_backup", { projectPath, backupDir });
 }
 
 export interface FileDiff {
@@ -135,11 +141,11 @@ export interface SyncStatus {
 }
 
 export async function syncPush(projectPath: string): Promise<void> {
-  return invoke("sync_push", { projectPath });
+  return mutatingInvoke("sync_push", { projectPath });
 }
 
 export async function syncFetch(projectPath: string): Promise<void> {
-  return invoke("sync_fetch", { projectPath });
+  return mutatingInvoke("sync_fetch", { projectPath });
 }
 
 export async function syncStatus(projectPath: string): Promise<SyncStatus> {
@@ -152,16 +158,25 @@ export type PullResult =
   | { kind: "merged" }
   | { kind: "conflicts"; files: string[] };
 
-export async function syncPull(projectPath: string): Promise<PullResult> {
-  return invoke("sync_pull", { projectPath });
+export async function syncPull(
+  projectPath: string,
+  lease?: LeaseHandle
+): Promise<PullResult> {
+  return mutatingInvoke("sync_pull", { projectPath }, lease);
 }
 
-export async function syncAbortPull(projectPath: string): Promise<void> {
-  return invoke("sync_abort_pull", { projectPath });
+export async function syncAbortPull(
+  projectPath: string,
+  lease?: LeaseHandle
+): Promise<void> {
+  return mutatingInvoke("sync_abort_pull", { projectPath }, lease);
 }
 
-export async function syncPullForce(projectPath: string): Promise<void> {
-  return invoke("sync_pull_force", { projectPath });
+export async function syncPullForce(
+  projectPath: string,
+  lease?: LeaseHandle
+): Promise<void> {
+  return mutatingInvoke("sync_pull_force", { projectPath }, lease);
 }
 
 export async function documentHistory(
@@ -174,7 +189,12 @@ export async function documentHistory(
 export async function restoreDocument(
   projectPath: string,
   docPath: string,
-  commitId: string
+  commitId: string,
+  lease?: LeaseHandle
 ): Promise<Revision> {
-  return invoke("restore_document", { projectPath, docPath, commitId });
+  return mutatingInvoke(
+    "restore_document",
+    { projectPath, docPath, commitId },
+    lease
+  );
 }

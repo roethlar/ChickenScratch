@@ -4,6 +4,8 @@ import * as docCmd from "../../commands/document";
 import * as threadCmd from "../../commands/threads";
 import type { Thread } from "../../types";
 import { toastError } from "../shared/Toast";
+import { getReloadGeneration } from "../../commands/barrier";
+import { useBarrierActive } from "../../hooks/useBarrier";
 
 /** Map a doc path like "characters/sarah-bennett.md" → "sarah-bennett". */
 function entitySlug(path: string): string {
@@ -219,6 +221,7 @@ function ThreadChips({
 export function Inspector() {
   const project = useProjectStore((s) => s.project);
   const activeDoc = useProjectStore((s) => s.activeDoc);
+  const barrierActive = useBarrierActive();
   // Use the store's `setProject` so `activeDoc` re-derives from the new
   // project map after every mutation. Naive `setState({ project })`
   // leaves activeDoc pointing at the pre-mutation snapshot, which makes
@@ -276,10 +279,18 @@ export function Inspector() {
     [project, setProject]
   );
 
-  // Load metadata when active doc changes (React's "adjust state on prop change" pattern)
+  // Load metadata when the active doc changes — OR when a barrier reload
+  // replaced the project. Keying on the id alone misses a same-doc
+  // restore: the form would keep pre-operation values and the next
+  // debounce tick or immediate handler would write them over the
+  // restored metadata (plan slice 3, round 8). The reload generation
+  // catches that case.
+  const reloadGeneration = getReloadGeneration();
   const [lastDocId, setLastDocId] = useState<string | undefined>(activeDoc?.id);
-  if (activeDoc && activeDoc.id !== lastDocId) {
+  const [lastGeneration, setLastGeneration] = useState(reloadGeneration);
+  if (activeDoc && (activeDoc.id !== lastDocId || reloadGeneration !== lastGeneration)) {
     setLastDocId(activeDoc.id);
+    setLastGeneration(reloadGeneration);
     setTitle(activeDoc.name || "");
     setSynopsis(activeDoc.synopsis || "");
     setLabel(activeDoc.label || "");
@@ -331,18 +342,25 @@ export function Inspector() {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    const updated = await docCmd.updateDocumentMetadata(
-      project.path,
-      activeDoc.id,
-      {
-        synopsis: synopsis || null,
-        label: label || null,
-        status: status || null,
-        keywords: kw.length ? kw : null,
-        fields: scenePayload(),
-      }
-    );
-    setProject(updated);
+    try {
+      const updated = await docCmd.updateDocumentMetadata(
+        project.path,
+        activeDoc.id,
+        {
+          synopsis: synopsis || null,
+          label: label || null,
+          status: status || null,
+          keywords: kw.length ? kw : null,
+          fields: scenePayload(),
+        }
+      );
+      setProject(updated);
+    } catch (e) {
+      // The dispatch gate refuses metadata writes while an epoch-bumping
+      // operation runs; the pending draft is dropped loudly — the
+      // generation resync above reloads the restored values.
+      toastError(`Details not saved: ${e}`);
+    }
   }, [project, activeDoc, synopsis, label, status, keywords, scenePayload, setProject]);
 
   const handleTitleSave = useCallback(async () => {
@@ -389,7 +407,14 @@ export function Inspector() {
       <div className="inspector-header">
         <span>Inspector</span>
       </div>
-      <div className="inspector-body">
+      {/* fieldset disables every nested control while an epoch-bumping
+          operation holds the barrier (plan slice 3): each field's write
+          path re-submits a captured full snapshot. */}
+      <fieldset
+        className="inspector-body"
+        disabled={barrierActive}
+        style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
+      >
         <div className="inspector-field">
           <label>Title</label>
           {editingTitle ? (
@@ -690,7 +715,7 @@ export function Inspector() {
             {new Date(activeDoc.modified).toLocaleString()}
           </div>
         </div>
-      </div>
+      </fieldset>
     </div>
   );
 }

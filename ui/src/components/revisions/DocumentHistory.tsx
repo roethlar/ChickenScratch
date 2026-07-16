@@ -5,7 +5,9 @@ import { useProjectStore } from "../../stores/projectStore";
 import { dialogConfirm, useModalFocusTrap } from "../shared/Dialog";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { X, RotateCcw } from "lucide-react";
-import { flushPendingEditorSave, setCurrentEditorMarkdown } from "../editor/editorRef";
+import { flushPendingEditorSave } from "../editor/editorRef";
+import { runEpochOperation } from "../../operations";
+import { useBarrierActive } from "../../hooks/useBarrier";
 
 interface Props {
   open: boolean;
@@ -18,6 +20,7 @@ export function DocumentHistory({ open, docId, onClose }: Props) {
   const doc = docId && project ? project.documents[docId] : null;
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [busy, setBusy] = useState(false);
+  const barrierActive = useBarrierActive();
   const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const { dialogRef, onDialogKeyDown } = useModalFocusTrap<HTMLDivElement>(
@@ -67,18 +70,14 @@ export function DocumentHistory({ open, docId, onClose }: Props) {
       ))) return;
       setBusy(true);
       try {
-        await flushPendingEditorSave();
-        await gitCmd.restoreDocument(project.path, doc.path, rev.id);
-        // Reload the project and explicitly replace the editor buffer for
-        // same-doc restores; selecting the same id won't re-run Editor's load
-        // effect, so relying on selection can leave stale text queued to save.
-        const Project = await import("../../commands/project");
-        const reloaded = (await Project.loadProject(project.path)).project;
-        useProjectStore.getState().setProject(reloaded);
-        const restoredDoc = reloaded.documents[doc.id];
-        if (useProjectStore.getState().activeDocId === doc.id && restoredDoc) {
-          setCurrentEditorMarkdown(restoredDoc.content || "");
-        }
+        // The barrier lifecycle drains the editor, runs the restore, and
+        // reloads + rebuilds on success AND failure — the reload
+        // generation makes the same-id buffer rebuild without the manual
+        // setCurrentEditorMarkdown dance this handler used to need
+        // (plan slice 3).
+        await runEpochOperation((lease) =>
+          gitCmd.restoreDocument(project.path, doc.path, rev.id, lease)
+        );
         toastSuccess("Document restored.");
         onClose();
       } catch (e) {
@@ -133,7 +132,7 @@ export function DocumentHistory({ open, docId, onClose }: Props) {
                 </div>
                 <button
                   className="doc-history-restore"
-                  disabled={busy}
+                  disabled={busy || barrierActive}
                   onClick={() => handleRestore(rev)}
                   title="Restore this version"
                 >

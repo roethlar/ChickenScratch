@@ -15,6 +15,8 @@ import { FindReplace } from "./FindReplace";
 import { CommentMark } from "../comments/CommentMark";
 import { FootnoteNode } from "./FootnoteNode";
 import { setCurrentEditor, setPendingFlush, getEditorMarkdown } from "./editorRef";
+import { getReloadGeneration, isBarrierActive, type LeaseHandle } from "../../commands/barrier";
+import { useBarrierActive } from "../../hooks/useBarrier";
 import { Markdown } from "tiptap-markdown";
 import * as docCmd from "../../commands/document";
 import { toastError } from "../shared/Toast";
@@ -81,6 +83,10 @@ export function Editor() {
     const p = useProjectStore.getState().project;
     const flow = useProjectStore.getState().flowDocs;
     if (!editor || !p) return;
+    // Suspended while an epoch-bumping operation holds the barrier: the
+    // buffer is about to be rebuilt from disk, and a save here would land
+    // pre-operation content under a fresh token (plan slice 3).
+    if (isBarrierActive()) return;
 
     useProjectStore.setState({ saving: true });
     let anyFailure = false;
@@ -131,6 +137,10 @@ export function Editor() {
   );
 
   const debouncedSave = useCallback(() => {
+    // Inert while the barrier is up — rebuild setContent runs with
+    // emitUpdate=false, and the editor is non-editable, so any update
+    // reaching here mid-operation is programmatic noise, not typing.
+    if (isBarrierActive()) return;
     setDirtyTracked(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     // Settings exposes the delay; fall back to 2s if settings haven't
@@ -150,12 +160,15 @@ export function Editor() {
    * id the editor was bound to (`docIdRef`) plus the editor's current
    * markdown and write that explicitly.
    */
-  const flushPendingSave = useCallback(async (): Promise<void> => {
+  const flushPendingSave = useCallback(async (lease?: LeaseHandle): Promise<void> => {
     // No-op when the editor has nothing pending. Without this guard,
     // periodic auto-commit / backup intervals (which call us before
     // checking git status) would re-stamp `.meta` and create
     // timestamp-only revisions on every idle tick.
     if (!dirtyRef.current) return;
+    // Non-owner flushes are suspended while the barrier is up; the
+    // lifecycle's own drain passes its lease and proceeds (round 7).
+    if (!lease && isBarrierActive()) return;
 
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
@@ -186,7 +199,7 @@ export function Editor() {
       let anyFailure = false;
       for (const sec of sections) {
         try {
-          await docCmd.updateDocumentContent(project.path, sec.docId, sec.content);
+          await docCmd.updateDocumentContent(project.path, sec.docId, sec.content, lease);
         } catch (e) {
           anyFailure = true;
           toastError(`Failed to save ${sec.docId}: ${e}`);
@@ -206,7 +219,7 @@ export function Editor() {
     // and skip downstream steps on failure.
     applyContentToStore(oldDocId, markdown);
     try {
-      await docCmd.updateDocumentContent(project.path, oldDocId, markdown);
+      await docCmd.updateDocumentContent(project.path, oldDocId, markdown, lease);
       setDirtyTracked(false);
     } catch (e) {
       toastError(`Save failed: ${e}`);
@@ -261,9 +274,13 @@ export function Editor() {
 
   // Read-only project: the buffer must never diverge from disk, so the
   // editor itself is non-editable (no debounced saves can ever fire).
+  // Same while an epoch-bumping operation holds the barrier: keystrokes
+  // during an awaited restore/pull would live only in a buffer the
+  // rebuild is about to replace (plan slice 3, round 3).
+  const barrierActive = useBarrierActive();
   useEffect(() => {
-    if (editor) editor.setEditable(!readOnly);
-  }, [editor, readOnly]);
+    if (editor) editor.setEditable(!readOnly && !barrierActive);
+  }, [editor, readOnly, barrierActive]);
 
   // Ctrl+F / Ctrl+H shortcuts
   useEffect(() => {
@@ -285,17 +302,25 @@ export function Editor() {
   }, []);
 
   // Load document content when active doc changes, or enter flow mode.
+  // Also keyed on the reload generation (via barrierActive re-runs): after
+  // a barrier lifecycle reloads the project, the buffer must rebuild from
+  // the reloaded documents even when the visible doc/flow ids are
+  // unchanged — a same-id restore otherwise keeps stale text on screen
+  // (plan slice 3, rounds 5/8).
+  const loadedGenerationRef = useRef(getReloadGeneration());
   useEffect(() => {
     if (!editor) return;
     let cancelled = false;
 
     const loadBuffer = async () => {
       const flow = useProjectStore.getState().flowDocs;
+      const generation = getReloadGeneration();
 
       if (flow) {
         // Flow mode: concatenate documents with boundary markers.
         const flowKey = flow.map((d) => d.docId).join("|");
-        if (flowIdsRef.current === flowKey) return;
+        if (flowIdsRef.current === flowKey && loadedGenerationRef.current === generation)
+          return;
         // Persist any pending edits from the previous buffer (single-doc or
         // a different flow set) before we replace the editor content.
         try {
@@ -305,6 +330,7 @@ export function Editor() {
         }
         if (cancelled) return;
         flowIdsRef.current = flowKey;
+        loadedGenerationRef.current = generation;
         // Capture the flow set so flushPendingSave can save against it
         // even after the store's `flowDocs` is cleared by exitFlow or by
         // selectDocument.
@@ -362,7 +388,7 @@ export function Editor() {
         docIdRef.current = null;
         return;
       }
-      if (docIdRef.current !== activeDoc.id) {
+      if (docIdRef.current !== activeDoc.id || loadedGenerationRef.current !== generation) {
         // Critical: persist edits to the OUTGOING doc *before* we overwrite
         // the buffer with the incoming doc's content. Without this, any
         // typing from the past 2s of debounce window is silently dropped.
@@ -373,6 +399,7 @@ export function Editor() {
         }
         if (cancelled) return;
         docIdRef.current = activeDoc.id;
+        loadedGenerationRef.current = generation;
         const md = activeDoc.content || "";
         // emitUpdate=false so loading a doc doesn't trigger autosave (Tiptap
         // 3 emits update on setContent by default).
@@ -383,8 +410,10 @@ export function Editor() {
 
     void loadBuffer();
     return () => { cancelled = true; };
+    // barrierActive re-runs this after each lifecycle release so the
+    // generation check above can rebuild same-id buffers post-reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDoc?.id, editor, flowDocs]);
+  }, [activeDoc?.id, editor, flowDocs, barrierActive]);
 
   // Search highlight: find and select first match when navigating from search
   const searchHighlight = useProjectStore((s) => s.searchHighlight);

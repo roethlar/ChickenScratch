@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { BarChart3, X, FileText, BookOpen } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
+import { useBarrierActive } from "../../hooks/useBarrier";
 import {
   getProjectStats,
   getWritingHistory,
@@ -141,6 +142,14 @@ function SessionTargetSection() {
   const [wordsPerSession, setWordsPerSession] = useState("");
   const [deadline, setDeadline] = useState("");
   const [totalTarget, setTotalTarget] = useState("");
+  // Save re-submits the whole captured metadata snapshot, so the form
+  // freezes while an epoch-bumping operation runs; the resync below
+  // drops an open draft LOUDLY, never silently (plan slice 3, rounds 6-8).
+  const barrierActive = useBarrierActive();
+  const draftOpenRef = useRef(false);
+  useEffect(() => {
+    draftOpenRef.current = editing;
+  });
 
   useEffect(() => {
     if (!project) return;
@@ -151,6 +160,12 @@ function SessionTargetSection() {
         setWordsPerSession(p.words_per_session?.toString() ?? "");
         setDeadline(p.deadline ?? "");
         setTotalTarget(p.total_target?.toString() ?? "");
+        if (draftOpenRef.current) {
+          setEditing(false);
+          toastError(
+            "Session-target edits were discarded: the project state was reloaded."
+          );
+        }
       })
       .catch(() => setProgress(null));
   }, [project]);
@@ -186,6 +201,7 @@ function SessionTargetSection() {
         Session Target
         <button
           className="stats-session-edit"
+          disabled={barrierActive}
           onClick={() => setEditing((v) => !v)}
         >
           {editing ? "Cancel" : hasTarget ? "Edit" : "Configure"}
@@ -250,6 +266,7 @@ function SessionTargetSection() {
               type="number"
               min={0}
               value={wordsPerSession}
+              disabled={barrierActive}
               onChange={(e) => setWordsPerSession(e.target.value)}
               placeholder="1000"
             />
@@ -259,6 +276,7 @@ function SessionTargetSection() {
             <input
               type="date"
               value={deadline}
+              disabled={barrierActive}
               onChange={(e) => setDeadline(e.target.value)}
             />
           </label>
@@ -268,11 +286,12 @@ function SessionTargetSection() {
               type="number"
               min={0}
               value={totalTarget}
+              disabled={barrierActive}
               onChange={(e) => setTotalTarget(e.target.value)}
               placeholder="90000"
             />
           </label>
-          <button className="stats-session-save" onClick={save}>
+          <button className="stats-session-save" disabled={barrierActive} onClick={save}>
             Save
           </button>
         </div>

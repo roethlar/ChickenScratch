@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { mutatingInvoke } from "./gateway";
 import type { Project } from "../types";
 
 export interface Template {
@@ -17,7 +18,7 @@ export async function createFromTemplate(
   name: string,
   parentId?: string
 ): Promise<Project> {
-  return invoke("create_from_template", {
+  return mutatingInvoke("create_from_template", {
     projectPath,
     templateId,
     name,

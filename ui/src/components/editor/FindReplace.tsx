@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { X, ChevronDown, ChevronUp, Replace } from "lucide-react";
+import { useBarrierActive } from "../../hooks/useBarrier";
 
 interface FindReplaceProps {
   editor: Editor | null;
@@ -17,6 +18,10 @@ export function FindReplace({ editor, open, showReplace, onClose }: FindReplaceP
   const [replaceMode, setReplaceMode] = useState(showReplace);
   const findRef = useRef<HTMLInputElement>(null);
   const decorationsRef = useRef<{ from: number; to: number }[]>([]);
+  // Replace mutates the buffer via programmatic dispatch, which
+  // setEditable(false) does not block — frozen while an epoch-bumping
+  // operation holds the barrier (plan slice 3, round 4).
+  const barrierActive = useBarrierActive();
 
   // Sync replaceMode with the showReplace prop when it changes
   const [lastShowReplace, setLastShowReplace] = useState(showReplace);
@@ -186,10 +191,18 @@ export function FindReplace({ editor, open, showReplace, onClose }: FindReplaceP
             placeholder="Replace with..."
             className="find-input"
           />
-          <button onClick={handleReplace} disabled={matchCount === 0} title="Replace">
+          <button
+            onClick={handleReplace}
+            disabled={matchCount === 0 || barrierActive}
+            title="Replace"
+          >
             Replace
           </button>
-          <button onClick={handleReplaceAll} disabled={matchCount === 0} title="Replace All">
+          <button
+            onClick={handleReplaceAll}
+            disabled={matchCount === 0 || barrierActive}
+            title="Replace All"
+          >
             All
           </button>
         </div>

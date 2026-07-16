@@ -1,9 +1,11 @@
 import { useMemo, useState, useCallback } from "react";
 import { useProjectStore } from "../../stores/projectStore";
-import { invoke } from "@tauri-apps/api/core";
+import { updateProjectMetadata } from "../../commands/project";
+import { useBarrierActive, useReloadResync } from "../../hooks/useBarrier";
+import { toastError } from "../shared/Toast";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import type { TreeNode, Document, Project } from "../../types";
+import type { TreeNode, Document } from "../../types";
 
 /**
  * Render markdown to a sanitized HTML string. The Tauri webview ships with
@@ -64,32 +66,61 @@ export function Preview() {
 
   // Sync meta form state to the loaded project (React's "adjust state on prop change" pattern)
   const [lastProjectPath, setLastProjectPath] = useState<string | undefined>(project?.path);
+  const metaFromProject = useCallback(() => ({
+    title: project?.metadata.title || "",
+    author: project?.metadata.author || "",
+    project_type: project?.metadata.project_type || "",
+    genre: project?.metadata.genre || "",
+    theme: project?.metadata.theme || "",
+    summary: project?.metadata.summary || "",
+  }), [project]);
   if (project && project.path !== lastProjectPath) {
     setLastProjectPath(project.path);
-    setMeta({
-      title: project.metadata.title || "",
-      author: project.metadata.author || "",
-      project_type: project.metadata.project_type || "",
-      genre: project.metadata.genre || "",
-      theme: project.metadata.theme || "",
-      summary: project.metadata.summary || "",
-    });
+    setMeta(metaFromProject());
   }
+
+  // A barrier reload keeps the same path, so the path-keyed sync above
+  // misses it and this captured form would clobber restored metadata on
+  // the next Save. Resync on every reload generation; a dirty draft is
+  // dropped LOUDLY, never silently (plan slice 3, rounds 6-8).
+  const barrierActive = useBarrierActive();
+  const metaDirty = useCallback(() => {
+    if (!project) return false;
+    const fresh = metaFromProject();
+    return (Object.keys(fresh) as (keyof typeof fresh)[]).some(
+      (k) => meta[k] !== fresh[k]
+    );
+  }, [project, meta, metaFromProject]);
+  useReloadResync(
+    () => editingMeta && metaDirty(),
+    (wasDirty) => {
+      setMeta(metaFromProject());
+      if (wasDirty) {
+        toastError(
+          "Project-details edits were discarded: the project was reloaded by a revision, draft, or sync operation."
+        );
+      }
+    }
+  );
 
   const saveMeta = useCallback(async () => {
     if (!project) return;
-    const updated: Project = await invoke("update_project_metadata", {
-      projectPath: project.path,
-      title: meta.title || null,
-      author: meta.author || null,
-      projectType: meta.project_type || null,
-      genre: meta.genre || null,
-      theme: meta.theme || null,
-      summary: meta.summary || null,
-      sessionTarget: project.metadata?.session_target ?? null,
-    });
-    setProject(updated);
-    setEditingMeta(false);
+    try {
+      const updated = await updateProjectMetadata({
+        projectPath: project.path,
+        title: meta.title || null,
+        author: meta.author || null,
+        projectType: meta.project_type || null,
+        genre: meta.genre || null,
+        theme: meta.theme || null,
+        summary: meta.summary || null,
+        sessionTarget: project.metadata?.session_target ?? null,
+      });
+      setProject(updated);
+      setEditingMeta(false);
+    } catch (e) {
+      toastError(`Save failed: ${e}`);
+    }
   }, [project, meta, setProject]);
 
   const docs = useMemo(() => {
@@ -137,15 +168,15 @@ export function Preview() {
               <div className="preview-meta-form">
                 <label>
                   Title
-                  <input value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })} />
+                  <input value={meta.title} disabled={barrierActive} onChange={(e) => setMeta({ ...meta, title: e.target.value })} />
                 </label>
                 <label>
                   Author
-                  <input value={meta.author} onChange={(e) => setMeta({ ...meta, author: e.target.value })} />
+                  <input value={meta.author} disabled={barrierActive} onChange={(e) => setMeta({ ...meta, author: e.target.value })} />
                 </label>
                 <label>
                   Type
-                  <select value={meta.project_type} onChange={(e) => setMeta({ ...meta, project_type: e.target.value })}>
+                  <select value={meta.project_type} disabled={barrierActive} onChange={(e) => setMeta({ ...meta, project_type: e.target.value })}>
                     <option value="">—</option>
                     <option value="Novel">Novel</option>
                     <option value="Short Story">Short Story</option>
@@ -157,17 +188,17 @@ export function Preview() {
                 </label>
                 <label>
                   Genre
-                  <input value={meta.genre} onChange={(e) => setMeta({ ...meta, genre: e.target.value })} />
+                  <input value={meta.genre} disabled={barrierActive} onChange={(e) => setMeta({ ...meta, genre: e.target.value })} />
                 </label>
                 <label>
                   Theme
-                  <input value={meta.theme} onChange={(e) => setMeta({ ...meta, theme: e.target.value })} />
+                  <input value={meta.theme} disabled={barrierActive} onChange={(e) => setMeta({ ...meta, theme: e.target.value })} />
                 </label>
                 <label>
                   Summary
-                  <textarea value={meta.summary} onChange={(e) => setMeta({ ...meta, summary: e.target.value })} rows={3} />
+                  <textarea value={meta.summary} disabled={barrierActive} onChange={(e) => setMeta({ ...meta, summary: e.target.value })} rows={3} />
                 </label>
-                <button className="preview-save-meta" onClick={saveMeta}>Save</button>
+                <button className="preview-save-meta" disabled={barrierActive} onClick={saveMeta}>Save</button>
               </div>
             )}
           </div>
