@@ -200,25 +200,69 @@ fn generate_id() -> String {
     Uuid::new_v4().to_string()
 }
 
-/// Accept either `"Yes"`/`"No"` strings or a YAML boolean for
-/// `include_in_compile`. Booleans coerce to the canonical string form so
-/// downstream code only deals with one shape.
+/// Accept `"Yes"`/`"No"` strings, common boolean spellings in any case
+/// (`no`, `FALSE`, `off`, …), a YAML boolean, or a 0/1 integer for
+/// `include_in_compile`. Everything recognizable coerces to the canonical
+/// `"Yes"`/`"No"` form so downstream code (and the next save) only deals
+/// with one shape.
+///
+/// The variant spellings are not hypothetical: YAML 1.1 writers emit
+/// unquoted `no`, which YAML 1.2 (serde_yaml) parses as the *string* `"no"`,
+/// not a boolean. Before this normalization, a document whose sidecar said
+/// `include_in_compile: no` failed the exact `"No"` comparison and was
+/// silently included in compile output.
+///
+/// Unrecognized strings pass through verbatim (tolerant reader) and are
+/// treated as included by [`include_in_compile_flag`], matching the
+/// pre-existing "anything but No means Yes" default.
 fn deserialize_include_in_compile<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     #[derive(Deserialize)]
     #[serde(untagged)]
-    enum BoolOrStr {
+    enum BoolNumOrStr {
         Bool(bool),
+        // 0/1 written by hand or by a tool serializing the flag as an
+        // integer. Without this variant such a sidecar fails the untagged
+        // parse entirely and degrades the whole document.
+        Num(i64),
         Str(String),
     }
-    let opt: Option<BoolOrStr> = Option::deserialize(deserializer)?;
+    let opt: Option<BoolNumOrStr> = Option::deserialize(deserializer)?;
     Ok(opt.map(|v| match v {
-        BoolOrStr::Bool(true) => "Yes".to_string(),
-        BoolOrStr::Bool(false) => "No".to_string(),
-        BoolOrStr::Str(s) => s,
+        BoolNumOrStr::Bool(true) => "Yes".to_string(),
+        BoolNumOrStr::Bool(false) => "No".to_string(),
+        BoolNumOrStr::Num(0) => "No".to_string(),
+        BoolNumOrStr::Num(_) => "Yes".to_string(),
+        BoolNumOrStr::Str(s) => canonicalize_include_in_compile(s),
     }))
+}
+
+/// Map common truthy/falsy spellings (any case, surrounding whitespace
+/// tolerated) onto canonical `"Yes"`/`"No"`. Unrecognized values are
+/// returned unchanged.
+fn canonicalize_include_in_compile(raw: String) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "no" | "false" | "n" | "off" | "0" => "No".to_string(),
+        "yes" | "true" | "y" | "on" | "1" => "Yes".to_string(),
+        _ => raw,
+    }
+}
+
+/// Decide compile inclusion from the sidecar string. Defense in depth on
+/// top of the read-time canonicalization: exclusion is the author's
+/// explicit choice, so any recognizable falsy spelling must win even if a
+/// non-canonical value reaches this point (e.g. constructed in memory
+/// rather than deserialized).
+fn include_in_compile_flag(value: Option<&str>) -> bool {
+    match value {
+        None => true,
+        Some(v) => !matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "no" | "false" | "n" | "off" | "0"
+        ),
+    }
 }
 
 /// Helper function to get current timestamp
@@ -1038,7 +1082,7 @@ fn read_document_with_root(
         status: metadata.status,
         keywords: metadata.keywords,
         links: metadata.links,
-        include_in_compile: metadata.include_in_compile.as_deref() != Some("No"),
+        include_in_compile: include_in_compile_flag(metadata.include_in_compile.as_deref()),
         word_count_target: metadata.word_count_target,
         compile_order: metadata.compile_order,
         comments: metadata.comments,
@@ -1847,14 +1891,32 @@ hierarchy: []
 
     #[test]
     fn test_include_in_compile_accepts_bool_or_string() {
-        // Bool true → "Yes", bool false → "No", string passes through.
-        // Covers `.meta` files written by the Windows C# writer (bool) and
-        // the Rust canonical writer ("Yes"/"No").
+        // Everything recognizable canonicalizes to "Yes"/"No" at parse time.
+        // Covers `.meta` files written by the Windows C# writer (bool), the
+        // Rust canonical writer ("Yes"/"No"), YAML 1.1 writers (unquoted
+        // no/off/n, parsed by YAML 1.2 as *strings*), hand edits in any
+        // case, and integer 0/1.
         let cases: &[(&str, Option<&str>)] = &[
             ("include_in_compile: true", Some("Yes")),
             ("include_in_compile: false", Some("No")),
             ("include_in_compile: \"Yes\"", Some("Yes")),
             ("include_in_compile: \"No\"", Some("No")),
+            // YAML 1.1 boolean spellings arrive as strings under YAML 1.2.
+            ("include_in_compile: no", Some("No")),
+            ("include_in_compile: off", Some("No")),
+            ("include_in_compile: n", Some("No")),
+            ("include_in_compile: \"FALSE\"", Some("No")),
+            ("include_in_compile: yes", Some("Yes")),
+            ("include_in_compile: on", Some("Yes")),
+            ("include_in_compile: Y", Some("Yes")),
+            ("include_in_compile: \"TRUE\"", Some("Yes")),
+            // Integers must not fail the untagged parse.
+            ("include_in_compile: 0", Some("No")),
+            ("include_in_compile: 1", Some("Yes")),
+            // Whitespace tolerated.
+            ("include_in_compile: \" no \"", Some("No")),
+            // Unrecognized strings pass through verbatim (tolerant reader).
+            ("include_in_compile: maybe", Some("maybe")),
         ];
         for (snippet, expected) in cases {
             let yaml = format!("id: x\ncreated: \"2025\"\nmodified: \"2025\"\n{snippet}\n");
@@ -1871,6 +1933,25 @@ hierarchy: []
         let meta: DocumentMetadata =
             serde_yaml::from_str("id: x\ncreated: \"2025\"\nmodified: \"2025\"\n").unwrap();
         assert!(meta.include_in_compile.is_none());
+    }
+
+    #[test]
+    fn test_include_in_compile_flag_defense_in_depth() {
+        // The flag helper must exclude on any recognizable falsy spelling
+        // even for values that bypassed read-time canonicalization.
+        assert!(include_in_compile_flag(None), "missing key means included");
+        for falsy in ["No", "no", " NO ", "false", "n", "off", "0", "FALSE"] {
+            assert!(
+                !include_in_compile_flag(Some(falsy)),
+                "{falsy:?} must exclude"
+            );
+        }
+        for truthy in ["Yes", "yes", "true", "on", "1", "maybe", ""] {
+            assert!(
+                include_in_compile_flag(Some(truthy)),
+                "{truthy:?} must include (anything-but-falsy default)"
+            );
+        }
     }
 
     #[test]
