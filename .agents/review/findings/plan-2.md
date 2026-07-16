@@ -166,3 +166,16 @@ checklist gains edit-overlap and comment-command regressions; declared
 suite extended with the new UI test script. Decisions section asks the
 owner whether vitest lands in the same commit or a preparatory one.
 Committed for round 4.
+
+## Round 4 — reopened (all findings admitted)
+
+- Dispatched: codex 0.144.4 (gpt-5.6), read-only, --ephemeral, --output-schema, job 4, prompt `/tmp/plan2-r4-prompt.md`, last message `/tmp/plan2-r4-review-last.json`.
+- Reviewed SHA: `dc8e295db14f3409e38e3484190869a498311bb4`; base `066a2a81d796b92dd68721cfb05bf8356b66c492`. Verdict: `reopened`, `guard_confirmed: true`.
+
+Findings and triage:
+
+1. `PLAN_TREE_REPLACE_EPOCH_GUARD.md:87` — `setEditable(false)` blocks DOM editing, not command dispatch; Toolbar formatting/footnote/streaming-AI and `FindReplace.tsx` still mutate the stale buffer; in-flight AI can land changes the rebuild discards. **ADMITTED**: verified `FindReplace.tsx:84–125`, ~20 Toolbar `chain()` sites, and `Toolbar.tsx:409` `editor.commands.insertContentAt` per stream delta.
+2. `PLAN_TREE_REPLACE_EPOCH_GUARD.md:76` — no concurrency semantics; overlapping ops queue under `ProjectWriteLocks`; a boolean suspend/resume flag re-enables editing after the first completes. **ADMITTED**: verified `syncBusy` gates only fetch/pull/push (`Revisions.tsx:564–574`) and conflict dialog (`:519–525`); restore (`:353`), draft switch (`:415`), merge (`:421`) have no busy guard.
+3. `PLAN_TREE_REPLACE_EPOCH_GUARD.md:123` — vitest script not folded into durable verification; CI runs only UI lint/build. **ADMITTED**: verified `.github/workflows/validation.yml` has `npm run lint` + `npm run build` for UI, no test step.
+
+Revision folded in: barrier-active state checked by every programmatic dispatch site + cancel/await in-flight AI streams at barrier entry; barrier is a counted lease with UI-side trigger gating (extend `syncBusy` to restore/switch/merge); CI gains a UI test step and declared-suite guidance updated. Files table adds `FindReplace.tsx` and `validation.yml`/repo-guidance rows; Tests add programmatic-dispatch + AI-stream extension of edit-overlap and an overlapping-operation regression; Decisions adds the round-4 CI-scope question. Round 5 to verify.

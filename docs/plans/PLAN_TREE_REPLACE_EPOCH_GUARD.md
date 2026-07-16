@@ -58,7 +58,7 @@ on-disk state cannot be clobbered by a half-finished operation.
    after a guarded partial failure the epoch bump refuses the *old* token,
    but the next auto-save silently acquires a *fresh* token and writes stale
    editor content over the partially-replaced tree. Fix at the app layer —
-   revised after rounds 2–3: reload alone is neither a save barrier nor
+   revised after rounds 2–4: reload alone is neither a save barrier nor
    a buffer reset, and auto-save is not the only stale-content writer:
    - **Save barrier around every tree-replacing operation.** Reloading
      after the fact does not establish "before any further save can run":
@@ -84,12 +84,36 @@ on-disk state cannot be clobbered by a half-finished operation.
      `ProjectWriteLocks` they queue, re-probe after the epoch bump, and
      land the stale buffer under a fresh token. The barrier blocks or
      defers every command that carries editor-derived content (round 3).
-   - **Editing is disabled while the barrier is up.** Suspending saves
-     while leaving TipTap editable creates silent data loss: keystrokes
-     during an awaited restore/pull live only in the old buffer and are
-     discarded by the required rebuild. Set the editor non-editable for
-     the barrier window (`editor.setEditable(false)`), restoring it
-     after rebuild — no reconciliation is attempted (round 3).
+   - **Editing is disabled while the barrier is up — DOM *and*
+     programmatic.** Suspending saves while leaving TipTap editable
+     creates silent data loss: keystrokes during an awaited restore/pull
+     live only in the old buffer and are discarded by the required
+     rebuild. Set the editor non-editable for the barrier window
+     (`editor.setEditable(false)`), restoring it after rebuild — no
+     reconciliation is attempted (round 3). `setEditable(false)` blocks
+     only DOM input, not command dispatch: Toolbar formatting/link/
+     footnote handlers, `FindReplace.tsx` replace ops (`:104`–`:125`),
+     and the streaming AI path (`Toolbar.tsx:409`,
+     `editor.commands.insertContentAt` per delta) all mutate the buffer
+     programmatically while non-editable. The barrier therefore also
+     exposes a barrier-active state that every programmatic dispatch
+     site checks (no-op while active), and barrier entry cancels or
+     awaits in-flight AI transform streams
+     (`cancelAiTransformStream` + abort) before the first tree
+     mutation (round 4).
+   - **The barrier is a counted lease, not a boolean.** `syncBusy`
+     gates only fetch/pull/push (`Revisions.tsx:564`–`:574`) and the
+     conflict dialog (`:519`–`:525`); restore (`:353`), draft switch
+     (`:415`), and merge (`:421`) have no busy guard, so overlapping
+     tree-replacing operations are reachable and queue under
+     `ProjectWriteLocks`. A boolean suspend/resume flag would let the
+     first completion re-enable editing while the second still runs,
+     whose rebuild then discards those edits. The contract is
+     acquire/release with a count: editing and command dispatch resume
+     only when the *last* lease releases. Belt-and-suspenders, all
+     tree-replacing triggers are disabled while any lease is held —
+     extend the `syncBusy`-style gating to restore/switch/merge
+     (round 4).
    - **Explicit editor-buffer reset/rebuild after reload.** `openProject`
      (`ui/src/stores/projectStore.ts:71`) clears `activeDoc` but leaves
      `flowDocs` intact, and the editor's buffer-load effect does not
@@ -115,13 +139,14 @@ on-disk state cannot be clobbered by a half-finished operation.
 | `crates/core/src/core/project/fidelity.rs` | Epoch-bump-on-scope-exit guard, armed via `WritePermit` |
 | `crates/core/src/core/git.rs` | Arm guard before first tree mutation in each tree-replacing op; drop the success-only `bump_epoch()` calls |
 | `crates/core` tests (fidelity/git) | New guard test proving stale state is refused after a partial failure |
-| `ui/src/components/revisions/Revisions.tsx` (draft/sync handlers) | Barrier + reload + buffer rebuild on *every* tree-mutating result — failure, `Ok(Conflicts)` (lines 144, 228), success |
+| `ui/src/components/revisions/Revisions.tsx` (draft/sync handlers) | Barrier + reload + buffer rebuild on *every* tree-mutating result — failure, `Ok(Conflicts)` (lines 144, 228), success; disable restore/draft-switch/merge triggers while any barrier lease is held (round 4) |
 | `ui/src/components/revisions/DocumentHistory.tsx` | Same treatment for `restore_document` (currently reloads only in its success path) |
 | `ui/src/components/editor/Editor.tsx` | Owns `saveTimer`/`dirtyRef`/`flowDocsRef`/`saveCurrent`: implements the awaitable suspend/resume + rebuild contract; editor non-editable while the barrier is up |
 | `ui/src/stores/projectStore.ts`, `ui/src/components/editor/editorRef.ts` | Awaitable save-barrier seam; reset `flowDocs` and rebuild the editor buffer on reload |
-| `ui/src/components/editor/Toolbar.tsx`, `ui/src/components/comments/CommentsPanel.tsx` | Comment commands carry `getEditorMarkdown` content — gated behind the same barrier |
+| `ui/src/components/editor/Toolbar.tsx`, `ui/src/components/comments/CommentsPanel.tsx`, `ui/src/components/editor/FindReplace.tsx` | Comment commands carry `getEditorMarkdown` content; Toolbar formatting/AI and FindReplace mutate the buffer via command dispatch — all check the barrier-active state; in-flight AI streams cancelled/awaited at barrier entry (round 4) |
 | `ui/package.json` (+ vitest harness, added by this plan) | UI has no test runner today (scripts: dev/build/lint/preview only); add vitest + a `test` script so the regressions below are executable, and fold it into the declared verification suite |
-| UI tests (new vitest harness) | Regressions: reload-on-failure, queued-save barrier, flow mode, conflict paths, edit overlap, comment-command gating |
+| UI tests (new vitest harness) | Regressions: reload-on-failure, queued-save barrier, flow mode, conflict paths, edit overlap, comment-command gating, programmatic-dispatch gating, overlapping operations |
+| `.github/workflows/validation.yml`, `.agents/repo-guidance.md` (Verification) | CI currently runs only UI lint/build; add a UI test step and fold the vitest suite into the declared-suite guidance so the regressions cannot fail unnoticed (round 4) |
 
 ## [MODEL] Tests
 
@@ -142,10 +167,18 @@ on-disk state cannot be clobbered by a half-finished operation.
 - [ ] Conflict-path regression (round 2): draft-merge and sync-pull
   returning conflicts, then "Resolve manually" and an edit, must not save
   the pre-merge buffer.
-- [ ] Edit-overlap regression (round 3): typing during an awaited
+- [ ] Edit-overlap regression (rounds 3–4): typing during an awaited
   tree-replacing operation cannot land — the editor is non-editable for
   the barrier window, and nothing typed is silently replayed or saved
-  against the replaced tree.
+  against the replaced tree. Extended (round 4): programmatic dispatch
+  (Toolbar formatting, `FindReplace` replace) is refused while a lease
+  is held, and an AI transform stream started before barrier entry
+  cannot insert deltas during or after it — shown to fail with
+  `setEditable(false)` alone.
+- [ ] Overlapping-operation regression (round 4): two tree-replacing
+  operations overlapping under `ProjectWriteLocks` — editing and
+  command dispatch stay suspended until the *last* lease releases;
+  shown to fail with a boolean suspend/resume flag.
 - [ ] Comment-command regression (round 3): `addComment`/`deleteComment`
   issued around a guarded failure must not write the pre-operation
   buffer.
@@ -154,6 +187,9 @@ on-disk state cannot be clobbered by a half-finished operation.
   (fmt, clippy, tests, release-metadata check, ui lint/build), plus the
   new UI vitest script (round 3: the repo has no UI test runner today —
   the app-layer regressions run on the harness this plan introduces).
+  Round 4: `.github/workflows/validation.yml` runs only UI lint/build
+  today — add a UI test step and update the declared-suite guidance so
+  the new regressions run in CI, not only locally.
 
 ## [MODEL] Owner verification (plain English)
 
@@ -169,3 +205,7 @@ an operation breaks partway."
 - Round 3: the app-layer regressions need a UI test harness the repo does
   not have. Approve adding vitest (dev dependency + `test` script) inside
   this plan's single commit, or direct a separate preparatory commit.
+- Round 4: durable verification touches CI
+  (`.github/workflows/validation.yml` gains a UI test step) and the
+  declared-suite guidance in `.agents/repo-guidance.md` — confirm these
+  ride in this plan's single commit or direct a split.
