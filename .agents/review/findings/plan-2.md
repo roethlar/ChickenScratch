@@ -412,3 +412,16 @@ Finding and triage:
 1. `PLAN:379` — the last-safe-point re-attestation proved only that *a* merge exists; during the blocking fetch another process (second app instance, git CLI — outside `ProjectWriteLocks`) can edit or partially resolve tracked files while `MERGE_HEAD` and conflicts remain, or abort and start a *different* merge, and the existence check passes while the hard reset discards post-confirmation state. **ADMITTED** (inline verification: the round-12 wording re-attests "merge state", never the same merge or unchanged tree). Fixed: attestation binds to the specific merge and state — `MERGE_HEAD` OID + index/worktree fingerprint captured at confirmation, any drift at the last safe point fails closed requiring fresh confirmation; race regression extended to external mid-merge edits and abort-then-different-merge (shown to fail under both the ordinary-checks fallback and an existence-only re-attestation).
 
 Round 14 to verify.
+
+## Round 14 dispatch
+
+- **Reviewer**: codex-cli 0.144.4, standard invocation
+  (`codex exec --ephemeral -s read-only --json --output-schema ... -o ...`)
+- **Reviewed SHA**: `11d861ee5eb201b8459cf903de0d58ca360ec3f3` (round-13
+  revision commit)
+- **Base SHA**: `066a2a81d796b92dd68721cfb05bf8356b66c492` (unchanged)
+- **Bound**: 1800 s
+- **Dispatched**: 2026-07-16 (prompt `/tmp/plan2-r14-prompt.md`; verdict ->
+  `/tmp/plan2-r14-review-last.json`; round-13 finding + disposition quoted;
+  full-plan consistency sweep requested)
+- **Verdict**: pending
