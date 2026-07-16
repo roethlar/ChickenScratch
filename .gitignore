@@ -18,6 +18,9 @@ ui/dist/
 # Claude Code (machine-local only; commands/hooks under .claude/ are tracked)
 .claude/settings.local.json
 
+# Review harness incantation cache (machine-local, self-authored; see .agents/playbooks/reviewloop.md)
+.agents/review/harnesses.local.json
+
 # Swift / Xcode
 macos/.build/
 macos/.swiftpm/
