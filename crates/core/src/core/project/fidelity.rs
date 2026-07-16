@@ -283,10 +283,31 @@ impl WritePermit<'_> {
         self.ensure_fresh()
     }
 
-    /// Mark the project as tree-replaced: every session token and this permit
-    /// become stale once the authorized composite operation is complete.
-    pub(crate) fn bump_epoch(&self) {
-        bump_write_epoch(self.root());
+    /// Arm the epoch bump at a tree-replacing operation's point of no
+    /// return — immediately before its first ref, HEAD, or working-tree
+    /// mutation. The bump fires when the returned guard drops, on success
+    /// *and* on error, so a failure after the first mutation still leaves
+    /// every outstanding token stale (refused until a re-probe). Failures
+    /// before the guard is armed bump nothing.
+    pub(crate) fn arm_epoch_bump(&self) -> EpochBumpGuard {
+        EpochBumpGuard {
+            root: self.root().to_path_buf(),
+        }
+    }
+}
+
+/// Drop-scope epoch bump for tree-replacing operations. See
+/// [`WritePermit::arm_epoch_bump`]. The permit that armed it stays valid
+/// for the operation's own nested steps; the bump lands only when the
+/// operation scope exits.
+#[derive(Debug)]
+pub(crate) struct EpochBumpGuard {
+    root: PathBuf,
+}
+
+impl Drop for EpochBumpGuard {
+    fn drop(&mut self) {
+        bump_write_epoch(&self.root);
     }
 }
 
@@ -1128,7 +1149,7 @@ hierarchy:
         token
             .with_write_permit(&root, |permit| {
                 permit.ensure_fresh()?;
-                permit.bump_epoch();
+                drop(permit.arm_epoch_bump());
                 Ok(())
             })
             .unwrap();

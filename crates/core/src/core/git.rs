@@ -18,6 +18,29 @@ use std::path::Path;
 const SYNC_REMOTE: &str = "sync";
 const SIMPLE_WORD_DIFF_LCS_CELL_CAP: usize = 1_500 * 1_500;
 
+/// One-shot failure injection for the epoch-guard error-path tests.
+/// Unit-test only: compiled out of production and integration builds, so
+/// no runtime cost and no reachable injection surface outside `--lib` tests.
+#[cfg(test)]
+pub(crate) mod failpoints {
+    use std::sync::atomic::AtomicBool;
+
+    /// Fires after the first working-tree mutation of `restore_revision`.
+    pub static AFTER_TREE_MUTATION: AtomicBool = AtomicBool::new(false);
+    /// Fires between `set_target` and `set_head` in `merge_draft`'s
+    /// fast-forward branch (simulates a `set_head` failure after the
+    /// branch ref — which HEAD resolves through — has already advanced).
+    pub static AFTER_REF_MOVE: AtomicBool = AtomicBool::new(false);
+}
+
+#[cfg(test)]
+fn injected_failure(point: &std::sync::atomic::AtomicBool, site: &str) -> Result<(), ChiknError> {
+    if point.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return Err(ChiknError::Unknown(format!("injected failure: {site}")));
+    }
+    Ok(())
+}
+
 fn git_kind_from_error(error: &git2::Error) -> GitErrorKind {
     let message = error.message().to_ascii_lowercase();
     match (error.code(), error.class()) {
@@ -346,9 +369,10 @@ pub fn document_history(project_path: &Path, doc_path: &str) -> Result<Vec<Revis
 /// Restore a single document from a past commit. Writes that file's blob
 /// content to disk, then creates a new commit recording the restore.
 ///
-/// Replaces working-tree content: bumps the project's write epoch on
-/// success, so every outstanding token (including this one) goes stale and
-/// callers must re-probe fidelity before writing again.
+/// Replaces working-tree content: bumps the project's write epoch once the
+/// first mutation begins — on success *and* on failure — so every
+/// outstanding token (including this one) goes stale and callers must
+/// re-probe fidelity before writing again.
 pub fn restore_document(
     project_path: &Path,
     doc_path: &str,
@@ -403,6 +427,9 @@ pub fn restore_document(
         None
     };
 
+    // Point of no return: the epoch bump fires on scope exit whether the
+    // steps below succeed or fail.
+    let _epoch_bump = permit.arm_epoch_bump();
     writer::write_document_blobs(
         project_path,
         doc_path,
@@ -413,15 +440,15 @@ pub fn restore_document(
     let short = &commit_id[..8.min(commit_id.len())];
     let msg = format!("Restore {} to {}", doc_path, short);
     let revision = save_revision(project_path, &msg, permit)?;
-    permit.bump_epoch();
     Ok(revision)
 }
 
 /// Restore a previous revision by creating a new commit with that state.
 /// Never rewrites history — always moves forward.
 ///
-/// Replaces working-tree content: bumps the project's write epoch on
-/// success (stale tokens are refused until the project is re-probed).
+/// Replaces working-tree content: bumps the project's write epoch once the
+/// first ref/HEAD/tree mutation begins — on success *and* on failure —
+/// (stale tokens are refused until the project is re-probed).
 pub fn restore_revision(
     path: &Path,
     commit_id: &str,
@@ -442,6 +469,10 @@ pub fn restore_revision(
         .tree()
         .map_err(|e| classified_git_error("Failed to get tree", e))?;
 
+    // Point of no return: the epoch bump fires on scope exit whether the
+    // steps below succeed or fail.
+    let _epoch_bump = permit.arm_epoch_bump();
+
     // Checkout that tree into the working directory
     repo.checkout_tree(
         tree.as_object(),
@@ -449,13 +480,18 @@ pub fn restore_revision(
     )
     .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Failed to restore", e))?;
 
+    #[cfg(test)]
+    injected_failure(
+        &failpoints::AFTER_TREE_MUTATION,
+        "restore_revision after checkout",
+    )?;
+
     // Create a new commit on HEAD pointing to the restored state
     let msg = format!(
         "Restored to: {}",
         commit.message().unwrap_or("(no message)")
     );
     let revision = save_revision(path, &msg, permit)?;
-    permit.bump_epoch();
     Ok(revision)
 }
 
@@ -517,8 +553,9 @@ pub fn list_drafts(path: &Path) -> Result<Vec<DraftVersion>, ChiknError> {
 
 /// Switch to a different draft version (branch).
 ///
-/// Replaces working-tree content: bumps the project's write epoch on
-/// success (stale tokens are refused until the project is re-probed).
+/// Replaces working-tree content: bumps the project's write epoch once the
+/// first ref/HEAD/tree mutation begins — on success *and* on failure —
+/// (stale tokens are refused until the project is re-probed).
 pub fn switch_draft(path: &Path, name: &str, permit: &WritePermit<'_>) -> Result<(), ChiknError> {
     permit.ensure_valid_for(path)?;
     let repo = Repository::open(path)
@@ -526,12 +563,13 @@ pub fn switch_draft(path: &Path, name: &str, permit: &WritePermit<'_>) -> Result
     reject_dirty_worktree(&repo, "switch drafts")?;
 
     let refname = format!("refs/heads/{}", name);
+    // Point of no return: set_head moves HEAD before the fallible checkout.
+    let _epoch_bump = permit.arm_epoch_bump();
     repo.set_head(&refname)
         .map_err(|e| ChiknError::Unknown(format!("Draft not found: {}", e)))?;
     repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
         .map_err(|e| ChiknError::Unknown(format!("Failed to switch: {}", e)))?;
 
-    permit.bump_epoch();
     Ok(())
 }
 
@@ -598,19 +636,29 @@ pub fn merge_draft(
         let mut reference = repo
             .find_reference(&format!("refs/heads/{current_branch}"))
             .map_err(|e| classified_git_error_as(GitErrorKind::NoUpstream, "Branch ref", e))?;
+        // Point of no return: set_target advances the branch ref — which
+        // HEAD resolves through — before the fallible set_head/checkout.
+        let _epoch_bump = permit.arm_epoch_bump();
         reference
             .set_target(source_oid, "fast-forward via merge_draft")
             .map_err(|e| classified_git_error("Set ref", e))?;
+        #[cfg(test)]
+        injected_failure(
+            &failpoints::AFTER_REF_MOVE,
+            "merge_draft fast-forward after set_target",
+        )?;
         repo.set_head(&format!("refs/heads/{current_branch}"))
             .map_err(|e| classified_git_error("Set HEAD", e))?;
         let mut co = git2::build::CheckoutBuilder::new();
         co.force();
         repo.checkout_head(Some(&mut co))
             .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Checkout", e))?;
-        permit.bump_epoch();
         return Ok(MergeResult::FastForward);
     }
 
+    // Point of no return: repo.merge rewrites the working tree (with
+    // conflict markers on the conflict path).
+    let _epoch_bump = permit.arm_epoch_bump();
     repo.merge(&[&annotated], None, None)
         .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Merge failed", e))?;
 
@@ -630,7 +678,6 @@ pub fn merge_draft(
                     .and_then(|e| String::from_utf8(e.path).ok())
             })
             .collect();
-        permit.bump_epoch();
         return Ok(MergeResult::Conflicts { files });
     }
 
@@ -669,7 +716,6 @@ pub fn merge_draft(
     repo.cleanup_state()
         .map_err(|e| ChiknError::Unknown(format!("Cleanup: {}", e)))?;
 
-    permit.bump_epoch();
     Ok(MergeResult::Merged)
 }
 
@@ -932,6 +978,9 @@ pub fn sync_pull(
         let mut reference = repo
             .find_reference(&format!("refs/heads/{branch}"))
             .map_err(|e| classified_git_error_as(GitErrorKind::NoUpstream, "Branch ref", e))?;
+        // Point of no return: set_target advances the branch ref — which
+        // HEAD resolves through — before the fallible set_head/checkout.
+        let _epoch_bump = permit.arm_epoch_bump();
         reference
             .set_target(remote_oid, "fast-forward via sync_pull")
             .map_err(|e| classified_git_error("Set ref", e))?;
@@ -941,9 +990,12 @@ pub fn sync_pull(
         co.force();
         repo.checkout_head(Some(&mut co))
             .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Checkout", e))?;
-        permit.bump_epoch();
         return Ok(PullResult::FastForward);
     }
+
+    // Point of no return: repo.merge rewrites the working tree (with
+    // conflict markers on the conflict path).
+    let _epoch_bump = permit.arm_epoch_bump();
 
     // Normal merge — attempt three-way
     repo.merge(&[&remote_commit], None, None)
@@ -962,7 +1014,6 @@ pub fn sync_pull(
                     .and_then(|e| String::from_utf8(e.path).ok())
             })
             .collect();
-        permit.bump_epoch();
         return Ok(PullResult::Conflicts { files });
     }
 
@@ -998,15 +1049,15 @@ pub fn sync_pull(
     .map_err(|e| ChiknError::Unknown(format!("Merge commit: {}", e)))?;
     repo.cleanup_state()
         .map_err(|e| ChiknError::Unknown(format!("Cleanup: {}", e)))?;
-    permit.bump_epoch();
     Ok(PullResult::Merged)
 }
 
 /// Abort an in-progress merge (e.g. after `sync_pull` reported conflicts).
 /// Restores the working tree to the pre-merge state.
 ///
-/// Replaces working-tree content: bumps the project's write epoch on
-/// success (stale tokens are refused until the project is re-probed).
+/// Replaces working-tree content: bumps the project's write epoch once the
+/// first ref/HEAD/tree mutation begins — on success *and* on failure —
+/// (stale tokens are refused until the project is re-probed).
 pub fn sync_abort_pull(project_path: &Path, permit: &WritePermit<'_>) -> Result<(), ChiknError> {
     permit.ensure_valid_for(project_path)?;
     let repo = Repository::open(project_path)
@@ -1017,19 +1068,21 @@ pub fn sync_abort_pull(project_path: &Path, permit: &WritePermit<'_>) -> Result<
         .map_err(|e| classified_git_error_as(GitErrorKind::NoCommits, "Head", e))?;
     let mut co = git2::build::CheckoutBuilder::new();
     co.force().remove_untracked(false);
+    // Point of no return: the hard reset rewrites the working tree.
+    let _epoch_bump = permit.arm_epoch_bump();
     repo.reset(head.as_object(), git2::ResetType::Hard, Some(&mut co))
         .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Reset", e))?;
     repo.cleanup_state()
         .map_err(|e| classified_git_error("Cleanup", e))?;
-    permit.bump_epoch();
     Ok(())
 }
 
 /// Overwrite local with remote — discards every local change since the last
 /// shared commit. Used as the "their wins" escape hatch.
 ///
-/// Replaces working-tree content: bumps the project's write epoch on
-/// success (stale tokens are refused until the project is re-probed).
+/// Replaces working-tree content: bumps the project's write epoch once the
+/// first ref/HEAD/tree mutation begins — on success *and* on failure —
+/// (stale tokens are refused until the project is re-probed).
 pub fn sync_pull_force(
     project_path: &Path,
     url: &str,
@@ -1057,11 +1110,12 @@ pub fn sync_pull_force(
     // Fetch can block while another process edits the project. Re-check the
     // worktree at the last safe point before the destructive reset.
     reject_dirty_worktree(&repo, "force pull")?;
+    // Point of no return: the hard reset rewrites the working tree.
+    let _epoch_bump = permit.arm_epoch_bump();
     repo.reset(&remote_obj, git2::ResetType::Hard, Some(&mut co))
         .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Reset", e))?;
     repo.cleanup_state()
         .map_err(|e| classified_git_error("Cleanup", e))?;
-    permit.bump_epoch();
     Ok(())
 }
 
@@ -1510,6 +1564,111 @@ mod tests {
                 ("deleted".to_string(), old.join(" ")),
                 ("added".to_string(), new.join(" ")),
             ]
+        );
+    }
+
+    #[test]
+    fn failed_restore_after_tree_mutation_invalidates_outstanding_tokens() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("GuardRestore.chikn");
+        std::fs::create_dir(&project_path).unwrap();
+        std::fs::create_dir(project_path.join("manuscript")).unwrap();
+        init_repo(&project_path).unwrap();
+
+        let doc_path = project_path.join("manuscript").join("one.md");
+        std::fs::write(&doc_path, "baseline").unwrap();
+        let token = token_for_test_project(&project_path);
+        let baseline = token
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "Baseline", permit)
+            })
+            .unwrap();
+        std::fs::write(&doc_path, "second revision").unwrap();
+        token
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "Second", permit)
+            })
+            .unwrap();
+
+        // The session token an editor would still hold when the restore
+        // breaks partway: the tree has already been replaced, so this
+        // token must come back stale even though the operation errored.
+        let session_token = token_for_test_project(&project_path);
+        failpoints::AFTER_TREE_MUTATION.store(true, std::sync::atomic::Ordering::SeqCst);
+        let result = session_token.with_write_permit(&project_path, |permit| {
+            restore_revision(&project_path, &baseline.id, permit)
+        });
+
+        assert!(
+            matches!(&result, Err(ChiknError::Unknown(message)) if message.contains("injected failure")),
+            "expected the injected post-mutation failure, got {result:?}"
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&std::fs::read(&doc_path).unwrap()),
+            "baseline",
+            "working tree should already carry the restored content"
+        );
+        assert!(
+            session_token.is_stale(),
+            "a failure after the tree was replaced must invalidate outstanding tokens"
+        );
+    }
+
+    #[test]
+    fn failed_fast_forward_after_ref_move_invalidates_outstanding_tokens() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("GuardFastForward.chikn");
+        std::fs::create_dir(&project_path).unwrap();
+        std::fs::create_dir(project_path.join("manuscript")).unwrap();
+        init_repo(&project_path).unwrap();
+
+        let doc_path = project_path.join("manuscript").join("one.md");
+        std::fs::write(&doc_path, "baseline").unwrap();
+        let token = token_for_test_project(&project_path);
+        token
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "Baseline", permit)
+            })
+            .unwrap();
+        let original_branch =
+            current_branch_name(&Repository::open(&project_path).unwrap()).unwrap();
+
+        // Draft moves ahead by one commit; the original branch stays put,
+        // so merging the draft back is a pure fast-forward.
+        token_for_test_project(&project_path)
+            .with_write_permit(&project_path, |permit| {
+                create_draft(&project_path, "draft", permit)
+            })
+            .unwrap();
+        std::fs::write(&doc_path, "draft work").unwrap();
+        token_for_test_project(&project_path)
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "Draft work", permit)
+            })
+            .unwrap();
+        token_for_test_project(&project_path)
+            .with_write_permit(&project_path, |permit| {
+                switch_draft(&project_path, &original_branch, permit)
+            })
+            .unwrap();
+
+        // The branch ref (which HEAD resolves through) advances at
+        // set_target; the injected failure simulates set_head dying right
+        // after. The session token must come back stale even though the
+        // working tree was never touched — HEAD has effectively moved.
+        let session_token = token_for_test_project(&project_path);
+        failpoints::AFTER_REF_MOVE.store(true, std::sync::atomic::Ordering::SeqCst);
+        let result = session_token.with_write_permit(&project_path, |permit| {
+            merge_draft(&project_path, "draft", permit)
+        });
+
+        assert!(
+            matches!(&result, Err(ChiknError::Unknown(message)) if message.contains("injected failure")),
+            "expected the injected post-ref-move failure, got {result:?}"
+        );
+        assert!(
+            session_token.is_stale(),
+            "a failure after the branch ref advanced must invalidate outstanding tokens"
         );
     }
 
