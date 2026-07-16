@@ -4,7 +4,7 @@
 proof — the artifact is a plan document on `master`. The doc-review analog of
 the guard proof: the reviewer verifies the plan's factual claims against the
 actual code, and `guard_confirmed` attests that verification.)
-**Status**: In progress — rounds 1–6 all reopened; every finding verified and folded in; round 7 pending
+**Status**: Verified — accepted round 14 (2026-07-16); 14 rounds, every finding verified before disposition; plan awaits owner yes/no + commit-structure choice before any implementation
 **Subject**: `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md`
 
 ## Round 1 dispatch
@@ -424,4 +424,10 @@ Round 14 to verify.
 - **Dispatched**: 2026-07-16 (prompt `/tmp/plan2-r14-prompt.md`; verdict ->
   `/tmp/plan2-r14-review-last.json`; round-13 finding + disposition quoted;
   full-plan consistency sweep requested)
-- **Verdict**: pending
+- **Verdict**: `accepted` (see Round 14 record below)
+
+## Round 14 — ACCEPTED (loop closed)
+
+- Verdict received 2026-07-16: `accepted`, `guard_confirmed: true`, comments: none. Envelope fully valid (verdict in enum, reviewed SHA `11d861e` and base `066a2a8` echo the dispatch). Verdict file `/tmp/plan2-r14-review-last.json`.
+- Loop summary: 14 rounds, 38 findings raised across rounds 1–13; every finding independently verified before disposition (multi-agent adversarial workflows rounds 6–9, inline verification rounds 10–13); 36 admitted (several narrowed or widened by verification), 1 admitted-in-part (round 9: backup-push half declined on evidence), 1 grouping refuted (round 6: switch_draft). Two live pre-existing defects discovered and recorded in `.agents/state.md` (conflict dialog's Abort and Force exits unreachable). The plan was redesigned twice on verified evidence (round 8: merge completion moved out of `save_revision` into an explicit `complete_merge`; rounds 9–13: recovery capability, source-aware fail-closed force, reader recovery entry).
+- Acceptance is a review verdict, not implementation authority: the plan awaits the owner's yes/no and the step-5 commit-structure choice (sweep vs four dependency-ordered slices), to be recorded on the plan's status line before any implementation.
