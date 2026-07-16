@@ -420,6 +420,7 @@ fn read_project_impl(path: &Path, repair_mode: RepairMode) -> Result<Project, Ch
     validate_project_root(path)?;
     if repair_mode == RepairMode::SelfHeal {
         pre_repair_folders(path);
+        pre_repair_git(path);
     }
 
     // Read project.yaml
@@ -521,6 +522,43 @@ fn pre_repair_folders(path: &Path) {
                     e
                 );
             }
+        }
+    }
+}
+
+/// Verify the project's git setup as part of an authorized self-heal open.
+///
+/// A `.chikn` project copied, restored from a non-git backup, or unzipped
+/// without its `.git` directory silently loses every versioning feature
+/// (revisions, drafts, sync, safety commits) until something recreates the
+/// repo — and before this check that only happened at project *creation*.
+/// Recreating an empty repo is benign: no content bytes are touched, and
+/// the next save commits the current state as the first revision.
+///
+/// An existing-but-unopenable `.git` is user data (their history) and is
+/// never renamed, deleted, or reinitialized: it is logged and the open
+/// proceeds; git-backed features surface the real error when actually used.
+/// This mirrors the `pre_repair_folders` philosophy — repair failures never
+/// block load.
+fn pre_repair_git(path: &Path) {
+    let had_repo = path.join(".git").exists();
+    // `init_repo` is verify-or-create: opens an existing repo, initializes
+    // (with .gitignore) when absent. It never rewrites an existing repo.
+    match crate::core::git::init_repo(path) {
+        Ok(_) => {
+            if !had_repo {
+                eprintln!(
+                    "pre-repair: recreated missing git repo at {}",
+                    path.display()
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "pre-repair: git verification failed at {}: {} — continuing without touching .git",
+                path.display(),
+                e
+            );
         }
     }
 }
@@ -1778,6 +1816,58 @@ hierarchy: []
             })
             .unwrap();
         assert!(project_path.join(RESEARCH_FOLDER).exists());
+    }
+
+    #[test]
+    fn test_self_heal_open_recreates_missing_git_repo() {
+        // A project that lost its .git (copied without hidden files,
+        // restored from a non-git backup) gets versioning back on the next
+        // authorized Full open.
+        let (_temp, project_path) = create_test_project();
+        assert!(
+            !project_path.join(".git").exists(),
+            "test fixture must start without a repo"
+        );
+
+        // Read-only open must NOT create it.
+        read_project(&project_path).unwrap();
+        assert!(
+            !project_path.join(".git").exists(),
+            "read-only open must not touch disk"
+        );
+
+        // Permit-backed self-heal open must.
+        let token = super::super::fidelity::acquire_write_token(&project_path).unwrap();
+        token
+            .with_write_permit(&project_path, |permit| {
+                read_project_with_repair(&project_path, permit).map(|_| ())
+            })
+            .unwrap();
+        assert!(project_path.join(".git").exists(), "repo must be recreated");
+        assert!(
+            project_path.join(".gitignore").exists(),
+            "gitignore comes back with the repo"
+        );
+    }
+
+    #[test]
+    fn test_self_heal_open_never_touches_unopenable_git() {
+        // An existing-but-broken .git is user history: log and continue,
+        // byte-identical on disk, and the open itself still succeeds.
+        let (_temp, project_path) = create_test_project();
+        let git_path = project_path.join(".git");
+        fs::write(&git_path, "not a gitfile").unwrap();
+        let before = fs::read(&git_path).unwrap();
+
+        let token = super::super::fidelity::acquire_write_token(&project_path).unwrap();
+        token
+            .with_write_permit(&project_path, |permit| {
+                read_project_with_repair(&project_path, permit).map(|_| ())
+            })
+            .unwrap();
+
+        assert!(git_path.is_file(), "broken .git must stay in place");
+        assert_eq!(fs::read(&git_path).unwrap(), before);
     }
 
     #[test]
