@@ -401,4 +401,14 @@ Round 13 to verify.
   quoted; reviewer asked to re-probe the dependency-ordered boundaries,
   the draft-origin force semantics (MERGE_HEAD reset shape), and the
   fail-closed re-attestation)
-- **Verdict**: pending
+- **Verdict**: `reopened` (envelope valid; see Round 13 record below)
+
+## Round 13 — reopened (single finding, admitted)
+
+- Verdict received 2026-07-16: `reopened`, `guard_confirmed: true`, envelope valid (SHAs echo dispatch `64930ba`/`066a2a8`). Verdict file `/tmp/plan2-r13-review-last.json`. One comment — the finding surface has narrowed to a single race-precision issue.
+
+Finding and triage:
+
+1. `PLAN:379` — the last-safe-point re-attestation proved only that *a* merge exists; during the blocking fetch another process (second app instance, git CLI — outside `ProjectWriteLocks`) can edit or partially resolve tracked files while `MERGE_HEAD` and conflicts remain, or abort and start a *different* merge, and the existence check passes while the hard reset discards post-confirmation state. **ADMITTED** (inline verification: the round-12 wording re-attests "merge state", never the same merge or unchanged tree). Fixed: attestation binds to the specific merge and state — `MERGE_HEAD` OID + index/worktree fingerprint captured at confirmation, any drift at the last safe point fails closed requiring fresh confirmation; race regression extended to external mid-merge edits and abort-then-different-merge (shown to fail under both the ordinary-checks fallback and an existence-only re-attestation).
+
+Round 14 to verify.

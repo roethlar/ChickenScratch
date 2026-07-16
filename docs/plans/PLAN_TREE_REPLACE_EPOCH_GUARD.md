@@ -386,8 +386,19 @@ on-disk state cannot be clobbered by a half-finished operation.
      merge, the tree can be clean and Full-fidelity, so the ordinary
      checks all pass while the hard reset would still discard the
      newly committed or restored state (and a fallback would
-     contradict the outside-merge-state-refused rule). The race
-     regression covers both the clean-completion and the abort state.
+     contradict the outside-merge-state-refused rule). Round 13:
+     merely re-checking that *a* merge exists is still
+     existence-only — during the fetch another process can edit or
+     partially resolve tracked files while `MERGE_HEAD` and
+     conflicts remain, or abort and start a *different* merge, and
+     an existence check passes while the reset discards that
+     post-confirmation state. The attestation therefore binds to the
+     *specific* merge and state: capture the `MERGE_HEAD` OID plus
+     an index/worktree fingerprint at confirmation time, and at the
+     last safe point fail closed on *any* drift (different or
+     missing `MERGE_HEAD`, changed fingerprint), requiring fresh
+     confirmation. The race regression covers clean completion,
+     abort, external mid-merge edits, and abort-then-different-merge.
      The attested force is also *source-aware* (round 12): the
      conflict dialog serves both pull and draft-merge conflicts, but
      `sync_pull_force` fetches and resets to
@@ -615,12 +626,15 @@ on-disk state cannot be clobbered by a half-finished operation.
   the epoch — after an abort/force/complete under the capability
   (including an injected partial failure), a pre-operation token is
   refused (shown to fail while the guard arms only from
-  `WritePermit`); force race (amended round 12) — merge completed or
-  aborted between attestation and the hard reset **fails closed**
-  (error requiring fresh authority/confirmation; nothing is reset),
-  covering both the clean-completion and the abort state — shown to
-  fail under an ordinary-checks fallback, which passes on the now-
-  clean tree and still discards the new state; HEAD/worktree
+  `WritePermit`); force race (amended rounds 12–13) — any drift
+  between confirmation and the hard reset **fails closed** (error
+  requiring fresh confirmation; nothing is reset): clean completion,
+  abort, external mid-merge edits with `MERGE_HEAD` still present,
+  and abort-then-different-merge — shown to fail under an
+  ordinary-checks fallback (passes on a now-clean tree) AND under an
+  existence-only re-attestation (passes while the specific merge or
+  worktree changed); the attestation binds to the captured
+  `MERGE_HEAD` OID + index/worktree fingerprint; HEAD/worktree
   hierarchy skew (remote delete/recreate at the same path) loads in
   recovery mode as unlinked/placeholder instead of failing the open.
 - [ ] Timer/close overlap regression (round 6): an auto-commit or
