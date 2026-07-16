@@ -6,6 +6,35 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-07-16 — Three owner-directed hardening fixes (parse canonicalization, git self-heal on open, crash-ordered saves)
+
+**Change:** Landed the three fixes the owner directed this session, one
+concern per commit, on top of the epoch-guard work.
+
+- `ae6bc01` — `include_in_compile` is canonicalized at parse time: YAML 1.1
+  boolean spellings (`no`/`off`/`n`, `yes`/`on`/`y`, any case), integers
+  0/1, and whitespace-padded values normalize to the canonical `Yes`/`No`
+  on read; unrecognized strings pass through verbatim so the reader stays
+  tolerant. Closes the case-sensitive `include_in_compile` finding parked
+  in `PLAN_FORMAT_LOCK_ENGINE.md`.
+- `0d3c027` — the git repo is verified and self-healed on project open:
+  `pre_repair_git` runs alongside the folder pre-repair in `RepairMode`. A
+  missing repo is recreated; an unopenable one is left untouched and
+  reported rather than clobbered. Guard tests cover both branches.
+- `d6fa9b5` — multi-file saves are crash-ordered: `write_project` writes
+  documents and threads before `project.yaml`, so a torn save degrades to
+  orphan content files (reconciled by self-heal on the next open) instead
+  of a manifest referencing documents that were never written. The guard
+  test sabotages a document write mid-save and proves the on-disk manifest
+  stays byte-identical, then retries clean. Closes the non-transactional
+  multi-file save finding parked in `PLAN_FORMAT_LOCK_ENGINE.md`.
+
+**Verification:** Full declared suite green at `d6fa9b5` (rustc 1.97.0);
+each commit additionally verified in isolation via `git rebase --exec`
+(core lib check + lib tests per commit). `init_repo` remains `pub` — the
+open-time verify did not change API visibility; that parked finding stays
+parked.
+
 ## 2026-07-16 — Tree-replacement epoch guard shipped (plan slices 1–4)
 
 **Change:** Completed the owner-approved
