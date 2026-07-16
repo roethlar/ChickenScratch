@@ -58,7 +58,7 @@ on-disk state cannot be clobbered by a half-finished operation.
    after a guarded partial failure the epoch bump refuses the *old* token,
    but the next auto-save silently acquires a *fresh* token and writes stale
    editor content over the partially-replaced tree. Fix at the app layer —
-   revised after rounds 2–4: reload alone is neither a save barrier nor
+   revised after rounds 2–5: reload alone is neither a save barrier nor
    a buffer reset, and auto-save is not the only stale-content writer:
    - **Save barrier around every tree-replacing operation.** Reloading
      after the fact does not establish "before any further save can run":
@@ -113,7 +113,35 @@ on-disk state cannot be clobbered by a half-finished operation.
      only when the *last* lease releases. Belt-and-suspenders, all
      tree-replacing triggers are disabled while any lease is held —
      extend the `syncBusy`-style gating to restore/switch/merge
-     (round 4).
+     (round 4). Counting alone does not order the lifecycles: an
+     earlier operation can reload, then a queued later operation
+     mutates disk, and the earlier rebuild completes last — releasing
+     the final lease with the editor on the earlier snapshot while
+     disk reflects the later operation. Serialize the complete
+     operation-through-rebuild lifecycle (one tree-replacing
+     operation admitted at a time), or have the *final* release
+     perform a generation-checked fresh rebuild against current disk
+     state (round 5).
+   - **Freeze before drain.** Every existing trigger first runs
+     `await flushPendingEditorSave()` and only then starts the tree
+     operation (`Revisions.tsx:75`, `DocumentHistory.tsx:39`/`:70`,
+     `App.tsx:202`/`:267`/`:297`). Typing during that in-flight
+     drain schedules a new save, and the completing flush
+     unconditionally clears the dirty flag (`Editor.tsx:121`,
+     `:195`) — barrier entry then cancels the queued timer and the
+     rebuild discards the keystrokes. Barrier entry must freeze
+     editing and command dispatch *before* the pre-operation drain,
+     with the drain itself running under the lease (round 5).
+   - **Gate non-TipTap stale writers too.** The barrier as specified
+     covers TipTap-derived content, but `Inspector.tsx` owns an
+     independent debounced metadata buffer (`setTimeout(save, 1500)`,
+     ~`:361`) and `Corkboard.tsx` `handleSummarizeAll` (`:65`–`:93`)
+     writes `updateDocumentMetadata` with *captured* pre-operation
+     `label`/`status`/`keywords` per doc. Both queue behind
+     `ProjectWriteLocks`, re-probe under the fresh epoch, and
+     overwrite restored metadata with pre-operation values. Gate or
+     drain these user/AI mutation sources at barrier entry like the
+     editor paths (round 5).
    - **Explicit editor-buffer reset/rebuild after reload.** `openProject`
      (`ui/src/stores/projectStore.ts:71`) clears `activeDoc` but leaves
      `flowDocs` intact, and the editor's buffer-load effect does not
@@ -141,11 +169,12 @@ on-disk state cannot be clobbered by a half-finished operation.
 | `crates/core` tests (fidelity/git) | New guard test proving stale state is refused after a partial failure |
 | `ui/src/components/revisions/Revisions.tsx` (draft/sync handlers) | Barrier + reload + buffer rebuild on *every* tree-mutating result — failure, `Ok(Conflicts)` (lines 144, 228), success; disable restore/draft-switch/merge triggers while any barrier lease is held (round 4) |
 | `ui/src/components/revisions/DocumentHistory.tsx` | Same treatment for `restore_document` (currently reloads only in its success path) |
-| `ui/src/components/editor/Editor.tsx` | Owns `saveTimer`/`dirtyRef`/`flowDocsRef`/`saveCurrent`: implements the awaitable suspend/resume + rebuild contract; editor non-editable while the barrier is up |
+| `ui/src/components/editor/Editor.tsx` | Owns `saveTimer`/`dirtyRef`/`flowDocsRef`/`saveCurrent`: implements the awaitable suspend/resume + rebuild contract; editor non-editable while the barrier is up; freeze-before-drain — barrier entry precedes the pre-operation flush, whose unconditional mark-clean (`:121`, `:195`) otherwise loses mid-drain keystrokes (round 5) |
 | `ui/src/stores/projectStore.ts`, `ui/src/components/editor/editorRef.ts` | Awaitable save-barrier seam; reset `flowDocs` and rebuild the editor buffer on reload |
 | `ui/src/components/editor/Toolbar.tsx`, `ui/src/components/comments/CommentsPanel.tsx`, `ui/src/components/editor/FindReplace.tsx` | Comment commands carry `getEditorMarkdown` content; Toolbar formatting/AI and FindReplace mutate the buffer via command dispatch — all check the barrier-active state; in-flight AI streams cancelled/awaited at barrier entry (round 4) |
+| `ui/src/components/inspector/Inspector.tsx`, `ui/src/components/corkboard/Corkboard.tsx` | Non-TipTap stale writers: debounced metadata save and `aiSummarize` batch write captured pre-operation metadata — gated or drained at barrier entry (round 5) |
 | `ui/package.json` (+ vitest harness, added by this plan) | UI has no test runner today (scripts: dev/build/lint/preview only); add vitest + a `test` script so the regressions below are executable, and fold it into the declared verification suite |
-| UI tests (new vitest harness) | Regressions: reload-on-failure, queued-save barrier, flow mode, conflict paths, edit overlap, comment-command gating, programmatic-dispatch gating, overlapping operations |
+| UI tests (new vitest harness) | Regressions: reload-on-failure, queued-save barrier, flow mode, conflict paths, edit overlap, comment-command gating, programmatic-dispatch gating, overlapping operations (assert final buffer contents), preflight typing, metadata-writer gating |
 | `.github/workflows/validation.yml`, `.agents/repo-guidance.md` (Verification) | CI currently runs only UI lint/build; add a UI test step and fold the vitest suite into the declared-suite guidance so the regressions cannot fail unnoticed (round 4) |
 
 ## [MODEL] Tests
@@ -178,7 +207,20 @@ on-disk state cannot be clobbered by a half-finished operation.
 - [ ] Overlapping-operation regression (round 4): two tree-replacing
   operations overlapping under `ProjectWriteLocks` — editing and
   command dispatch stay suspended until the *last* lease releases;
-  shown to fail with a boolean suspend/resume flag.
+  shown to fail with a boolean suspend/resume flag. Extended
+  (round 5): the test asserts the *final editor buffer contents*
+  match the last operation's disk state, not merely that suspension
+  held — shown to fail when the earlier operation's rebuild
+  completes last.
+- [ ] Preflight-typing regression (round 5): typing while the
+  pre-operation `flushPendingEditorSave()` drain is in flight must
+  not be silently lost — shown to fail against the current
+  unconditional mark-clean (`Editor.tsx:121`, `:195`) without
+  freeze-before-drain ordering.
+- [ ] Metadata-writer regression (round 5): a pending `Inspector.tsx`
+  debounced metadata save or an in-flight `Corkboard.tsx`
+  `aiSummarize` batch spanning a tree-replacing operation must not
+  overwrite restored metadata with pre-operation values.
 - [ ] Comment-command regression (round 3): `addComment`/`deleteComment`
   issued around a guarded failure must not write the pre-operation
   buffer.
