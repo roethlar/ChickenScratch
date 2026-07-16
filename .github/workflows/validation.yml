@@ -48,6 +48,10 @@ jobs:
         run: npm run build
         working-directory: ui
 
+      - name: UI tests
+        run: npm run test
+        working-directory: ui
+
       - name: Cross-frontend harness
         env:
           CHIKN_CROSS_FRONTEND_WORKDIR: ${{ runner.temp }}/chikn-cross-frontend
