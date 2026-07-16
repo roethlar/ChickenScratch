@@ -17,34 +17,23 @@ decisions; `DEVLOG.md` holds history.
   pure; benign folder repair is explicit and permit-backed; corrupt sidecars
   stay in place. Tauri invalidates cached authority on refusal and opens each
   permit inside its project lock; TUI and converter boundaries match.
-- **Ranked unapproved hardening follow-ups** (current evidence as of
-  `a0e7621`): first, tree-replacing Git operations bump the write epoch only
-  after every later step succeeds, so a partial post-mutation error can leave
-  stale UI state authorized; second, `write_project` can return success for an
-  in-memory document omitted from the hierarchy and leave the project
-  immediately Degraded; third, Scrivener asset import still copies directly
-  into `.chikn` outside core and reports failures only to stderr. Also parked:
-  public `init_repo`, non-transactional multi-file saves, revision staging of
+- **Tree-replacement epoch guard plan is COMPLETE** — all four slices
+  landed 2026-07-16 (`cd6afdd`, `db8095a`, `977095b`, `354fbc0`); DEVLOG
+  top entry has the slice-by-slice detail, the codex review trail
+  (`.agents/review/findings/s4-1..4.md`, all accepted), and the guard
+  proofs. The two live bugs previously ranked here — the conflict
+  dialog's unreachable Abort after a format-file conflict and its
+  never-working Force exit — are **fixed** by slice 4's recovery
+  authority (`RecoveryPermit`), merge-state query, persistent
+  merge-in-progress UI, and attestation-bound `force_resolve_merge`.
+- **Ranked unapproved hardening follow-ups** (re-based on `354fbc0`):
+  first, `write_project` can return success for an in-memory document
+  omitted from the hierarchy and leave the project immediately Degraded;
+  second, Scrivener asset import still copies directly into `.chikn`
+  outside core and reports failures only to stderr. Also parked: public
+  `init_repo`, non-transactional multi-file saves, revision staging of
   recovery artifacts, and case-sensitive `include_in_compile`. None is
   approved for implementation yet.
-- **New ranked finding (2026-07-16, plan-2 review rounds 9–10, verified
-  against the working tree at `d851a8f`/`1d34cfe`): the conflict dialog's
-  recovery exits are unreachable.** (1) Abort after a format-file
-  conflict: markers in `project.yaml` make the fidelity probe error
-  (`fidelity.rs:333–:335`; `load_project` then fails outright after
-  restart), and markers in a `.meta` probe Degraded — either way
-  `ProjectTokens` cannot reissue a permit, and `sync_abort_pull` is
-  permit-gated (`src-tauri/src/commands/git.rs:238–:253`). (2) Force
-  ("Overwrite local with remote") after *any* conflict: the conflicted
-  tree is necessarily status-dirty, and `sync_pull_force` runs
-  `reject_dirty_worktree` (`git.rs:1042`, `:1059`) plus
-  `revalidate_fidelity` (`:1045`), while `handleForcePull`
-  (`Revisions.tsx:257–:277`) never aborts first — so the dialog's third
-  exit has never worked from a real conflict. In the worst case the
-  user's only exit is external git surgery. Live today, independent of
-  the epoch-guard plan; `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md`
-  (design point (e)) carries the fix as a recovery-scoped capability +
-  merge-attested force path. Not separately approved for implementation.
 - **Coherence is complete.** The owner confirmed on 2026-07-12 that completion
   had already been declared but not saved. Format lock, Tauri alignment,
   deprecation cleanup, and goals G1–G6 are recorded as completed in
@@ -63,12 +52,6 @@ decisions; `DEVLOG.md` holds history.
   (research PDFs etc.) are now fidelity-neutral while present, and the
   writer structurally refuses text writes into non-.md paths (DEVLOG top
   entry, follow-up paragraph).
-- **Push status:** Gitea `origin` and `github` were both verified at `d99bf79`
-  on 2026-07-12. After this close-out, local `master` is six commits ahead,
-  including code tip `a0e7621`; nothing has been pushed because push policy
-  requires the owner's explicit go. Remote CI has therefore not run on these
-  local commits.
-
 ## Blockers
 
 - None. Vault remote design is deliberately paused work, not a blocker to
@@ -86,69 +69,23 @@ decisions; `DEVLOG.md` holds history.
 
 ## Next
 
-1. **Tree-replacement epoch invalidation on partial failure — APPROVED;
-   slices 1–3 of 4 landed 2026-07-16, slice 4 mid-flight
-   (UNCOMMITTED working-tree changes).** Owner chose "4 pieces"
-   (recorded on the plan's status line). Landed: slice 1 vitest
-   harness + CI (`cd6afdd`), slice 2 core epoch guard with
-   red/green-proven error-path tests (`db8095a`), slice 3 UI operation
-   barrier — counted lease, refuse-never-defer dispatch gate, owner
-   admission, generation-keyed rebuilds, form freeze/loud-drop, timer
-   gating, 26 vitest regressions (`977095b`). Plan:
-   `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md` (review accepted
-   round 14; trail in `.agents/review/findings/plan-2.md`).
-   **Slice 4 state (merge completion/recovery; fixes the two live
-   defects in the ranked entry above): backend written and
-   `cargo check`-clean, uncommitted** —
-   `fidelity.rs` (attest_merge_in_progress, merge_fingerprint,
-   `RecoveryPermit` bound to MERGE_HEAD OID + status fingerprint,
-   fails closed on drift), `git.rs` (save_revision blanket
-   merge-state refusal with self-describing message;
-   reject_merge_in_progress preflights in both restores BEFORE any
-   disk write; `MergeState` + `merge_state()`; `complete_merge()`
-   two-parent + cleanup_state, epoch via drop guard;
-   `force_resolve_merge()` resets to MERGE_HEAD = "theirs" for BOTH
-   conflict origins; `sync_abort_pull` now takes `RecoveryPermit`;
-   `backup_current_work` skips the commit half mid-merge, still
-   pushes), `reader.rs` (`read_project_recovery` + HEAD
-   project.yaml fallback, strict hierarchy matching relaxed),
-   Tauri (`sync_abort_pull`/new `merge_state`/`complete_merge`/
-   `force_resolve_merge` commands via recovery authority, registered
-   in main.rs; `load_project` recovery fallback opens mid-merge
-   projects read-only after restart; `backup_on_close` no longer
-   swallows non-merge save errors), TUI (`app.rs` `{:?}`→Display at
-   the revision-failure and backup-failure status lines).
-   **Remaining for slice 4:** (a) UI — gated wrappers for
-   mergeState/completeMerge/forceResolveMerge in
-   `ui/src/commands/git.ts`; persistent merge-in-progress banner
-   keyed on the merge_state query (survives restart) with
-   Complete/Abort; Complete runs under runEpochOperation WITH drain,
-   Abort/Force with skipDrain; ConflictDialog's "Overwrite local
-   with remote" re-wired to force_resolve_merge (old syncPullForce
-   remains only as the outside-merge Settings escape hatch);
-   (b) core tests + red/green drills — save_revision refusal
-   (conflicts AND lingering MERGE_HEAD; drill = revert refusal,
-   markers get committed), restore-preflight asserting ZERO worktree
-   mutation, complete_merge (two parents, cleanup, epoch bumped at
-   exit), abort/complete/force through a fresh command boundary with
-   a conflicted project.yaml (live-bug regression), force fail-closed
-   on fingerprint drift, read_project_recovery (conflicted yaml +
-   HEAD/worktree skew loads as unlinked); (c) full declared suite,
-   one commit, then: update this entry, DEVLOG entry for the shipped
-   plan (AGENT-WORKFLOW §6), re-verify/annotate the ranked live-bug
-   entry as fixed, short plain-English owner handoff.
-2. Keep writer end-state coherence and the Scrivener asset-import boundary
-   parked behind that decision, one concern per later approval.
-3. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
+1. **Await the owner's direction on the next hardening concern.** The
+   epoch-guard plan is complete (see ## Now); the next ranked follow-ups
+   (writer end-state coherence, Scrivener asset-import boundary) remain
+   parked, one concern per later approval. Per `CURRENT_PHASE.md` Step 3,
+   a close-out re-audit of engine mutation entry points is the natural
+   next proposal once the owner weighs in.
+2. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
    decision on remote design and the plan's open v1 guided-token question.
 
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section (canonical
   command set; do not copy a second enumeration here).
-- Last run green locally 2026-07-12 at code tip `a0e7621`: the exact declared
-  suite, all targeted fresh-fidelity tests, and the three temporary red/green
-  guard drills. Remote CI has not run because the commits remain unpushed.
+- Last run green locally 2026-07-16 at code tip `354fbc0` (rustc 1.97.0,
+  current stable — no CI-version gap): the exact declared suite plus the
+  slice-4 red/green guard drills (per finding and per protection; DEVLOG
+  top entry). Remote CI state: check live at push time.
 
 ## Active Sources
 

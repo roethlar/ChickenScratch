@@ -6,6 +6,80 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-07-16 — Tree-replacement epoch guard shipped (plan slices 1–4)
+
+**Change:** Completed the owner-approved
+`docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md` ("4 pieces", one commit per
+slice). Slice 1 added the UI vitest harness and folded it into CI and the
+declared suite (`cd6afdd`). Slice 2 armed a drop-scope epoch-bump guard at
+the point of no return of every tree-replacing operation — restore, draft
+switch/merge, sync pull/abort/force — so a partial failure after the first
+ref/HEAD/tree mutation still invalidates outstanding write authority
+(`db8095a`). Slice 3 built the UI operation barrier: a counted lease that
+freezes editing and programmatic dispatch before the pre-operation drain,
+refuses (never defers) non-owner project mutations, admits the owner's own
+drain/operation/reload dispatches, rebuilds the editor buffer
+generation-keyed after every result kind, freezes stale-snapshot forms with
+loud-drop semantics, and gates the auto-commit/backup timers and the close
+path (`977095b`).
+
+Slice 4 (`354fbc0`) closed the merge lifecycle and fixed the two recorded
+live bugs. Core: `save_revision` refuses during any merge state for every
+caller; both restore helpers preflight merge state before touching disk;
+manual backup skips only the commit half mid-merge and still pushes; a new
+explicit `complete_merge` is the only completion path (stages, two-parent
+commit, `cleanup_state`, epoch bump at scope exit); a new
+`force_resolve_merge` hard-resets to the bound `MERGE_HEAD`, serving pull
+and draft conflicts alike. A narrow `RecoveryPermit` — issued only while
+merge state is attested, root-bound, tied to the specific `MERGE_HEAD` OID
+plus an index+worktree-content fingerprint, re-attested at the last safe
+point before each mutation, failing closed on any drift — authorizes
+exactly complete/abort/force, so recovery stays reachable when format-file
+conflicts make the fidelity probe error (live bug 1) and the force exit
+works from a real conflicted tree for the first time (live bug 2). The
+reader gained a display-only recovery open (HEAD `project.yaml` fallback,
+hierarchy skew loads as unlinked); Tauri `load_project` uses it to open
+mid-merge projects read-only after restart; `backup_on_close` no longer
+swallows non-merge save errors; the TUI renders these refusals via
+`Display`. The UI shows a persistent merge-in-progress banner keyed on the
+backend `merge_state` query (survives restart) offering Complete — run
+under the barrier lifecycle WITH the editor drain, so a just-resolved
+buffer cannot be left in the debounce window — and Abort; the conflict
+dialog's force exit binds to the merge attestation captured when the
+conflict was surfaced.
+
+**Independent review (owner-directed):** the slice was reviewed pre-commit
+by codex via the `codereview` playbook (records in
+`.agents/review/findings/s4-1..4.md`). Four findings were admitted and
+fixed across three verdict rounds: the force confirmation now binds the
+full attestation (OID alone cannot distinguish two merges of the same
+incoming commit); the fingerprint now covers index entries (restaged
+content with unchanged worktree bytes and status bits); `complete_merge`
+opens its index before the last-safe-point re-check; and the UI merge-state
+snapshot is path-scoped at render time (no frame can pair one project's
+banner with another's actions). All four verdicts: accepted.
+
+**Guard proofs (temporary local changes, never committed):** reverting the
+`save_revision` merge-state refusal committed conflict markers wholesale;
+disabling the restore preflights failed the zero-worktree-mutation
+assertions; disabling the recovery-side epoch arming left a pre-operation
+token live after a force-resolve; comparing only the OID half of the
+attestation admitted a swapped merge of the same draft; dropping index
+hashing admitted staged-content drift; removing the UI sequence guard and
+the render-scoping each failed their stale-state regressions. Two gaps
+were caught red before shipping: the fingerprint originally hashed only
+status bits (missed content edits to already-conflicted files), then only
+worktree bytes (missed index-only drift) — each strengthened against a
+failing test.
+
+**Verified:** the full declared suite — formatting, clippy with warnings
+denied across all four Rust packages/all targets (rustc 1.97.0, current
+stable), 255 Rust tests (including 22 new merge-recovery integration
+tests, a pull-origin force test, a complete_merge failpoint test, three
+fresh-boundary Tauri command tests, and a TUI status-line rendering test),
+release metadata, UI lint, production build, and 34 vitest tests (8 new
+merge-banner/merge-state regressions).
+
 ## 2026-07-12 — Fresh-fidelity operation boundary shipped
 
 **Change:** Shipped the owner-approved

@@ -1,10 +1,14 @@
 # Plan: Tree-replacement epoch invalidation on partial failure
 
-**Status:** APPROVED for implementation 2026-07-16 — owner chose
-**"4 pieces"**: separate slices at the step-5 dependency-ordered
-boundaries, one commit each, in order (1) vitest harness + CI wiring,
-(2) core epoch guard, (3) UI barrier, (4) merge completion/recovery.
-Review: accepted round 14 (`.agents/review/findings/plan-2.md`).
+**Status:** COMPLETE 2026-07-16 — all four slices landed as approved:
+(1) vitest harness + CI wiring `cd6afdd`, (2) core epoch guard
+`db8095a`, (3) UI barrier `977095b`, (4) merge
+completion/recovery `354fbc0` (codex code review, four findings fixed
+and accepted — `.agents/review/findings/s4-1..4.md`). Approval record:
+owner chose **"4 pieces"** — separate slices at the step-5
+dependency-ordered boundaries, one commit each. Plan review: accepted
+round 14 (`.agents/review/findings/plan-2.md`). DEVLOG 2026-07-16 has
+the shipped summary and guard proofs.
 
 **Owner request (quote):**
 > yes
