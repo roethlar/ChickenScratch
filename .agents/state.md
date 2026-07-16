@@ -86,18 +86,57 @@ decisions; `DEVLOG.md` holds history.
 
 ## Next
 
-1. **Tree-replacement epoch invalidation on partial failure — APPROVED,
-   in flight; slices 1–3 of 4 landed 2026-07-16.** Owner chose
-   "4 pieces" (recorded on the plan's status line). Landed: slice 1
-   vitest harness + CI (`cd6afdd`), slice 2 core epoch guard with
+1. **Tree-replacement epoch invalidation on partial failure — APPROVED;
+   slices 1–3 of 4 landed 2026-07-16, slice 4 mid-flight
+   (UNCOMMITTED working-tree changes).** Owner chose "4 pieces"
+   (recorded on the plan's status line). Landed: slice 1 vitest
+   harness + CI (`cd6afdd`), slice 2 core epoch guard with
    red/green-proven error-path tests (`db8095a`), slice 3 UI operation
    barrier — counted lease, refuse-never-defer dispatch gate, owner
    admission, generation-keyed rebuilds, form freeze/loud-drop, timer
-   gating, 26 vitest regressions (`977095b`). Remaining: slice 4 merge
-   completion/recovery (plan design points a–e), which also fixes the
-   two live defects in the ranked-findings entry above. Plan:
+   gating, 26 vitest regressions (`977095b`). Plan:
    `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md` (review accepted
    round 14; trail in `.agents/review/findings/plan-2.md`).
+   **Slice 4 state (merge completion/recovery; fixes the two live
+   defects in the ranked entry above): backend written and
+   `cargo check`-clean, uncommitted** —
+   `fidelity.rs` (attest_merge_in_progress, merge_fingerprint,
+   `RecoveryPermit` bound to MERGE_HEAD OID + status fingerprint,
+   fails closed on drift), `git.rs` (save_revision blanket
+   merge-state refusal with self-describing message;
+   reject_merge_in_progress preflights in both restores BEFORE any
+   disk write; `MergeState` + `merge_state()`; `complete_merge()`
+   two-parent + cleanup_state, epoch via drop guard;
+   `force_resolve_merge()` resets to MERGE_HEAD = "theirs" for BOTH
+   conflict origins; `sync_abort_pull` now takes `RecoveryPermit`;
+   `backup_current_work` skips the commit half mid-merge, still
+   pushes), `reader.rs` (`read_project_recovery` + HEAD
+   project.yaml fallback, strict hierarchy matching relaxed),
+   Tauri (`sync_abort_pull`/new `merge_state`/`complete_merge`/
+   `force_resolve_merge` commands via recovery authority, registered
+   in main.rs; `load_project` recovery fallback opens mid-merge
+   projects read-only after restart; `backup_on_close` no longer
+   swallows non-merge save errors), TUI (`app.rs` `{:?}`→Display at
+   the revision-failure and backup-failure status lines).
+   **Remaining for slice 4:** (a) UI — gated wrappers for
+   mergeState/completeMerge/forceResolveMerge in
+   `ui/src/commands/git.ts`; persistent merge-in-progress banner
+   keyed on the merge_state query (survives restart) with
+   Complete/Abort; Complete runs under runEpochOperation WITH drain,
+   Abort/Force with skipDrain; ConflictDialog's "Overwrite local
+   with remote" re-wired to force_resolve_merge (old syncPullForce
+   remains only as the outside-merge Settings escape hatch);
+   (b) core tests + red/green drills — save_revision refusal
+   (conflicts AND lingering MERGE_HEAD; drill = revert refusal,
+   markers get committed), restore-preflight asserting ZERO worktree
+   mutation, complete_merge (two parents, cleanup, epoch bumped at
+   exit), abort/complete/force through a fresh command boundary with
+   a conflicted project.yaml (live-bug regression), force fail-closed
+   on fingerprint drift, read_project_recovery (conflicted yaml +
+   HEAD/worktree skew loads as unlinked); (c) full declared suite,
+   one commit, then: update this entry, DEVLOG entry for the shipped
+   plan (AGENT-WORKFLOW §6), re-verify/annotate the ranked live-bug
+   entry as fixed, short plain-English owner handoff.
 2. Keep writer end-state coherence and the Scrivener asset-import boundary
    parked behind that decision, one concern per later approval.
 3. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
