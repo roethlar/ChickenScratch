@@ -3,7 +3,7 @@
 //! All revision control uses embedded git2 — no system git required.
 //! Writers see "Save Revision" / "Revision History" — never "git".
 
-use crate::core::project::fidelity::WritePermit;
+use crate::core::project::fidelity::{attest_merge_in_progress, RecoveryPermit, WritePermit};
 use crate::core::project::writer;
 use crate::utils::error::{ChiknError, GitError, GitErrorKind};
 use git2::{
@@ -246,6 +246,22 @@ pub fn save_revision(
     let repo = Repository::open(path)
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
 
+    // Never commit during an in-progress merge — for ANY caller (manual
+    // save, auto-commit timer, backup, restore internals). add_all below
+    // marks conflicted paths resolved regardless of whether the markers
+    // were edited, so committing here would bake raw conflict markers
+    // into history as a single-parent commit and strand a lingering
+    // MERGE_HEAD. Completion goes through `complete_merge`, the writer's
+    // explicit act. The message is Display-rendered by every UI,
+    // including the TUI status line.
+    if attest_merge_in_progress(path)? {
+        return Err(ChiknError::ReadOnly(
+            "a merge is in progress — complete or abort it in ChickenScratch before saving \
+             revisions"
+                .to_string(),
+        ));
+    }
+
     // Stage everything
     let mut index = repo
         .index()
@@ -275,6 +291,218 @@ pub fn save_revision(
         .map_err(|e| ChiknError::Unknown(format!("Failed to commit: {}", e)))?;
 
     Ok(oid_to_revision(&repo, oid))
+}
+
+/// Shared merge-state preflight for operations that must not run
+/// mid-merge. `action` is plain English ("restore this revision").
+fn reject_merge_in_progress(path: &Path, action: &str) -> Result<(), ChiknError> {
+    if attest_merge_in_progress(path)? {
+        return Err(ChiknError::ReadOnly(format!(
+            "a merge is in progress — complete or abort it in ChickenScratch before you {action}"
+        )));
+    }
+    Ok(())
+}
+
+/// Snapshot of the repository's merge state for the UI: whether a merge
+/// is in progress, which files still carry index conflicts, and an opaque
+/// `attestation` naming the *specific* merge and local state (`MERGE_HEAD`
+/// OID plus the index/worktree fingerprint). The merge-in-progress banner
+/// (Complete / Abort) keys on this and survives app restart — it needs no
+/// fidelity probe, which mid-merge may fail by design when conflicts touch
+/// format files. `attestation` is what a force confirmation binds to
+/// (finding s4-1): the UI captures it when it surfaces a conflict and the
+/// force path refuses if the live merge no longer matches it — the OID
+/// alone cannot distinguish two merges of the same incoming commit
+/// against different local states.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MergeState {
+    pub in_progress: bool,
+    pub conflicted_files: Vec<String>,
+    pub attestation: Option<String>,
+}
+
+pub fn merge_state(path: &Path) -> Result<MergeState, ChiknError> {
+    let repo = Repository::open(path)
+        .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
+    let in_progress = attest_merge_in_progress(path)?;
+    let mut conflicted_files = Vec::new();
+    let mut attestation = None;
+    if in_progress {
+        let (merge_head, fingerprint) = crate::core::project::fidelity::merge_fingerprint(path)?;
+        attestation = Some(format!("{merge_head}:{fingerprint:016x}"));
+        let index = repo
+            .index()
+            .map_err(|e| ChiknError::Unknown(format!("Index: {}", e)))?;
+        if index.has_conflicts() {
+            conflicted_files = index
+                .conflicts()
+                .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Conflicts iter", e))?
+                .filter_map(|c| {
+                    c.ok()
+                        .and_then(|c| c.our.or(c.their).or(c.ancestor))
+                        .and_then(|e| String::from_utf8(e.path).ok())
+                })
+                .collect();
+        }
+    }
+    Ok(MergeState {
+        in_progress,
+        conflicted_files,
+        attestation,
+    })
+}
+
+/// Complete an in-progress merge after the writer resolved the conflicts.
+///
+/// The writer's explicit invocation IS the resolution signal: the index
+/// cannot distinguish "markers edited out but unstaged" from "markers
+/// untouched" (`add_all` clears conflict entries unconditionally), so no
+/// automatic path may ever complete a merge (review round 8). Stages
+/// everything, commits with two parents (`HEAD`, `MERGE_HEAD`), and
+/// clears merge state. Refuses outside merge state. Runs under the
+/// recovery authority: mid-merge, format-file conflicts make the
+/// ordinary fidelity probe fail by design (round 9).
+///
+/// Mints a commit and re-arms every writer `save_revision` refused while
+/// the merge was pending: the epoch bump rides the drop-scope guard at
+/// scope exit — never inline, so a caller continuation holding a permit
+/// stays valid (round 8).
+pub fn complete_merge(
+    path: &Path,
+    message: &str,
+    recovery: &RecoveryPermit,
+) -> Result<Revision, ChiknError> {
+    recovery.ensure_valid_for(path)?;
+    let repo = Repository::open(path)
+        .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
+    let merge_oid = repo
+        .find_reference("MERGE_HEAD")
+        .ok()
+        .and_then(|r| r.target())
+        .ok_or_else(|| {
+            ChiknError::ReadOnly("no merge is in progress — nothing to complete".to_string())
+        })?;
+
+    // Open the index BEFORE the last-safe-point check: it is a fallible
+    // disk operation, and anything fallible or slow between the re-check
+    // and the mutation would reopen the attestation window it exists to
+    // close (finding s4-3, reopened round).
+    let mut index = repo
+        .index()
+        .map_err(|e| ChiknError::Unknown(format!("Failed to get index: {}", e)))?;
+    // Last safe point: re-attest immediately before staging.
+    recovery.ensure_valid_for(path)?;
+    // Point of no return: staging marks every conflicted path resolved.
+    let _epoch_bump = recovery.arm_epoch_bump();
+    index
+        .add_all(["*"].iter(), IndexAddOption::DEFAULT, None)
+        .map_err(|e| ChiknError::Unknown(format!("Failed to stage files: {}", e)))?;
+    index
+        .write()
+        .map_err(|e| ChiknError::Unknown(format!("Failed to write index: {}", e)))?;
+    #[cfg(test)]
+    injected_failure(
+        &failpoints::AFTER_TREE_MUTATION,
+        "complete_merge after staging",
+    )?;
+    let tree_id = index
+        .write_tree()
+        .map_err(|e| ChiknError::Unknown(format!("Failed to write tree: {}", e)))?;
+    let tree = repo
+        .find_tree(tree_id)
+        .map_err(|e| ChiknError::Unknown(format!("Failed to find tree: {}", e)))?;
+
+    let sig = default_signature(&repo)?;
+    let head_commit = repo
+        .head()
+        .and_then(|h| h.peel_to_commit())
+        .map_err(|e| ChiknError::Unknown(format!("Head commit: {}", e)))?;
+    let merge_commit = repo
+        .find_commit(merge_oid)
+        .map_err(|e| ChiknError::Unknown(format!("Merge commit: {}", e)))?;
+
+    let oid = repo
+        .commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            message,
+            &tree,
+            &[&head_commit, &merge_commit],
+        )
+        .map_err(|e| ChiknError::Unknown(format!("Failed to commit merge: {}", e)))?;
+    repo.cleanup_state()
+        .map_err(|e| classified_git_error("Cleanup", e))?;
+
+    Ok(oid_to_revision(&repo, oid))
+}
+
+/// Resolve an in-progress merge by taking THEIRS wholesale: hard-reset the
+/// working tree to `MERGE_HEAD` and clear merge state. One target serves
+/// both conflict origins — after a pull conflict `MERGE_HEAD` is the
+/// fetched remote commit, after a draft merge it is the draft tip — so no
+/// fetch and no remote are involved (review round 12; `sync_pull_force`'s
+/// remote-only target made the conflict dialog's Force exit unusable for
+/// draft conflicts and, via its dirty check, for every real conflict).
+/// The recovery authority binds the specific `MERGE_HEAD` + index/worktree
+/// fingerprint; any drift fails closed at `ensure_valid_for`, which runs
+/// again at the last safe point immediately before the reset
+/// (rounds 11–13; finding s4-3).
+///
+/// `expected_attestation` is the confirmation binding (finding s4-1): the
+/// UI passes the attestation (`MERGE_HEAD` OID + fingerprint, from
+/// [`merge_state`]) it captured when it showed the writer the conflict,
+/// and a live merge that no longer matches it — swapped or drifted
+/// between the dialog appearing and the click landing, including a
+/// different merge of the SAME incoming commit — refuses instead of
+/// resolving a merge the writer never saw. Mismatch AND unparsable input
+/// both fail closed. `None` skips only this extra binding (the permit's
+/// own attestation still applies); callers with a user-confirmation step
+/// must pass it.
+pub fn force_resolve_merge(
+    path: &Path,
+    recovery: &RecoveryPermit,
+    expected_attestation: Option<&str>,
+) -> Result<(), ChiknError> {
+    recovery.ensure_valid_for(path)?;
+    if let Some(expected) = expected_attestation {
+        let refused = |detail: &str| {
+            ChiknError::ReadOnly(format!(
+                "the merge changed since you confirmed this action ({detail}); review the \
+                 current state and retry"
+            ))
+        };
+        let (expected_head, expected_fingerprint) = expected
+            .split_once(':')
+            .ok_or_else(|| refused("the confirmed merge could not be identified"))?;
+        let expected_oid = Oid::from_str(expected_head)
+            .map_err(|_| refused("the confirmed merge could not be identified"))?;
+        let expected_fingerprint = u64::from_str_radix(expected_fingerprint, 16)
+            .map_err(|_| refused("the confirmed merge could not be identified"))?;
+        if expected_oid != recovery.bound_merge_head()
+            || expected_fingerprint != recovery.bound_fingerprint()
+        {
+            return Err(refused("it no longer matches what you were shown"));
+        }
+    }
+    let repo = Repository::open(path)
+        .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
+    let theirs = repo
+        .find_object(recovery.bound_merge_head(), None)
+        .map_err(|e| classified_git_error("Find MERGE_HEAD object", e))?;
+    let mut co = git2::build::CheckoutBuilder::new();
+    co.force();
+    // Last safe point: re-attest with nothing fallible or slow between
+    // this check and the reset (finding s4-3).
+    recovery.ensure_valid_for(path)?;
+    // Point of no return: the hard reset rewrites the working tree.
+    let _epoch_bump = recovery.arm_epoch_bump();
+    repo.reset(&theirs, git2::ResetType::Hard, Some(&mut co))
+        .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Reset", e))?;
+    repo.cleanup_state()
+        .map_err(|e| classified_git_error("Cleanup", e))?;
+    Ok(())
 }
 
 /// List all revisions (commits) on the current branch, newest first.
@@ -383,6 +611,12 @@ pub fn restore_document(
     let repo = Repository::open(project_path)
         .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
     reject_dirty_worktree(&repo, "restore this document")?;
+    // Preflight BEFORE any disk write: a clean tree with a lingering
+    // MERGE_HEAD passes the status-only dirty check, and refusing only in
+    // the internal save_revision would land after the document was
+    // already replaced — a half-completed restore whose exits falsify or
+    // discard it (plan slice 4, round 9).
+    reject_merge_in_progress(project_path, "restore this document")?;
 
     let oid = Oid::from_str(commit_id)
         .map_err(|e| ChiknError::Unknown(format!("Invalid commit id: {}", e)))?;
@@ -458,6 +692,9 @@ pub fn restore_revision(
     let repo = Repository::open(path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     reject_dirty_worktree(&repo, "restore this revision")?;
+    // Preflight BEFORE the checkout replaces the tree (plan slice 4,
+    // round 9) — see restore_document.
+    reject_merge_in_progress(path, "restore this revision")?;
 
     let oid = Oid::from_str(commit_id).map_err(|e| {
         classified_git_error_as(GitErrorKind::InvalidRevision, "Invalid revision ID", e)
@@ -774,6 +1011,12 @@ pub fn push_backup(
 }
 
 /// Commit current dirty work if needed, then push the current branch to backup.
+///
+/// Mid-merge the COMMIT half is skipped — committing would bake conflict
+/// state into history (see `save_revision`) — but the push still runs:
+/// `push_backup` sends only the branch ref, `MERGE_HEAD` is local-only,
+/// and refusing the push would reduce backup protection during exactly
+/// the window a writer wants an offsite copy (review round 9).
 pub fn backup_current_work(
     project_path: &Path,
     backup_dir: &Path,
@@ -781,7 +1024,9 @@ pub fn backup_current_work(
     permit: &WritePermit<'_>,
 ) -> Result<Option<Revision>, ChiknError> {
     permit.ensure_valid_for(project_path)?;
-    let revision = if has_changes(project_path)? {
+    let revision = if attest_merge_in_progress(project_path)? {
+        None
+    } else if has_changes(project_path)? {
         Some(save_revision(project_path, message, permit)?)
     } else {
         None
@@ -1052,14 +1297,17 @@ pub fn sync_pull(
     Ok(PullResult::Merged)
 }
 
-/// Abort an in-progress merge (e.g. after `sync_pull` reported conflicts).
-/// Restores the working tree to the pre-merge state.
+/// Abort an in-progress merge (e.g. after `sync_pull` or `merge_draft`
+/// reported conflicts). Restores the working tree to the pre-merge state.
 ///
-/// Replaces working-tree content: bumps the project's write epoch once the
-/// first ref/HEAD/tree mutation begins — on success *and* on failure —
-/// (stale tokens are refused until the project is re-probed).
-pub fn sync_abort_pull(project_path: &Path, permit: &WritePermit<'_>) -> Result<(), ChiknError> {
-    permit.ensure_valid_for(project_path)?;
+/// Runs under the recovery authority, not an ordinary permit: a merge
+/// conflict that touches `project.yaml` makes the fidelity probe error
+/// (and a `.meta` conflict probes Degraded), so an ordinary permit is
+/// unobtainable exactly when abort is needed — this was a live bug
+/// (review round 9). Replaces working-tree content: the epoch bump rides
+/// the drop-scope guard, success and failure alike.
+pub fn sync_abort_pull(project_path: &Path, recovery: &RecoveryPermit) -> Result<(), ChiknError> {
+    recovery.ensure_valid_for(project_path)?;
     let repo = Repository::open(project_path)
         .map_err(|e| classified_git_error_as(GitErrorKind::NotARepo, "Not a git repo", e))?;
     let head = repo
@@ -1068,8 +1316,11 @@ pub fn sync_abort_pull(project_path: &Path, permit: &WritePermit<'_>) -> Result<
         .map_err(|e| classified_git_error_as(GitErrorKind::NoCommits, "Head", e))?;
     let mut co = git2::build::CheckoutBuilder::new();
     co.force().remove_untracked(false);
+    // Last safe point: re-attest with nothing fallible or slow between
+    // this check and the reset (finding s4-3).
+    recovery.ensure_valid_for(project_path)?;
     // Point of no return: the hard reset rewrites the working tree.
-    let _epoch_bump = permit.arm_epoch_bump();
+    let _epoch_bump = recovery.arm_epoch_bump();
     repo.reset(head.as_object(), git2::ResetType::Hard, Some(&mut co))
         .map_err(|e| classified_git_error_as(GitErrorKind::Conflict, "Reset", e))?;
     repo.cleanup_state()
@@ -1669,6 +1920,79 @@ mod tests {
         assert!(
             session_token.is_stale(),
             "a failure after the branch ref advanced must invalidate outstanding tokens"
+        );
+    }
+
+    #[test]
+    fn failed_complete_merge_after_staging_invalidates_outstanding_tokens() {
+        // Round 11: recovery-authority operations must bump the epoch on
+        // partial failure too — the staging step has already cleared the
+        // index's conflict entries, so cached authority from before the
+        // attempt must not survive it.
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("GuardComplete.chikn");
+        std::fs::create_dir(&project_path).unwrap();
+        std::fs::create_dir(project_path.join("manuscript")).unwrap();
+        init_repo(&project_path).unwrap();
+
+        let doc_path = project_path.join("manuscript").join("one.md");
+        std::fs::write(&doc_path, "baseline").unwrap();
+        token_for_test_project(&project_path)
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "Baseline", permit)
+            })
+            .unwrap();
+        let original_branch =
+            current_branch_name(&Repository::open(&project_path).unwrap()).unwrap();
+        token_for_test_project(&project_path)
+            .with_write_permit(&project_path, |permit| {
+                create_draft(&project_path, "draft", permit)
+            })
+            .unwrap();
+        std::fs::write(&doc_path, "draft version").unwrap();
+        token_for_test_project(&project_path)
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "Draft edit", permit)
+            })
+            .unwrap();
+        token_for_test_project(&project_path)
+            .with_write_permit(&project_path, |permit| {
+                switch_draft(&project_path, &original_branch, permit)
+            })
+            .unwrap();
+        std::fs::write(&doc_path, "master version").unwrap();
+        token_for_test_project(&project_path)
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "Master edit", permit)
+            })
+            .unwrap();
+        let merged = token_for_test_project(&project_path)
+            .with_write_permit(&project_path, |permit| {
+                merge_draft(&project_path, "draft", permit)
+            })
+            .unwrap();
+        assert!(matches!(merged, MergeResult::Conflicts { .. }));
+
+        let session_token = token_for_test_project(&project_path);
+        let recovery =
+            crate::core::project::fidelity::acquire_recovery_permit(&project_path).unwrap();
+        failpoints::AFTER_TREE_MUTATION.store(true, std::sync::atomic::Ordering::SeqCst);
+        let result = complete_merge(&project_path, "boom", &recovery);
+
+        assert!(
+            matches!(&result, Err(ChiknError::Unknown(message)) if message.contains("injected failure")),
+            "expected the injected post-staging failure, got {result:?}"
+        );
+        assert!(
+            session_token.is_stale(),
+            "a failure after staging must invalidate outstanding tokens"
+        );
+        assert!(
+            Repository::open(&project_path)
+                .unwrap()
+                .find_reference("MERGE_HEAD")
+                .is_ok(),
+            "the merge stays in progress for a fresh Complete/Abort"
         );
     }
 

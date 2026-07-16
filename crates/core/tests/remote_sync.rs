@@ -1,7 +1,9 @@
 //! Integration test: remote sync round-trip against a local bare repo.
 
 use chickenscratch_core::core::git;
-use chickenscratch_core::core::project::fidelity::{acquire_write_token, WriteToken};
+use chickenscratch_core::core::project::fidelity::{
+    acquire_recovery_permit, acquire_write_token, WriteToken,
+};
 use chickenscratch_core::{ChiknError, GitErrorKind};
 use std::fs;
 use std::path::Path;
@@ -752,6 +754,86 @@ fn force_pull_rejects_dirty_worktree_without_clobbering_file() {
     assert_eq!(
         fs::read_to_string(project_a.join("manuscript/one.md")).unwrap(),
         dirty_content
+    );
+}
+
+#[test]
+fn force_resolve_takes_the_remote_commit_for_pull_conflicts() {
+    // Plan slice 4, round 12 (source-aware force): after a PULL conflict,
+    // MERGE_HEAD is the fetched remote commit — force-resolve must land
+    // the remote content. (The draft-origin counterpart lives in
+    // merge_recovery.rs; together they pin the per-origin force target.)
+    let tmp = tempfile::tempdir().unwrap();
+    let project_a = tmp.path().join("A.chikn");
+    fs::create_dir_all(&project_a).unwrap();
+    init_test_repo(&project_a);
+
+    let remote = tmp.path().join("remote.git");
+    if !init_bare_repo(&remote) {
+        return;
+    }
+
+    let url = file_url(&remote);
+    let auth = git::RemoteAuth::default();
+    with_permit!(&project_a, |permit| {
+        git::push_remote(&project_a, &url, &auth, permit)
+    })
+    .expect("initial push should succeed");
+
+    let project_b = tmp.path().join("B.chikn");
+    let branch = current_branch(&project_a);
+    git2::build::RepoBuilder::new()
+        .branch(&branch)
+        .clone(&url, &project_b)
+        .expect("clone project");
+
+    let remote_content = "# Chapter 1\n\nRemote rewrite.\n";
+    fs::write(project_b.join("manuscript/one.md"), remote_content).unwrap();
+    with_permit!(&project_b, |permit| {
+        git::save_revision(&project_b, "Remote rewrite", permit)
+    })
+    .unwrap();
+    with_permit!(&project_b, |permit| {
+        git::push_remote(&project_b, &url, &auth, permit)
+    })
+    .expect("remote push should succeed");
+
+    // A commits its own conflicting rewrite, then pulls → real conflict.
+    fs::write(
+        project_a.join("manuscript/one.md"),
+        "# Chapter 1\n\nCommitted local rewrite.\n",
+    )
+    .unwrap();
+    with_permit!(&project_a, |permit| {
+        git::save_revision(&project_a, "Local rewrite", permit)
+    })
+    .unwrap();
+    match with_permit!(&project_a, |permit| {
+        git::sync_pull(&project_a, &url, &auth, permit)
+    })
+    .expect("pull must run")
+    {
+        git::PullResult::Conflicts { files } => {
+            assert_eq!(files, vec!["manuscript/one.md"]);
+        }
+        other => panic!("pull must conflict, got {other:?}"),
+    }
+
+    // The dialog's force exit: recovery authority, no remote round-trip.
+    let session_token = tk(&project_a);
+    let recovery = acquire_recovery_permit(&project_a).expect("recovery authority");
+    git::force_resolve_merge(&project_a, &recovery, None).expect("force resolve");
+
+    assert_eq!(
+        fs::read_to_string(project_a.join("manuscript/one.md")).unwrap(),
+        remote_content,
+        "pull-origin force must land the remote version"
+    );
+    assert!(!git::merge_state(&project_a).unwrap().in_progress);
+    assert!(!git::has_changes(&project_a).unwrap());
+    assert!(
+        session_token.is_stale(),
+        "force-resolve replaces the tree: outstanding authority must be refused"
     );
 }
 

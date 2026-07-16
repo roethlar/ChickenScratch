@@ -311,6 +311,188 @@ impl Drop for EpochBumpGuard {
     }
 }
 
+// ── Merge recovery authority ─────────────────────────────────────────────────
+
+/// True when the repository at `root` carries an in-progress merge:
+/// `MERGE_HEAD` present or conflict entries in the index. This is the
+/// attestation the recovery authority keys on — deliberately independent
+/// of the fidelity probe, which *errors* on a conflicted `project.yaml`
+/// and probes Degraded on a conflicted sidecar (mid-merge, by design).
+pub(crate) fn attest_merge_in_progress(root: &Path) -> Result<bool, ChiknError> {
+    let repo = git2::Repository::open(root)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {e}")))?;
+    if repo.find_reference("MERGE_HEAD").is_ok() {
+        return Ok(true);
+    }
+    let index = repo
+        .index()
+        .map_err(|e| ChiknError::Unknown(format!("Index: {e}")))?;
+    Ok(index.has_conflicts())
+}
+
+/// Fingerprint of the merge the recovery authority was issued for: the
+/// `MERGE_HEAD` OID plus a digest of the working-tree status, the content
+/// of every status-listed file, AND every index entry (path, stage, blob
+/// OID). Any drift between issue and use fails closed — another process
+/// may have edited, staged, completed, or replaced the merge in the
+/// meantime (review rounds 12–13; codex findings s4-2). Status bits alone
+/// are NOT enough: a content edit to an already-conflicted file keeps the
+/// same CONFLICTED bits; and worktree bytes alone are not enough either —
+/// restaging different content and restoring the worktree leaves both
+/// bits and bytes unchanged while the index (the thing a completion would
+/// commit and a reset would discard) has moved. Unmodified files cannot
+/// drift without appearing in the status list, and staged files cannot
+/// drift without changing their index entry, so together the three pins
+/// cover the whole tree.
+pub(crate) fn merge_fingerprint(root: &Path) -> Result<(git2::Oid, u64), ChiknError> {
+    use std::hash::{Hash, Hasher};
+    let repo = git2::Repository::open(root)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {e}")))?;
+    let merge_head = repo
+        .find_reference("MERGE_HEAD")
+        .ok()
+        .and_then(|r| r.target())
+        .unwrap_or_else(git2::Oid::zero);
+    let mut status_opts = git2::StatusOptions::new();
+    status_opts.include_untracked(true);
+    let statuses = repo
+        .statuses(Some(&mut status_opts))
+        .map_err(|e| ChiknError::Unknown(format!("Status: {e}")))?;
+    let mut entries: Vec<(String, u32, git2::Oid)> = statuses
+        .iter()
+        .filter_map(|s| {
+            s.path().map(|p| {
+                // Deleted (or unreadable) paths hash as the zero OID —
+                // still a distinct, deterministic state.
+                let content = std::fs::read(root.join(p))
+                    .ok()
+                    .and_then(|bytes| git2::Oid::hash_object(git2::ObjectType::Blob, &bytes).ok())
+                    .unwrap_or_else(git2::Oid::zero);
+                (p.to_string(), s.status().bits(), content)
+            })
+        })
+        .collect();
+    entries.sort();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    merge_head.as_bytes().hash(&mut hasher);
+    for (path, bits, content) in &entries {
+        path.hash(&mut hasher);
+        bits.hash(&mut hasher);
+        content.as_bytes().hash(&mut hasher);
+    }
+    let index = repo
+        .index()
+        .map_err(|e| ChiknError::Unknown(format!("Index: {e}")))?;
+    for entry in index.iter() {
+        entry.path.hash(&mut hasher);
+        entry.flags.hash(&mut hasher);
+        entry.id.as_bytes().hash(&mut hasher);
+    }
+    Ok((merge_head, hasher.finish()))
+}
+
+/// Narrow recovery authority for an in-progress merge. Issued only while
+/// merge state is attested; authorizes ONLY the merge-recovery operations
+/// (`complete_merge`, abort, force-resolve). Carries the `WritePermit`
+/// safety contract — non-`Clone`, engine-only construction, canonical-root
+/// binding validated at use — plus a binding to the *specific* merge
+/// (`MERGE_HEAD` OID + status fingerprint) so any drift after issue fails
+/// closed instead of acting on a different merge or newer work
+/// (review rounds 9–13). It exists because a merge conflict that touches
+/// `project.yaml` or a sidecar makes the fidelity probe fail, so an
+/// ordinary permit is unobtainable exactly when recovery is needed.
+#[derive(Debug)]
+pub struct RecoveryPermit {
+    root: PathBuf,
+    merge_head: git2::Oid,
+    fingerprint: u64,
+}
+
+/// Attest merge state and issue a recovery authority bound to it.
+pub fn acquire_recovery_permit(project_path: &Path) -> Result<RecoveryPermit, ChiknError> {
+    let root = project_path.canonicalize().map_err(|e| {
+        ChiknError::ReadOnly(format!(
+            "cannot resolve project path {}: {e}",
+            project_path.display()
+        ))
+    })?;
+    if !attest_merge_in_progress(&root)? {
+        return Err(ChiknError::ReadOnly(
+            "no merge is in progress; recovery authority is only issued mid-merge".to_string(),
+        ));
+    }
+    let (merge_head, fingerprint) = merge_fingerprint(&root)?;
+    Ok(RecoveryPermit {
+        root,
+        merge_head,
+        fingerprint,
+    })
+}
+
+impl RecoveryPermit {
+    /// Canonical project root this authority is bound to.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// The `MERGE_HEAD` this authority was issued for ("theirs").
+    pub(crate) fn bound_merge_head(&self) -> git2::Oid {
+        self.merge_head
+    }
+
+    /// The index/worktree fingerprint this authority was issued for. The
+    /// force path compares it against the attestation the UI captured at
+    /// confirmation time: the `MERGE_HEAD` OID alone cannot distinguish
+    /// two merges of the same incoming commit against different local
+    /// states (finding s4-1, reopened round).
+    pub(crate) fn bound_fingerprint(&self) -> u64 {
+        self.fingerprint
+    }
+
+    /// Refuse unless the target is the bound root AND the same merge, in
+    /// the same working-tree state, is still in progress. Fails closed on
+    /// any drift (merge completed/aborted/replaced, files edited).
+    pub(crate) fn ensure_valid_for(&self, project_path: &Path) -> Result<(), ChiknError> {
+        let canonical = project_path.canonicalize().map_err(|e| {
+            ChiknError::ReadOnly(format!(
+                "cannot resolve project path {}: {e}",
+                project_path.display()
+            ))
+        })?;
+        if canonical != self.root {
+            return Err(ChiknError::ReadOnly(format!(
+                "recovery authority was granted for {}, not {}",
+                self.root.display(),
+                canonical.display()
+            )));
+        }
+        if !attest_merge_in_progress(&self.root)? {
+            return Err(ChiknError::ReadOnly(
+                "the merge this recovery action targeted is no longer in progress; \
+                 review the project state and retry"
+                    .to_string(),
+            ));
+        }
+        let (merge_head, fingerprint) = merge_fingerprint(&self.root)?;
+        if merge_head != self.merge_head || fingerprint != self.fingerprint {
+            return Err(ChiknError::ReadOnly(
+                "the project changed since this recovery action was confirmed; \
+                 review the current state and retry"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Recovery operations mint commits / replace trees: the epoch bump
+    /// rides the same drop-scope guard as ordinary operations.
+    pub(crate) fn arm_epoch_bump(&self) -> EpochBumpGuard {
+        EpochBumpGuard {
+            root: self.root.clone(),
+        }
+    }
+}
+
 /// Probe fidelity and issue a write capability when (and only when) the
 /// project probes [`Fidelity::Full`]. Degraded projects yield
 /// [`ChiknError::ReadOnly`] carrying plain-English reasons.

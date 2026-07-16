@@ -4,6 +4,8 @@ import { useSettingsStore } from "./stores/settingsStore";
 import { Welcome } from "./components/welcome/Welcome";
 import { Binder } from "./components/binder/Binder";
 import { Editor } from "./components/editor/Editor";
+import { MergeBanner } from "./components/revisions/MergeBanner";
+import { useMergeState } from "./hooks/useMergeState";
 import { getCurrentEditor, flushPendingEditorSave } from "./components/editor/editorRef";
 import { isBarrierActive } from "./commands/barrier";
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -93,6 +95,11 @@ export default function App() {
   const readOnly = useProjectStore((s) => s.readOnly);
   const readOnlyReasons = useProjectStore((s) => s.readOnlyReasons);
   const { theme, setTheme, focusMode, toggleFocusMode, loadSettings } = useSettingsStore();
+  // Merge-in-progress state survives restart: queried from the backend,
+  // not from any conflict dialog the writer may have long since closed.
+  const { mergeState, refreshMergeState } = useMergeState(
+    useProjectStore((s) => s.project?.path ?? null)
+  );
 
   // Load app settings on startup
   useEffect(() => {
@@ -363,7 +370,14 @@ export default function App() {
         </>
       )}
       <div className="main-area">
-        {readOnly && (
+        {mergeState?.in_progress && (
+          <MergeBanner
+            projectPath={project.path}
+            state={mergeState}
+            onChanged={refreshMergeState}
+          />
+        )}
+        {readOnly && !mergeState?.in_progress && (
           <div
             className="readonly-banner"
             title={readOnlyReasons.join("\n")}

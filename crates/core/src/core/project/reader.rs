@@ -276,6 +276,77 @@ pub fn read_project_readonly(path: &Path) -> Result<Project, ChiknError> {
     read_project(path)
 }
 
+/// Display-only open for a project carrying an in-progress merge whose
+/// worktree format files may be conflicted (plan slice 4, review rounds
+/// 9–11). Two relaxations, both scoped to this entry point only:
+///
+/// 1. `project.yaml` metadata falls back to the pre-merge `HEAD` copy
+///    when the worktree file fails to parse — conflict markers in the
+///    root file otherwise make the project unopenable after restart,
+///    stranding the writer outside the Complete/Abort recovery UI.
+/// 2. The strict hierarchy↔documents matching is skipped: mid-merge the
+///    tree is definitionally inconsistent (e.g. a remote delete/recreate
+///    at the same path changes a document's id), and a hard error here
+///    would fail the open. Skewed entries load as unlinked; the ordinary
+///    load path keeps strict validation unchanged.
+///
+/// Never writes: repair stays `ReadOnly`, and callers must present the
+/// result read-only until the merge is completed or aborted.
+pub fn read_project_recovery(path: &Path) -> Result<Project, ChiknError> {
+    validate_project_root(path)?;
+
+    let metadata = match read_project_metadata(path) {
+        Ok(m) => m,
+        Err(worktree_err) => head_project_metadata(path).map_err(|head_err| {
+            ChiknError::InvalidFormat(format!(
+                "project.yaml is unreadable mid-merge ({worktree_err}) and no pre-merge \
+                     copy could be recovered ({head_err})"
+            ))
+        })?,
+    };
+    validate_hierarchy_document_paths(&metadata.hierarchy)?;
+
+    let hierarchy_identities = collect_hierarchy_document_identities(&metadata.hierarchy)?;
+    let documents = read_all_documents(path, &hierarchy_identities, RepairMode::ReadOnly)?;
+    // Deliberately NO validate_hierarchy_documents_match_loaded_documents:
+    // HEAD metadata + worktree sidecars can skew mid-merge.
+
+    let mut project = Project {
+        id: metadata.id,
+        name: metadata.name,
+        path: path.to_string_lossy().to_string(),
+        hierarchy: metadata.hierarchy,
+        documents,
+        created: metadata.created,
+        modified: metadata.modified,
+        metadata: metadata.metadata,
+        threads: read_threads(path)?,
+    };
+    let _ = repair_project(&mut project, path, RepairMode::ReadOnly);
+    Ok(project)
+}
+
+/// Parse `project.yaml` as committed at `HEAD` — the last agreed state
+/// before the in-progress merge rewrote the worktree copy.
+fn head_project_metadata(path: &Path) -> Result<ProjectMetadata, ChiknError> {
+    let repo = git2::Repository::open(path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {e}")))?;
+    let head_tree = repo
+        .head()
+        .and_then(|h| h.peel_to_commit())
+        .and_then(|c| c.tree())
+        .map_err(|e| ChiknError::Unknown(format!("HEAD tree: {e}")))?;
+    let entry = head_tree
+        .get_path(Path::new(super::format::PROJECT_FILE))
+        .map_err(|e| ChiknError::NotFound(format!("project.yaml not in HEAD: {e}")))?;
+    let blob = repo
+        .find_blob(entry.id())
+        .map_err(|e| ChiknError::Unknown(format!("project.yaml blob: {e}")))?;
+    let content = std::str::from_utf8(blob.content())
+        .map_err(|e| ChiknError::InvalidFormat(format!("project.yaml not UTF-8 in HEAD: {e}")))?;
+    serde_yaml::from_str(content).map_err(ChiknError::Serialization)
+}
+
 /// Whether a load may touch the disk to self-heal.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RepairMode {

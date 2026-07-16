@@ -32,3 +32,6 @@ keyring = { version = "3.6.3", features = [
 
 [dev-dependencies]
 tempfile = "3.27.0"
+# Same version as chickenscratch-core: the command-boundary tests inspect
+# repository state (MERGE_HEAD, merge-commit parents) directly.
+git2 = "0.19"

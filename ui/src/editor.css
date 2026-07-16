@@ -834,6 +834,37 @@
   flex-shrink: 0;
 }
 
+/* ── Merge-in-progress banner ──────────────────────── */
+/* Persistent while merge state exists on disk (survives restart): the
+   writer always has a way out — Complete or Abort. */
+.merge-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--color-text);
+  background: color-mix(in srgb, #c0392b 14%, var(--color-bg));
+  border-bottom: 1px solid color-mix(in srgb, #c0392b 45%, transparent);
+  flex-shrink: 0;
+}
+.merge-banner-text { flex: 1; }
+.merge-banner-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.merge-banner-actions button {
+  padding: 3px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-text) 25%, transparent);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.merge-banner-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ── Editor Toolbar ────────────────────────────────── */
 
 .editor-toolbar {

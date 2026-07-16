@@ -172,11 +172,63 @@ export async function syncAbortPull(
   return mutatingInvoke("sync_abort_pull", { projectPath }, lease);
 }
 
+/** Outside-merge escape hatch only: fetches and hard-resets to the sync
+ *  remote, and its own dirty/fidelity checks refuse every conflicted tree.
+ *  Conflict recovery goes through `forceResolveMerge` instead (plan
+ *  slice 4 — routing conflicts here was the unreachable-Force live bug). */
 export async function syncPullForce(
   projectPath: string,
   lease?: LeaseHandle
 ): Promise<void> {
   return mutatingInvoke("sync_pull_force", { projectPath }, lease);
+}
+
+// ── Merge recovery (plan slice 4) ────────────────────────
+
+/** Snapshot of the repository's merge state. The persistent
+ *  merge-in-progress banner keys on this — it needs no fidelity probe and
+ *  so still answers when conflicts touch format files. `attestation`
+ *  opaquely names the specific merge AND local state; a force
+ *  confirmation binds to it. */
+export interface MergeState {
+  in_progress: boolean;
+  conflicted_files: string[];
+  attestation: string | null;
+}
+
+/** Read-only query — no permit, no gate, answers even mid-conflict. */
+export async function mergeState(projectPath: string): Promise<MergeState> {
+  return invoke("merge_state", { projectPath });
+}
+
+/** Complete an in-progress merge after manual resolution: stages
+ *  everything and commits with two parents. The caller must run this
+ *  under the barrier lifecycle WITH the editor drain — the writer's
+ *  just-resolved markers may still sit in the debounce window. */
+export async function completeMerge(
+  projectPath: string,
+  message: string,
+  lease?: LeaseHandle
+): Promise<Revision> {
+  return mutatingInvoke("complete_merge", { projectPath, message }, lease);
+}
+
+/** Resolve an in-progress merge by taking the incoming version
+ *  (`MERGE_HEAD`) wholesale — works for both pull and draft-merge
+ *  conflicts. Run with skipDrain: the buffer holds edits being discarded.
+ *  `attestation` is the merge state the writer was shown when they
+ *  confirmed the discard — the backend refuses if the live merge no
+ *  longer matches it (finding s4-1). */
+export async function forceResolveMerge(
+  projectPath: string,
+  attestation: string,
+  lease?: LeaseHandle
+): Promise<void> {
+  return mutatingInvoke(
+    "force_resolve_merge",
+    { projectPath, attestation },
+    lease
+  );
 }
 
 export async function documentHistory(

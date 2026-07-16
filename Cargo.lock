@@ -622,6 +622,7 @@ dependencies = [
  "chikn-converter",
  "chrono",
  "dirs",
+ "git2",
  "keyring",
  "regex",
  "reqwest 0.12.28",
@@ -665,11 +666,13 @@ dependencies = [
  "chrono",
  "crossterm",
  "dirs",
+ "git2",
  "html2md",
  "pulldown-cmark",
  "ratatui",
  "ratatui-textarea",
  "serde_json",
+ "tempfile",
  "uuid",
 ]
 

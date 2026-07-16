@@ -977,7 +977,10 @@ impl<'a> App<'a> {
             let backup_msg = match backup_dir.as_deref() {
                 Some(dir) => match git::push_backup(&project_path, dir, permit) {
                     Ok(()) => " · backed up".to_string(),
-                    Err(e) => format!(" · backup failed: {:?}", e),
+                    // Display, not Debug: core errors carry self-describing
+                    // plain-English messages (e.g. the merge-in-progress
+                    // refusal) that must reach the writer readably.
+                    Err(e) => format!(" · backup failed: {e}"),
                 },
                 None => String::new(),
             };
@@ -989,7 +992,8 @@ impl<'a> App<'a> {
                 self.status = format!("Revision saved: {} ({}){}", message, short, backup_msg);
             }
             Err(e) => {
-                self.status = format!("Revision failed: {:?}", e);
+                // Display, not Debug — see backup_msg above.
+                self.status = format!("Revision failed: {e}");
             }
         }
         Ok(())
@@ -1147,4 +1151,93 @@ fn strip_comment_span(html: &str, id: &str) -> String {
     out.push_str(&html[tag_end..inner_end]);
     out.push_str(&html[close_end..]);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chickenscratch_core::core::project::fidelity::acquire_write_token;
+    use std::fs;
+    use std::path::Path;
+
+    fn commit(root: &Path, message: &str) {
+        acquire_write_token(root)
+            .expect("write token")
+            .with_write_permit(root, |permit| git::save_revision(root, message, permit))
+            .expect("revision");
+    }
+
+    /// Project mid-merge with the conflict confined to a document body:
+    /// the fidelity probe stays Full, so the TUI opens it writable and the
+    /// revision-save refusal is reachable.
+    fn mid_merge_project(tmp: &tempfile::TempDir) -> PathBuf {
+        let root = tmp.path().join("Novel.chikn");
+        fs::create_dir_all(root.join("manuscript")).unwrap();
+        git::init_repo(&root).expect("init repo");
+        fs::write(
+            root.join("project.yaml"),
+            "format_version: '1.2'\nid: prj\nname: Test\ncreated: '2025-01-01T00:00:00Z'\nmodified: '2025-01-01T00:00:00Z'\nhierarchy:\n- type: Document\n  id: doc-one\n  name: One\n  path: manuscript/one.md\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("manuscript/one.meta"),
+            "id: doc-one\ncreated: '2025-01-01T00:00:00Z'\nmodified: '2025-01-01T00:00:00Z'\n",
+        )
+        .unwrap();
+        fs::write(root.join("manuscript/one.md"), "# One\n\nBase.\n").unwrap();
+        commit(&root, "Initial");
+
+        let original = git2::Repository::open(&root)
+            .unwrap()
+            .head()
+            .unwrap()
+            .shorthand()
+            .unwrap()
+            .to_string();
+        acquire_write_token(&root)
+            .unwrap()
+            .with_write_permit(&root, |permit| git::create_draft(&root, "alt", permit))
+            .unwrap();
+        fs::write(root.join("manuscript/one.md"), "# One\n\nDraft version.\n").unwrap();
+        commit(&root, "Draft edit");
+        acquire_write_token(&root)
+            .unwrap()
+            .with_write_permit(&root, |permit| git::switch_draft(&root, &original, permit))
+            .unwrap();
+        fs::write(root.join("manuscript/one.md"), "# One\n\nMaster version.\n").unwrap();
+        commit(&root, "Master edit");
+        let merged = acquire_write_token(&root)
+            .unwrap()
+            .with_write_permit(&root, |permit| git::merge_draft(&root, "alt", permit))
+            .unwrap();
+        assert!(
+            matches!(merged, git::MergeResult::Conflicts { .. }),
+            "fixture must conflict"
+        );
+        root
+    }
+
+    #[test]
+    fn merge_state_refusal_renders_as_plain_english_in_the_status_line() {
+        // Plan slice 4, round 10: the TUI has no merge UI at all, so the
+        // core refusal's self-describing message is the writer's only
+        // signal — it must render through Display, not a {:?} wrapper.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = mid_merge_project(&tmp);
+
+        let mut app = App::new(root).expect("mid-merge doc conflict still opens writable");
+        app.save_revision("Trying to save mid-merge")
+            .expect("the refusal is a status message, not a crash");
+
+        assert!(
+            app.status.contains("a merge is in progress"),
+            "status must carry the self-describing refusal: {:?}",
+            app.status
+        );
+        assert!(
+            !app.status.contains("ReadOnly("),
+            "status must not leak the Debug shape: {:?}",
+            app.status
+        );
+    }
 }
