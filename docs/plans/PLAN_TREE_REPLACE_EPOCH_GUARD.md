@@ -179,7 +179,20 @@ on-disk state cannot be clobbered by a half-finished operation.
        await-gate deadlocks its own lifecycle and a literal
        refuse-gate self-aborts every operation with a dirty buffer.
        The exemption covers every trigger site (`Revisions.tsx`,
-       `DocumentHistory.tsx`, `App.tsx` flush paths) (round 7).
+       `DocumentHistory.tsx`, `App.tsx` flush paths) (round 7) —
+       *and the post-operation reload itself* (round 8):
+       `load_project` is permit-backed and conditionally
+       disk-mutating (`src-tauri/src/commands/project.rs:55`–`:59`
+       acquires a `WritePermit` and runs `read_project_with_repair`,
+       which self-heals missing standard folders and refreshes the
+       token cache at `:60`), so the gate must classify it as
+       project-mutating; the mandated reload
+       (`openProject`/`loadProject` from `Revisions.tsx`,
+       `DocumentHistory.tsx:75`) runs while the lease is held and
+       must be lease-handle-admitted, or the barrier refuses its own
+       recovery path (the reload error is even swallowed silently by
+       `projectStore.ts:81`–`:82`) — while the same dispatch without
+       the handle stays refused.
      - *Close the seam.* `Preview.tsx:3` imports `invoke` directly
        and `saveMeta` (`:81`) calls `update_project_metadata`
        outside `ui/src/commands/*` — the only project-mutating
@@ -191,12 +204,21 @@ on-disk state cannot be clobbered by a half-finished operation.
        (round 7).
    - **Stale-snapshot forms survive reload — resync them.** The
      `Preview.tsx` metadata form resyncs only when `project.path`
-     changes (`:66`–`:77`), and `SessionTargetSection` re-submits the
-     entire captured `project.metadata` (`session.ts:26`–`:35`). A
-     same-path reload after a tree operation therefore leaves them
-     holding pre-operation values that one Save click writes wholesale
-     over restored state — no queue race required, untouched by
-     reload+rebuild. Treat these forms like the editor (round 7):
+     changes (`:66`–`:77`), `SessionTargetSection` re-submits the
+     entire captured `project.metadata` (`session.ts:26`–`:35`), and
+     — round 8 — `Inspector.tsx` resyncs its metadata form only when
+     the *document id* changes (`:280`–`:307`): after a same-doc
+     restore, re-selecting the doc shows pre-operation fields, and
+     one debounce tick (`:364`), immediate handler
+     (`:595`/`:622`/`:665`), or stale title blur (`renameNode`,
+     `:356`) re-submits the full stale snapshot post-release, under
+     no lease at all. Resync must therefore key on reload
+     generation/content, never on id or path alone. A same-path
+     reload after a tree operation otherwise leaves these forms
+     holding pre-operation values that one Save click writes
+     wholesale over restored state — no queue race required,
+     untouched by reload+rebuild. Treat these forms like the editor
+     (round 7):
      disable their inputs and Save while any lease is held; on
      reload, resync only non-dirty forms/fields; a dirty draft that
      cannot be preserved is dropped *loudly* (explicit notice), never
@@ -236,19 +258,52 @@ on-disk state cannot be clobbered by a half-finished operation.
      and `backup_current_work` all call `save_revision` internally,
      so a blanket refusal bricks restore and manual backup too; the
      writer's only exits (abort / force-overwrite) discard the
-     resolution. Instead: give core `save_revision` a
-     completion shape — when `repo.state()` is merge and staging
-     leaves no index conflicts, commit with two parents
-     (`HEAD`, `MERGE_HEAD`), call `cleanup_state`, and bump the
-     epoch; refuse only while conflicts genuinely remain unresolved
-     in the index. Automatic writers (timers, backup) refuse during
-     *any* merge state regardless. Migration note: today's
-     `save_revision` never calls `cleanup_state`, so projects that
-     ever "resolved" via Save Revision under current code carry a
-     lingering `MERGE_HEAD` — the completion shape self-heals them
-     (next save commits with two parents and cleans up), which is
-     why the refusal must key on index conflicts, not bare
-     `MERGE_HEAD` presence (round 7).
+     resolution. Round 8 killed the round-7 repair (a completion
+     shape *inside* `save_revision`) on three verified grounds:
+     `git2::Index::add_all` clears conflict entries *unconditionally*
+     (verified in the pinned git2 0.19.0 / libgit2 1.8.1 sources —
+     staging marks a path resolved regardless of whether markers were
+     edited), so no ordering of check/stage/commit both refuses
+     untouched markers and admits resolved-but-unstaged edits; core
+     `save_revision` cannot distinguish callers (auto-commit uses the
+     *same* Tauri command and args as manual save, and
+     `backup_current_work` has no dirty-worktree guard), so any
+     in-function completion lets a timer tick or backup click
+     silently mint a merge commit mid-resolution — and with a
+     lingering `MERGE_HEAD`, restore would record a false merge
+     parent; and an epoch bump inside `save_revision` invalidates the
+     caller's still-live permit, so `backup_current_work`'s
+     `push_backup` (`git.rs:744`) and the Tauri command's
+     backup/remote pushes (`src-tauri/src/commands/git.rs:24`/`:32`)
+     fail or are silently lost after the merge-completing commit.
+     The design that survives (round 8):
+     (a) `save_revision` refuses during *any* merge state
+     (`MERGE_HEAD` present or index conflicts) — for every caller,
+     no provenance needed; project creation/import/TUI saves never
+     run under merge state, so they are unaffected.
+     (b) A new core `complete_merge(path, message, permit)` is the
+     *only* completion path: requires merge state; the user's
+     explicit invocation is the resolution signal (replacing the
+     impossible index-state detection); stages everything, commits
+     with two parents (`HEAD`, `MERGE_HEAD`), `cleanup_state`; the
+     epoch bump rides the step-2 drop-scope guard at operation exit
+     (never inline), so no caller continuation loses its permit.
+     (c) UI: "Resolve manually" no longer just closes the dialog —
+     the app enters a persistent merge-in-progress state (backend
+     merge-state query added; none exists today, and the UI must
+     survive restart) offering *Complete merge* (→ the new command,
+     with confirmation) and *Abort*. Restore/backup refusing during
+     merge state is correct behavior, and the stranded-writer exit
+     is Complete merge.
+     (d) Migration: projects carrying a lingering `MERGE_HEAD` from
+     today's code hit the refusal once and are prompted to Complete
+     (two-parent commit heals the history) or Abort — not bricked.
+     Ordering constraint, stated so it does not rot: any operation
+     that uses its permit *after* an internal `save_revision`/
+     `complete_merge` call must sequence those uses before any epoch
+     bump or reauthorize; `restore_document`/`restore_revision` are
+     safe today only because nothing validates the permit after
+     their internal save (rounds 7–8).
    - **Explicit editor-buffer reset/rebuild after reload.** `openProject`
      (`ui/src/stores/projectStore.ts:71`) clears `activeDoc` but leaves
      `flowDocs` intact, and the editor's buffer-load effect does not
@@ -279,10 +334,10 @@ on-disk state cannot be clobbered by a half-finished operation.
 | `ui/src/components/editor/Editor.tsx` | Owns `saveTimer`/`dirtyRef`/`flowDocsRef`/`saveCurrent`: implements the awaitable suspend/resume + rebuild contract; editor non-editable while the barrier is up; freeze-before-drain — barrier entry precedes the pre-operation flush, whose unconditional mark-clean (`:121`, `:195`) otherwise loses mid-drain keystrokes (round 5) |
 | `ui/src/stores/projectStore.ts`, `ui/src/components/editor/editorRef.ts` | Awaitable save-barrier seam; reset `flowDocs` and rebuild the editor buffer on reload |
 | `ui/src/components/editor/Toolbar.tsx`, `ui/src/components/comments/CommentsPanel.tsx`, `ui/src/components/editor/FindReplace.tsx` | Comment commands carry `getEditorMarkdown` content; Toolbar formatting/AI and FindReplace mutate the buffer via command dispatch — all check the barrier-active state; in-flight AI streams cancelled/awaited at barrier entry (round 4) |
-| `ui/src/commands/*.ts` (one shared dispatch gate) | One shared gate: non-owner project-mutating dispatches during a lease are **refused/cancelled** (never deferred with captured args); barrier entry returns a lease handle whose dispatches (drain, the operation itself) bypass the gate; pre-lease in-flight dispatches drain at barrier entry (rounds 6–7 — supersedes round 5's per-file gating; `Preview.tsx` `saveMeta` migrates into this layer, and an ESLint `no-restricted-imports` rule keeps components off direct `invoke`) |
-| `ui/src/components/preview/Preview.tsx`, `ui/src/commands/session.ts`, `ui/src/components/stats/StatsPanel.tsx` | Stale-snapshot writers: forms frozen (inputs + Save disabled) while a lease is held; on reload resync only non-dirty fields; dirty drafts that cannot be preserved are dropped loudly, never silently (rounds 6–7); stats effect fire-and-forgets `recordDailyWords` (`:33`) |
+| `ui/src/commands/*.ts` (one shared dispatch gate) | One shared gate: non-owner project-mutating dispatches during a lease are **refused/cancelled** (never deferred with captured args); barrier entry returns a lease handle whose dispatches (drain, the operation itself, **the post-operation reload** — `load_project` is permit-backed and conditionally disk-mutating, round 8) bypass the gate; pre-lease in-flight dispatches drain at barrier entry (rounds 6–8 — supersedes round 5's per-file gating; `Preview.tsx` `saveMeta` migrates into this layer, and an ESLint `no-restricted-imports` rule keeps components off direct `invoke`) |
+| `ui/src/components/preview/Preview.tsx`, `ui/src/commands/session.ts`, `ui/src/components/stats/StatsPanel.tsx`, `ui/src/components/inspector/Inspector.tsx` (round 8) | Stale-snapshot writers: forms frozen (inputs + Save disabled) while a lease is held; on reload resync only non-dirty fields, keyed on reload generation/content — Inspector's id-keyed resync (`:280`–`:307`) misses same-doc restores and its debounce/immediate handlers/title blur then clobber post-release; dirty drafts that cannot be preserved are dropped loudly, never silently (rounds 6–8) |
 | `ui/src/App.tsx` (auto-commit `:261`, backup timer `:290`, close path `:196`) | Git-write continuations gated by the lease and skipped/cancelled while a lease is held or conflicts are unresolved (round 6) |
-| `crates/core/src/core/git.rs` `save_revision` (+ `src-tauri/src/commands/git.rs` `backup_on_close`) | Merge-aware completion shape (round 7): refuse only while index conflicts remain; when merge state is active and staging resolves cleanly, commit with two parents (`HEAD`, `MERGE_HEAD`) + `cleanup_state` + epoch bump — closes the conflict-markers commit without stranding manual resolution (restore/backup call `save_revision` internally) and self-heals lingering `MERGE_HEAD` from today's code; automatic writers refuse during any merge state |
+| `crates/core/src/core/git.rs` `save_revision` + new `complete_merge` (+ Tauri commands: merge-state query, `complete_merge`) | Round 8 redesign: `save_revision` refuses during any merge state, all callers, no provenance; new explicit `complete_merge` (stage, two-parent commit, `cleanup_state`; epoch via drop guard at scope exit, never inline — permits stay live for caller continuations); UI merge-in-progress state (survives restart via the new query) offers Complete/Abort; lingering `MERGE_HEAD` migrates via the same prompt |
 | `ui/package.json` (+ vitest harness, added by this plan) | UI has no test runner today (scripts: dev/build/lint/preview only); add vitest + a `test` script so the regressions below are executable, and fold it into the declared verification suite |
 | UI tests (new vitest harness) | Regressions: reload-on-failure, queued-save barrier, flow mode, conflict paths, edit overlap, comment-command gating, programmatic-dispatch gating, overlapping operations (assert final buffer contents), preflight typing, dispatch-gate refuse-not-defer + owner admission, form freeze/loud-drop, timer/close overlap |
 | `.github/workflows/validation.yml`, `.agents/repo-guidance.md` (Verification) | CI currently runs only UI lint/build; add a UI test step and fold the vitest suite into the declared-suite guidance so the regressions cannot fail unnoticed (round 4) |
@@ -344,25 +399,36 @@ on-disk state cannot be clobbered by a half-finished operation.
   queued dispatch lands captured pre-operation args under a fresh
   token after release. A gated Preview `saveMeta` (migrated into the
   commands layer) attempted mid-operation is likewise refused. The
-  barrier's own drain and operation dispatches (lease-handle path)
-  succeed — shown to deadlock/self-abort without owner admission.
-- [ ] Form-freeze regression (round 7): Preview meta and
-  session-target inputs are disabled while a lease is held; a dirty
-  draft held at barrier entry either survives reload or its loss is
-  surfaced with an explicit notice — a silent discard fails the
-  test ("refused or resynced" alone does not pass).
-- [ ] Unresolved-conflict regression (rounds 6–7): with index
-  conflicts present, the auto-commit timer, `backup_on_close`, and
-  manual `save_revision` all refuse to commit — shown to fail today
-  (conflict markers are staged wholesale by `add_all(["*"])` and
-  committed). Completion path (round 7): after the writer edits the
-  markers out, manual `save_revision` stages cleanly, commits with
-  two parents (`HEAD`, `MERGE_HEAD`), clears merge state, and bumps
-  the epoch — shown to strand (no commit path at all) under a
-  blanket merge-state refusal; automatic writers still refuse until
-  merge state is fully cleared. A lingering pre-existing
-  `MERGE_HEAD` (today's resolution flow) is self-healed by the next
-  manual save, not bricked.
+  barrier's own drain, operation, *and post-operation reload*
+  dispatches (lease-handle path) succeed — shown to
+  deadlock/self-abort without owner admission (round 8: a reload
+  dispatched under the handle succeeds; the same `loadProject`
+  without the handle is refused).
+- [ ] Form-freeze regression (rounds 7–8): Preview meta,
+  session-target, and Inspector inputs are disabled while a lease is
+  held; a dirty draft held at barrier entry either survives reload or
+  its loss is surfaced with an explicit notice — a silent discard
+  fails the test ("refused or resynced" alone does not pass).
+  Post-release case (round 8): after a same-doc restore and lease
+  release, re-selecting the doc shows *restored* metadata (Inspector
+  resync keyed on reload generation), and a subsequent debounce tick
+  or immediate handler does not re-submit pre-operation fields —
+  shown to fail with id-keyed resync.
+- [ ] Unresolved-conflict regression (rounds 6–8): during merge
+  state, `save_revision` refuses for *every* caller — the
+  auto-commit timer, `backup_on_close`, manual save,
+  `backup_current_work`, and the restore helpers' internal saves —
+  shown to fail today (conflict markers are staged wholesale by
+  `add_all(["*"])` and committed; `backup_current_work` has no dirty
+  guard; restore under a lingering `MERGE_HEAD` would mint a false
+  merge parent). Completion path (round 8): explicit
+  `complete_merge` stages, commits with two parents
+  (`HEAD`, `MERGE_HEAD`), clears merge state; the epoch bump fires
+  at scope exit so a caller continuation (e.g. `push_backup`) still
+  holds a valid permit — shown to fail with an inline bump. A
+  lingering pre-existing `MERGE_HEAD` surfaces the
+  Complete-or-Abort prompt rather than bricking; `complete_merge`
+  outside merge state refuses.
 - [ ] Timer/close overlap regression (round 6): an auto-commit or
   backup continuation that queued behind `ProjectWriteLocks` during a
   guarded operation must not commit a half-replaced or conflicted
@@ -397,15 +463,17 @@ an operation breaks partway."
   (`.github/workflows/validation.yml` gains a UI test step) and the
   declared-suite guidance in `.agents/repo-guidance.md` — confirm these
   ride in this plan's single commit or direct a split.
-- Round 6 (amended round 7): the unresolved-conflict commit
+- Round 6 (amended rounds 7–8): the unresolved-conflict commit
   (auto-commit/backup can bake conflict markers permanently into
   history) is reachable **today**, independent of this plan's failure
   window. Round 7 established a blanket refusal would strand manual
-  resolution (no continue-merge command exists; restore and backup
-  call `save_revision` internally), so the fix grew into
-  `save_revision`'s merge-aware completion shape — refuse only on
-  index conflicts, complete the merge (two-parent commit +
-  `cleanup_state`) when staging resolves cleanly. It rides in this
-  slice because the slice's promise is hollow without it — but it is
-  the largest separable sub-slice; direct a split into its own slice
-  if preferred.
+  resolution; round 8 established the round-7 repair (completion
+  inside `save_revision`) is unimplementable (`add_all` clears
+  conflict entries unconditionally; no caller provenance; inline
+  epoch bump breaks caller continuations). The surviving design is
+  a blanket `save_revision` refusal plus a new explicit
+  `complete_merge` command, a backend merge-state query, and a
+  merge-in-progress UI state with Complete/Abort. That is a real
+  sub-feature riding in this slice because the slice's promise is
+  hollow without it — but it is now clearly the largest separable
+  sub-slice; direct a split into its own slice if preferred.
