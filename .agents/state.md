@@ -87,10 +87,15 @@ decisions; `DEVLOG.md` holds history.
 ## Next
 
 1. **Tree-replacement epoch invalidation on partial failure** — owner
-   approved planning this scope 2026-07-15; plan drafted at
-   `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md` and presented for yes/no.
-   Implement only on an explicit owner yes: error-path guard proving stale
-   UI state cannot save after a worktree mutation followed by failure.
+   approved planning this scope 2026-07-15; plan at
+   `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md` passed a 14-round
+   cross-harness review loop (accepted 2026-07-16; full trail in
+   `.agents/review/findings/plan-2.md`). Implement only on an explicit
+   owner yes PLUS the owner's commit-structure choice (plan step 5:
+   one sweep or four dependency-ordered slices), recorded on the
+   plan's status line. The review also surfaced two live pre-existing
+   defects (see the ranked-findings entry above) that the plan's
+   merge/recovery boundary fixes.
 2. Keep writer end-state coherence and the Scrivener asset-import boundary
    parked behind that decision, one concern per later approval.
 3. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
