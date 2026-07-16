@@ -359,3 +359,18 @@ Findings and triage:
 4. `PLAN:413` — "one concern, one branch, one commit" no longer honest with three splits open in Decisions. **ADMITTED** (governance): step 5 now enumerates four commit boundaries (core guard; merge/recovery; UI barrier; vitest+CI) and requires the owner's sweep-or-split choice recorded on the plan status line before implementation; the round-3/4/6 Decisions questions collapse into that single choice.
 
 Round 12 to verify.
+
+## Round 12 dispatch
+
+- **Reviewer**: codex-cli 0.144.4, standard invocation
+  (`codex exec --ephemeral -s read-only --json --output-schema ... -o ...`)
+- **Reviewed SHA**: `0a830e93d9efb29ad8a44d31875b86867c2654c5` (round-11
+  revision commit)
+- **Base SHA**: `066a2a81d796b92dd68721cfb05bf8356b66c492` (unchanged)
+- **Bound**: 1800 s
+- **Dispatched**: 2026-07-16 (prompt `/tmp/plan2-r12-prompt.md`; verdict ->
+  `/tmp/plan2-r12-review-last.json`; round-11 findings + dispositions
+  quoted; reviewer asked to probe the four commit boundaries (independent
+  greenness and honest temporary exposures), placeholder-leak risk in the
+  recovery-mode load, and re-attestation fallback semantics)
+- **Verdict**: pending
