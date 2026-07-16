@@ -206,3 +206,34 @@ Findings and triage:
 3. `PLAN:63` — app-level revision writers outside the barrier. **ADMITTED, WIDENED**: auto-commit (`App.tsx:261–:276`), backup timer (`:290–:303` reusing `backup_on_close`), close path (`:196–:215`) verified; `backup_on_close` (`commands/git.rs:329`, dirty check `:344`, `save_revision` `:345`) and core `save_revision` (`add_all(["*"])`, single-parent commit) have no merge-state check. The conflict-markers commit is reachable **today** with no overlap (conflict window > 10-min timer, or close during resolution); F-009 fixed only `merge_draft`'s internal path. Fix is two-layer: core-side merge-state refusal in `save_revision`/`backup_on_close` (I2), app-side lease-scoped skip/cancel as belt-and-suspenders.
 
 Revision folded in: approach step 3 re-anchors the guard to the first ref/HEAD/tree mutation (arm before `set_target` in the two FF branches; `switch_draft` explicitly needs no special point); step 4 replaces the writer allowlist with one shared dispatch-layer gate in `ui/src/commands/*`, adds stale-snapshot form resync-on-reload, and adds the app-revision-writers/unresolved-conflicts bullet. Files table: dispatch-gate row supersedes the Inspector/Corkboard row; new Preview/session/StatsPanel, App.tsx, and core `save_revision` merge-state rows. Tests: ref-move boundary, dispatch-gate, unresolved-conflict (fails today), and timer/close overlap regressions. Decisions: round-6 entry asks the owner whether the today-reachable conflict-commit fix rides in this slice or splits. Round 7 to verify.
+
+## Round 7 dispatch
+
+- **Reviewer**: codex-cli 0.144.4, back on rounds 1-5 invocation
+  (`codex exec --ephemeral -s read-only --json --output-schema ... -o ...`)
+- **Reviewed SHA**: `d7394821db0f1b445a8d9707f5ee887bc3295334` (round-6
+  revision commit)
+- **Base SHA**: `066a2a81d796b92dd68721cfb05bf8356b66c492` (unchanged)
+- **Bound**: 1800 s
+- **Dispatched**: 2026-07-16 (prompt `/tmp/plan2-r7-prompt.md`; verdict ->
+  `/tmp/plan2-r7-review-last.json`; round-6 findings quoted verbatim with
+  the recorded switch_draft narrowing flagged as settled triage; reviewer
+  asked to probe remaining bypasses of the dispatch gate, other
+  ref-move-first orderings, and false-positive risk of the
+  unresolved-conflict refusal)
+- **Verdict**: `reopened` (envelope valid; see Round 7 record below)
+
+## Round 7 — reopened (all five findings admitted)
+
+- Verdict received 2026-07-16: `reopened`, `guard_confirmed: true`, envelope valid (verdict in enum, reviewed/base SHAs echo dispatch `d739482`/`066a2a8`, exit 0). Verdict file `/tmp/plan2-r7-review-last.json`.
+- Triage method: five parallel adversarial verifier agents (workflow `wf_dcbf226c-7bc`), one per finding, each instructed to refute against plan text and code. All five **CONFIRMED**, several with widened or corrected scope.
+
+Findings and triage:
+
+1. `PLAN:163` — the dispatch-gate wording ("awaits (or is refused while) the lease") permits defer-then-send: a queued dispatch keeps captured pre-operation args and lands them under a fresh token after release. **ADMITTED**: verifier confirmed the Approach text offers "awaits" as first-class while the plan's own Tests section (dispatch-gate regression) forbids the outcome — an internal contradiction a cold implementer resolves the wrong way. Fix: refuse/cancel or generation-validate; deferral never compliant.
+2. `PLAN:163` — the gate lacks an owner-scoped admission path and is self-contradictory with freeze-before-drain: the pre-operation drain (`docCmd.updateDocumentContent` via `Editor.tsx:189`/`:209`) and the tree-replacing command itself (`gitCmd.restoreRevision`) dispatch through the gated layer, so await-gate deadlocks its own lifecycle and refuse-gate self-aborts every dirty-buffer operation. **ADMITTED**: verified end-to-end (flush routing editorRef→Editor.tsx→document.ts; ops through git.ts). Fix: lease handle; owner dispatches bypass; exemption covers Revisions/DocumentHistory/App.tsx trigger sites.
+3. `PLAN:167` — `Preview.tsx:3` imports `invoke` directly; `saveMeta` (`:81`) calls `update_project_metadata` outside the seam. **ADMITTED**: verifier swept ui/src — Preview is the only project-mutating component-level bypass (App.tsx `backup_on_close` :209/:298 is covered by the timer/close bullet; all other component invokes are non-mutating plugins). Fix: migrate saveMeta into the commands layer + ESLint `no-restricted-imports` to keep the seam closed.
+4. `PLAN:173` — resync/versioned-refusal alone silently discards form drafts typed before/during an operation; forms are not disabled today and the plan freezes only the editor and the tree-op triggers. **ADMITTED**: verified no disabled props on Preview meta or session-target inputs; noted forms have no flush analog, so freezing alone cannot persist an already-dirty form → loud-drop requirement. SessionTargetSection already discards drafts on project-ref change today (plan systematizes an existing hazard there; Preview is where it would be newly introduced).
+5. `PLAN:192` — blanket `save_revision` merge-state refusal strands manual resolution. **ADMITTED, WIDENED**: verified "Resolve manually" only closes the dialog (`Revisions.tsx:470`); no continue-merge command exists (only cleanup_state calls are unreachable clean-merge paths and the two aborts); index stays conflicted until staged and the app's only staging call is `save_revision`'s own `add_all`; `restore_revision`/`restore_document`/`backup_current_work` call `save_revision` internally so a blanket refusal bricks restore and manual backup too; today's save_revision never calls `cleanup_state`, so pre-existing projects can carry lingering `MERGE_HEAD` — a MERGE_HEAD-keyed refusal would brick them permanently. Fix: merge-aware completion shape in `save_revision` (refuse only on index conflicts; on clean staging commit with two parents [HEAD, MERGE_HEAD] + `cleanup_state` + epoch bump; automatic writers refuse during any merge state; the completion shape self-heals lingering MERGE_HEAD).
+
+Revision folded in: dispatch-gate bullet rewritten with three round-7 sub-clauses (refuse-never-defer; owner-scoped lease-handle admission; seam closure via Preview migration + ESLint rule); stale-snapshot bullet now freezes forms during lease, resyncs only non-dirty fields, drops undroppable drafts loudly; conflict bullet replaced the blanket refusal with the merge-aware completion shape + migration note. Files table rows updated (gate, forms, save_revision); Tests: dispatch-gate regression now asserts refuse-not-defer + owner-admission (deadlock/self-abort shown), new form-freeze/loud-drop regression, unresolved-conflict regression extended with the completion path and MERGE_HEAD self-heal. Decisions: round-6 conflict-split entry amended — the fix grew into the completion shape and is the largest separable sub-slice. Round 8 to verify.
