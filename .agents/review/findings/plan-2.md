@@ -314,4 +314,18 @@ Revision folded in: design points (a)–(e) rewritten (restore preflight; backup
   capability (forgeable? preserves safe-path checks?), the epoch-bumping
   re-keying (consistency sweep for leftover "tree-replacing" wording), and
   the read-only-open fallback implementability)
-- **Verdict**: pending
+- **Verdict**: `reopened` (envelope valid; see Round 10 record below)
+
+## Round 10 — reopened (all four findings admitted)
+
+- Verdict received 2026-07-16: `reopened`, `guard_confirmed: true`, envelope valid (SHAs echo dispatch `1d34cfe`/`066a2a8`, exit 0). Verdict file `/tmp/plan2-r10-review-last.json`.
+- Triage method: the 4-agent verification workflow failed on a subagent session limit, so triage fell back to the playbook's single-agent mode — the coder verified every citation inline against the working tree (same discipline: refute-first, exact lines). ptk was disconnected mid-round; built-in tools used (PTK_DIRECT).
+
+Findings and triage:
+
+1. `PLAN:304` — "TUI prints core errors verbatim" is false. **ADMITTED, nuanced**: the revision-failure branch formats with `{:?}` (`tui/app.rs:992`; backup errors `:980`); only the token-refusal branch (`:967`) uses Display. The merge-state refusal would flow through `:992`. Fix: switch those branches to Display + rendered-message test.
+2. `PLAN:346` — recovery capability lacked `WritePermit`'s safety contract. **ADMITTED**: plan step 2 arms the drop guard "from the `WritePermit`" (`:42–:43`, Files `:388`) and point (e) specified no construction/validation contract. Fix: engine-only non-Clone construction, canonical-root binding validated at use, merge state re-attested at use, guard arming surface widened to "permit or recovery capability"; wrong-root and outside-merge negative tests.
+3. `PLAN:336` — capability alone doesn't unblock `sync_pull_force`. **ADMITTED, WIDENED**: `reject_dirty_worktree` (`git.rs:1042`, `:1059`) fires on every conflicted tree and `revalidate_fidelity` (`:1045`) fails on format-file conflicts — so the conflict dialog's "Overwrite local with remote" exit is broken **today for any real conflict** (`handleForcePull` never aborts first). Second live pre-existing bug; state.md ranked finding extended to cover both exits. Fix: merge-attested force path replaces those checks under attested merge state only; conflict-to-Force regression added.
+4. `PLAN:351` — HEAD-copy fallback unreachable through the reader API. **ADMITTED**: `read_project_readonly` → `read_project_impl` unconditionally parses the worktree `project.yaml` (`reader.rs:311`); `reader.rs` was absent from Files. Fix: reader.rs in scope with a read-only entry accepting verified HEAD metadata (root/safe-read checks preserved); recovery test asserts `load_project` succeeds after restart.
+
+Revision folded in: design point (a) TUI sentence corrected (+ Display fix in scope); point (e) gains the capability contract, the merge-attested force path, and the reader-fallback reachability requirement; Files gains `reader.rs` and `tui/app.rs` rows and the capability-contract wording; the recovery regression now covers Abort AND Complete AND Force, `load_project`-after-restart, capability negative tests, and TUI rendering. `.agents/state.md` ranked finding extended (force exit broken today for any conflict). Round 11 to verify.

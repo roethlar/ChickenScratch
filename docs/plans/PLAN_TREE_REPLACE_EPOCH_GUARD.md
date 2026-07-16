@@ -301,9 +301,14 @@ on-disk state cannot be clobbered by a half-finished operation.
      core `save_revision` directly (`tui/app.rs:974`) with no
      merge-state UI at all — the refusal must carry a
      self-describing message ("a merge is in progress — complete or
-     abort it in ChickenScratch") which the TUI status line already
-     prints verbatim; full TUI Complete/Abort parity is not
-     warranted (the TUI cannot create merge state).
+     abort it in ChickenScratch"). Round-10 correction: the TUI does
+     *not* print operation errors verbatim — the revision-failure
+     branch formats with `{:?}` (`app.rs:992`, backup errors `:980`;
+     only the token-refusal branch at `:967` uses Display) — so the
+     TUI scope includes switching those branches to Display
+     formatting, with a test on the rendered message. Full TUI
+     Complete/Abort parity is not warranted (the TUI cannot create
+     merge state).
      (b) A new core `complete_merge(path, message, permit)` is the
      *only* completion path: requires merge state; the user's
      explicit invocation is the resolution signal (replacing the
@@ -348,10 +353,37 @@ on-disk state cannot be clobbered by a half-finished operation.
      `MERGE_HEAD`/index conflicts — `DegradedReason` has no merge
      variant and the `project.yaml` case errors before
      classification, so fidelity reasons cannot carry this),
-     authorizing only those three commands; the read-only open path
-     tolerates an unparsable `project.yaml` while `MERGE_HEAD` is
-     present (fall back to the pre-merge `HEAD` version for
-     display).
+     authorizing only those three commands. The capability carries
+     the same safety contract as a `WritePermit` (round 10): non-
+     `Clone`, engine-only construction; bound to the canonical
+     project root and validated against the target path at use
+     (`ensure_valid_root`-equivalent); merge state re-attested at
+     use, not only at issue; and it can arm the step-2 drop-scope
+     guard — the guard's arming surface is "permit or recovery
+     capability", not `WritePermit` alone, or `complete_merge` under
+     recovery could not bump the epoch on exit. Negative tests:
+     wrong-root use refused; issue/use outside merge state refused.
+     `sync_pull_force` needs more than authorization (round 10): its
+     own `reject_dirty_worktree` calls (`git.rs:1042`, `:1059`) fire
+     on every conflicted tree — conflicts *are* status-dirty — and
+     `revalidate_fidelity` (`:1045`) fails on format-file conflicts,
+     so the conflict dialog's "Overwrite local with remote" exit is
+     unreachable today for any real conflict (live bug, recorded
+     with the abort finding). Under an attested merge state the
+     force path replaces those checks (the dirty tree is the
+     conflict being discarded — that is the command's purpose);
+     ordinary force-pull outside merge state keeps them unchanged.
+     The read-only open path tolerates an unparsable `project.yaml`
+     while `MERGE_HEAD` is present (fall back to the pre-merge
+     `HEAD` version for display). Reachability (round 10): today's
+     reader cannot express this — `read_project_readonly` →
+     `read_project_impl` unconditionally parses the worktree
+     `project.yaml` (`reader.rs:311`) — so `reader.rs` enters scope
+     with a read-only entry point that accepts verified HEAD
+     metadata while preserving the root/safe-read checks, and the
+     recovery test must assert `load_project` itself succeeds after
+     restart with a conflicted `project.yaml`, not only that the
+     recovery commands run.
      (d) Migration: projects carrying a lingering `MERGE_HEAD` from
      today's code hit the preflight/refusal once and are prompted to
      Complete (two-parent commit heals the history) or Abort — not
@@ -396,7 +428,9 @@ on-disk state cannot be clobbered by a half-finished operation.
 | `ui/src/commands/*.ts` (one shared dispatch gate) | One shared gate: non-owner project-mutating dispatches during a lease are **refused/cancelled** (never deferred with captured args); barrier entry returns a lease handle whose dispatches (drain, the operation itself, **the post-operation reload** — `load_project` is permit-backed and conditionally disk-mutating, round 8) bypass the gate; pre-lease in-flight dispatches drain at barrier entry (rounds 6–8 — supersedes round 5's per-file gating; `Preview.tsx` `saveMeta` migrates into this layer, and an ESLint `no-restricted-imports` rule keeps components off direct `invoke`) |
 | `ui/src/components/preview/Preview.tsx`, `ui/src/commands/session.ts`, `ui/src/components/stats/StatsPanel.tsx`, `ui/src/components/inspector/Inspector.tsx` (round 8) | Stale-snapshot writers: forms frozen (inputs + Save disabled) while a lease is held; on reload resync only non-dirty fields, keyed on reload generation/content — Inspector's id-keyed resync (`:280`–`:307`) misses same-doc restores and its debounce/immediate handlers/title blur then clobber post-release; dirty drafts that cannot be preserved are dropped loudly, never silently (rounds 6–8) |
 | `ui/src/App.tsx` (auto-commit `:261`, backup timer `:290`, close path `:196`) | Git-write continuations gated by the lease and skipped/cancelled while a lease is held or conflicts are unresolved (round 6) |
-| `crates/core/src/core/git.rs` `save_revision` + new `complete_merge` (+ Tauri commands: merge-state query, `complete_merge`, recovery capability) | Rounds 8–9: `save_revision` refuses during any merge state (self-describing error — the TUI prints it verbatim); merge-state preflight in `restore_document`/`restore_revision` before any disk write; manual backup refuses only the commit half (push is benign) and `backup_on_close` surfaces the refusal instead of `let _`; new explicit `complete_merge` (stage, two-parent commit, `cleanup_state`; epoch via drop guard at scope exit; full barrier lifecycle incl. pre-dispatch editor flush); recovery-scoped capability keyed on merge state authorizes `complete_merge`/`sync_abort_pull`/`sync_pull_force` when the fidelity probe fails on format-file conflicts; read-only open tolerates unparsable `project.yaml` under `MERGE_HEAD`; UI merge-in-progress state (survives restart) offers Complete/Abort; lingering `MERGE_HEAD` migrates via the same prompt |
+| `crates/core/src/core/git.rs` `save_revision` + new `complete_merge` (+ Tauri commands: merge-state query, `complete_merge`, recovery capability) | Rounds 8–9: `save_revision` refuses during any merge state (self-describing error — the TUI prints it verbatim); merge-state preflight in `restore_document`/`restore_revision` before any disk write; manual backup refuses only the commit half (push is benign) and `backup_on_close` surfaces the refusal instead of `let _`; new explicit `complete_merge` (stage, two-parent commit, `cleanup_state`; epoch via drop guard at scope exit; full barrier lifecycle incl. pre-dispatch editor flush); recovery-scoped capability keyed on merge state authorizes `complete_merge`/`sync_abort_pull`/`sync_pull_force` — with a `WritePermit`-equivalent contract (engine-only, root-bound, merge re-attested at use, drop-guard armable; round 10) — and the merge-attested force path replaces `sync_pull_force`'s dirty/fidelity checks (round 10); read-only open tolerates unparsable `project.yaml` under `MERGE_HEAD`; UI merge-in-progress state (survives restart) offers Complete/Abort; lingering `MERGE_HEAD` migrates via the same prompt |
+| `crates/core/src/core/project/reader.rs` | Read-only entry point accepting verified HEAD metadata (root/safe-read checks preserved) so the merge-in-progress open works with a conflicted `project.yaml` (round 10) |
+| `crates/tui/src/app.rs` (`:980`, `:992`) | Operation/backup error branches switch from `{:?}` to Display so the self-describing merge-state refusal renders readably (round 10) |
 | `ui/package.json` (+ vitest harness, added by this plan) | UI has no test runner today (scripts: dev/build/lint/preview only); add vitest + a `test` script so the regressions below are executable, and fold it into the declared verification suite |
 | UI tests (new vitest harness) | Regressions: reload-on-failure, queued-save barrier, flow mode, conflict paths, edit overlap, comment-command gating, programmatic-dispatch gating, overlapping operations (assert final buffer contents), preflight typing, dispatch-gate refuse-not-defer + owner admission, form freeze/loud-drop, timer/close overlap |
 | `.github/workflows/validation.yml`, `.agents/repo-guidance.md` (Verification) | CI currently runs only UI lint/build; add a UI test step and fold the vitest suite into the declared-suite guidance so the regressions cannot fail unnoticed (round 4) |
@@ -500,13 +534,21 @@ on-disk state cannot be clobbered by a half-finished operation.
   and nothing typed is discarded; shown to fail without
   freeze-before-drain + flush-under-owner-handle on the Complete
   action.
-- [ ] Format-file-conflict recovery regression (round 9): a
+- [ ] Format-file-conflict recovery regression (rounds 9–10): a
   `sync_pull`/`merge_draft` conflict touching `project.yaml` (and,
-  separately, only a `.meta`) can still be Aborted AND Completed
-  through a fresh command boundary (fresh `ProjectTokens`,
-  simulating restart) via the recovery capability — shown to fail
-  today and under an ordinary-permit-only design (probe errors or
-  Degraded → no permit → recovery unreachable).
+  separately, only a `.meta`) can still be Aborted, Completed, AND
+  Force-overwritten through a fresh command boundary (fresh
+  `ProjectTokens`, simulating restart) via the recovery capability —
+  shown to fail today and under an ordinary-permit-only design
+  (probe errors or Degraded → no permit → recovery unreachable;
+  force additionally blocked by its own dirty checks on every
+  conflicted tree). `load_project` itself succeeds after restart
+  with the conflicted `project.yaml` (HEAD-metadata fallback) — the
+  recovery-commands assertion alone does not prove the display
+  path. Capability negative tests: wrong-root use refused;
+  issue/use outside merge state refused. TUI: the merge-state
+  refusal renders as Display text in the status line, not a `{:?}`
+  wrapper.
 - [ ] Timer/close overlap regression (round 6): an auto-commit or
   backup continuation that queued behind `ProjectWriteLocks` during a
   guarded operation must not commit a half-replaced or conflicted
