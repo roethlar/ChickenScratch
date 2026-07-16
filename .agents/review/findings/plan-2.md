@@ -237,3 +237,19 @@ Findings and triage:
 5. `PLAN:192` — blanket `save_revision` merge-state refusal strands manual resolution. **ADMITTED, WIDENED**: verified "Resolve manually" only closes the dialog (`Revisions.tsx:470`); no continue-merge command exists (only cleanup_state calls are unreachable clean-merge paths and the two aborts); index stays conflicted until staged and the app's only staging call is `save_revision`'s own `add_all`; `restore_revision`/`restore_document`/`backup_current_work` call `save_revision` internally so a blanket refusal bricks restore and manual backup too; today's save_revision never calls `cleanup_state`, so pre-existing projects can carry lingering `MERGE_HEAD` — a MERGE_HEAD-keyed refusal would brick them permanently. Fix: merge-aware completion shape in `save_revision` (refuse only on index conflicts; on clean staging commit with two parents [HEAD, MERGE_HEAD] + `cleanup_state` + epoch bump; automatic writers refuse during any merge state; the completion shape self-heals lingering MERGE_HEAD).
 
 Revision folded in: dispatch-gate bullet rewritten with three round-7 sub-clauses (refuse-never-defer; owner-scoped lease-handle admission; seam closure via Preview migration + ESLint rule); stale-snapshot bullet now freezes forms during lease, resyncs only non-dirty fields, drops undroppable drafts loudly; conflict bullet replaced the blanket refusal with the merge-aware completion shape + migration note. Files table rows updated (gate, forms, save_revision); Tests: dispatch-gate regression now asserts refuse-not-defer + owner-admission (deadlock/self-abort shown), new form-freeze/loud-drop regression, unresolved-conflict regression extended with the completion path and MERGE_HEAD self-heal. Decisions: round-6 conflict-split entry amended — the fix grew into the completion shape and is the largest separable sub-slice. Round 8 to verify.
+
+## Round 8 dispatch
+
+- **Reviewer**: codex-cli 0.144.4, rounds 1-5/7 invocation
+  (`codex exec --ephemeral -s read-only --json --output-schema ... -o ...`)
+- **Reviewed SHA**: `e7576f99ff57cf2ea0a2421c38320cbafdae16ea` (round-7
+  revision commit)
+- **Base SHA**: `066a2a81d796b92dd68721cfb05bf8356b66c492` (unchanged)
+- **Bound**: 1800 s
+- **Dispatched**: 2026-07-16 (prompt `/tmp/plan2-r8-prompt.md`; verdict ->
+  `/tmp/plan2-r8-review-last.json`; round-7 findings quoted verbatim;
+  reviewer asked specifically about lease-handle coverage of the reload
+  dispatches, completion-shape interaction with save_revision's internal
+  callers (could restore silently complete a half-resolved merge?), and
+  internal consistency after seven rounds)
+- **Verdict**: pending
