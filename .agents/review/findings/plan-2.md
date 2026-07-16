@@ -4,7 +4,7 @@
 proof — the artifact is a plan document on `master`. The doc-review analog of
 the guard proof: the reviewer verifies the plan's factual claims against the
 actual code, and `guard_confirmed` attests that verification.)
-**Status**: In progress — round 1 reopened, plan revised, round 2 pending
+**Status**: In progress — rounds 1–2 reopened, plan revised twice, round 3 pending
 **Subject**: `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md`
 
 ## Round 1 dispatch
@@ -56,7 +56,56 @@ extended with the app-layer regression. Committed for round 2.
 
 ## Round 2 dispatch
 
-- **Reviewed SHA**: (revision commit — recorded at dispatch)
+- **Reviewer**: codex-cli 0.144.4, same invocation as round 1
+  (`codex exec --ephemeral -s read-only --json --output-schema … -o …`)
+- **Reviewed SHA**: `1f9387054eacd66261373c21a8905a7f7ecefc44` (plan
+  revision commit)
 - **Base SHA**: `066a2a81d796b92dd68721cfb05bf8356b66c492` (unchanged —
   the plan-less parent, so the full plan stays in scope each round)
+- **Bound**: 1800 s
+- **Dispatched**: 2026-07-15 (prompt: `/tmp/plan2-r2-prompt.md`; verdict →
+  `/tmp/plan2-r2-review-last.json`; round-1 finding quoted so the reviewer
+  verifies the revision resolves it without re-litigating)
+- **Verdict**: `reopened` (envelope valid: verdict in enum,
+  `guard_confirmed: true`, reviewed/base SHAs match dispatch, exit 0)
+
+## Round 2 findings
+
+Four comments, each verified independently against the working tree before
+accepting (anti-capitulation gate). All four **ADMITTED**:
+
+1. **`ui/src/stores/projectStore.ts:71` — flow-mode buffer survives
+   reload.** Confirmed: `openProject`'s `set` resets `activeDocId`/
+   `activeDoc` but not `flowDocs` (line 71–79; `enterFlow` at 142 is the
+   only setter, `exitFlow`/`selectDocument` the only clearers). A
+   flow-mode buffer stays live across restore/switch/pull; its next edit
+   auto-saves pre-operation sections under a refreshed token.
+2. **Plan step 4 (round-1 revision) asserted an ordering it didn't
+   enforce.** "Reload before any further save can run" is not established
+   by calling `openProject` + `refresh`: a debounced save already queued
+   behind `ProjectWriteLocks` re-probes via `ProjectTokens::checkout` and
+   gets a fresh token during/after reload; and `openProject` clearing
+   `activeDoc` can itself trigger the editor's dirty-buffer flush.
+   Requires an explicit save barrier (suspend auto-save/flush from before
+   first mutation until reload + buffer rebuild complete).
+3. **`ui/src/components/revisions/Revisions.tsx:144`/`:228` —
+   `Ok(Conflicts)` mutates the tree without reload.** Confirmed:
+   `handleMergeDraft` (144) and `handlePull`'s `case "conflicts"` (228)
+   only call `setConflictFiles(...)`; `onResolveManually` merely clears
+   the dialog (`:471`). The merge has already rewritten the tree, so
+   "Resolve manually" + edit saves a pre-merge buffer under a fresh
+   token. Coverage must span every tree-mutating result kind.
+4. **File map omitted `DocumentHistory.tsx`.** Confirmed: it owns the
+   `restore_document` handler (`handleRestore`, line 61) and reloads/
+   rebuilds only in its success path — the `catch` (line 84) only toasts.
+
+**Plan revision (round 2)**: step 4 rewritten as three sub-requirements
+(save barrier; explicit buffer reset/rebuild incl. flow mode; every
+tree-mutating result kind incl. `Ok(Conflicts)`); Files table gains
+`DocumentHistory.tsx` and the `projectStore.ts`/`editorRef.ts` barrier
+seam; Tests checklist gains queued-save, flow-mode, and conflict-path
+regressions. Committed for round 3.
+
+## Round 3 dispatch
+
 - **Verdict**: pending
