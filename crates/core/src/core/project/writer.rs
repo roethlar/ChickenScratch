@@ -83,14 +83,19 @@ pub fn write_project(project: &mut Project, permit: &WritePermit<'_>) -> Result<
     // the project or traverse a symlink.
     validate_all_document_targets(project)?;
 
-    // Write project.yaml
-    write_project_metadata(project)?;
-
-    // Write all documents
+    // Ordering invariant: content files first, manifest last. Each file
+    // write is individually atomic (temp + rename + fsync), but a crash
+    // between files must never leave project.yaml referencing documents
+    // that were never written. Writing documents (and threads) before the
+    // manifest means a torn save degrades to orphan content files — which
+    // self-heal reconciles on next open — instead of dangling references.
     write_all_documents(project)?;
 
     // Write threads.yaml — only when there are threads to persist; never deletes.
     write_threads_if_any(project)?;
+
+    // Write project.yaml LAST — this is the commit point of the save.
+    write_project_metadata(project)?;
 
     Ok(())
 }
@@ -950,6 +955,82 @@ mod tests {
 
         let meta_path = get_manuscript_path(&project_path).join("chapter-01.meta");
         assert!(meta_path.exists());
+    }
+
+    /// Ordering invariant: a save that dies while writing document content
+    /// must NOT have rewritten project.yaml. The manifest is the commit
+    /// point — a torn save may leave orphan content files (self-heal picks
+    /// those up), but never a manifest referencing missing documents.
+    #[test]
+    fn test_failed_document_write_leaves_manifest_untouched() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("TornSave.chikn");
+
+        let mut project = create_project(&project_path, "Torn Save").unwrap();
+        let token = test_token(&project_path);
+
+        // Healthy baseline save with one document.
+        let doc1 = Document {
+            id: "doc1".to_string(),
+            name: "chapter-01".to_string(),
+            path: "manuscript/chapter-01.md".to_string(),
+            content: "# Chapter 1".to_string(),
+            parent_id: None,
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        project.documents.insert(doc1.id.clone(), doc1.clone());
+        project.hierarchy.push(TreeNode::Document {
+            id: doc1.id.clone(),
+            name: doc1.name.clone(),
+            path: doc1.path.clone(),
+        });
+        write_test_project(&mut project, &token).unwrap();
+        let manifest_path = get_project_file_path(&project_path);
+        let manifest_before = fs::read_to_string(&manifest_path).unwrap();
+
+        // Stage a second document, then sabotage its content write by
+        // squatting a directory on the target path (rename onto a
+        // directory fails on every platform we ship to).
+        let doc2 = Document {
+            id: "doc2".to_string(),
+            name: "chapter-02".to_string(),
+            path: "manuscript/chapter-02.md".to_string(),
+            content: "# Chapter 2".to_string(),
+            parent_id: None,
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        project.documents.insert(doc2.id.clone(), doc2.clone());
+        project.hierarchy.push(TreeNode::Document {
+            id: doc2.id.clone(),
+            name: doc2.name.clone(),
+            path: doc2.path.clone(),
+        });
+        let squat = get_manuscript_path(&project_path).join("chapter-02.md");
+        fs::create_dir(&squat).unwrap();
+
+        let result = write_test_project(&mut project, &token);
+        assert!(result.is_err(), "sabotaged save must fail");
+
+        // The manifest on disk must be byte-identical to the pre-save
+        // state: no doc2 reference, no bumped modified timestamp.
+        let manifest_after = fs::read_to_string(&manifest_path).unwrap();
+        assert_eq!(
+            manifest_before, manifest_after,
+            "failed save must not touch project.yaml"
+        );
+        assert!(!manifest_after.contains("doc2"));
+
+        // Clearing the obstruction lets a retry commit the full save.
+        fs::remove_dir(&squat).unwrap();
+        write_test_project(&mut project, &token).unwrap();
+        let manifest_final = fs::read_to_string(&manifest_path).unwrap();
+        assert!(manifest_final.contains("doc2"));
+        assert!(squat.exists(), "retry wrote the real content file");
+        assert!(squat.is_file());
     }
 
     #[test]
