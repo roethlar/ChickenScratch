@@ -387,3 +387,18 @@ Findings and triage:
 3. `PLAN:379` — failed re-attestation must fail closed: another process completing/aborting the merge leaves a clean Full tree, so the round-11 "fall back to ordinary checks" would pass and the reset would discard the new state (and contradict outside-merge-refused). **ADMITTED**: fail closed with fresh authority/confirmation; race regression covers clean-completion and abort states.
 
 Round 13 to verify.
+
+## Round 13 dispatch
+
+- **Reviewer**: codex-cli 0.144.4, standard invocation
+  (`codex exec --ephemeral -s read-only --json --output-schema ... -o ...`)
+- **Reviewed SHA**: `64930ba20c430a443a1b942b2c9524229f81b773` (round-12
+  revision commit)
+- **Base SHA**: `066a2a81d796b92dd68721cfb05bf8356b66c492` (unchanged)
+- **Bound**: 1800 s
+- **Dispatched**: 2026-07-16 (prompt `/tmp/plan2-r13-prompt.md`; verdict ->
+  `/tmp/plan2-r13-review-last.json`; round-12 findings + dispositions
+  quoted; reviewer asked to re-probe the dependency-ordered boundaries,
+  the draft-origin force semantics (MERGE_HEAD reset shape), and the
+  fail-closed re-attestation)
+- **Verdict**: pending
