@@ -299,3 +299,19 @@ Findings and triage:
 4. `PLAN:291` — Complete merge lacked a frontend lifecycle. **ADMITTED, with taxonomic root cause**: the plan's barrier rules keyed on "tree-replacing" and `complete_merge` replaces no files — but it is epoch-bumping and commit-minting. The debounce race (resolve markers in editor, click Complete before `auto_save_seconds`) commits marker-laden disk as the permanent two-parent merge commit, with the real resolution landing as a later ordinary edit (queued save re-tokens via checkout; no lease held → gate inactive). Fix: barrier lifecycle keys on *epoch-bumping operations*; `complete_merge` (and the migration prompt path) enrolled — lease, freeze-before-drain, flush + dispatch under owner handle, reload+rebuild; explicit note that the flush is not blocked by the merge-state refusal (drain goes through `update_document_content`, never `save_revision`); Abort deliberately skips the flush; the confirmation dialog narrows but does not close the race.
 
 Revision folded in: design points (a)–(e) rewritten (restore preflight; backup commit-half-only refusal; TUI self-describing error; complete_merge full lifecycle; recovery-scoped capability; migration prompt lifecycle). Files row updated. Tests: zero-mutation restore preflight, complete-merge lifecycle regression, format-file-conflict recovery regression (fresh command boundary, Abort AND Complete). `.agents/state.md` gains the pre-existing abort-unreachable finding. Round 10 to verify.
+
+## Round 10 dispatch
+
+- **Reviewer**: codex-cli 0.144.4, standard invocation
+  (`codex exec --ephemeral -s read-only --json --output-schema ... -o ...`)
+- **Reviewed SHA**: `1d34cfe7c389d2105a5e6d7ada876b523c508884` (round-9
+  revision commit)
+- **Base SHA**: `066a2a81d796b92dd68721cfb05bf8356b66c492` (unchanged)
+- **Bound**: 1800 s
+- **Dispatched**: 2026-07-16 (prompt `/tmp/plan2-r10-prompt.md`; verdict ->
+  `/tmp/plan2-r10-review-last.json`; round-9 findings + dispositions quoted
+  incl. the backup-push refutation; reviewer asked to probe the recovery
+  capability (forgeable? preserves safe-path checks?), the epoch-bumping
+  re-keying (consistency sweep for leftover "tree-replacing" wording), and
+  the read-only-open fallback implementability)
+- **Verdict**: pending
