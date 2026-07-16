@@ -329,3 +329,19 @@ Findings and triage:
 4. `PLAN:351` — HEAD-copy fallback unreachable through the reader API. **ADMITTED**: `read_project_readonly` → `read_project_impl` unconditionally parses the worktree `project.yaml` (`reader.rs:311`); `reader.rs` was absent from Files. Fix: reader.rs in scope with a read-only entry accepting verified HEAD metadata (root/safe-read checks preserved); recovery test asserts `load_project` succeeds after restart.
 
 Revision folded in: design point (a) TUI sentence corrected (+ Display fix in scope); point (e) gains the capability contract, the merge-attested force path, and the reader-fallback reachability requirement; Files gains `reader.rs` and `tui/app.rs` rows and the capability-contract wording; the recovery regression now covers Abort AND Complete AND Force, `load_project`-after-restart, capability negative tests, and TUI rendering. `.agents/state.md` ranked finding extended (force exit broken today for any conflict). Round 11 to verify.
+
+## Round 11 dispatch
+
+- **Reviewer**: codex-cli 0.144.4, standard invocation
+  (`codex exec --ephemeral -s read-only --json --output-schema ... -o ...`)
+- **Reviewed SHA**: `72326e499738136b533a10f1404e0836f486c06e` (round-10
+  revision commit)
+- **Base SHA**: `066a2a81d796b92dd68721cfb05bf8356b66c492` (unchanged)
+- **Bound**: 1800 s
+- **Dispatched**: 2026-07-16 (prompt `/tmp/plan2-r11-prompt.md`; verdict ->
+  `/tmp/plan2-r11-review-last.json`; round-10 findings + dispositions
+  quoted; reviewer asked to probe the merge-attested force path (stale
+  attestation; pre-merge uncommitted edits), the widened guard-arming
+  surface, the reader HEAD-metadata entry's interaction with hierarchy/
+  safe-path validation, and overall internal consistency after ten rounds)
+- **Verdict**: pending
