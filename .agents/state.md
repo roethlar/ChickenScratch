@@ -61,6 +61,17 @@ decisions; `DEVLOG.md` holds history.
   feature unification never reaches them); all 10 out-of-crate call
   sites rerouted; a self-check test asserts `init_repo` stays
   `pub(crate)`. DEVLOG top entry has the detail.
+- **Owner-level break-it validation is IN FLIGHT, not yet run**
+  (2026-07-17): script at `.agents/break-it-validation.md` — import a
+  copy of the owner's "Corn 2.scriv", then crash/corrupt/strand/delete
+  attacks against the imported project. First driver attempt (Claude
+  Cowork) failed on this machine (`.agents/machines.md`); needs a
+  desktop-automation-capable session or owner-driven run. Any LOST DATA
+  verdict is a hardening bug and jumps the queue.
+- **Phase close-out question posed to the owner, unanswered**
+  (2026-07-17): "close the hardening phase and move to the Tauri
+  reference-app phase?" The owner detoured to hands-on validation
+  first (above) — re-ask after the validation runs.
 - **Ranked unapproved hardening follow-ups** (re-based on `7f85510`):
   first, Scrivener asset import still copies directly into `.chikn`
   outside core and reports failures only to stderr. Also parked:
@@ -101,15 +112,18 @@ decisions; `DEVLOG.md` holds history.
 
 ## Next
 
-1. **Await the owner's direction on the next hardening concern.** The
-   epoch-guard plan, the three owner-directed fixes, the
-   `write_project` hierarchy guard, and the `init_repo` test-support
-   gating are complete (see ## Now); the next
-   ranked follow-up (Scrivener asset-import boundary) remains parked,
-   one concern per later approval. Per `CURRENT_PHASE.md` Step 3, a
-   close-out re-audit of engine mutation entry points is the natural
-   next proposal once the owner weighs in.
-2. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
+1. **Run the break-it validation** (`.agents/break-it-validation.md`)
+   with a driver that can operate the desktop app — Cowork failed; use a
+   desktop-automation-capable session or walk the owner through it.
+   Report the verdict table; any LOST DATA finding becomes the next fix.
+2. **Then re-ask the phase close-out yes/no**: hardening phase done,
+   move to the Tauri reference-app phase? (Posed 2026-07-17, unanswered.)
+   The engine-side close-out evidence is in: mutation entry points
+   re-audited 2026-07-17 (all permit-gated; `init_repo` gated behind
+   `test-support`), parked findings re-verified against tip.
+3. The next ranked follow-up (Scrivener asset-import boundary) remains
+   parked, one concern per later approval.
+4. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
    decision on remote design and the plan's open v1 guided-token question.
 
 ## Verification
