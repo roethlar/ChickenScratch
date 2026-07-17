@@ -148,7 +148,9 @@ decisions; `DEVLOG.md` holds history.
   `REVIEW.md` + `.review/`; its hardening (safe paths, keyring secrets,
   dirty-worktree guards, process limits) is covered by `docs/INVARIANTS.md`
   I5–I6 and the engine tests. The format-lock audit's out-of-scope findings
-  (non-transactional multi-file save, `save_revision` staging quarantine and
-  orphaned temp files, stderr-only quarantine notice, `include_in_compile`
-  case sensitivity, no project-level `fields` map) are recorded in
-  `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md` under "Out of scope".
+  are recorded in `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md` under "Out of
+  scope" — re-verified against tip 2026-07-16: still open are
+  `save_revision` staging quarantine/orphaned temp files, stderr-only
+  SelfHeal repair notices, and no project-level `fields` map; the
+  non-transactional-save and `include_in_compile` case-sensitivity
+  findings are closed there (`d6fa9b5`, `ae6bc01`).
