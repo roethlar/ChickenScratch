@@ -26,6 +26,37 @@ in the same change; never leave a stub, never summarize.
 
 ## Decisions
 
+### 2026-07-16 - Per-commit owner approval removed
+
+Status: Active
+
+Decision:
+Agents commit completed work without asking first. When a single concern is
+implemented and the declared verification for the touched area passes, make
+the commit — do not announce it and wait for a yes. The operative rule lives
+in `.agents/repo-guidance.md` (Earned Practices, "Commit without asking").
+
+Not changed by this decision:
+
+- Pushing still follows `.agents/push-policy.md` (always ask).
+- History rewrites (amend, rebase, squash, force-push, reordering or
+  collapsing existing commits) remain forbidden without explicit owner
+  approval per `AGENTS.md` Git Safety.
+- One concern per branch/commit still applies (`.agents/repo-guidance.md`,
+  Earned Practices).
+- Scope approval is untouched: no code change without an approved plan
+  (`AGENTS.md`), and which hardening concern to work on next is still the
+  owner's call (`.agents/state.md`). This decision governs only the act of
+  committing work that is already in scope and verified.
+
+Reason:
+Explicit owner directive, 2026-07-16. The prior working convention —
+announce each commit and wait for an explicit yes — added a mechanical
+round-trip per commit without adding safety: commits are local, history is
+append-only under Git Safety, and pushing is separately gated. It also cut
+against `docs/HUMAN-GATE.md`, which expects the owner to answer real
+decision questions, not procedural ones.
+
 ### 2026-07-03 - AGENTS.md reconciled to the portable AgentGovernanceBootstrap template
 
 Status: Active
