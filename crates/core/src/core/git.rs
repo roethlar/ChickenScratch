@@ -208,7 +208,13 @@ pub struct FileDiff {
 }
 
 /// Initialize a new git repo at the given path. No-op if already a repo.
-pub fn init_repo(path: &Path) -> Result<Repository, ChiknError> {
+///
+/// Crate-private on purpose: this writes to disk (`git init` plus a
+/// `.gitignore`) without a `WritePermit`, so it is only callable from the
+/// permit-covered creation path (`writer::create_project`) and the benign
+/// open-time verify (`reader::pre_repair_git`). Test fixtures use the
+/// feature-gated `crate::test_support::init_repo` wrapper.
+pub(crate) fn init_repo(path: &Path) -> Result<Repository, ChiknError> {
     if path.join(".git").exists() {
         Repository::open(path)
             .map_err(|e| ChiknError::Unknown(format!("Failed to open git repo: {}", e)))
@@ -1776,6 +1782,33 @@ mod tests {
             .unwrap();
         }
         crate::core::project::fidelity::acquire_write_token(project_path).expect("write token")
+    }
+
+    /// GUARD: `init_repo` writes to disk (`git init` + `.gitignore`) without
+    /// a `WritePermit`, so it must never be part of the crate's public API.
+    /// Out-of-crate misuse is a compile error once the visibility is
+    /// `pub(crate)`; this test pins the declaration so the protection cannot
+    /// be silently reverted. Test fixtures go through the feature-gated
+    /// `test_support::init_repo` wrapper instead.
+    ///
+    /// The needles are assembled with `concat!` so this test's own source
+    /// (captured by `include_str!`) cannot satisfy the match; the
+    /// declaration itself sits at column 0 under rustfmt.
+    #[test]
+    fn init_repo_declaration_stays_crate_private() {
+        let source = include_str!("git.rs");
+        let crate_private = source
+            .lines()
+            .any(|line| line.starts_with(concat!("pub(crate) fn init_", "repo(")));
+        let public = source
+            .lines()
+            .any(|line| line.starts_with(concat!("pub fn init_", "repo(")));
+        assert!(
+            crate_private && !public,
+            "init_repo must stay pub(crate): it mutates disk without a WritePermit \
+             and must not be reachable from outside chickenscratch-core \
+             (crate_private={crate_private}, public={public})"
+        );
     }
 
     fn words(text: &str) -> Vec<String> {

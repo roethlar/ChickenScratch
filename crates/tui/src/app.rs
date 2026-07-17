@@ -1157,6 +1157,7 @@ fn strip_comment_span(html: &str, id: &str) -> String {
 mod tests {
     use super::*;
     use chickenscratch_core::core::project::fidelity::acquire_write_token;
+    use chickenscratch_core::test_support;
     use std::fs;
     use std::path::Path;
 
@@ -1173,7 +1174,7 @@ mod tests {
     fn mid_merge_project(tmp: &tempfile::TempDir) -> PathBuf {
         let root = tmp.path().join("Novel.chikn");
         fs::create_dir_all(root.join("manuscript")).unwrap();
-        git::init_repo(&root).expect("init repo");
+        test_support::init_repo(&root).expect("init repo");
         fs::write(
             root.join("project.yaml"),
             "format_version: '1.2'\nid: prj\nname: Test\ncreated: '2025-01-01T00:00:00Z'\nmodified: '2025-01-01T00:00:00Z'\nhierarchy:\n- type: Document\n  id: doc-one\n  name: One\n  path: manuscript/one.md\n",

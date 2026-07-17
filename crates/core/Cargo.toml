@@ -5,6 +5,11 @@ edition = "2021"
 description = "Core library for ChickenScratch — .chikn format, Scrivener conversion, git integration"
 license = "MIT"
 
+[features]
+# Exposes `test_support` fixture helpers that bypass the WritePermit
+# boundary. For tests only — never enable from application code.
+test-support = []
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -17,6 +22,12 @@ quick-xml = { version = "0.36", features = ["serialize"] }
 regex = "1.10"
 git2 = "0.19"
 tempfile = "3.8"
+
+[dev-dependencies]
+# Self-dependency: enables `test-support` for this crate's own integration
+# tests (tests/ links against the public API, so the fixture wrapper must
+# be visible there). Has no effect on downstream consumers.
+chickenscratch-core = { path = ".", features = ["test-support"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

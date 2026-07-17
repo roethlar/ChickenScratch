@@ -4,6 +4,7 @@ use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::fidelity::{
     acquire_recovery_permit, acquire_write_token, WriteToken,
 };
+use chickenscratch_core::test_support;
 use chickenscratch_core::{ChiknError, GitErrorKind};
 use std::fs;
 use std::path::Path;
@@ -45,7 +46,7 @@ macro_rules! with_permit {
 }
 
 fn init_test_repo(path: &Path) {
-    git::init_repo(path).expect("init repo");
+    test_support::init_repo(path).expect("init repo");
     write_manifest(path);
     fs::create_dir_all(path.join("manuscript")).unwrap();
     fs::write(path.join("manuscript/one.md"), "# Chapter 1\n\nHello.\n").unwrap();
@@ -117,7 +118,7 @@ fn restore_document_rejects_dirty_worktree_without_clobbering_file() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("Novel.chikn");
     fs::create_dir_all(&project).unwrap();
-    git::init_repo(&project).expect("init repo");
+    test_support::init_repo(&project).expect("init repo");
 
     let manuscript = project.join("manuscript/one.md");
     fs::create_dir_all(manuscript.parent().unwrap()).unwrap();
@@ -155,7 +156,7 @@ fn restore_document_rejects_symlink_document_without_touching_outside_file() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("Novel.chikn");
     fs::create_dir_all(&project).unwrap();
-    git::init_repo(&project).expect("init repo");
+    test_support::init_repo(&project).expect("init repo");
 
     let manuscript = project.join("manuscript/one.md");
     fs::create_dir_all(manuscript.parent().unwrap()).unwrap();
@@ -193,7 +194,7 @@ fn restore_document_rejects_symlink_meta_without_touching_outside_file() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("Novel.chikn");
     fs::create_dir_all(&project).unwrap();
-    git::init_repo(&project).expect("init repo");
+    test_support::init_repo(&project).expect("init repo");
 
     let manuscript = project.join("manuscript/one.md");
     let meta = project.join("manuscript/one.meta");
@@ -234,7 +235,7 @@ fn restore_revision_rejects_dirty_worktree_without_clobbering_file() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("Novel.chikn");
     fs::create_dir_all(&project).unwrap();
-    git::init_repo(&project).expect("init repo");
+    test_support::init_repo(&project).expect("init repo");
 
     let manuscript = project.join("manuscript/one.md");
     fs::create_dir_all(manuscript.parent().unwrap()).unwrap();
@@ -269,7 +270,7 @@ fn restore_revision_clean_worktree_restores_and_commits_forward() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("Novel.chikn");
     fs::create_dir_all(&project).unwrap();
-    git::init_repo(&project).expect("init repo");
+    test_support::init_repo(&project).expect("init repo");
 
     let manuscript = project.join("manuscript/one.md");
     fs::create_dir_all(manuscript.parent().unwrap()).unwrap();
@@ -460,7 +461,7 @@ fn push_without_commits_returns_no_commits_git_error() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("Novel.chikn");
     fs::create_dir_all(&project).unwrap();
-    git::init_repo(&project).expect("init repo");
+    test_support::init_repo(&project).expect("init repo");
     write_empty_manifest(&project);
 
     let remote = tmp.path().join("remote.git");
