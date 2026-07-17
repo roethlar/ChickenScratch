@@ -6,6 +6,26 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-07-16 — init_repo gated behind test-support feature
+
+**Change:** `7f85510` — `init_repo` was the one unguarded write path in
+`core::git`: it exists so tests can build fixtures without a permit, but it
+was exported `pub`, so application code could call it too. It is now
+`pub(crate)`, re-exported through a `test_support` module gated on a new
+`test-support` cargo feature. `crates/core` enables the feature for its own
+integration tests via a self dev-dependency; `crates/tui` and `src-tauri`
+re-declare the dev-dependency with the feature so it is on for test targets
+only — feature unification never reaches release builds, since dev-deps are
+ignored there. All 10 out-of-crate call sites rerouted to
+`test_support::init_repo`; a self-check test in `git.rs` asserts `init_repo`
+stays `pub(crate)`. Closes the "public `init_repo`" item from the ranked
+follow-up list.
+
+**Verification:** At `7f85510` (on top of the master merge `f49d57d`):
+`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
+`cargo test --workspace --all-targets` — all green (Rust portion of the
+declared suite; ui/release-metadata portions untouched by this work).
+
 ## 2026-07-16 — write_project hierarchy guard; per-commit approval removed
 
 **Change:** `6b4b4ac` — `write_project` now validates every `.md` document

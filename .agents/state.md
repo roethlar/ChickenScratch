@@ -53,12 +53,19 @@ decisions; `DEVLOG.md` holds history.
   single-concern work without announcing and waiting. Push gating
   (`.agents/push-policy.md`), Git Safety append-only history, and scope
   approval are all unchanged.
-- **Ranked unapproved hardening follow-ups** (re-based on `6b4b4ac`):
+- **`init_repo` gated behind `test-support`** 2026-07-16 (`7f85510`):
+  the one unguarded write path in `core::git` is now `pub(crate)`,
+  re-exported only through a `test_support` module behind a new
+  `test-support` cargo feature. Dev-dependency re-declarations turn it
+  on for test targets only (dev-deps are ignored by release builds, so
+  feature unification never reaches them); all 10 out-of-crate call
+  sites rerouted; a self-check test asserts `init_repo` stays
+  `pub(crate)`. DEVLOG top entry has the detail.
+- **Ranked unapproved hardening follow-ups** (re-based on `7f85510`):
   first, Scrivener asset import still copies directly into `.chikn`
-  outside core and reports failures only to stderr. Also parked: public
-  `init_repo` (still `pub` — the open-time verify above did not change
-  API visibility) and revision staging of recovery artifacts. None is
-  approved for implementation yet.
+  outside core and reports failures only to stderr. Also parked:
+  revision staging of recovery artifacts. Neither is approved for
+  implementation yet.
 - **Coherence is complete.** The owner confirmed on 2026-07-12 that completion
   had already been declared but not saved. Format lock, Tauri alignment,
   deprecation cleanup, and goals G1–G6 are recorded as completed in
@@ -95,8 +102,9 @@ decisions; `DEVLOG.md` holds history.
 ## Next
 
 1. **Await the owner's direction on the next hardening concern.** The
-   epoch-guard plan, the three owner-directed fixes, and the
-   `write_project` hierarchy guard are complete (see ## Now); the next
+   epoch-guard plan, the three owner-directed fixes, the
+   `write_project` hierarchy guard, and the `init_repo` test-support
+   gating are complete (see ## Now); the next
    ranked follow-up (Scrivener asset-import boundary) remains parked,
    one concern per later approval. Per `CURRENT_PHASE.md` Step 3, a
    close-out re-audit of engine mutation entry points is the natural
@@ -118,6 +126,11 @@ decisions; `DEVLOG.md` holds history.
   suites green across all four crates. Rust portion of the declared
   suite only — the ui/release-metadata portions were untouched by this
   work and last ran green at `d6fa9b5`.
+- 2026-07-16 at `7f85510` (`init_repo` test-support gating, on top of
+  the master merge `f49d57d`): `cargo fmt --check`, `cargo clippy
+  --all-targets -- -D warnings`, and `cargo test --workspace
+  --all-targets` green. Rust portion of the declared suite only, as
+  above.
 - Prior green at `354fbc0` included the slice-4 red/green guard drills
   (per finding and per protection; DEVLOG epoch-guard entry).
 - Remote CI green as of `c6993a9` (2026-07-16): GitHub Validation (6m07s)
