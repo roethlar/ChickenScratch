@@ -749,7 +749,7 @@ fn count_hierarchy_docs(hierarchy: &[TreeNode]) -> usize {
 }
 
 /// Collects all document paths referenced in the hierarchy.
-fn collect_hierarchy_paths(hierarchy: &[TreeNode]) -> std::collections::HashSet<String> {
+pub(crate) fn collect_hierarchy_paths(hierarchy: &[TreeNode]) -> std::collections::HashSet<String> {
     let mut paths = std::collections::HashSet::new();
     collect_paths_inner(hierarchy, &mut paths);
     paths

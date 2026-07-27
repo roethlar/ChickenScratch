@@ -6,6 +6,32 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-07-16 — write_project hierarchy guard; per-commit approval removed
+
+**Change:** `6b4b4ac` — `write_project` now validates every `.md` document
+target against the project hierarchy before writing anything. An in-memory
+document omitted from the hierarchy fails fast with
+`ChiknError::InvalidFormat` instead of returning success and leaving the
+project immediately Degraded (orphan the reader would have had to
+reconcile). Entities under `characters/` and `locations/` live outside the
+hierarchy by design and remain exempt. The guard compares normalized
+(canonicalized) paths — the reader's `collect_hierarchy_paths` is now
+`pub(crate)` and reused rather than duplicated — so spelling variants
+cannot slip past; guard tests cover the rejection, the entity exemption,
+and the variant-spelling case. Closes the first ranked follow-up from the
+`d6fa9b5` list; Scrivener asset-import boundary is now the top parked item.
+
+**Governance:** `b043585` — owner directive removed the per-commit approval
+gate: verified single-concern work is committed without announcing and
+waiting. Decision recorded in `.agents/decisions.md` (2026-07-16), operative
+rule in `.agents/repo-guidance.md` Earned Practices. Push gating, Git Safety
+append-only history, one-concern-per-commit, and scope approval unchanged.
+
+**Verification:** At `6b4b4ac`: `cargo fmt --check`, `cargo clippy
+--all-targets -- -D warnings`, and full test suites green across all four
+crates (Rust portion of the declared suite; ui/release-metadata portions
+untouched by this work, last green at `d6fa9b5`).
+
 ## 2026-07-16 — Three owner-directed hardening fixes (parse canonicalization, git self-heal on open, crash-ordered saves)
 
 **Change:** Landed the three fixes the owner directed this session, one

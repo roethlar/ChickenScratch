@@ -33,10 +33,12 @@ use std::path::{Component, Path, PathBuf};
 
 use super::fidelity::WritePermit;
 use super::format::{
-    get_document_meta_path, get_project_file_path, get_threads_path, FORMAT_VERSION,
-    REQUIRED_FOLDERS,
+    get_document_meta_path, get_project_file_path, get_threads_path, CHARACTERS_FOLDER,
+    FORMAT_VERSION, LOCATIONS_FOLDER, REQUIRED_FOLDERS,
 };
-use super::reader::{lift_legacy_novelist_keys, DocumentMetadata, ProjectMetadata};
+use super::reader::{
+    collect_hierarchy_paths, lift_legacy_novelist_keys, DocumentMetadata, ProjectMetadata,
+};
 use super::safe_path;
 use crate::models::{Project, TreeNode};
 use crate::utils::error::ChiknError;
@@ -294,6 +296,13 @@ fn validate_all_document_targets(project: &Project) -> Result<(), ChiknError> {
     let project_root = canonical_project_root(project_path)?;
     let mut document_ids = HashSet::new();
     let mut document_paths = HashSet::new();
+    // Orphan guard: every non-entity document must be reachable from the
+    // hierarchy, or the fidelity probe will flag the saved project as
+    // Degraded (OrphanDocument) on the next open. Entities under
+    // characters/ and locations/ are hierarchy-exempt by design — keep
+    // this exemption in lockstep with the probe and the reader's repair
+    // pass.
+    let hierarchy_paths = collect_hierarchy_paths(&project.hierarchy);
 
     for (map_id, document) in &project.documents {
         if map_id != &document.id {
@@ -310,6 +319,29 @@ fn validate_all_document_targets(project: &Project) -> Result<(), ChiknError> {
         }
         validate_relative_document_path(&document.path)?;
         let normalized_path = normalized_relative_document_path(&document.path)?;
+        let is_entity = normalized_path.starts_with(&format!("{CHARACTERS_FOLDER}/"))
+            || normalized_path.starts_with(&format!("{LOCATIONS_FOLDER}/"));
+        // Non-.md documents (imported PDFs, images, audio) are exempt from
+        // the hierarchy check: the probe's orphan walk skips every non-.md
+        // file outright, so a hierarchy-omitted asset can never degrade the
+        // project on next open. Keep this in lockstep with the probe.
+        let is_md = Path::new(&normalized_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case(super::format::DOCUMENT_EXTENSION))
+            .unwrap_or(false);
+        // Compare the NORMALIZED path: the content file lands on disk at
+        // the collapsed spelling, and that is what the probe walks and
+        // matches against raw hierarchy strings. A spelling variant that
+        // only matches raw-to-raw would pass here yet still degrade on
+        // the next open.
+        if is_md && !is_entity && !hierarchy_paths.contains(&normalized_path) {
+            return Err(ChiknError::InvalidFormat(format!(
+                "Document not referenced by hierarchy: {} ({}) — saving it would \
+                 orphan the content file and degrade the project on next open",
+                document.path, document.id
+            )));
+        }
         if !document_paths.insert(normalized_path) {
             return Err(ChiknError::InvalidFormat(format!(
                 "Duplicate document path: {}",
@@ -1061,6 +1093,13 @@ mod tests {
             ..Default::default()
         };
 
+        // Cover the shared path in the hierarchy so the orphan guard
+        // passes and the duplicate-path check is what fires.
+        project.hierarchy.push(TreeNode::Document {
+            id: first.id.clone(),
+            name: first.name.clone(),
+            path: first.path.clone(),
+        });
         project.documents.insert(first.id.clone(), first);
         project.documents.insert(second.id.clone(), second);
 
@@ -1071,6 +1110,133 @@ mod tests {
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert_eq!(fs::read_to_string(content_path).unwrap(), "original");
+    }
+
+    /// A document present in `project.documents` but absent from the
+    /// hierarchy must fail the save BEFORE anything touches disk.
+    /// Writing it "successfully" plants an orphan content file that the
+    /// fidelity probe flags on the next open, silently degrading the
+    /// project to read-only.
+    #[test]
+    fn test_write_project_rejects_document_missing_from_hierarchy() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("OrphanGuardProject.chikn");
+        let mut project = create_project(&project_path, "Orphan Guard").unwrap();
+        let token = test_token(&project_path);
+        let manifest_path = get_project_file_path(&project_path);
+        let manifest_before = fs::read_to_string(&manifest_path).unwrap();
+
+        let doc = Document {
+            id: "doc1".to_string(),
+            name: "chapter-01".to_string(),
+            path: "manuscript/chapter-01.md".to_string(),
+            content: "# Chapter 1".to_string(),
+            parent_id: None,
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        project.documents.insert(doc.id.clone(), doc);
+        // Deliberately NO hierarchy node for doc1.
+
+        let result = write_test_project(&mut project, &token);
+        assert!(
+            matches!(result, Err(ChiknError::InvalidFormat(_))),
+            "hierarchy-omitted document must fail the save, got {result:?}"
+        );
+
+        // Nothing may have touched disk: no orphan content file, the
+        // manifest byte-identical, and the project still probes Full.
+        assert!(!get_manuscript_path(&project_path)
+            .join("chapter-01.md")
+            .exists());
+        assert_eq!(
+            manifest_before,
+            fs::read_to_string(&manifest_path).unwrap(),
+            "rejected save must not touch project.yaml"
+        );
+        let fidelity =
+            crate::core::project::fidelity::probe_project_fidelity(&project_path).unwrap();
+        assert!(
+            matches!(fidelity, crate::core::project::fidelity::Fidelity::Full),
+            "rejected save must leave the project Full, got {fidelity:?}"
+        );
+    }
+
+    /// Entities under `characters/` and `locations/` live outside the
+    /// hierarchy by design — UIs surface them straight from
+    /// `project.documents`. The orphan guard must exempt them exactly
+    /// like the fidelity probe and the reader's repair pass do.
+    #[test]
+    fn test_write_project_allows_entities_outside_hierarchy() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("EntityGuardProject.chikn");
+        let mut project = create_project(&project_path, "Entity Guard").unwrap();
+        let token = test_token(&project_path);
+
+        let entity = Document {
+            id: "char1".to_string(),
+            name: "alice".to_string(),
+            path: "characters/alice.md".to_string(),
+            content: "# Alice".to_string(),
+            parent_id: None,
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        project.documents.insert(entity.id.clone(), entity);
+        // No hierarchy node on purpose: entities are hierarchy-exempt.
+
+        write_test_project(&mut project, &token).unwrap();
+        assert!(project_path.join("characters/alice.md").exists());
+        let fidelity =
+            crate::core::project::fidelity::probe_project_fidelity(&project_path).unwrap();
+        assert!(
+            matches!(fidelity, crate::core::project::fidelity::Fidelity::Full),
+            "entity outside hierarchy must save cleanly, got {fidelity:?}"
+        );
+    }
+
+    /// The probe walks the disk and sees the COLLAPSED spelling of a
+    /// document path. A non-canonical spelling (duplicate separator)
+    /// mirrored in both `project.documents` and the hierarchy passes a
+    /// raw string comparison, yet the file lands at the collapsed path
+    /// and the probe degrades the project on next open. The guard must
+    /// therefore match on the normalized spelling.
+    #[test]
+    fn test_write_project_rejects_hierarchy_path_spelling_variant() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("SpellingVariant.chikn");
+        let mut project = create_project(&project_path, "Spelling Variant").unwrap();
+        let token = test_token(&project_path);
+
+        let doc = Document {
+            id: "doc1".to_string(),
+            name: "chapter-01".to_string(),
+            path: "manuscript//chapter-01.md".to_string(),
+            content: "# Chapter 1".to_string(),
+            parent_id: None,
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        // Hierarchy mirrors the SAME non-canonical spelling: raw
+        // comparison passes, but the probe would still degrade.
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
+        project.documents.insert(doc.id.clone(), doc);
+
+        let result = write_test_project(&mut project, &token);
+        assert!(
+            matches!(result, Err(ChiknError::InvalidFormat(_))),
+            "spelling-variant document must fail the save, got {result:?}"
+        );
+        assert!(!get_manuscript_path(&project_path)
+            .join("chapter-01.md")
+            .exists());
     }
 
     #[test]
@@ -1691,6 +1857,11 @@ mod tests {
         };
 
         let content_path = get_manuscript_path(&project_path).join("to-delete.md");
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
         project.documents.insert(doc.id.clone(), doc.clone());
         token
             .with_write_permit(&project_path, |permit| {
@@ -1748,6 +1919,11 @@ mod tests {
             ..Default::default()
         };
 
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
         project.documents.insert(doc.id.clone(), doc.clone());
         write_test_project(&mut project, &token).unwrap();
 
@@ -1790,6 +1966,11 @@ mod tests {
             ..Default::default()
         };
 
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
         project.documents.insert(doc.id.clone(), doc);
         write_test_project(&mut project, &token).unwrap();
 
@@ -1871,6 +2052,11 @@ mod tests {
             ..Default::default()
         };
 
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
         project.documents.insert(doc.id.clone(), doc);
         write_test_project(&mut project, &token).unwrap();
 
@@ -1901,6 +2087,11 @@ mod tests {
             ..Default::default()
         };
 
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
         project.documents.insert(doc.id.clone(), doc);
         let result = token.with_write_permit(&project_path, |permit| {
             unix_fs::symlink(&outside_path, project_path.join("manuscript/link")).unwrap();
@@ -1935,6 +2126,11 @@ mod tests {
             ..Default::default()
         };
 
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
         project.documents.insert(doc.id.clone(), doc);
         let result = token.with_write_permit(&project_path, |permit| {
             unix_fs::symlink(&outside_file, project_path.join("manuscript/linked.md")).unwrap();
@@ -2019,6 +2215,11 @@ mod tests {
             .join("manuscript")
             .join("part-one")
             .join("chapter.md");
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
         project.documents.insert(doc.id.clone(), doc.clone());
         token
             .with_write_permit(&project_path, |permit| {
@@ -2077,6 +2278,11 @@ mod tests {
             modified: frozen.clone(),
             ..Default::default()
         };
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
         project.documents.insert(doc.id.clone(), doc);
         write_test_project(&mut project, &token).unwrap();
 
@@ -2179,6 +2385,11 @@ mod tests {
             modified: Utc::now().to_rfc3339(),
             ..Default::default()
         };
+        project.hierarchy.push(TreeNode::Document {
+            id: doc.id.clone(),
+            name: doc.name.clone(),
+            path: doc.path.clone(),
+        });
         project.documents.insert(doc.id.clone(), doc);
         token
             .with_write_permit(&project_path, |permit| {

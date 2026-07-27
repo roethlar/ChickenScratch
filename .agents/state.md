@@ -39,10 +39,22 @@ decisions; `DEVLOG.md` holds history.
   case-sensitive `include_in_compile` and non-transactional multi-file
   save findings parked in `PLAN_FORMAT_LOCK_ENGINE.md` — DEVLOG top
   entry has the guard-test detail.
-- **Ranked unapproved hardening follow-ups** (re-based on `d6fa9b5`):
-  first, `write_project` can return success for an in-memory document
-  omitted from the hierarchy and leave the project immediately Degraded;
-  second, Scrivener asset import still copies directly into `.chikn`
+- **`write_project` hierarchy guard shipped** 2026-07-16 (`6b4b4ac`):
+  `write_project` now validates every `.md` document target against the
+  hierarchy before writing anything and fails fast with `InvalidFormat`
+  on an omitted document, instead of silently writing an orphan the
+  reader would degrade. Entities under `characters/` and `locations/`
+  remain hierarchy-exempt by design; the guard matches on normalized
+  spellings so variants cannot slip past. This closes the first ranked
+  follow-up from the `d6fa9b5` list.
+- **Per-commit owner approval removed** by owner directive 2026-07-16
+  (`b043585`; decision in `.agents/decisions.md`, operative rule in
+  `.agents/repo-guidance.md` Earned Practices): agents commit verified
+  single-concern work without announcing and waiting. Push gating
+  (`.agents/push-policy.md`), Git Safety append-only history, and scope
+  approval are all unchanged.
+- **Ranked unapproved hardening follow-ups** (re-based on `6b4b4ac`):
+  first, Scrivener asset import still copies directly into `.chikn`
   outside core and reports failures only to stderr. Also parked: public
   `init_repo` (still `pub` — the open-time verify above did not change
   API visibility) and revision staging of recovery artifacts. None is
@@ -83,11 +95,11 @@ decisions; `DEVLOG.md` holds history.
 ## Next
 
 1. **Await the owner's direction on the next hardening concern.** The
-   epoch-guard plan and the three owner-directed fixes are complete
-   (see ## Now); the next ranked follow-ups
-   (writer end-state coherence, Scrivener asset-import boundary) remain
-   parked, one concern per later approval. Per `CURRENT_PHASE.md` Step 3,
-   a close-out re-audit of engine mutation entry points is the natural
+   epoch-guard plan, the three owner-directed fixes, and the
+   `write_project` hierarchy guard are complete (see ## Now); the next
+   ranked follow-up (Scrivener asset-import boundary) remains parked,
+   one concern per later approval. Per `CURRENT_PHASE.md` Step 3, a
+   close-out re-audit of engine mutation entry points is the natural
    next proposal once the owner weighs in.
 2. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
    decision on remote design and the plan's open v1 guided-token question.
@@ -101,6 +113,11 @@ decisions; `DEVLOG.md` holds history.
   the three new commits was additionally verified in isolation via
   `git rebase --exec` (core lib check + lib tests per commit), so every
   intermediate commit builds and passes.
+- 2026-07-16 at `6b4b4ac` (write_project hierarchy guard): `cargo fmt
+  --check`, `cargo clippy --all-targets -- -D warnings`, and full test
+  suites green across all four crates. Rust portion of the declared
+  suite only — the ui/release-metadata portions were untouched by this
+  work and last ran green at `d6fa9b5`.
 - Prior green at `354fbc0` included the slice-4 red/green guard drills
   (per finding and per protection; DEVLOG epoch-guard entry).
 - Remote CI green as of `c6993a9` (2026-07-16): GitHub Validation (6m07s)
