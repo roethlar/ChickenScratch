@@ -25,6 +25,7 @@ use chickenscratch_core::core::project::fidelity::{
     acquire_recovery_permit, acquire_write_token, probe_project_fidelity, Fidelity, WriteToken,
 };
 use chickenscratch_core::core::project::reader::{read_project, read_project_recovery};
+use chickenscratch_core::test_support;
 use chickenscratch_core::ChiknError;
 use std::collections::BTreeMap;
 use std::fs;
@@ -61,7 +62,7 @@ macro_rules! with_permit {
 fn init_project(tmp: &TempDir) -> PathBuf {
     let root = tmp.path().join("Novel.chikn");
     fs::create_dir_all(root.join("manuscript")).unwrap();
-    git::init_repo(&root).expect("init repo");
+    test_support::init_repo(&root).expect("init repo");
     write_manifest(&root, "Test");
     fs::write(
         root.join("manuscript/one.meta"),
@@ -512,7 +513,7 @@ fn recovery_authority_is_root_bound() {
     let root_a = init_project(&tmp);
     let root_b = tmp.path().join("Other.chikn");
     fs::create_dir_all(root_b.join("manuscript")).unwrap();
-    git::init_repo(&root_b).unwrap();
+    test_support::init_repo(&root_b).unwrap();
     write_manifest(&root_b, "Other");
     fs::write(root_b.join("manuscript/one.md"), BASE_DOC).unwrap();
     fs::write(

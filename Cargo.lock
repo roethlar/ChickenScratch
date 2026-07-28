@@ -643,6 +643,7 @@ name = "chickenscratch-core"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "chickenscratch-core",
  "chrono",
  "git2",
  "libc",

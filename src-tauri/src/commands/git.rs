@@ -472,6 +472,7 @@ mod tests {
     use super::{complete_merge_inner, force_resolve_merge_inner, sync_abort_pull_inner};
     use chickenscratch_core::core::git;
     use chickenscratch_core::core::project::fidelity::acquire_write_token;
+    use chickenscratch_core::test_support;
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -498,7 +499,7 @@ mod tests {
     fn conflicted_yaml_project(tmp: &tempfile::TempDir) -> PathBuf {
         let root = tmp.path().join("Novel.chikn");
         fs::create_dir_all(root.join("manuscript")).unwrap();
-        git::init_repo(&root).unwrap();
+        test_support::init_repo(&root).unwrap();
         write_manifest(&root, "Test");
         fs::write(
             root.join("manuscript/one.meta"),

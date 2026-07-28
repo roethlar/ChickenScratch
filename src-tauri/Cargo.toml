@@ -31,6 +31,9 @@ keyring = { version = "3.6.3", features = [
 ] }
 
 [dev-dependencies]
+# Re-declare core with the test-only fixture surface (feature unification
+# turns it on for this crate's tests without touching release builds).
+chickenscratch-core = { path = "../crates/core", features = ["test-support"] }
 tempfile = "3.27.0"
 # Same version as chickenscratch-core: the command-boundary tests inspect
 # repository state (MERGE_HEAD, merge-commit parents) directly.
