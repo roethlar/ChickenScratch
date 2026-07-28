@@ -130,7 +130,11 @@ decisions; `DEVLOG.md` holds history.
 
 - Declared suite: `.agents/repo-guidance.md` Verification section (canonical
   command set; do not copy a second enumeration here).
-- Last run green locally 2026-07-16 at code tip `d6fa9b5` (rustc 1.97.0,
+- 2026-07-27 at merge `260c744` (worktree branch `init_repo` gating merged
+  into master; worktree and branch removed after content-landed proof):
+  the full declared suite green locally — fmt, clippy, all Rust tests,
+  release metadata, and the ui lint/build/test portion.
+- Last full-suite green before that: 2026-07-16 at code tip `d6fa9b5` (rustc 1.97.0,
   current stable — no CI-version gap): the exact declared suite. Each of
   the three new commits was additionally verified in isolation via
   `git rebase --exec` (core lib check + lib tests per commit), so every
