@@ -20,7 +20,7 @@ decisions; `DEVLOG.md` holds history.
 - **Tree-replacement epoch guard plan is COMPLETE** — all four slices
   landed 2026-07-16 (`cd6afdd`, `db8095a`, `977095b`, `354fbc0`); DEVLOG
   top entry has the slice-by-slice detail, the codex review trail
-  (`.agents/review/findings/s4-1..4.md`, all accepted), and the guard
+  (`.agents/review/findings/s4-1..4.md`, all accepted <!-- lint: allow (range notation for s4-1.md through s4-4.md) -->), and the guard
   proofs. The two live bugs previously ranked here — the conflict
   dialog's unreachable Abort after a format-file conflict and its
   never-working Force exit — are **fixed** by slice 4's recovery
@@ -43,7 +43,7 @@ decisions; `DEVLOG.md` holds history.
   `write_project` now validates every `.md` document target against the
   hierarchy before writing anything and fails fast with `InvalidFormat`
   on an omitted document, instead of silently writing an orphan the
-  reader would degrade. Entities under `characters/` and `locations/`
+  reader would degrade. Entities under `characters/` and `locations/` <!-- lint: allow (user project folder structure paths) -->
   remain hierarchy-exempt by design; the guard matches on normalized
   spellings so variants cannot slip past. This closes the first ranked
   follow-up from the `d6fa9b5` list.

@@ -30,8 +30,7 @@ Ground rules for whoever drives it (agent or owner):
 7. CORRUPT A FILE: overwrite one `.meta` with garbage; reopen. Expect:
    READ-ONLY open with plain-English warning naming the file; garbage file
    byte-identical afterward. Restore contents; project writable again.
-8. STRANDED FILE: drop `manuscript/stray.md`; reopen. Expect: read-only
-   warning or safe adoption — record which; nothing else changes. Remove it.
+8. STRANDED FILE: drop `manuscript/stray.md`; reopen. Expect: read-only warning or safe adoption — record which; nothing else changes. Remove it. <!-- lint: allow (hypothetical path in manual validation script) -->
 9. DELETE HISTORY: delete the project's `.git`; reopen. Expect: repo quietly
    rebuilt (open-time self-heal), project writable, new Save Revision works.
 10. RESTORE: one more edit + revision, then restore the previous revision.
