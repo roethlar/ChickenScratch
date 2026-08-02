@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { mutatingInvoke } from "./gateway";
 import type { Project, Thread } from "../types";
 
 export async function listThreads(projectPath: string): Promise<Thread[]> {
@@ -11,7 +12,7 @@ export async function createThread(
   color?: string,
   description?: string
 ): Promise<Project> {
-  return invoke("create_thread", {
+  return mutatingInvoke("create_thread", {
     projectPath,
     name,
     color: color ?? null,
@@ -24,7 +25,7 @@ export async function updateThread(
   id: string,
   fields: { name?: string; color?: string | null; description?: string | null }
 ): Promise<Project> {
-  return invoke("update_thread", {
+  return mutatingInvoke("update_thread", {
     projectPath,
     id,
     name: fields.name ?? null,
@@ -37,7 +38,7 @@ export async function deleteThread(
   projectPath: string,
   id: string
 ): Promise<Project> {
-  return invoke("delete_thread", { projectPath, id });
+  return mutatingInvoke("delete_thread", { projectPath, id });
 }
 
 export interface DanglingRef {

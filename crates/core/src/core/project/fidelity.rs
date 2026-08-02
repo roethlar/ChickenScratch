@@ -3,7 +3,7 @@
 //! The write-guard: the engine must never save over a project it cannot
 //! fully read (INVARIANTS.md I5/I6, PLAN_TRUST_FOUNDATIONS.md Slice 1).
 //!
-//! Two pieces:
+//! Three pieces:
 //!
 //! 1. [`probe_project_fidelity`] — a side-effect-free preflight that
 //!    classifies a project as [`Fidelity::Full`] (safe to write) or
@@ -11,12 +11,12 @@
 //!    resolve, or that load-time self-heal would mutate in a
 //!    content-threatening way). The probe performs no folder creation, no
 //!    sidecar quarantine renames, no writes of any kind.
-//! 2. [`WriteToken`] — a non-`Clone`, engine-issued capability required by
-//!    every mutating engine API. Tokens are bound to a canonical project
-//!    root (a token for project A can never authorize writes into project
-//!    B) and stamped with a per-project write epoch (operations that
-//!    replace working-tree content bump the epoch, so tokens issued before
-//!    the replacement are refused until the project is re-probed).
+//! 2. [`WriteToken`] — a non-`Clone`, engine-issued session capability bound
+//!    to a canonical project root and stamped with a write epoch.
+//! 3. [`WritePermit`] — a short-lived operation capability issued only after
+//!    a cached token re-probes current fidelity. Mutating APIs require the
+//!    permit, so an externally degraded project cannot reuse yesterday's
+//!    `Full` classification.
 //!
 //! A token is only issued when the probe returns `Full`. A freshly created
 //! project probes `Full` by construction, so the project-creation path
@@ -78,8 +78,8 @@ pub enum DegradedReason {
     /// is missing, unreadable, outside the folders the engine reads, or
     /// has bytes that yield no content.
     UnresolvedDocument { path: String, detail: String },
-    /// A document sidecar (`.meta`) exists but cannot be parsed. A normal
-    /// load would quarantine-rename it on disk.
+    /// A document sidecar (`.meta`) exists but cannot be parsed. It remains
+    /// untouched on disk and the project can only be read side-effect-free.
     CorruptSidecar { path: String },
     /// A document file exists on disk but is not referenced by the
     /// hierarchy. A normal load would adopt it and the next save would
@@ -160,9 +160,11 @@ pub(crate) fn bump_write_epoch(canonical_root: &Path) {
 
 // ── WriteToken ───────────────────────────────────────────────────────────────
 
-/// Engine-issued write capability. Non-`Clone` and non-constructible
+/// Engine-issued session capability. Non-`Clone` and non-constructible
 /// outside the engine: the only way to obtain one is
-/// [`acquire_write_token`], which probes fidelity first.
+/// [`acquire_write_token`], which probes fidelity first. A token cannot
+/// directly authorize a mutation; callers must open a fresh
+/// [`WritePermit`] for each logical operation.
 #[derive(Debug)]
 pub struct WriteToken {
     /// Canonical (symlink-resolved) project root this token authorizes.
@@ -183,8 +185,34 @@ impl WriteToken {
         current_epoch(&self.root) != self.epoch
     }
 
-    /// Refuse unless the token is still current for its own root.
-    pub(crate) fn ensure_fresh(&self) -> Result<(), ChiknError> {
+    /// Run one logical write operation after re-checking current fidelity.
+    ///
+    /// The permit is scoped to the closure so application code cannot cache
+    /// it as session state. Nested steps reuse the same permit and perform
+    /// cheap root/epoch checks rather than re-probing an intentionally
+    /// intermediate tree (for example halfway through folder deletion).
+    pub fn with_write_permit<T>(
+        &self,
+        project_path: &Path,
+        operation: impl FnOnce(&WritePermit<'_>) -> Result<T, ChiknError>,
+    ) -> Result<T, ChiknError> {
+        self.ensure_valid_root(project_path)?;
+        self.ensure_epoch_fresh()?;
+
+        match probe_project_fidelity(&self.root)? {
+            Fidelity::Full => {}
+            Fidelity::Degraded { reasons } => {
+                return Err(ChiknError::ReadOnly(describe_reasons(&reasons)));
+            }
+        }
+
+        // Catch an in-process tree replacement that raced the probe.
+        self.ensure_epoch_fresh()?;
+        let permit = WritePermit { token: self };
+        operation(&permit)
+    }
+
+    fn ensure_epoch_fresh(&self) -> Result<(), ChiknError> {
         if self.is_stale() {
             return Err(ChiknError::ReadOnly(format!(
                 "the project at {} changed on disk after this session started; reopen it to continue",
@@ -194,10 +222,7 @@ impl WriteToken {
         Ok(())
     }
 
-    /// Refuse unless `project_path` resolves to exactly this token's root
-    /// and the token is still current. Every mutating engine API calls
-    /// this before touching disk.
-    pub(crate) fn ensure_valid_for(&self, project_path: &Path) -> Result<(), ChiknError> {
+    fn ensure_valid_root(&self, project_path: &Path) -> Result<(), ChiknError> {
         let canonical = project_path.canonicalize().map_err(|e| {
             ChiknError::ReadOnly(format!(
                 "cannot resolve project path {}: {e}",
@@ -211,13 +236,260 @@ impl WriteToken {
                 canonical.display()
             )));
         }
+        Ok(())
+    }
+}
+
+/// Fresh, operation-scoped write authority.
+///
+/// Only [`WriteToken::with_write_permit`] can construct this type. Mutating
+/// engine APIs accept a permit rather than a session token, which makes a
+/// current fidelity check a structural precondition of every logical write.
+#[derive(Debug)]
+pub struct WritePermit<'token> {
+    token: &'token WriteToken,
+}
+
+impl WritePermit<'_> {
+    /// Canonical project root authorized for this operation.
+    pub fn root(&self) -> &Path {
+        self.token.root()
+    }
+
+    /// Refuse unless the operation still targets its authorized root and no
+    /// in-process tree replacement has invalidated the underlying token.
+    pub(crate) fn ensure_valid_for(&self, project_path: &Path) -> Result<(), ChiknError> {
+        self.token.ensure_valid_root(project_path)?;
         self.ensure_fresh()
     }
 
-    /// Mark the token's project as tree-replaced: bumps the epoch, which
-    /// invalidates every outstanding token (including this one).
-    pub(crate) fn bump_epoch(&self) {
+    /// Cheap nested-step check. Fidelity was probed once when the operation
+    /// permit was issued; repeating it here would reject valid intermediate
+    /// states inside composite mutations.
+    pub(crate) fn ensure_fresh(&self) -> Result<(), ChiknError> {
+        self.token.ensure_epoch_fresh()
+    }
+
+    /// Re-probe at a deliberate sub-boundary that has not changed project
+    /// content (for example after a network fetch, before a merge).
+    pub(crate) fn revalidate_fidelity(&self) -> Result<(), ChiknError> {
+        self.ensure_fresh()?;
+        match probe_project_fidelity(self.root())? {
+            Fidelity::Full => {}
+            Fidelity::Degraded { reasons } => {
+                return Err(ChiknError::ReadOnly(describe_reasons(&reasons)));
+            }
+        }
+        self.ensure_fresh()
+    }
+
+    /// Arm the epoch bump at a tree-replacing operation's point of no
+    /// return — immediately before its first ref, HEAD, or working-tree
+    /// mutation. The bump fires when the returned guard drops, on success
+    /// *and* on error, so a failure after the first mutation still leaves
+    /// every outstanding token stale (refused until a re-probe). Failures
+    /// before the guard is armed bump nothing.
+    pub(crate) fn arm_epoch_bump(&self) -> EpochBumpGuard {
+        EpochBumpGuard {
+            root: self.root().to_path_buf(),
+        }
+    }
+}
+
+/// Drop-scope epoch bump for tree-replacing operations. See
+/// [`WritePermit::arm_epoch_bump`]. The permit that armed it stays valid
+/// for the operation's own nested steps; the bump lands only when the
+/// operation scope exits.
+#[derive(Debug)]
+pub(crate) struct EpochBumpGuard {
+    root: PathBuf,
+}
+
+impl Drop for EpochBumpGuard {
+    fn drop(&mut self) {
         bump_write_epoch(&self.root);
+    }
+}
+
+// ── Merge recovery authority ─────────────────────────────────────────────────
+
+/// True when the repository at `root` carries an in-progress merge:
+/// `MERGE_HEAD` present or conflict entries in the index. This is the
+/// attestation the recovery authority keys on — deliberately independent
+/// of the fidelity probe, which *errors* on a conflicted `project.yaml`
+/// and probes Degraded on a conflicted sidecar (mid-merge, by design).
+pub(crate) fn attest_merge_in_progress(root: &Path) -> Result<bool, ChiknError> {
+    let repo = git2::Repository::open(root)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {e}")))?;
+    if repo.find_reference("MERGE_HEAD").is_ok() {
+        return Ok(true);
+    }
+    let index = repo
+        .index()
+        .map_err(|e| ChiknError::Unknown(format!("Index: {e}")))?;
+    Ok(index.has_conflicts())
+}
+
+/// Fingerprint of the merge the recovery authority was issued for: the
+/// `MERGE_HEAD` OID plus a digest of the working-tree status, the content
+/// of every status-listed file, AND every index entry (path, stage, blob
+/// OID). Any drift between issue and use fails closed — another process
+/// may have edited, staged, completed, or replaced the merge in the
+/// meantime (review rounds 12–13; codex findings s4-2). Status bits alone
+/// are NOT enough: a content edit to an already-conflicted file keeps the
+/// same CONFLICTED bits; and worktree bytes alone are not enough either —
+/// restaging different content and restoring the worktree leaves both
+/// bits and bytes unchanged while the index (the thing a completion would
+/// commit and a reset would discard) has moved. Unmodified files cannot
+/// drift without appearing in the status list, and staged files cannot
+/// drift without changing their index entry, so together the three pins
+/// cover the whole tree.
+pub(crate) fn merge_fingerprint(root: &Path) -> Result<(git2::Oid, u64), ChiknError> {
+    use std::hash::{Hash, Hasher};
+    let repo = git2::Repository::open(root)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {e}")))?;
+    let merge_head = repo
+        .find_reference("MERGE_HEAD")
+        .ok()
+        .and_then(|r| r.target())
+        .unwrap_or_else(git2::Oid::zero);
+    let mut status_opts = git2::StatusOptions::new();
+    status_opts.include_untracked(true);
+    let statuses = repo
+        .statuses(Some(&mut status_opts))
+        .map_err(|e| ChiknError::Unknown(format!("Status: {e}")))?;
+    let mut entries: Vec<(String, u32, git2::Oid)> = statuses
+        .iter()
+        .filter_map(|s| {
+            s.path().map(|p| {
+                // Deleted (or unreadable) paths hash as the zero OID —
+                // still a distinct, deterministic state.
+                let content = std::fs::read(root.join(p))
+                    .ok()
+                    .and_then(|bytes| git2::Oid::hash_object(git2::ObjectType::Blob, &bytes).ok())
+                    .unwrap_or_else(git2::Oid::zero);
+                (p.to_string(), s.status().bits(), content)
+            })
+        })
+        .collect();
+    entries.sort();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    merge_head.as_bytes().hash(&mut hasher);
+    for (path, bits, content) in &entries {
+        path.hash(&mut hasher);
+        bits.hash(&mut hasher);
+        content.as_bytes().hash(&mut hasher);
+    }
+    let index = repo
+        .index()
+        .map_err(|e| ChiknError::Unknown(format!("Index: {e}")))?;
+    for entry in index.iter() {
+        entry.path.hash(&mut hasher);
+        entry.flags.hash(&mut hasher);
+        entry.id.as_bytes().hash(&mut hasher);
+    }
+    Ok((merge_head, hasher.finish()))
+}
+
+/// Narrow recovery authority for an in-progress merge. Issued only while
+/// merge state is attested; authorizes ONLY the merge-recovery operations
+/// (`complete_merge`, abort, force-resolve). Carries the `WritePermit`
+/// safety contract — non-`Clone`, engine-only construction, canonical-root
+/// binding validated at use — plus a binding to the *specific* merge
+/// (`MERGE_HEAD` OID + status fingerprint) so any drift after issue fails
+/// closed instead of acting on a different merge or newer work
+/// (review rounds 9–13). It exists because a merge conflict that touches
+/// `project.yaml` or a sidecar makes the fidelity probe fail, so an
+/// ordinary permit is unobtainable exactly when recovery is needed.
+#[derive(Debug)]
+pub struct RecoveryPermit {
+    root: PathBuf,
+    merge_head: git2::Oid,
+    fingerprint: u64,
+}
+
+/// Attest merge state and issue a recovery authority bound to it.
+pub fn acquire_recovery_permit(project_path: &Path) -> Result<RecoveryPermit, ChiknError> {
+    let root = project_path.canonicalize().map_err(|e| {
+        ChiknError::ReadOnly(format!(
+            "cannot resolve project path {}: {e}",
+            project_path.display()
+        ))
+    })?;
+    if !attest_merge_in_progress(&root)? {
+        return Err(ChiknError::ReadOnly(
+            "no merge is in progress; recovery authority is only issued mid-merge".to_string(),
+        ));
+    }
+    let (merge_head, fingerprint) = merge_fingerprint(&root)?;
+    Ok(RecoveryPermit {
+        root,
+        merge_head,
+        fingerprint,
+    })
+}
+
+impl RecoveryPermit {
+    /// Canonical project root this authority is bound to.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// The `MERGE_HEAD` this authority was issued for ("theirs").
+    pub(crate) fn bound_merge_head(&self) -> git2::Oid {
+        self.merge_head
+    }
+
+    /// The index/worktree fingerprint this authority was issued for. The
+    /// force path compares it against the attestation the UI captured at
+    /// confirmation time: the `MERGE_HEAD` OID alone cannot distinguish
+    /// two merges of the same incoming commit against different local
+    /// states (finding s4-1, reopened round).
+    pub(crate) fn bound_fingerprint(&self) -> u64 {
+        self.fingerprint
+    }
+
+    /// Refuse unless the target is the bound root AND the same merge, in
+    /// the same working-tree state, is still in progress. Fails closed on
+    /// any drift (merge completed/aborted/replaced, files edited).
+    pub(crate) fn ensure_valid_for(&self, project_path: &Path) -> Result<(), ChiknError> {
+        let canonical = project_path.canonicalize().map_err(|e| {
+            ChiknError::ReadOnly(format!(
+                "cannot resolve project path {}: {e}",
+                project_path.display()
+            ))
+        })?;
+        if canonical != self.root {
+            return Err(ChiknError::ReadOnly(format!(
+                "recovery authority was granted for {}, not {}",
+                self.root.display(),
+                canonical.display()
+            )));
+        }
+        if !attest_merge_in_progress(&self.root)? {
+            return Err(ChiknError::ReadOnly(
+                "the merge this recovery action targeted is no longer in progress; \
+                 review the project state and retry"
+                    .to_string(),
+            ));
+        }
+        let (merge_head, fingerprint) = merge_fingerprint(&self.root)?;
+        if merge_head != self.merge_head || fingerprint != self.fingerprint {
+            return Err(ChiknError::ReadOnly(
+                "the project changed since this recovery action was confirmed; \
+                 review the current state and retry"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Recovery operations mint commits / replace trees: the epoch bump
+    /// rides the same drop-scope guard as ordinary operations.
+    pub(crate) fn arm_epoch_bump(&self) -> EpochBumpGuard {
+        EpochBumpGuard {
+            root: self.root.clone(),
+        }
     }
 }
 
@@ -250,9 +522,9 @@ pub fn acquire_write_token(project_path: &Path) -> Result<WriteToken, ChiknError
 /// - hierarchy documents that can never resolve to loaded content
 ///   (missing, unreadable, outside the loaded folders, or nonzero bytes
 ///   yielding empty content — zero-byte files are VALID);
-/// - content-threatening self-heal conditions: corrupt sidecars (load
-///   quarantine-renames them), orphan documents (load adopts them),
-///   conflicting identities;
+/// - content-threatening or incomplete-read conditions: corrupt sidecars,
+///   orphan documents (read adopts them only in memory), conflicting
+///   identities;
 /// - a `format_version` newer than, or unintelligible to, this engine.
 ///
 /// Missing standard folders are NOT Degraded: recreating an empty
@@ -1044,8 +1316,8 @@ hierarchy:
         let (_ta, root_a) = create_probe_project();
         let (_tb, root_b) = create_probe_project();
         let token_a = acquire_write_token(&root_a).unwrap();
-        assert!(token_a.ensure_valid_for(&root_a).is_ok());
-        let result = token_a.ensure_valid_for(&root_b);
+        assert!(token_a.with_write_permit(&root_a, |_| Ok(())).is_ok());
+        let result = token_a.with_write_permit(&root_b, |_| Ok(()));
         assert!(
             matches!(result, Err(ChiknError::ReadOnly(_))),
             "token for project A must not validate against project B: {result:?}"
@@ -1056,16 +1328,40 @@ hierarchy:
     fn token_stale_after_epoch_bump() {
         let (_t, root) = create_probe_project();
         let token = acquire_write_token(&root).unwrap();
-        assert!(token.ensure_fresh().is_ok());
-        token.bump_epoch();
+        token
+            .with_write_permit(&root, |permit| {
+                permit.ensure_fresh()?;
+                drop(permit.arm_epoch_bump());
+                Ok(())
+            })
+            .unwrap();
         assert!(token.is_stale());
-        assert!(matches!(token.ensure_fresh(), Err(ChiknError::ReadOnly(_))));
         assert!(matches!(
-            token.ensure_valid_for(&root),
+            token.with_write_permit(&root, |_| Ok(())),
             Err(ChiknError::ReadOnly(_))
         ));
         // Re-acquiring after the bump yields a fresh, valid token.
         let fresh = acquire_write_token(&root).unwrap();
-        assert!(fresh.ensure_valid_for(&root).is_ok());
+        assert!(fresh.with_write_permit(&root, |_| Ok(())).is_ok());
+    }
+
+    #[test]
+    fn fresh_fidelity_old_session_cannot_begin_operation() {
+        let (_t, root) = create_probe_project();
+        let token = acquire_write_token(&root).unwrap();
+
+        let yaml = fs::read_to_string(root.join(PROJECT_FILE))
+            .unwrap()
+            .replace("format_version: '1.2'", "format_version: '9.9'");
+        fs::write(root.join(PROJECT_FILE), yaml).unwrap();
+        let before = tree_snapshot(&root);
+
+        assert!(
+            !token.is_stale(),
+            "external edits do not change the in-process epoch"
+        );
+        let result = token.with_write_permit(&root, |_| Ok(()));
+        assert!(matches!(result, Err(ChiknError::ReadOnly(_))));
+        assert_eq!(before, tree_snapshot(&root));
     }
 }

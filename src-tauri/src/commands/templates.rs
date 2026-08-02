@@ -58,64 +58,70 @@ pub fn create_from_template(
     parent_id: Option<String>,
 ) -> Result<Project, ChiknError> {
     write_locks.with_project_lock(&project_path, || {
-        let token = tokens.checkout(&project_path)?;
-        let mut project = reader::read_project(Path::new(&project_path))?;
+        tokens.with_write_permit(&project_path, |permit| {
+            let mut project = reader::read_project(Path::new(&project_path))?;
 
-        let template = default_templates()
-            .into_iter()
-            .find(|t| t.id == template_id)
-            .ok_or_else(|| ChiknError::NotFound(format!("Template not found: {}", template_id)))?;
+            let template = default_templates()
+                .into_iter()
+                .find(|t| t.id == template_id)
+                .ok_or_else(|| {
+                    ChiknError::NotFound(format!("Template not found: {}", template_id))
+                })?;
 
-        let doc_id = uuid::Uuid::new_v4().to_string();
-        let slug =
-            chickenscratch_core::utils::slug::unique_slug(&name, "manuscript/", &project.documents);
-        let doc_path = format!("manuscript/{}.md", slug);
-        let now = chrono::Utc::now().to_rfc3339();
+            let doc_id = uuid::Uuid::new_v4().to_string();
+            let slug = chickenscratch_core::utils::slug::unique_slug(
+                &name,
+                "manuscript/",
+                &project.documents,
+            );
+            let doc_path = format!("manuscript/{}.md", slug);
+            let now = chrono::Utc::now().to_rfc3339();
 
-        let document = Document {
-            id: doc_id.clone(),
-            name: name.clone(),
-            path: doc_path.clone(),
-            content: template.content,
-            parent_id: parent_id.clone(),
-            created: now.clone(),
-            modified: now,
-            ..Default::default()
-        };
+            let document = Document {
+                id: doc_id.clone(),
+                name: name.clone(),
+                path: doc_path.clone(),
+                content: template.content,
+                parent_id: parent_id.clone(),
+                created: now.clone(),
+                modified: now,
+                ..Default::default()
+            };
 
-        project.documents.insert(doc_id.clone(), document);
+            project.documents.insert(doc_id.clone(), document);
 
-        let node = TreeNode::Document {
-            id: doc_id,
-            name,
-            path: doc_path,
-        };
+            let node = TreeNode::Document {
+                id: doc_id,
+                name,
+                path: doc_path,
+            };
 
-        match parent_id {
-            Some(pid) => hierarchy::add_child_to_folder(&mut project.hierarchy, &pid, node)?,
-            None => {
-                // Default to Manuscript folder
-                let ms_id = project.hierarchy.iter().find_map(|n| {
-                    if let TreeNode::Folder { id, name, .. } = n {
-                        if name == "Manuscript" {
-                            Some(id.clone())
+            match parent_id {
+                Some(pid) => hierarchy::add_child_to_folder(&mut project.hierarchy, &pid, node)?,
+                None => {
+                    // Default to Manuscript folder
+                    let ms_id = project.hierarchy.iter().find_map(|n| {
+                        if let TreeNode::Folder { id, name, .. } = n {
+                            if name == "Manuscript" {
+                                Some(id.clone())
+                            } else {
+                                None
+                            }
                         } else {
                             None
                         }
+                    });
+                    if let Some(mid) = ms_id {
+                        hierarchy::add_child_to_folder(&mut project.hierarchy, &mid, node)?;
                     } else {
-                        None
+                        hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node);
                     }
-                });
-                if let Some(mid) = ms_id {
-                    hierarchy::add_child_to_folder(&mut project.hierarchy, &mid, node)?;
-                } else {
-                    hierarchy::add_document_to_hierarchy(&mut project.hierarchy, node);
                 }
             }
-        }
 
-        writer::write_project(&mut project, &token)?;
-        Ok(project)
+            writer::write_project(&mut project, permit)?;
+            Ok(project)
+        })
     })
 }
 

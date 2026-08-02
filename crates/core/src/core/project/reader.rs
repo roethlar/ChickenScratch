@@ -28,6 +28,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::fidelity::WritePermit;
 use super::format::{
     get_characters_path, get_document_meta_path, get_locations_path, get_manuscript_path,
     get_project_file_path, get_research_path, get_threads_path, DOCUMENT_EXTENSION,
@@ -199,25 +200,69 @@ fn generate_id() -> String {
     Uuid::new_v4().to_string()
 }
 
-/// Accept either `"Yes"`/`"No"` strings or a YAML boolean for
-/// `include_in_compile`. Booleans coerce to the canonical string form so
-/// downstream code only deals with one shape.
+/// Accept `"Yes"`/`"No"` strings, common boolean spellings in any case
+/// (`no`, `FALSE`, `off`, …), a YAML boolean, or a 0/1 integer for
+/// `include_in_compile`. Everything recognizable coerces to the canonical
+/// `"Yes"`/`"No"` form so downstream code (and the next save) only deals
+/// with one shape.
+///
+/// The variant spellings are not hypothetical: YAML 1.1 writers emit
+/// unquoted `no`, which YAML 1.2 (serde_yaml) parses as the *string* `"no"`,
+/// not a boolean. Before this normalization, a document whose sidecar said
+/// `include_in_compile: no` failed the exact `"No"` comparison and was
+/// silently included in compile output.
+///
+/// Unrecognized strings pass through verbatim (tolerant reader) and are
+/// treated as included by [`include_in_compile_flag`], matching the
+/// pre-existing "anything but No means Yes" default.
 fn deserialize_include_in_compile<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     #[derive(Deserialize)]
     #[serde(untagged)]
-    enum BoolOrStr {
+    enum BoolNumOrStr {
         Bool(bool),
+        // 0/1 written by hand or by a tool serializing the flag as an
+        // integer. Without this variant such a sidecar fails the untagged
+        // parse entirely and degrades the whole document.
+        Num(i64),
         Str(String),
     }
-    let opt: Option<BoolOrStr> = Option::deserialize(deserializer)?;
+    let opt: Option<BoolNumOrStr> = Option::deserialize(deserializer)?;
     Ok(opt.map(|v| match v {
-        BoolOrStr::Bool(true) => "Yes".to_string(),
-        BoolOrStr::Bool(false) => "No".to_string(),
-        BoolOrStr::Str(s) => s,
+        BoolNumOrStr::Bool(true) => "Yes".to_string(),
+        BoolNumOrStr::Bool(false) => "No".to_string(),
+        BoolNumOrStr::Num(0) => "No".to_string(),
+        BoolNumOrStr::Num(_) => "Yes".to_string(),
+        BoolNumOrStr::Str(s) => canonicalize_include_in_compile(s),
     }))
+}
+
+/// Map common truthy/falsy spellings (any case, surrounding whitespace
+/// tolerated) onto canonical `"Yes"`/`"No"`. Unrecognized values are
+/// returned unchanged.
+fn canonicalize_include_in_compile(raw: String) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "no" | "false" | "n" | "off" | "0" => "No".to_string(),
+        "yes" | "true" | "y" | "on" | "1" => "Yes".to_string(),
+        _ => raw,
+    }
+}
+
+/// Decide compile inclusion from the sidecar string. Defense in depth on
+/// top of the read-time canonicalization: exclusion is the author's
+/// explicit choice, so any recognizable falsy spelling must win even if a
+/// non-canonical value reaches this point (e.g. constructed in memory
+/// rather than deserialized).
+fn include_in_compile_flag(value: Option<&str>) -> bool {
+    match value {
+        None => true,
+        Some(v) => !matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "no" | "false" | "n" | "off" | "0"
+        ),
+    }
 }
 
 /// Helper function to get current timestamp
@@ -226,6 +271,10 @@ fn current_timestamp() -> String {
 }
 
 /// Reads a .chikn project from disk.
+///
+/// Side-effect-free: missing folders and corrupt sidecars are represented in
+/// memory without creating, renaming, or rewriting anything on disk. Use
+/// [`read_project_with_repair`] only for an explicitly authorized Full open.
 ///
 /// # Arguments
 /// * `path` - Path to .chikn project directory
@@ -248,27 +297,105 @@ fn current_timestamp() -> String {
 /// # Ok(()) }
 /// ```
 pub fn read_project(path: &Path) -> Result<Project, ChiknError> {
+    read_project_impl(path, RepairMode::ReadOnly)
+}
+
+/// Explicit, permit-backed repair for a project that freshly probed Full.
+///
+/// This retains benign self-heal for missing standard folders. Corrupt
+/// sidecars are Degraded and are never quarantine-renamed by a read.
+pub fn read_project_with_repair(
+    path: &Path,
+    permit: &WritePermit<'_>,
+) -> Result<Project, ChiknError> {
+    permit.ensure_valid_for(path)?;
     read_project_impl(path, RepairMode::SelfHeal)
 }
 
-/// Repairs-disabled read for Degraded opens (see
-/// `super::fidelity::probe_project_fidelity`).
+/// Source-compatible name for an explicitly side-effect-free read.
 ///
-/// Byte-for-byte side-effect-free: no missing-folder creation on disk and
-/// no corrupt-sidecar quarantine renames — corrupt metadata is treated as
-/// missing in memory instead. In-memory reconciliation (orphan adoption,
-/// binder folders) still happens so the read-only UI shows everything, but
-/// nothing on disk changes. Normal `read_project` self-heal is unchanged
-/// for Full projects.
+/// Public [`read_project`] now has the same behavior; this alias remains for
+/// callers that want to state read-only intent at the call site.
 pub fn read_project_readonly(path: &Path) -> Result<Project, ChiknError> {
-    read_project_impl(path, RepairMode::ReadOnly)
+    read_project(path)
+}
+
+/// Display-only open for a project carrying an in-progress merge whose
+/// worktree format files may be conflicted (plan slice 4, review rounds
+/// 9–11). Two relaxations, both scoped to this entry point only:
+///
+/// 1. `project.yaml` metadata falls back to the pre-merge `HEAD` copy
+///    when the worktree file fails to parse — conflict markers in the
+///    root file otherwise make the project unopenable after restart,
+///    stranding the writer outside the Complete/Abort recovery UI.
+/// 2. The strict hierarchy↔documents matching is skipped: mid-merge the
+///    tree is definitionally inconsistent (e.g. a remote delete/recreate
+///    at the same path changes a document's id), and a hard error here
+///    would fail the open. Skewed entries load as unlinked; the ordinary
+///    load path keeps strict validation unchanged.
+///
+/// Never writes: repair stays `ReadOnly`, and callers must present the
+/// result read-only until the merge is completed or aborted.
+pub fn read_project_recovery(path: &Path) -> Result<Project, ChiknError> {
+    validate_project_root(path)?;
+
+    let metadata = match read_project_metadata(path) {
+        Ok(m) => m,
+        Err(worktree_err) => head_project_metadata(path).map_err(|head_err| {
+            ChiknError::InvalidFormat(format!(
+                "project.yaml is unreadable mid-merge ({worktree_err}) and no pre-merge \
+                     copy could be recovered ({head_err})"
+            ))
+        })?,
+    };
+    validate_hierarchy_document_paths(&metadata.hierarchy)?;
+
+    let hierarchy_identities = collect_hierarchy_document_identities(&metadata.hierarchy)?;
+    let documents = read_all_documents(path, &hierarchy_identities, RepairMode::ReadOnly)?;
+    // Deliberately NO validate_hierarchy_documents_match_loaded_documents:
+    // HEAD metadata + worktree sidecars can skew mid-merge.
+
+    let mut project = Project {
+        id: metadata.id,
+        name: metadata.name,
+        path: path.to_string_lossy().to_string(),
+        hierarchy: metadata.hierarchy,
+        documents,
+        created: metadata.created,
+        modified: metadata.modified,
+        metadata: metadata.metadata,
+        threads: read_threads(path)?,
+    };
+    let _ = repair_project(&mut project, path, RepairMode::ReadOnly);
+    Ok(project)
+}
+
+/// Parse `project.yaml` as committed at `HEAD` — the last agreed state
+/// before the in-progress merge rewrote the worktree copy.
+fn head_project_metadata(path: &Path) -> Result<ProjectMetadata, ChiknError> {
+    let repo = git2::Repository::open(path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {e}")))?;
+    let head_tree = repo
+        .head()
+        .and_then(|h| h.peel_to_commit())
+        .and_then(|c| c.tree())
+        .map_err(|e| ChiknError::Unknown(format!("HEAD tree: {e}")))?;
+    let entry = head_tree
+        .get_path(Path::new(super::format::PROJECT_FILE))
+        .map_err(|e| ChiknError::NotFound(format!("project.yaml not in HEAD: {e}")))?;
+    let blob = repo
+        .find_blob(entry.id())
+        .map_err(|e| ChiknError::Unknown(format!("project.yaml blob: {e}")))?;
+    let content = std::str::from_utf8(blob.content())
+        .map_err(|e| ChiknError::InvalidFormat(format!("project.yaml not UTF-8 in HEAD: {e}")))?;
+    serde_yaml::from_str(content).map_err(ChiknError::Serialization)
 }
 
 /// Whether a load may touch the disk to self-heal.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RepairMode {
-    /// Normal open: recreate missing standard folders, quarantine corrupt
-    /// sidecars.
+    /// Explicitly authorized Full-project open: recreate missing standard
+    /// folders. Corrupt sidecars are never mutated by a read.
     SelfHeal,
     /// Degraded open: pure read, disk stays byte-identical.
     ReadOnly,
@@ -293,6 +420,7 @@ fn read_project_impl(path: &Path, repair_mode: RepairMode) -> Result<Project, Ch
     validate_project_root(path)?;
     if repair_mode == RepairMode::SelfHeal {
         pre_repair_folders(path);
+        pre_repair_git(path);
     }
 
     // Read project.yaml
@@ -394,6 +522,43 @@ fn pre_repair_folders(path: &Path) {
                     e
                 );
             }
+        }
+    }
+}
+
+/// Verify the project's git setup as part of an authorized self-heal open.
+///
+/// A `.chikn` project copied, restored from a non-git backup, or unzipped
+/// without its `.git` directory silently loses every versioning feature
+/// (revisions, drafts, sync, safety commits) until something recreates the
+/// repo — and before this check that only happened at project *creation*.
+/// Recreating an empty repo is benign: no content bytes are touched, and
+/// the next save commits the current state as the first revision.
+///
+/// An existing-but-unopenable `.git` is user data (their history) and is
+/// never renamed, deleted, or reinitialized: it is logged and the open
+/// proceeds; git-backed features surface the real error when actually used.
+/// This mirrors the `pre_repair_folders` philosophy — repair failures never
+/// block load.
+fn pre_repair_git(path: &Path) {
+    let had_repo = path.join(".git").exists();
+    // `init_repo` is verify-or-create: opens an existing repo, initializes
+    // (with .gitignore) when absent. It never rewrites an existing repo.
+    match crate::core::git::init_repo(path) {
+        Ok(_) => {
+            if !had_repo {
+                eprintln!(
+                    "pre-repair: recreated missing git repo at {}",
+                    path.display()
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "pre-repair: git verification failed at {}: {} — continuing without touching .git",
+                path.display(),
+                e
+            );
         }
     }
 }
@@ -584,7 +749,7 @@ fn count_hierarchy_docs(hierarchy: &[TreeNode]) -> usize {
 }
 
 /// Collects all document paths referenced in the hierarchy.
-fn collect_hierarchy_paths(hierarchy: &[TreeNode]) -> std::collections::HashSet<String> {
+pub(crate) fn collect_hierarchy_paths(hierarchy: &[TreeNode]) -> std::collections::HashSet<String> {
     let mut paths = std::collections::HashSet::new();
     collect_paths_inner(hierarchy, &mut paths);
     paths
@@ -955,7 +1120,7 @@ fn read_document_with_root(
         status: metadata.status,
         keywords: metadata.keywords,
         links: metadata.links,
-        include_in_compile: metadata.include_in_compile.as_deref() != Some("No"),
+        include_in_compile: include_in_compile_flag(metadata.include_in_compile.as_deref()),
         word_count_target: metadata.word_count_target,
         compile_order: metadata.compile_order,
         comments: metadata.comments,
@@ -967,7 +1132,7 @@ fn read_document_metadata_or_default(
     meta_path: &Path,
     project_root: &Path,
     fallback_identity: Option<&HierarchyDocumentIdentity>,
-    repair_mode: RepairMode,
+    _repair_mode: RepairMode,
 ) -> Result<DocumentMetadata, ChiknError> {
     if !ensure_optional_read_file_safe(meta_path, project_root, "document metadata")? {
         return Ok(default_document_metadata(fallback_identity));
@@ -980,21 +1145,9 @@ fn read_document_metadata_or_default(
             Ok(metadata)
         }
         Err(e) => {
-            // A read-only (Degraded) open must not rename anything on
-            // disk: treat the corrupt sidecar as missing in memory only.
-            if repair_mode == RepairMode::ReadOnly {
-                eprintln!(
-                    "Corrupt document metadata treated as missing (read-only open): {} ({})",
-                    meta_path.display(),
-                    e
-                );
-                return Ok(default_document_metadata(fallback_identity));
-            }
-            let quarantine_path = quarantine_corrupt_document_metadata(meta_path)?;
             eprintln!(
-                "Corrupt document metadata quarantined: {} -> {} ({})",
+                "Corrupt document metadata treated as missing without changing the file: {} ({})",
                 meta_path.display(),
-                quarantine_path.display(),
                 e
             );
             Ok(default_document_metadata(fallback_identity))
@@ -1027,27 +1180,6 @@ fn default_document_metadata(
         fields: std::collections::BTreeMap::new(),
         extra: Default::default(),
     }
-}
-
-fn quarantine_corrupt_document_metadata(meta_path: &Path) -> Result<PathBuf, ChiknError> {
-    let parent = meta_path.parent().ok_or_else(|| {
-        ChiknError::InvalidFormat(format!(
-            "Document metadata has no parent folder: {}",
-            meta_path.display()
-        ))
-    })?;
-    let file_name = meta_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| {
-            ChiknError::InvalidFormat(format!(
-                "Invalid document metadata filename: {}",
-                meta_path.display()
-            ))
-        })?;
-    let quarantine_path = parent.join(format!("{}.corrupt-{}", file_name, uuid::Uuid::new_v4()));
-    fs::rename(meta_path, &quarantine_path)?;
-    Ok(quarantine_path)
 }
 
 fn validate_relative_document_path(document_path: &str) -> Result<(), ChiknError> {
@@ -1616,12 +1748,13 @@ hierarchy: []
     }
 
     #[test]
-    fn test_read_project_quarantines_corrupt_document_meta_and_keeps_hierarchy_identity() {
+    fn test_public_read_preserves_corrupt_document_meta_and_keeps_hierarchy_identity() {
         let (_temp, project_path) = create_test_project();
         let project_file = project_path.join(PROJECT_FILE);
         let project_yaml_before = fs::read_to_string(&project_file).unwrap();
         let meta_path = project_path.join("manuscript/chapter-01.meta");
         fs::write(&meta_path, "id: [").unwrap();
+        let corrupt_bytes = fs::read(&meta_path).unwrap();
 
         let project = read_project(&project_path).unwrap();
 
@@ -1629,12 +1762,13 @@ hierarchy: []
         assert_eq!(document.id, "doc1");
         assert_eq!(document.name, "Chapter 1");
         assert_eq!(document.path, "manuscript/chapter-01.md");
-        assert!(!meta_path.exists());
-        assert_eq!(count_corrupt_meta_quarantines(&project_path), 1);
+        assert!(meta_path.exists(), "corrupt meta must stay in place");
+        assert_eq!(fs::read(&meta_path).unwrap(), corrupt_bytes);
+        assert_eq!(count_corrupt_meta_quarantines(&project_path), 0);
         assert_eq!(
             fs::read_to_string(&project_file).unwrap(),
             project_yaml_before,
-            "quarantining corrupt metadata must not rewrite project.yaml"
+            "reading corrupt metadata must not rewrite project.yaml"
         );
     }
 
@@ -1658,13 +1792,13 @@ hierarchy: []
     }
 
     #[test]
-    fn test_readonly_read_does_not_create_missing_folders() {
+    fn test_public_read_does_not_create_missing_folders() {
         let (_temp, project_path) = create_test_project();
         fs::remove_dir(project_path.join(RESEARCH_FOLDER)).unwrap();
         fs::remove_dir(project_path.join(TEMPLATES_FOLDER)).unwrap();
         fs::remove_dir(project_path.join(SETTINGS_FOLDER)).unwrap();
 
-        let project = read_project_readonly(&project_path).unwrap();
+        let project = read_project(&project_path).unwrap();
 
         assert_eq!(project.documents.len(), 1);
         assert!(
@@ -1674,9 +1808,66 @@ hierarchy: []
         assert!(!project_path.join(TEMPLATES_FOLDER).exists());
         assert!(!project_path.join(SETTINGS_FOLDER).exists());
 
-        // The normal open still self-heals (unchanged for Full projects).
-        read_project(&project_path).unwrap();
+        // Explicitly authorized Full-project open retains benign self-heal.
+        let token = super::super::fidelity::acquire_write_token(&project_path).unwrap();
+        token
+            .with_write_permit(&project_path, |permit| {
+                read_project_with_repair(&project_path, permit).map(|_| ())
+            })
+            .unwrap();
         assert!(project_path.join(RESEARCH_FOLDER).exists());
+    }
+
+    #[test]
+    fn test_self_heal_open_recreates_missing_git_repo() {
+        // A project that lost its .git (copied without hidden files,
+        // restored from a non-git backup) gets versioning back on the next
+        // authorized Full open.
+        let (_temp, project_path) = create_test_project();
+        assert!(
+            !project_path.join(".git").exists(),
+            "test fixture must start without a repo"
+        );
+
+        // Read-only open must NOT create it.
+        read_project(&project_path).unwrap();
+        assert!(
+            !project_path.join(".git").exists(),
+            "read-only open must not touch disk"
+        );
+
+        // Permit-backed self-heal open must.
+        let token = super::super::fidelity::acquire_write_token(&project_path).unwrap();
+        token
+            .with_write_permit(&project_path, |permit| {
+                read_project_with_repair(&project_path, permit).map(|_| ())
+            })
+            .unwrap();
+        assert!(project_path.join(".git").exists(), "repo must be recreated");
+        assert!(
+            project_path.join(".gitignore").exists(),
+            "gitignore comes back with the repo"
+        );
+    }
+
+    #[test]
+    fn test_self_heal_open_never_touches_unopenable_git() {
+        // An existing-but-broken .git is user history: log and continue,
+        // byte-identical on disk, and the open itself still succeeds.
+        let (_temp, project_path) = create_test_project();
+        let git_path = project_path.join(".git");
+        fs::write(&git_path, "not a gitfile").unwrap();
+        let before = fs::read(&git_path).unwrap();
+
+        let token = super::super::fidelity::acquire_write_token(&project_path).unwrap();
+        token
+            .with_write_permit(&project_path, |permit| {
+                read_project_with_repair(&project_path, permit).map(|_| ())
+            })
+            .unwrap();
+
+        assert!(git_path.is_file(), "broken .git must stay in place");
+        assert_eq!(fs::read(&git_path).unwrap(), before);
     }
 
     #[test]
@@ -1755,7 +1946,11 @@ hierarchy: []
             },
         ];
         let token = super::super::fidelity::acquire_write_token(&project_path).expect("token");
-        super::super::writer::write_project(&mut project, &token).expect("write");
+        token
+            .with_write_permit(&project_path, |permit| {
+                super::super::writer::write_project(&mut project, permit)
+            })
+            .expect("write");
 
         let reread = read_project(&project_path).expect("re-read");
         assert_eq!(reread.threads.len(), 2);
@@ -1786,14 +1981,32 @@ hierarchy: []
 
     #[test]
     fn test_include_in_compile_accepts_bool_or_string() {
-        // Bool true → "Yes", bool false → "No", string passes through.
-        // Covers `.meta` files written by the Windows C# writer (bool) and
-        // the Rust canonical writer ("Yes"/"No").
+        // Everything recognizable canonicalizes to "Yes"/"No" at parse time.
+        // Covers `.meta` files written by the Windows C# writer (bool), the
+        // Rust canonical writer ("Yes"/"No"), YAML 1.1 writers (unquoted
+        // no/off/n, parsed by YAML 1.2 as *strings*), hand edits in any
+        // case, and integer 0/1.
         let cases: &[(&str, Option<&str>)] = &[
             ("include_in_compile: true", Some("Yes")),
             ("include_in_compile: false", Some("No")),
             ("include_in_compile: \"Yes\"", Some("Yes")),
             ("include_in_compile: \"No\"", Some("No")),
+            // YAML 1.1 boolean spellings arrive as strings under YAML 1.2.
+            ("include_in_compile: no", Some("No")),
+            ("include_in_compile: off", Some("No")),
+            ("include_in_compile: n", Some("No")),
+            ("include_in_compile: \"FALSE\"", Some("No")),
+            ("include_in_compile: yes", Some("Yes")),
+            ("include_in_compile: on", Some("Yes")),
+            ("include_in_compile: Y", Some("Yes")),
+            ("include_in_compile: \"TRUE\"", Some("Yes")),
+            // Integers must not fail the untagged parse.
+            ("include_in_compile: 0", Some("No")),
+            ("include_in_compile: 1", Some("Yes")),
+            // Whitespace tolerated.
+            ("include_in_compile: \" no \"", Some("No")),
+            // Unrecognized strings pass through verbatim (tolerant reader).
+            ("include_in_compile: maybe", Some("maybe")),
         ];
         for (snippet, expected) in cases {
             let yaml = format!("id: x\ncreated: \"2025\"\nmodified: \"2025\"\n{snippet}\n");
@@ -1810,6 +2023,25 @@ hierarchy: []
         let meta: DocumentMetadata =
             serde_yaml::from_str("id: x\ncreated: \"2025\"\nmodified: \"2025\"\n").unwrap();
         assert!(meta.include_in_compile.is_none());
+    }
+
+    #[test]
+    fn test_include_in_compile_flag_defense_in_depth() {
+        // The flag helper must exclude on any recognizable falsy spelling
+        // even for values that bypassed read-time canonicalization.
+        assert!(include_in_compile_flag(None), "missing key means included");
+        for falsy in ["No", "no", " NO ", "false", "n", "off", "0", "FALSE"] {
+            assert!(
+                !include_in_compile_flag(Some(falsy)),
+                "{falsy:?} must exclude"
+            );
+        }
+        for truthy in ["Yes", "yes", "true", "on", "1", "maybe", ""] {
+            assert!(
+                include_in_compile_flag(Some(truthy)),
+                "{truthy:?} must include (anything-but-falsy default)"
+            );
+        }
     }
 
     #[test]

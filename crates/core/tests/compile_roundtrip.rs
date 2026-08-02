@@ -194,7 +194,9 @@ fn create_compile_project(root: &Path, with_includable_content: bool) -> PathBuf
         path: research.path.clone(),
     });
 
-    write_project(&mut project, &token).unwrap();
+    token
+        .with_write_permit(&project_path, |permit| write_project(&mut project, permit))
+        .unwrap();
     project_path
 }
 

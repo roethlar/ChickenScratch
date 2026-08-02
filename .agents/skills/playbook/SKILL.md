@@ -1,6 +1,7 @@
 ---
 name: playbook
 description: Read the named playbook under .agents/playbooks/ and follow it. Use when the owner says playbook <name>.
+# toolkit-owned; edits are drift — see AGENTS.md
 ---
 
 Run the `playbook` operator defined in this repo's `AGENTS.md` (Operator

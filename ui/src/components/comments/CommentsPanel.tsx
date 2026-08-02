@@ -5,6 +5,7 @@ import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
 import { toastError } from "../shared/Toast";
 import { getEditorMarkdown } from "../editor/editorRef";
+import { useBarrierActive } from "../../hooks/useBarrier";
 
 interface CommentsPanelProps {
   editor: Editor | null;
@@ -23,6 +24,10 @@ export function CommentsPanel({ editor, onClose }: CommentsPanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftBody, setDraftBody] = useState("");
   const titleId = useId();
+  // Comment writes carry the serialized editor buffer; the dispatch gate
+  // refuses them mid-operation, and the buttons freeze for UX parity
+  // (plan slice 3, rounds 3-4).
+  const barrierActive = useBarrierActive();
 
   const comments = activeDoc?.comments || [];
   const unresolved = comments.filter((c) => !c.resolved);
@@ -158,6 +163,7 @@ export function CommentsPanel({ editor, onClose }: CommentsPanelProps) {
               {editingId === c.id ? (
                 <button
                   onClick={() => handleSaveEdit(c.id)}
+                  disabled={barrierActive}
                   title="Save (Ctrl+Enter)"
                   aria-label="Save edited comment"
                 >
@@ -167,6 +173,7 @@ export function CommentsPanel({ editor, onClose }: CommentsPanelProps) {
                 <>
                   <button
                     onClick={() => handleResolveToggle(c.id, c.resolved)}
+                    disabled={barrierActive}
                     title="Resolve"
                     aria-label="Resolve comment"
                   >
@@ -174,6 +181,7 @@ export function CommentsPanel({ editor, onClose }: CommentsPanelProps) {
                   </button>
                   <button
                     onClick={() => handleDelete(c.id)}
+                    disabled={barrierActive}
                     title="Delete"
                     aria-label="Delete comment"
                     className="danger"

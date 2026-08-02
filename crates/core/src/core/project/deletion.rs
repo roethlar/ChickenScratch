@@ -5,7 +5,7 @@
 //! descendant document sidecars, and drop the corresponding document-map
 //! entries so later project writes cannot recreate deleted files.
 
-use crate::core::project::fidelity::WriteToken;
+use crate::core::project::fidelity::WritePermit;
 use crate::core::project::{hierarchy, writer};
 use crate::models::{Project, TreeNode};
 use crate::ChiknError;
@@ -20,10 +20,10 @@ use std::path::Path;
 pub fn delete_node(
     project: &mut Project,
     node_id: &str,
-    token: &WriteToken,
+    permit: &WritePermit<'_>,
 ) -> Result<Vec<String>, ChiknError> {
     let project_path = Path::new(&project.path);
-    token.ensure_valid_for(project_path)?;
+    permit.ensure_valid_for(project_path)?;
 
     let removed = hierarchy::find_node(&project.hierarchy, node_id)
         .cloned()
@@ -31,7 +31,7 @@ pub fn delete_node(
 
     let deletions = collect_document_deletions(&removed, project);
     for (_, path) in &deletions {
-        writer::delete_document(project_path, path, token)?;
+        writer::delete_document(project_path, path, permit)?;
     }
 
     hierarchy::remove_node(&mut project.hierarchy, node_id)?;
@@ -67,7 +67,7 @@ mod tests {
     use chrono::Utc;
 
     #[test]
-    fn delete_folder_removes_descendant_files_and_prevents_repair_resurrection() {
+    fn operation_permit_deletes_multiple_documents_and_prevents_resurrection() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let project_path = temp_dir.path().join("DeleteFolder.chikn");
         let mut project = writer::create_project(&project_path, "Delete Folder").unwrap();
@@ -85,32 +85,74 @@ mod tests {
             ..Default::default()
         };
         project.documents.insert(doc.id.clone(), doc);
+        let second_doc = Document {
+            id: "nested-doc-2".to_string(),
+            name: "Nested Two".to_string(),
+            path: "manuscript/folder/nested-two.md".to_string(),
+            content: "Second nested content.".to_string(),
+            parent_id: Some("folder".to_string()),
+            created: Utc::now().to_rfc3339(),
+            modified: Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+        project.documents.insert(second_doc.id.clone(), second_doc);
         project.hierarchy.push(TreeNode::Folder {
             id: "folder".to_string(),
             name: "Folder".to_string(),
-            children: vec![TreeNode::Document {
-                id: "nested-doc".to_string(),
-                name: "Nested".to_string(),
-                path: "manuscript/folder/nested.md".to_string(),
-            }],
+            children: vec![
+                TreeNode::Document {
+                    id: "nested-doc".to_string(),
+                    name: "Nested".to_string(),
+                    path: "manuscript/folder/nested.md".to_string(),
+                },
+                TreeNode::Document {
+                    id: "nested-doc-2".to_string(),
+                    name: "Nested Two".to_string(),
+                    path: "manuscript/folder/nested-two.md".to_string(),
+                },
+            ],
         });
-        writer::write_project(&mut project, &token).unwrap();
+        token
+            .with_write_permit(&project_path, |permit| {
+                writer::write_project(&mut project, permit)
+            })
+            .unwrap();
 
         let doc_path = project_path.join("manuscript/folder/nested.md");
         let meta_path = project_path.join("manuscript/folder/nested.meta");
+        let second_doc_path = project_path.join("manuscript/folder/nested-two.md");
+        let second_meta_path = project_path.join("manuscript/folder/nested-two.meta");
         assert!(doc_path.exists());
         assert!(meta_path.exists());
+        assert!(second_doc_path.exists());
+        assert!(second_meta_path.exists());
 
-        let deleted_ids = delete_node(&mut project, "folder", &token).unwrap();
-        assert_eq!(deleted_ids, vec!["nested-doc".to_string()]);
+        let deleted_ids = token
+            .with_write_permit(&project_path, |permit| {
+                let deleted = delete_node(&mut project, "folder", permit)?;
+                writer::write_project(&mut project, permit)?;
+                Ok(deleted)
+            })
+            .unwrap();
+        assert_eq!(
+            deleted_ids,
+            vec!["nested-doc".to_string(), "nested-doc-2".to_string()]
+        );
         assert!(!doc_path.exists());
         assert!(!meta_path.exists());
+        assert!(!second_doc_path.exists());
+        assert!(!second_meta_path.exists());
         assert!(!project.documents.contains_key("nested-doc"));
+        assert!(!project.documents.contains_key("nested-doc-2"));
         assert!(hierarchy::find_node(&project.hierarchy, "folder").is_none());
 
-        writer::write_project(&mut project, &token).unwrap();
         let reread = reader::read_project(&project_path).unwrap();
         assert!(!reread.documents.contains_key("nested-doc"));
+        assert!(!reread.documents.contains_key("nested-doc-2"));
         assert!(hierarchy::find_node(&reread.hierarchy, "nested-doc").is_none());
+        assert_eq!(
+            crate::core::project::fidelity::probe_project_fidelity(&project_path).unwrap(),
+            crate::core::project::fidelity::Fidelity::Full
+        );
     }
 }

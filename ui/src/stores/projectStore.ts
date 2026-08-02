@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Project, Document } from "../types";
+import type { LeaseHandle } from "../commands/barrier";
 import * as projectCmd from "../commands/project";
 import * as docCmd from "../commands/document";
 import { addRecentProject } from "../commands/settings";
@@ -27,7 +28,7 @@ interface ProjectState {
   /** Flow mode — multi-doc continuous editing. Null when off. */
   flowDocs: FlowDoc[] | null;
 
-  openProject: (path: string) => Promise<void>;
+  openProject: (path: string, lease?: LeaseHandle) => Promise<void>;
   createProject: (name: string, path: string) => Promise<void>;
   importScrivener: (scrivPath: string, outputPath: string) => Promise<void>;
   closeProject: () => void;
@@ -60,9 +61,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   searchHighlight: null,
   flowDocs: null,
 
-  openProject: async (path: string) => {
+  openProject: async (path: string, lease?: LeaseHandle) => {
     try {
-      const loaded = await projectCmd.loadProject(path);
+      const loaded = await projectCmd.loadProject(path, lease);
       const project = loaded.project;
       const totalWords = Object.values(project.documents).reduce((sum, doc) => {
         const text = (doc.content || "").replace(/<[^>]*>/g, "");
@@ -76,6 +77,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         activeDoc: null,
         error: null,
         sessionStartWords: totalWords,
+        // A reload replaces every document; a surviving flow buffer would
+        // keep pre-reload sections and save them back over the reloaded
+        // tree (plan slice 3, round 2). The barrier lifecycle re-enters
+        // flow over the reloaded docs when the view should persist.
+        flowDocs: null,
       });
       addRecentProject(project.name, path).catch(() => {});
     } catch (e) {

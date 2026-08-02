@@ -20,4 +20,25 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Components must dispatch project mutations through src/commands/*
+    // so the operation-barrier gate sees every write; a component-level
+    // `invoke` bypasses it (epoch-guard plan slice 3, review round 7).
+    files: ['src/components/**/*.{ts,tsx}', 'src/stores/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@tauri-apps/api/core',
+              importNames: ['invoke'],
+              message:
+                'Dispatch Tauri commands through src/commands/* (barrier-gated), not directly from components.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ])

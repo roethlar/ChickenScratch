@@ -1,7 +1,8 @@
 # Tier 3 — Polish
 
 **Priority:** v1.2, lower leverage
-**Status:** Paused until [format finalization](PHASE_FORMAT_FINALIZATION.md) ships
+**Status:** Later priority after engine hardening and Tauri reference-app work;
+[format finalization](PHASE_FORMAT_FINALIZATION.md) is complete
 **Layer:** UI-only. Collections land as a novelist-UI convention written into `project.yaml` through the generic-fields extensibility; rich research and split editor are pure UX.
 **Depends on:** Collections are more useful once the novelist UI ships scene metadata (Tier 1)
 

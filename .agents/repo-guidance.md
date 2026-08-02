@@ -53,7 +53,7 @@ cargo fmt --all -- --check
 cargo clippy --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
 cargo test --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
 scripts/check-release-metadata.sh
-cd ui && npm run lint && npm run build
+cd ui && npm run lint && npm run build && npm run test
 ```
 
 The clippy/test lines mirror `.github/workflows/validation.yml` exactly — a
@@ -89,6 +89,14 @@ lives in `.agents/push-policy.md`, not here.
   first commit, leaving the reviewer unable to verify any fix in isolation or
   bisect regressions. (This is also recorded as a candidate cross-repo
   harvest idea in `.agents/harvest.md`.)
+- **Commit without asking.** When a single concern is complete and the
+  declared verification for the touched area is green, commit it — do not
+  announce the commit and wait for owner approval. Owner directive
+  2026-07-16 (`.agents/decisions.md`) removed the earlier per-commit
+  approval convention. Unchanged: pushing still follows
+  `.agents/push-policy.md` (always ask), history rewrites remain forbidden
+  per `AGENTS.md` Git Safety, and one-concern-per-commit above still
+  applies.
 - **Deprecated trees get no new features.** `macos/`, `windows/`, `linux/`
   were deprecated native experiments
   (`docs/adr/ADR-004-deprecated-native-engines.md`), deleted from the

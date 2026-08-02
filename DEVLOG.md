@@ -6,6 +6,211 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-07-16 — init_repo gated behind test-support feature
+
+**Change:** `7f85510` — `init_repo` was the one unguarded write path in
+`core::git`: it exists so tests can build fixtures without a permit, but it
+was exported `pub`, so application code could call it too. It is now
+`pub(crate)`, re-exported through a `test_support` module gated on a new
+`test-support` cargo feature. `crates/core` enables the feature for its own
+integration tests via a self dev-dependency; `crates/tui` and `src-tauri`
+re-declare the dev-dependency with the feature so it is on for test targets
+only — feature unification never reaches release builds, since dev-deps are
+ignored there. All 10 out-of-crate call sites rerouted to
+`test_support::init_repo`; a self-check test in `git.rs` asserts `init_repo`
+stays `pub(crate)`. Closes the "public `init_repo`" item from the ranked
+follow-up list.
+
+**Verification:** At `7f85510` (on top of the master merge `f49d57d`):
+`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
+`cargo test --workspace --all-targets` — all green (Rust portion of the
+declared suite; ui/release-metadata portions untouched by this work).
+
+## 2026-07-16 — write_project hierarchy guard; per-commit approval removed
+
+**Change:** `6b4b4ac` — `write_project` now validates every `.md` document
+target against the project hierarchy before writing anything. An in-memory
+document omitted from the hierarchy fails fast with
+`ChiknError::InvalidFormat` instead of returning success and leaving the
+project immediately Degraded (orphan the reader would have had to
+reconcile). Entities under `characters/` and `locations/` live outside the
+hierarchy by design and remain exempt. The guard compares normalized
+(canonicalized) paths — the reader's `collect_hierarchy_paths` is now
+`pub(crate)` and reused rather than duplicated — so spelling variants
+cannot slip past; guard tests cover the rejection, the entity exemption,
+and the variant-spelling case. Closes the first ranked follow-up from the
+`d6fa9b5` list; Scrivener asset-import boundary is now the top parked item.
+
+**Governance:** `b043585` — owner directive removed the per-commit approval
+gate: verified single-concern work is committed without announcing and
+waiting. Decision recorded in `.agents/decisions.md` (2026-07-16), operative
+rule in `.agents/repo-guidance.md` Earned Practices. Push gating, Git Safety
+append-only history, one-concern-per-commit, and scope approval unchanged.
+
+**Verification:** At `6b4b4ac`: `cargo fmt --check`, `cargo clippy
+--all-targets -- -D warnings`, and full test suites green across all four
+crates (Rust portion of the declared suite; ui/release-metadata portions
+untouched by this work, last green at `d6fa9b5`).
+
+## 2026-07-16 — Three owner-directed hardening fixes (parse canonicalization, git self-heal on open, crash-ordered saves)
+
+**Change:** Landed the three fixes the owner directed this session, one
+concern per commit, on top of the epoch-guard work.
+
+- `ae6bc01` — `include_in_compile` is canonicalized at parse time: YAML 1.1
+  boolean spellings (`no`/`off`/`n`, `yes`/`on`/`y`, any case), integers
+  0/1, and whitespace-padded values normalize to the canonical `Yes`/`No`
+  on read; unrecognized strings pass through verbatim so the reader stays
+  tolerant. Closes the case-sensitive `include_in_compile` finding parked
+  in `PLAN_FORMAT_LOCK_ENGINE.md`.
+- `0d3c027` — the git repo is verified and self-healed on project open:
+  `pre_repair_git` runs alongside the folder pre-repair in `RepairMode`. A
+  missing repo is recreated; an unopenable one is left untouched and
+  reported rather than clobbered. Guard tests cover both branches.
+- `d6fa9b5` — multi-file saves are crash-ordered: `write_project` writes
+  documents and threads before `project.yaml`, so a torn save degrades to
+  orphan content files (reconciled by self-heal on the next open) instead
+  of a manifest referencing documents that were never written. The guard
+  test sabotages a document write mid-save and proves the on-disk manifest
+  stays byte-identical, then retries clean. Closes the non-transactional
+  multi-file save finding parked in `PLAN_FORMAT_LOCK_ENGINE.md`.
+
+**Verification:** Full declared suite green at `d6fa9b5` (rustc 1.97.0);
+each commit additionally verified in isolation via `git rebase --exec`
+(core lib check + lib tests per commit). `init_repo` remains `pub` — the
+open-time verify did not change API visibility; that parked finding stays
+parked.
+
+## 2026-07-16 — Tree-replacement epoch guard shipped (plan slices 1–4)
+
+**Change:** Completed the owner-approved
+`docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md` ("4 pieces", one commit per
+slice). Slice 1 added the UI vitest harness and folded it into CI and the
+declared suite (`cd6afdd`). Slice 2 armed a drop-scope epoch-bump guard at
+the point of no return of every tree-replacing operation — restore, draft
+switch/merge, sync pull/abort/force — so a partial failure after the first
+ref/HEAD/tree mutation still invalidates outstanding write authority
+(`db8095a`). Slice 3 built the UI operation barrier: a counted lease that
+freezes editing and programmatic dispatch before the pre-operation drain,
+refuses (never defers) non-owner project mutations, admits the owner's own
+drain/operation/reload dispatches, rebuilds the editor buffer
+generation-keyed after every result kind, freezes stale-snapshot forms with
+loud-drop semantics, and gates the auto-commit/backup timers and the close
+path (`977095b`).
+
+Slice 4 (`354fbc0`) closed the merge lifecycle and fixed the two recorded
+live bugs. Core: `save_revision` refuses during any merge state for every
+caller; both restore helpers preflight merge state before touching disk;
+manual backup skips only the commit half mid-merge and still pushes; a new
+explicit `complete_merge` is the only completion path (stages, two-parent
+commit, `cleanup_state`, epoch bump at scope exit); a new
+`force_resolve_merge` hard-resets to the bound `MERGE_HEAD`, serving pull
+and draft conflicts alike. A narrow `RecoveryPermit` — issued only while
+merge state is attested, root-bound, tied to the specific `MERGE_HEAD` OID
+plus an index+worktree-content fingerprint, re-attested at the last safe
+point before each mutation, failing closed on any drift — authorizes
+exactly complete/abort/force, so recovery stays reachable when format-file
+conflicts make the fidelity probe error (live bug 1) and the force exit
+works from a real conflicted tree for the first time (live bug 2). The
+reader gained a display-only recovery open (HEAD `project.yaml` fallback,
+hierarchy skew loads as unlinked); Tauri `load_project` uses it to open
+mid-merge projects read-only after restart; `backup_on_close` no longer
+swallows non-merge save errors; the TUI renders these refusals via
+`Display`. The UI shows a persistent merge-in-progress banner keyed on the
+backend `merge_state` query (survives restart) offering Complete — run
+under the barrier lifecycle WITH the editor drain, so a just-resolved
+buffer cannot be left in the debounce window — and Abort; the conflict
+dialog's force exit binds to the merge attestation captured when the
+conflict was surfaced.
+
+**Independent review (owner-directed):** the slice was reviewed pre-commit
+by codex via the `codereview` playbook (records in
+`.agents/review/findings/s4-1..4.md`). Four findings were admitted and
+fixed across three verdict rounds: the force confirmation now binds the
+full attestation (OID alone cannot distinguish two merges of the same
+incoming commit); the fingerprint now covers index entries (restaged
+content with unchanged worktree bytes and status bits); `complete_merge`
+opens its index before the last-safe-point re-check; and the UI merge-state
+snapshot is path-scoped at render time (no frame can pair one project's
+banner with another's actions). All four verdicts: accepted.
+
+**Guard proofs (temporary local changes, never committed):** reverting the
+`save_revision` merge-state refusal committed conflict markers wholesale;
+disabling the restore preflights failed the zero-worktree-mutation
+assertions; disabling the recovery-side epoch arming left a pre-operation
+token live after a force-resolve; comparing only the OID half of the
+attestation admitted a swapped merge of the same draft; dropping index
+hashing admitted staged-content drift; removing the UI sequence guard and
+the render-scoping each failed their stale-state regressions. Two gaps
+were caught red before shipping: the fingerprint originally hashed only
+status bits (missed content edits to already-conflicted files), then only
+worktree bytes (missed index-only drift) — each strengthened against a
+failing test.
+
+**Verified:** the full declared suite — formatting, clippy with warnings
+denied across all four Rust packages/all targets (rustc 1.97.0, current
+stable), 255 Rust tests (including 22 new merge-recovery integration
+tests, a pull-origin force test, a complete_merge failpoint test, three
+fresh-boundary Tauri command tests, and a TUI status-line rendering test),
+release metadata, UI lint, production build, and 34 vitest tests (8 new
+merge-banner/merge-state regressions).
+
+## 2026-07-12 — Fresh-fidelity operation boundary shipped
+
+**Change:** Shipped the owner-approved
+`docs/plans/PLAN_FRESH_FIDELITY_BOUNDARY.md` in `a0e7621`. A cached,
+root/epoch-bound `WriteToken` is now session identity only; every logical
+existing-project mutation must enter through a short-lived `WritePermit`
+issued after a fresh, side-effect-free fidelity probe. Nested deletion,
+restore, backup, and other composite steps reuse that permit instead of
+re-probing an intentionally intermediate tree. Both normal and force pull
+revalidate after network fetch before touching the worktree, and force pull
+also repeats its dirty-worktree check at the last safe point before reset.
+
+Public/default project reads are now side-effect-free. Missing benign folders
+are created only by the explicit permit-backed Full-open path, and corrupt
+sidecars remain byte-for-byte at their original paths rather than being
+quarantine-renamed. Tauri opens one permit inside each per-project lock and
+evicts cached authority after a fidelity refusal; TUI saves/revisions and the
+converter import use one operation permit; CLI export uses the pure reader.
+
+**Guard proofs (temporary local changes, never committed):** routing the
+public reader through folder repair and restoring a quarantine rename made
+both the combined corrupt-sidecar/missing-folder test and CLI source-tree
+identity test fail; restoring the pure reader made both pass. Bypassing the
+fresh permit probe made the old-session mutation-family test and Tauri cache
+eviction test fail; restoring the probe made both pass. Replacing shared
+deletion authority with a fresh permit per child made the two-document folder
+deletion fail after the first unlink; restoring one shared permit made it
+pass and left the final project Full.
+
+**Verified:** all targeted plan tests, including the combined pure read,
+two-document deletion, restore-forward commit, Corn sample, cross-root, and
+stale-epoch guards; then the complete declared suite: formatting, clippy with
+warnings denied across all four Rust packages/all targets, all library/bin/
+integration tests, release metadata, UI lint, and UI production build.
+
+**Follow-ups exposed, not widened into this slice:** a permitted
+`write_project` can currently accept an in-memory document omitted from the
+hierarchy, return success, and leave the next fidelity probe Degraded; and
+tree-replacing Git operations bump the epoch only after all later steps
+succeed, so a partial failure after a worktree mutation can leave cached UI
+state apparently current. `.agents/state.md` owns their current priority.
+
+## 2026-07-12 — Coherence closed; Engine hardening is active
+
+**Change:** Recorded the owner's confirmation that Coherence had already been
+declared complete but the transition was never saved. `CURRENT_PHASE.md` now
+advances to Engine hardening, the next established project priority, with a
+read-only integrity audit as its first step and no code slice implicitly
+approved. Current-state, roadmap, TODO, and plan-status references were
+aligned so completed format work cannot be mistaken for an active phase or an
+automatic go-ahead for later novelist features. Vault/remote work remains
+explicitly unapproved pending a remote-design decision.
+
+**Verified:** documentation links and phase/status searches; `git diff
+--check`. No runtime code changed, so the code validation suite was not run.
+
 ## 2026-07-11 — Write-guard shipped (PLAN_TRUST_FOUNDATIONS Slice 1): the app can no longer save over a project it cannot fully read
 
 **Change:** Executed the owner-approved

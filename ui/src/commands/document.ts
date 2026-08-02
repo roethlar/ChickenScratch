@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { mutatingInvoke } from "./gateway";
+import type { LeaseHandle } from "./barrier";
 import type { Document, Project } from "../types";
 
 export async function getDocument(
@@ -11,9 +13,14 @@ export async function getDocument(
 export async function updateDocumentContent(
   projectPath: string,
   docId: string,
-  content: string
+  content: string,
+  lease?: LeaseHandle
 ): Promise<void> {
-  return invoke("update_document_content", { projectPath, docId, content });
+  return mutatingInvoke(
+    "update_document_content",
+    { projectPath, docId, content },
+    lease
+  );
 }
 
 /**
@@ -39,7 +46,7 @@ export async function updateDocumentMetadata(
     fields?: FieldUpdates | null;
   }
 ): Promise<Project> {
-  return invoke("update_document_metadata", {
+  return mutatingInvoke("update_document_metadata", {
     projectPath,
     docId,
     ...meta,
@@ -51,7 +58,7 @@ export async function linkDocuments(
   docIdA: string,
   docIdB: string
 ): Promise<Project> {
-  return invoke("link_documents", { projectPath, docIdA, docIdB });
+  return mutatingInvoke("link_documents", { projectPath, docIdA, docIdB });
 }
 
 export async function renameNode(
@@ -59,7 +66,7 @@ export async function renameNode(
   nodeId: string,
   newName: string
 ): Promise<Project> {
-  return invoke("rename_node", { projectPath, nodeId, newName });
+  return mutatingInvoke("rename_node", { projectPath, nodeId, newName });
 }
 
 export async function createDocument(
@@ -67,7 +74,7 @@ export async function createDocument(
   name: string,
   parentId?: string
 ): Promise<Project> {
-  return invoke("create_document", {
+  return mutatingInvoke("create_document", {
     projectPath,
     name,
     parentId: parentId ?? null,
@@ -79,7 +86,7 @@ export async function createFolder(
   name: string,
   parentId?: string
 ): Promise<Project> {
-  return invoke("create_folder", {
+  return mutatingInvoke("create_folder", {
     projectPath,
     name,
     parentId: parentId ?? null,
@@ -91,14 +98,14 @@ export async function createEntity(
   name: string,
   kind: "character" | "location"
 ): Promise<Project> {
-  return invoke("create_entity", { projectPath, name, kind });
+  return mutatingInvoke("create_entity", { projectPath, name, kind });
 }
 
 export async function deleteNode(
   projectPath: string,
   nodeId: string
 ): Promise<Project> {
-  return invoke("delete_node", { projectPath, nodeId });
+  return mutatingInvoke("delete_node", { projectPath, nodeId });
 }
 
 export async function moveNode(
@@ -107,7 +114,7 @@ export async function moveNode(
   newParentId?: string,
   newIndex?: number
 ): Promise<Project> {
-  return invoke("move_node", {
+  return mutatingInvoke("move_node", {
     projectPath,
     nodeId,
     newParentId: newParentId ?? null,
@@ -122,7 +129,13 @@ export async function addComment(
   body: string,
   newContent: string
 ): Promise<Project> {
-  return invoke("add_comment", { projectPath, docId, commentId, body, newContent });
+  return mutatingInvoke("add_comment", {
+    projectPath,
+    docId,
+    commentId,
+    body,
+    newContent,
+  });
 }
 
 export async function updateComment(
@@ -132,7 +145,7 @@ export async function updateComment(
   body?: string,
   resolved?: boolean
 ): Promise<Project> {
-  return invoke("update_comment", {
+  return mutatingInvoke("update_comment", {
     projectPath,
     docId,
     commentId,
@@ -147,5 +160,10 @@ export async function deleteComment(
   commentId: string,
   newContent: string
 ): Promise<Project> {
-  return invoke("delete_comment", { projectPath, docId, commentId, newContent });
+  return mutatingInvoke("delete_comment", {
+    projectPath,
+    docId,
+    commentId,
+    newContent,
+  });
 }

@@ -20,6 +20,8 @@ import { toastSuccess, toastError } from "../shared/Toast";
 import * as gitCmd from "../../commands/git";
 import * as threadCmd from "../../commands/threads";
 import type { Revision, DraftVersion, FileDiff, SyncStatus } from "../../commands/git";
+import { runEpochOperation } from "../../operations";
+import { useBarrierActive } from "../../hooks/useBarrier";
 
 export function Revisions() {
   const project = useProjectStore((s) => s.project);
@@ -35,9 +37,21 @@ export function Revisions() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
-  // Surfaced from both pull (remote conflict) and draft merge (local conflict).
-  // Declared up here so handleMergeDraft can dispatch to it.
-  const [conflictFiles, setConflictFiles] = useState<string[] | null>(null);
+  // Surfaced from both pull (remote conflict) and draft merge (local
+  // conflict); declared up here so handleMergeDraft can dispatch to it.
+  // Carries the merge attestation captured when the conflict was
+  // surfaced: the force confirmation binds to it, so a merge swapped or
+  // drifted underneath an open dialog refuses instead of discarding a
+  // state the writer never saw (finding s4-1).
+  const [conflict, setConflict] = useState<{
+    files: string[];
+    attestation: string | null;
+  } | null>(null);
+  // Every tree-replacing trigger disables while ANY barrier lease is held
+  // (plan slice 3, round 4): overlapping operations would queue behind the
+  // backend project lock and the second would replay against the first's
+  // rebuilt state.
+  const barrierActive = useBarrierActive();
 
   const refresh = useCallback(async () => {
     if (!project) return;
@@ -105,12 +119,18 @@ export function Revisions() {
     if (!project) return;
     if (!(await dialogConfirm("Restore to this revision? Your current work will be preserved as a new revision.")))
       return;
-    await runWithEditorFlush("Restore", async () => {
-      await gitCmd.restoreRevision(project.path, commitId);
-      // Reload the project to reflect restored state
-      await useProjectStore.getState().openProject(project.path);
-      await refresh();
-    });
+    // Epoch-bumping: the barrier lifecycle freezes editing, drains the
+    // buffer, and reloads + rebuilds on every result kind — including
+    // failure, where the old success-only reload left a stale buffer one
+    // auto-save away from clobbering the restored tree (plan slice 3).
+    try {
+      await runEpochOperation((lease) =>
+        gitCmd.restoreRevision(project.path, commitId, lease)
+      );
+    } catch (e) {
+      toastError(`Restore failed: ${e}`);
+    }
+    await refresh();
   };
 
   const handleNewDraft = async () => {
@@ -126,28 +146,38 @@ export function Revisions() {
 
   const handleSwitchDraft = async (name: string) => {
     if (!project) return;
-    await runWithEditorFlush("Switch draft", async () => {
-      await gitCmd.switchDraft(project.path, name);
-      await useProjectStore.getState().openProject(project.path);
-      await refresh();
-    });
+    try {
+      await runEpochOperation((lease) =>
+        gitCmd.switchDraft(project.path, name, lease)
+      );
+    } catch (e) {
+      toastError(`Switch failed: ${e}`);
+    }
+    await refresh();
   };
 
   const handleMergeDraft = async (name: string) => {
     if (!project) return;
     if (!(await dialogConfirm(`Merge "${name}" into the current draft?`))) return;
-    await runWithEditorFlush("Merge draft", async () => {
-      const result = await gitCmd.mergeDraft(project.path, name);
-      // F-009: merge_draft now returns a tagged result. Conflict surfaces
-      // through the same dialog used by remote pull so the user can abort
-      // or escalate.
+    try {
+      // F-009: merge_draft returns a tagged result. Ok(Conflicts) has
+      // ALREADY rewritten the working tree, so it gets the same
+      // reload+rebuild as success and failure (the lifecycle does this on
+      // every result kind); the dialog then offers the exits.
+      const result = await runEpochOperation((lease) =>
+        gitCmd.mergeDraft(project.path, name, lease)
+      );
       if (result.kind === "conflicts") {
-        setConflictFiles(result.files);
-        return;
+        const ms = await gitCmd.mergeState(project.path).catch(() => null);
+        setConflict({
+          files: result.files,
+          attestation: ms?.attestation ?? null,
+        });
       }
-      await useProjectStore.getState().openProject(project.path);
-      await refresh();
-    });
+    } catch (e) {
+      toastError(`Merge failed: ${e}`);
+    }
+    await refresh();
   };
 
   const handleBackup = async () => {
@@ -207,30 +237,33 @@ export function Revisions() {
     if (!project) return;
     setSyncBusy(true);
     try {
-      await runWithEditorFlush("Pull", async () => {
-        const result = await gitCmd.syncPull(project.path);
-        switch (result.kind) {
-          case "up_to_date":
-            toastSuccess("Already up to date.");
-            break;
-          case "fast_forward":
-            toastSuccess("Pulled (fast-forward).");
-            // F-008: fast_forward and merged both rewrite working-tree files.
-            // Without re-reading project state the React store keeps the
-            // pre-pull `documents` map; the next autosave then writes the
-            // stale editor buffer back over the freshly pulled content.
-            await useProjectStore.getState().openProject(project.path);
-            break;
-          case "merged":
-            toastSuccess("Pulled and merged.");
-            await useProjectStore.getState().openProject(project.path);
-            break;
-          case "conflicts":
-            setConflictFiles(result.files);
-            break;
+      // F-008/slice 3: every pull result kind runs under the barrier
+      // lifecycle — fast_forward and merged rewrite working-tree files,
+      // conflicts leaves markers on disk, and a guarded partial failure
+      // has already mutated the tree. All of them reload + rebuild.
+      const result = await runEpochOperation((lease) =>
+        gitCmd.syncPull(project.path, lease)
+      );
+      switch (result.kind) {
+        case "up_to_date":
+          toastSuccess("Already up to date.");
+          break;
+        case "fast_forward":
+          toastSuccess("Pulled (fast-forward).");
+          break;
+        case "merged":
+          toastSuccess("Pulled and merged.");
+          break;
+        case "conflicts": {
+          const ms = await gitCmd.mergeState(project.path).catch(() => null);
+          setConflict({
+            files: result.files,
+            attestation: ms?.attestation ?? null,
+          });
+          break;
         }
-        await refresh();
-      });
+      }
+      await refresh();
     } catch (e) {
       toastError(`Pull failed: ${e}`);
     }
@@ -241,12 +274,14 @@ export function Revisions() {
     if (!project) return;
     setSyncBusy(true);
     try {
-      // No editor-flush gate here: the buffer holds local edits we're about
-      // to discard anyway. Reload the project after abort to refresh state.
-      await gitCmd.syncAbortPull(project.path);
+      // skipDrain: the buffer holds local edits the user chose to discard;
+      // flushing would save them right before the reset threw them away.
+      await runEpochOperation(
+        (lease) => gitCmd.syncAbortPull(project.path, lease),
+        { skipDrain: true }
+      );
       toastSuccess("Merge aborted; local restored.");
-      setConflictFiles(null);
-      await useProjectStore.getState().openProject(project.path);
+      setConflict(null);
       await refresh();
     } catch (e) {
       toastError(`Abort failed: ${e}`);
@@ -254,24 +289,46 @@ export function Revisions() {
     setSyncBusy(false);
   };
 
-  const handleForcePull = async () => {
-    if (!project) return;
+  const handleForceResolve = async () => {
+    // The captured attestation is required: without it the backend cannot
+    // verify the writer is discarding the merge state they were shown, so
+    // the Force exit stays disabled (fail closed) rather than guessing.
+    if (!project || !conflict?.attestation) return;
     if (!(await dialogConfirm(
-      "Discard ALL local changes and overwrite with the remote? This cannot be undone."
+      "Discard your version of these files and take the incoming one? This cannot be undone."
     ))) return;
     setSyncBusy(true);
     try {
-      // Force-pull explicitly discards local — no flush gate (the user just
-      // confirmed the discard). Still reload the React store afterwards so
-      // the next autosave doesn't write the now-stale buffer back over remote
-      // content. (F-008)
-      await gitCmd.syncPullForce(project.path);
-      toastSuccess("Local overwritten with remote.");
-      setConflictFiles(null);
-      await useProjectStore.getState().openProject(project.path);
+      // Resolves the in-progress merge by taking MERGE_HEAD wholesale —
+      // the incoming remote commit after a pull conflict, the draft tip
+      // after a draft-merge conflict. The old sync_pull_force route could
+      // never run here: its dirty-worktree check fires on every conflicted
+      // tree (plan slice 4 — this was a live bug). skipDrain: the buffer
+      // holds the local edits the user just chose to discard.
+      await runEpochOperation(
+        (lease) =>
+          gitCmd.forceResolveMerge(project.path, conflict.attestation!, lease),
+        { skipDrain: true }
+      );
+      toastSuccess("Conflicts resolved with the incoming version.");
+      setConflict(null);
       await refresh();
     } catch (e) {
       toastError(`Overwrite failed: ${e}`);
+      // A fail-closed refusal means the merge drifted since the dialog
+      // appeared. Re-capture the live state so the dialog shows what a
+      // fresh confirmation would actually act on — otherwise the stale
+      // attestation would refuse every retry (plan round 12: "requiring
+      // fresh authority/confirmation").
+      const ms = await gitCmd.mergeState(project.path).catch(() => null);
+      if (ms?.in_progress) {
+        setConflict({
+          files: ms.conflicted_files,
+          attestation: ms.attestation,
+        });
+      } else {
+        setConflict(null);
+      }
     }
     setSyncBusy(false);
   };
@@ -351,6 +408,7 @@ export function Revisions() {
                   <button
                     className="revision-restore"
                     onClick={() => handleRestore(rev.id)}
+                    disabled={barrierActive}
                     title="Restore to this revision"
                   >
                     <RotateCcw size={12} />
@@ -413,12 +471,14 @@ export function Revisions() {
                   <div className="draft-actions">
                     <button
                       onClick={() => handleSwitchDraft(draft.name)}
+                      disabled={barrierActive}
                       title="Switch to this draft"
                     >
                       <GitBranch size={12} />
                     </button>
                     <button
                       onClick={() => handleMergeDraft(draft.name)}
+                      disabled={barrierActive}
                       title="Merge into current draft"
                     >
                       <GitMerge size={12} />
@@ -454,20 +514,21 @@ export function Revisions() {
         </button>
         <SyncControls
           status={syncStatus}
-          busy={syncBusy}
+          busy={syncBusy || barrierActive}
           onPush={handlePush}
           onFetch={handleFetch}
           onPull={handlePull}
         />
       </div>
 
-      {conflictFiles && (
+      {conflict && (
         <ConflictDialog
-          files={conflictFiles}
-          busy={syncBusy}
+          files={conflict.files}
+          busy={syncBusy || barrierActive}
+          forceReady={!!conflict.attestation}
           onAbort={handleAbortPull}
-          onForce={handleForcePull}
-          onResolveManually={() => setConflictFiles(null)}
+          onForce={handleForceResolve}
+          onResolveManually={() => setConflict(null)}
         />
       )}
     </div>
@@ -477,12 +538,16 @@ export function Revisions() {
 function ConflictDialog({
   files,
   busy,
+  forceReady,
   onAbort,
   onForce,
   onResolveManually,
 }: {
   files: string[];
   busy: boolean;
+  /** False when no attestation was captured for the confirmation binding —
+   *  the force exit fails closed by staying disabled (finding s4-1). */
+  forceReady: boolean;
   onAbort: () => void;
   onForce: () => void;
   onResolveManually: () => void;
@@ -508,22 +573,31 @@ function ConflictDialog({
       >
         <h3 id={titleId}>Merge conflicts</h3>
         <p>
-          The remote changed the same files you did. The working tree now has
-          conflict markers. Pick one:
+          The incoming changes touch the same files you did. The files now
+          show both versions with conflict markers. Pick one:
         </p>
         <ul className="conflict-files">
           {files.slice(0, 10).map((f) => <li key={f}><code>{f}</code></li>)}
           {files.length > 10 && <li>…and {files.length - 10} more</li>}
         </ul>
         <div className="conflict-actions">
-          <button ref={manualButtonRef} onClick={onResolveManually} disabled={busy}>
+          <button
+            ref={manualButtonRef}
+            onClick={onResolveManually}
+            disabled={busy}
+            title="Close this dialog and edit the marked files; the merge bar stays until you complete or abort"
+          >
             Resolve manually
           </button>
           <button onClick={onAbort} disabled={busy}>
-            Abort merge (keep local)
+            Abort merge (keep your version)
           </button>
-          <button onClick={onForce} disabled={busy} className="conflict-danger">
-            Overwrite local with remote
+          <button
+            onClick={onForce}
+            disabled={busy || !forceReady}
+            className="conflict-danger"
+          >
+            Take the incoming version
           </button>
         </div>
       </div>

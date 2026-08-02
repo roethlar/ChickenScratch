@@ -186,14 +186,27 @@ future version of this app) put there.
 Real findings from the audit that are *not* format-lock work; future work
 requests can pick them up:
 
-- Multi-file saves are not transactional (crash mid-save leaves a
-  mixed-generation project; embedded git limits the blast radius).
+- ~~Multi-file saves are not transactional~~ CLOSED 2026-07-16
+  (`d6fa9b5`): saves are crash-ordered — `project.yaml` is written last,
+  so a torn save degrades to orphan content files (reconciled by
+  self-heal) instead of a manifest referencing never-written documents.
 - `save_revision` stages quarantine `*.corrupt-*` files and crash-orphaned
   `.X.tmp-*` files into permanent history (`.gitignore` pattern `*.tmp`
-  doesn't match the atomic writer's temp names).
-- Corrupt-sidecar quarantine warns only on stderr — invisible in the GUI.
-- `include_in_compile` string matching is exact/case-sensitive (`"no"` or
-  `"false"` as strings mean *included*).
+  doesn't match the atomic writer's temp names). Re-verified 2026-07-16
+  at tip: `add_all(["*"])` in `core::git::save_revision`; temp names are
+  `.{name}.tmp-{random}` (`writer.rs::atomic_write_file`), which `*.tmp`
+  cannot match. Exposure is hard-crash only (`NamedTempFile` cleans up
+  error paths).
+- SelfHeal repair notices (recreated folders, missing document files)
+  print only to stderr — invisible in the GUI. Narrowed 2026-07-16:
+  corrupt sidecars now surface structurally as Degraded entries and
+  reads never quarantine-rename, so only the *repair-path* notices
+  remain stderr-only.
+- ~~`include_in_compile` string matching is exact/case-sensitive~~
+  CLOSED 2026-07-16 (`ae6bc01`): read-time canonicalization
+  (`canonicalize_include_in_compile`, any-case + whitespace-tolerant)
+  plus defense-in-depth in `include_in_compile_flag`
+  (`crates/core/src/core/project/reader.rs`).
 - No project-level `fields` map (per-document only) — post-finalization
   decision, as is the entity-folder mechanism.
 - Spec-listed but never-implemented `custom_styles` / `word_count` /

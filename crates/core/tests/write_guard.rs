@@ -4,26 +4,25 @@
 //! Degraded fixture asserts, in order:
 //!   1. the fidelity probe classifies it Degraded with the right reason and
 //!      is byte-for-byte side-effect-free;
-//!   2. the repairs-disabled (Degraded) open is byte-for-byte
+//!   2. the public default (Degraded) open is byte-for-byte
 //!      side-effect-free;
 //!   3. every mutating engine path refuses, and the folder stays
 //!      byte-identical after the attempts — INCLUDING the project-internal
 //!      app-file path used by the Statistics panel's writing history.
 //!
-//! GUARD-PROOF DRILL (recorded in DEVLOG): if `acquire_write_token` is
-//! temporarily changed to hand out tokens unconditionally, the mutation
-//! attempts below actually execute and the final byte-identity assertions
-//! FAIL (writer rewrite dirties fixtures (a)/(b), version downgrade
-//! dirties (e), the app-file write dirties (c)). If the Degraded open is
-//! rerouted through the self-healing reader, assertion 2 fails for (c)
-//! (sidecar quarantine rename). Restore the guard and everything passes —
-//! mirroring the real 2026-07-10 incident.
+//! GUARD-PROOF DRILLS (recorded in DEVLOG): bypassing fresh permit probing
+//! lets an old Full session enter every representative mutation below after
+//! external degradation, and the ReadOnly/byte-identity assertions fail.
+//! Rerouting the public read through disk repair likewise fails its pure-read
+//! guards. Restoring both boundaries makes the suite pass.
 
 use chickenscratch_core::core::git;
 use chickenscratch_core::core::project::fidelity::{
     acquire_write_token, probe_project_fidelity, DegradedReason, Fidelity,
 };
-use chickenscratch_core::core::project::reader::{read_project, read_project_readonly};
+use chickenscratch_core::core::project::reader::{
+    read_project, read_project_readonly, read_project_with_repair,
+};
 use chickenscratch_core::core::project::writer::{
     self, create_project, delete_document, write_project,
 };
@@ -130,8 +129,7 @@ fn missing_document_fixture() -> (TempDir, PathBuf) {
     (temp, root)
 }
 
-/// Fixture (c): corrupt document sidecar (a normal load would
-/// quarantine-rename it).
+/// Fixture (c): corrupt document sidecar that cannot be fully interpreted.
 fn corrupt_sidecar_fixture() -> (TempDir, PathBuf) {
     let (temp, root) = base_fixture();
     fs::write(root.join("manuscript/chapter-01.meta"), "id: [").unwrap();
@@ -174,13 +172,16 @@ fn assert_degraded_and_untouched(
         "probe must be byte-for-byte side-effect-free"
     );
 
-    // 2. Degraded open (repairs-disabled read): no side effects.
-    let readonly_project = read_project_readonly(root);
+    // 2. Public/default Degraded open: no side effects. The explicit alias
+    //    remains equally pure for source compatibility.
+    let public_project = read_project(root);
     assert_eq!(
         before,
         tree_snapshot(root),
-        "Degraded open must be byte-for-byte side-effect-free"
+        "public Degraded open must be byte-for-byte side-effect-free"
     );
+    let _ = read_project_readonly(root);
+    assert_eq!(before, tree_snapshot(root));
 
     // 3. Mutations refused. With a healthy guard, acquire_write_token
     //    refuses and no write can even be expressed. If the guard is
@@ -190,18 +191,22 @@ fn assert_degraded_and_untouched(
         Err(ChiknError::ReadOnly(_)) => {}
         Err(other) => panic!("expected ReadOnly refusal, got {other:?}"),
         Ok(token) => {
-            // Drill mode only.
-            if let Ok(mut project) = readonly_project {
-                let _ = write_project(&mut project, &token);
-            }
-            let _ = delete_document(root, "manuscript/chapter-01.md", &token);
-            // The Statistics panel's writing-history path.
-            let _ = writer::write_project_app_file(
-                &token,
-                Path::new("settings/writing-history.json"),
-                b"{\"entries\":[]}",
-            );
-            let _ = git::save_revision(root, "Auto-save on close", &token);
+            // Drill mode only: bypassing both token acquisition and fresh
+            // permit probing lets these real mutations execute.
+            let _ = token.with_write_permit(root, |permit| {
+                if let Ok(mut project) = public_project {
+                    let _ = write_project(&mut project, permit);
+                }
+                let _ = delete_document(root, "manuscript/chapter-01.md", permit);
+                let _ = writer::write_project_app_file(
+                    permit,
+                    Path::new("settings/writing-history.json"),
+                    b"{\"entries\":[]}",
+                );
+                let _ = writer::ensure_project_subdir(permit, Path::new("characters"));
+                let _ = git::save_revision(root, "Auto-save on close", permit);
+                Ok(())
+            });
         }
     }
     assert_eq!(
@@ -242,6 +247,26 @@ fn corrupt_sidecar_project_is_degraded_and_untouched() {
 }
 
 #[test]
+fn public_read_of_corrupt_sidecar_and_missing_folders_is_browsable_and_pure() {
+    let (_temp, root) = corrupt_sidecar_fixture();
+    fs::remove_dir(root.join("research")).unwrap();
+    fs::remove_dir(root.join("templates")).unwrap();
+    fs::remove_dir(root.join("settings")).unwrap();
+    let before = tree_snapshot(&root);
+
+    let project = read_project(&root).expect("pure read should keep the project browsable");
+
+    let document = project.documents.get("doc1").expect("hierarchy identity");
+    assert_eq!(document.path, "manuscript/chapter-01.md");
+    assert_eq!(document.content, "# Chapter 1\n");
+    assert_eq!(before, tree_snapshot(&root));
+    assert_eq!(
+        fs::read(root.join("manuscript/chapter-01.meta")).unwrap(),
+        b"id: ["
+    );
+}
+
+#[test]
 fn newer_format_version_project_is_degraded_and_untouched() {
     let (_t, root) = newer_version_fixture();
     assert_degraded_and_untouched(
@@ -249,6 +274,95 @@ fn newer_format_version_project_is_degraded_and_untouched() {
         |r| matches!(r, DegradedReason::NewerFormatVersion { found } if found == "9.9"),
         "NewerFormatVersion",
     );
+}
+
+#[test]
+fn fresh_fidelity_old_session_cannot_begin_operation() {
+    let (_temp, root) = base_fixture();
+    let mut project = read_project(&root).unwrap();
+    let token = acquire_write_token(&root).unwrap();
+
+    let yaml = fs::read_to_string(root.join("project.yaml"))
+        .unwrap()
+        .replace("format_version: '1.2'", "format_version: '9.9'");
+    fs::write(root.join("project.yaml"), yaml).unwrap();
+    let before = tree_snapshot(&root);
+    assert!(
+        !token.is_stale(),
+        "external edits do not bump the in-process epoch"
+    );
+
+    let write = token.with_write_permit(&root, |permit| write_project(&mut project, permit));
+    assert!(
+        matches!(write, Err(ChiknError::ReadOnly(_))),
+        "project write must refuse the externally degraded tree: {write:?}"
+    );
+
+    let delete = token.with_write_permit(&root, |permit| {
+        delete_document(&root, "manuscript/chapter-01.md", permit)
+    });
+    assert!(
+        matches!(delete, Err(ChiknError::ReadOnly(_))),
+        "document delete must refuse the externally degraded tree: {delete:?}"
+    );
+
+    let app_file = token.with_write_permit(&root, |permit| {
+        writer::write_project_app_file(
+            permit,
+            Path::new("settings/writing-history.json"),
+            b"{\"entries\":[]}",
+        )
+    });
+    assert!(
+        matches!(app_file, Err(ChiknError::ReadOnly(_))),
+        "app-file write must refuse the externally degraded tree: {app_file:?}"
+    );
+
+    let subdir = token.with_write_permit(&root, |permit| {
+        writer::ensure_project_subdir(permit, Path::new("characters")).map(|_| ())
+    });
+    assert!(
+        matches!(subdir, Err(ChiknError::ReadOnly(_))),
+        "subdirectory creation must refuse the externally degraded tree: {subdir:?}"
+    );
+
+    let revision = token.with_write_permit(&root, |permit| {
+        git::save_revision(&root, "must not enter", permit).map(|_| ())
+    });
+    assert!(
+        matches!(revision, Err(ChiknError::ReadOnly(_))),
+        "revision save must refuse the externally degraded tree: {revision:?}"
+    );
+
+    assert_eq!(before, tree_snapshot(&root));
+}
+
+#[test]
+fn fresh_fidelity_old_session_rejects_newly_corrupt_sidecar() {
+    let (_temp, root) = base_fixture();
+    let token = acquire_write_token(&root).unwrap();
+    let sidecar = root.join("manuscript/chapter-01.meta");
+
+    fs::write(&sidecar, "id: [").unwrap();
+    let before = tree_snapshot(&root);
+    let entered = std::cell::Cell::new(false);
+
+    assert!(
+        !token.is_stale(),
+        "external sidecar damage does not bump the in-process epoch"
+    );
+    let result = token.with_write_permit(&root, |_| {
+        entered.set(true);
+        Ok(())
+    });
+
+    assert!(matches!(result, Err(ChiknError::ReadOnly(_))));
+    assert!(
+        !entered.get(),
+        "a corrupt sidecar must prevent permit issuance"
+    );
+    assert_eq!(before, tree_snapshot(&root));
+    assert_eq!(fs::read(sidecar).unwrap(), b"id: [");
 }
 
 #[test]
@@ -262,23 +376,31 @@ fn token_for_one_project_is_refused_against_another() {
     let token_b = acquire_write_token(&root_b).unwrap();
 
     // Sanity: each token works for its own project.
-    write_project(&mut project_a, &token_a).unwrap();
-    write_project(&mut project_b, &token_b).unwrap();
+    token_a
+        .with_write_permit(&root_a, |permit| write_project(&mut project_a, permit))
+        .unwrap();
+    token_b
+        .with_write_permit(&root_b, |permit| write_project(&mut project_b, permit))
+        .unwrap();
 
     let before_b = tree_snapshot(&root_b);
 
     // Cross-project use is refused across the mutating surface.
-    let write = write_project(&mut project_b, &token_a);
+    let write = token_a.with_write_permit(&root_b, |permit| write_project(&mut project_b, permit));
     assert!(
         matches!(write, Err(ChiknError::ReadOnly(_))),
         "token A must not authorize write_project into B: {write:?}"
     );
-    let delete = delete_document(&root_b, "manuscript/anything.md", &token_a);
+    let delete = token_a.with_write_permit(&root_b, |permit| {
+        delete_document(&root_b, "manuscript/anything.md", permit)
+    });
     assert!(
         matches!(delete, Err(ChiknError::ReadOnly(_))),
         "token A must not authorize delete_document in B: {delete:?}"
     );
-    let commit = git::save_revision(&root_b, "hijack", &token_a);
+    let commit = token_a.with_write_permit(&root_b, |permit| {
+        git::save_revision(&root_b, "hijack", permit)
+    });
     assert!(
         matches!(commit, Err(ChiknError::ReadOnly(_))),
         "token A must not authorize save_revision in B: {commit:?}"
@@ -297,20 +419,30 @@ fn token_goes_stale_after_tree_replacing_operation() {
     let root = temp.path().join("Stale.chikn");
     let mut project = create_project(&root, "Stale").unwrap();
     let token = acquire_write_token(&root).unwrap();
-    write_project(&mut project, &token).unwrap();
-    let baseline = git::save_revision(&root, "Baseline", &token).unwrap();
+    let baseline = token
+        .with_write_permit(&root, |permit| {
+            write_project(&mut project, permit)?;
+            git::save_revision(&root, "Baseline", permit)
+        })
+        .unwrap();
 
     // A tree-replacing operation (revision restore) bumps the epoch...
-    git::restore_revision(&root, &baseline.id, &token).unwrap();
+    token
+        .with_write_permit(&root, |permit| {
+            git::restore_revision(&root, &baseline.id, permit)
+        })
+        .unwrap();
 
     // ...so the pre-bump token is refused everywhere.
     assert!(token.is_stale());
-    let write = write_project(&mut project, &token);
+    let write = token.with_write_permit(&root, |permit| write_project(&mut project, permit));
     assert!(
         matches!(write, Err(ChiknError::ReadOnly(_))),
         "stale token must be refused by write_project: {write:?}"
     );
-    let commit = git::save_revision(&root, "after restore", &token);
+    let commit = token.with_write_permit(&root, |permit| {
+        git::save_revision(&root, "after restore", permit)
+    });
     assert!(
         matches!(commit, Err(ChiknError::ReadOnly(_))),
         "stale token must be refused by save_revision: {commit:?}"
@@ -318,7 +450,9 @@ fn token_goes_stale_after_tree_replacing_operation() {
 
     // Re-probing issues a fresh, working token.
     let fresh = acquire_write_token(&root).unwrap();
-    write_project(&mut project, &fresh).unwrap();
+    fresh
+        .with_write_permit(&root, |permit| write_project(&mut project, permit))
+        .unwrap();
 }
 
 #[test]
@@ -348,7 +482,9 @@ fn zero_byte_document_probes_full_and_roundtrips_untouched() {
     let mut project = read_project(&root).unwrap();
     assert_eq!(project.documents.get("doc-empty").unwrap().content, "");
     let token = acquire_write_token(&root).unwrap();
-    write_project(&mut project, &token).unwrap();
+    token
+        .with_write_permit(&root, |permit| write_project(&mut project, permit))
+        .unwrap();
 
     let reread = read_project(&root).unwrap();
     assert_eq!(
@@ -415,15 +551,19 @@ fn corn_sample_probes_full_opens_and_writes_normally() {
         "missing standard folders must not degrade a project"
     );
 
-    let mut project = read_project(&root).unwrap();
+    let token = acquire_write_token(&root).unwrap();
+    let mut project = token
+        .with_write_permit(&root, |permit| read_project_with_repair(&root, permit))
+        .unwrap();
     assert!(
         root.join("templates").is_dir(),
         "normal open must self-heal missing standard folders"
     );
     assert!(root.join("settings").is_dir());
 
-    let token = acquire_write_token(&root).unwrap();
-    write_project(&mut project, &token).unwrap();
+    token
+        .with_write_permit(&root, |permit| write_project(&mut project, permit))
+        .unwrap();
     let reread = read_project(&root).unwrap();
     assert_eq!(reread.documents.len(), project.documents.len());
 }
@@ -490,7 +630,9 @@ fn writer_never_writes_content_into_asset_path() {
     rogue.content = "this text must never reach the pdf".to_string();
     project.documents.insert(rogue.id.clone(), rogue);
 
-    write_project(&mut project, &token).unwrap();
+    token
+        .with_write_permit(&root, |permit| write_project(&mut project, permit))
+        .unwrap();
     assert_eq!(
         fs::read(root.join("research/sample.pdf")).unwrap(),
         b"%PDF-1.4 fake",
