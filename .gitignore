@@ -44,3 +44,7 @@ Thumbs.db
 # Tauri generated
 src-tauri/gen/
 2026-*.txt
+
+# Misc
+.tokensave/
+.serena/
