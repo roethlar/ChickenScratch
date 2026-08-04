@@ -1,7 +1,7 @@
 # Machine-Specific Facts
 
 Dated notes per machine, per the `handoff` rule in `AGENTS.md`. Prune stale
-entries during `drift` passes.
+entries during `catchup` hygiene sweeps.
 
 ## nagatha.local (macOS 26.5.2)
 
