@@ -25,6 +25,19 @@ decisions; `DEVLOG.md` holds history.
   outside core and reports failures only to stderr. Also parked:
   revision staging of recovery artifacts. Neither is approved for
   implementation yet.
+- **Windows signed release CI landed but never executed** (`229341f`,
+  2026-08-07): `.github/workflows/windows-release.yml` signs the MSI and
+  NSIS installers via Azure Trusted Signing and hard-asserts
+  `Get-AuthenticodeSignature ... Status -eq 'Valid'`. This is
+  release-infrastructure work sitting outside the active engine-hardening
+  phase. Only its PowerShell gates were proved locally (see Verification);
+  everything that needs a `windows-latest` runner is unexercised — the
+  Windows Tauri build itself (first ever in this repo), WiX/NSIS toolchain
+  download, the `cd ../ui && npm run build` hook under `cmd`, module install
+  from PSGallery, and the Azure signing call. **The first dispatch of the
+  workflow is its validation**; treat a green run as the completion
+  evidence, and expect first-run toolchain surprises rather than a signing
+  defect.
 ## Blockers
 
 - None. Vault remote design is deliberately paused work, not a blocker to
@@ -56,6 +69,17 @@ decisions; `DEVLOG.md` holds history.
 
 - Declared suite: `.agents/repo-guidance.md` Verification section (canonical
   command set; do not copy a second enumeration here).
+- 2026-08-07 at `229341f` (Windows signed release workflow): CI-and-docs-only
+  change, no Rust or UI source touched, so the declared suite was not re-run;
+  `scripts/check-release-metadata.sh` and `git diff --check` pass. All four
+  workflow YAML files parse under `js-yaml`, and every `run:` block of the new
+  workflow parses under the PowerShell 7 parser. The two gates were proved
+  behaviourally under an exact emulation of the runner's `pwsh -command
+  ". 'file'"` invocation: the secrets gate exits non-zero for unset, empty,
+  and whitespace-only values and zero only when all six are present; the
+  signature gate exits non-zero for `NotSigned`, `UnknownError`, and
+  `HashMismatch` and zero only for `Valid`. Nothing requiring a Windows
+  runner was verified.
 - 2026-07-27 at merge `260c744` (worktree branch `init_repo` gating merged
   into master; worktree and branch removed after content-landed proof):
   the full declared suite green locally — fmt, clippy, all Rust tests,
