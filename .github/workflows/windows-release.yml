@@ -1,0 +1,130 @@
+name: Windows Signed Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-signed:
+    name: Signed Windows MSI and NSIS installers
+    runs-on: windows-latest
+    environment:
+      name: release-windows
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require signing secrets
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
+        run: |
+          $missing = 0
+          foreach ($name in @(
+            'AZURE_TENANT_ID',
+            'AZURE_CLIENT_ID',
+            'AZURE_CLIENT_SECRET',
+            'AZURE_SIGNING_ENDPOINT',
+            'AZURE_SIGNING_ACCOUNT',
+            'AZURE_CERT_PROFILE'
+          )) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              Write-Output "::error title=Missing Windows release secret::$name is required for signed Windows releases"
+              $missing = 1
+            }
+          }
+          exit $missing
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: ui
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version 2.11.1 --locked
+
+      - name: Locked Rust dependency preflight
+        run: cargo metadata --locked --format-version 1 > $null
+
+      - name: Install Trusted Signing module
+        run: |
+          try {
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+          } catch {
+            Write-Output "NuGet package provider not installed by this step: $($_.Exception.Message)"
+          }
+          Install-Module -Name TrustedSigning -MinimumVersion 0.5.0 -Force -Repository PSGallery -Scope CurrentUser
+
+      - name: Build Windows bundles
+        env:
+          CI: true
+        run: cargo tauri build --bundles msi,nsis -- --locked
+
+      - name: Sign MSI and NSIS installers
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
+        run: |
+          $msi = @(Get-ChildItem -Path 'target/release/bundle/msi' -Filter '*.msi' -File -ErrorAction SilentlyContinue)
+          $nsis = @(Get-ChildItem -Path 'target/release/bundle/nsis' -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue)
+
+          if ($msi.Count -eq 0) { throw 'no MSI bundle was produced' }
+          if ($nsis.Count -eq 0) { throw 'no NSIS setup executable was produced' }
+
+          foreach ($file in ($msi + $nsis)) {
+            Write-Output "Signing $($file.Name)"
+            Invoke-TrustedSigning `
+              -Endpoint $env:AZURE_SIGNING_ENDPOINT `
+              -CodeSigningAccountName $env:AZURE_SIGNING_ACCOUNT `
+              -CertificateProfileName $env:AZURE_CERT_PROFILE `
+              -TimestampRfc3161 'http://timestamp.acs.microsoft.com' `
+              -TimestampDigest SHA256 `
+              -FileDigest SHA256 `
+              -Files $file.FullName
+          }
+
+      - name: Verify signed Windows artifacts
+        run: |
+          $msi = @(Get-ChildItem -Path 'target/release/bundle/msi' -Filter '*.msi' -File -ErrorAction SilentlyContinue)
+          $nsis = @(Get-ChildItem -Path 'target/release/bundle/nsis' -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue)
+
+          if ($msi.Count -eq 0) { throw 'no MSI bundle was produced' }
+          if ($nsis.Count -eq 0) { throw 'no NSIS setup executable was produced' }
+
+          $unsigned = 0
+          foreach ($file in ($msi + $nsis)) {
+            $signature = Get-AuthenticodeSignature -FilePath $file.FullName
+            Write-Output "$($file.Name): status=$($signature.Status) signer=$($signature.SignerCertificate.Subject) timestamp=$($signature.TimeStamperCertificate.Subject)"
+            if ($signature.Status -ne 'Valid') {
+              Write-Output "::error title=Unsigned Windows artifact::$($file.Name) has Authenticode status $($signature.Status), expected Valid"
+              $unsigned = 1
+            }
+          }
+          exit $unsigned
+
+      - name: Upload signed Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chickenscratch-windows-signed
+          path: |
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*-setup.exe

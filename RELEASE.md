@@ -87,11 +87,23 @@ cargo tauri build --bundles appimage -- --locked
 test -n "$(find target/release/bundle/appimage -name '*.AppImage' -print -quit)"
 ```
 
-Windows: no Windows artifact build exists yet. Windows ships later as a
-Tauri bundle (`docs/PROJECT.md` priority order); the deprecated WinUI build
-was removed with the `windows/` tree (ADR-004).
+Windows: there is no unsigned smoke build in CI. For public Windows distribution, manually run the protected `Windows Signed Release` workflow after the release tag exists. It is intentionally `workflow_dispatch`-only, so Windows signing does not block the `v<version>` tag. The workflow must run in the `release-windows` environment with these secrets:
 
-Linux artifact builds must be validated on their native hosts or via CI.
+- `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`: Azure app-registration credentials, read automatically by the `TrustedSigning` module's `EnvironmentCredential`
+- `AZURE_SIGNING_ENDPOINT`: Azure Trusted Signing endpoint URL
+- `AZURE_SIGNING_ACCOUNT`: Azure Trusted Signing account name
+- `AZURE_CERT_PROFILE`: certificate profile name
+
+The workflow installs the `TrustedSigning` PowerShell module, builds with `cargo tauri build --bundles msi,nsis -- --locked`, signs both installers, and fails unless every artifact reports a valid Authenticode signature:
+
+```powershell
+Invoke-TrustedSigning -Endpoint $env:AZURE_SIGNING_ENDPOINT -CodeSigningAccountName $env:AZURE_SIGNING_ACCOUNT -CertificateProfileName $env:AZURE_CERT_PROFILE -TimestampRfc3161 http://timestamp.acs.microsoft.com -TimestampDigest SHA256 -FileDigest SHA256 -Files <installer>
+(Get-AuthenticodeSignature -FilePath <installer>).Status -eq 'Valid'
+```
+
+`--bundles msi,nsis` overrides `bundle.targets` in `src-tauri/tauri.conf.json`, which stays pinned to the macOS set; the Linux AppImage job overrides it the same way. The deprecated WinUI build was removed with the `windows/` tree (ADR-004).
+
+Linux and Windows artifact builds must be validated on their native hosts or via CI.
 
 ## 4. Cut The Tag
 
@@ -108,7 +120,7 @@ Confirm the metadata and tag agree:
 scripts/check-release-metadata.sh --release "$version" --require-tag
 ```
 
-If Apple Developer credentials are configured later, manually run the `macOS Signed Release` workflow against the release tag and attach only its signed/notarized macOS artifacts to the public release.
+If Apple Developer credentials are configured later, manually run the `macOS Signed Release` workflow against the release tag and attach only its signed/notarized macOS artifacts to the public release. Likewise run `Windows Signed Release` against the tag and attach only its signed MSI and NSIS installers.
 
 Distribution note (ADR-005): writers install built binaries (Flathub, app
 stores, website installers); no source-package channel is maintained in-repo.
