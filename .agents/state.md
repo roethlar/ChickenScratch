@@ -81,8 +81,8 @@ decisions; `DEVLOG.md` holds history.
   GitHub Validation red on `utils::process::tests::process_helper_caps_
   combined_stdout_and_stderr` with Darwin `EPERM` on the macOS runner — the
   same flake class tolerated by the 2026-07-11 process-helper fix, and the
-  identical code passed Validation on `262d00b` and locally, so this reads
-  as a runner flake, not a regression. A re-run should confirm.
+  identical code passed Validation on `262d00b` and locally. Re-run the
+  same day: green — confirmed runner flake, not a regression.
 
 ## Active Sources
 
