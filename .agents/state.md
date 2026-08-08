@@ -25,19 +25,19 @@ decisions; `DEVLOG.md` holds history.
   outside core and reports failures only to stderr. Also parked:
   revision staging of recovery artifacts. Neither is approved for
   implementation yet.
-- **Windows signed release CI landed but never executed** (`229341f`,
-  2026-08-07): `.github/workflows/windows-release.yml` signs the MSI and
-  NSIS installers via Azure Trusted Signing and hard-asserts
-  `Get-AuthenticodeSignature ... Status -eq 'Valid'`. This is
-  release-infrastructure work sitting outside the active engine-hardening
-  phase. Only its PowerShell gates were proved locally (see Verification);
-  everything that needs a `windows-latest` runner is unexercised — the
-  Windows Tauri build itself (first ever in this repo), WiX/NSIS toolchain
-  download, the `cd ../ui && npm run build` hook under `cmd`, module install
-  from PSGallery, and the Azure signing call. **The first dispatch of the
-  workflow is its validation**; treat a green run as the completion
-  evidence, and expect first-run toolchain surprises rather than a signing
-  defect.
+- **Windows signed release CI landed and PROVEN GREEN** (`229341f`
+  2026-08-07; validated by run 31228420981 the same day):
+  `.github/workflows/windows-release.yml` builds the first-ever Windows
+  Tauri bundles in this repo and signs the MSI and NSIS installers via
+  Azure Trusted Signing, with `Get-AuthenticodeSignature ... Status -eq
+  'Valid'` hard-asserted and passing. The first attempt 403'd on a wrong
+  repo secret (`AZURE_SIGNING_ACCOUNT` must be `roethlar-app-signing`, the
+  Artifact Signing account — not the app registration's name); fixed at the
+  secret level, no workflow change. The pre-existing macOS signed workflow
+  also had its first live-secrets run the same day: run 31229465450, green
+  end to end (signed, notarized, stapled, verified). This was
+  release-infrastructure work outside the active engine-hardening phase,
+  done on an explicit owner instruction spanning all their repos.
 ## Blockers
 
 - None. Vault remote design is deliberately paused work, not a blocker to
