@@ -52,7 +52,7 @@ test -n "$(find target/release/bundle/dmg -name 'ChickenScratch_*.dmg' -print -q
 
 `CI=true` makes Tauri skip Finder AppleScript DMG layout work, matching the GitHub Actions path and headless release automation.
 
-The unsigned smoke artifact uploaded by `Tauri Bundles` is not a public release artifact. For public macOS distribution, manually run the protected `macOS Signed Release` workflow after the release tag exists. The workflow is intentionally `workflow_dispatch`-only until Apple Developer credentials are available, so unsigned macOS signing does not block the `v<version>` tag. The workflow must run in the `release-macos` environment with these secrets:
+The unsigned smoke artifact uploaded by `Tauri Bundles` is not a public release artifact. For public macOS distribution, the protected `macOS Signed Release` workflow runs automatically on a `v*` tag push; it also stays available as `workflow_dispatch` for smoke-testing the signing path without cutting a tag. The workflow must run in the `release-macos` environment with these secrets:
 
 - `APPLE_CERTIFICATE`: base64-encoded Developer ID Application `.p12`
 - `APPLE_CERTIFICATE_PASSWORD`: password for the `.p12`
@@ -78,7 +78,7 @@ xcrun stapler validate "$DMG"
 spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
 ```
 
-Do not attach the unsigned smoke artifact to a public release. Until Apple Developer credentials are available, ship macOS as source-build/internal-test only.
+Do not attach the unsigned smoke artifact to a public release. The signed, notarized, and stapled DMG from `macOS Signed Release` is the only public macOS artifact; the `.app` bundle is a directory, so it stays a CI artifact for inspection and is never a release asset.
 
 Linux:
 
@@ -87,7 +87,7 @@ cargo tauri build --bundles appimage -- --locked
 test -n "$(find target/release/bundle/appimage -name '*.AppImage' -print -quit)"
 ```
 
-Windows: there is no unsigned smoke build in CI. For public Windows distribution, manually run the protected `Windows Signed Release` workflow after the release tag exists. It is intentionally `workflow_dispatch`-only, so Windows signing does not block the `v<version>` tag. The workflow must run in the `release-windows` environment with these secrets:
+Windows: there is no unsigned smoke build in CI. For public Windows distribution, the protected `Windows Signed Release` workflow runs automatically on a `v*` tag push; like the macOS one it also stays available as `workflow_dispatch`. The workflow must run in the `release-windows` environment with these secrets:
 
 - `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`: Azure app-registration credentials, read automatically by the `TrustedSigning` module's `EnvironmentCredential`
 - `AZURE_SIGNING_ENDPOINT`: Azure Trusted Signing endpoint URL
@@ -120,7 +120,14 @@ Confirm the metadata and tag agree:
 scripts/check-release-metadata.sh --release "$version" --require-tag
 ```
 
-If Apple Developer credentials are configured later, manually run the `macOS Signed Release` workflow against the release tag and attach only its signed/notarized macOS artifacts to the public release. Likewise run `Windows Signed Release` against the tag and attach only its signed MSI and NSIS installers.
+Pushing the tag starts `macOS Signed Release` and `Windows Signed Release`. Each builds, signs, and verifies its own artifacts, then attaches them to a draft GitHub release named `ChickenScratch v<version>` through `softprops/action-gh-release@v2`:
+
+- macOS contributes the signed, notarized, stapled `.dmg`.
+- Windows contributes the signed `.msi` and `-setup.exe`.
+
+Both runs write to the same tag's release. They share one concurrency group, so the second queues instead of racing the first to create it, and `action-gh-release` upserts per file: it replaces only an asset of the same name and never clears assets it did not upload, so neither platform can drop the other's installers. Both pass `draft: true`, which is what keeps the release unpublished after an upload.
+
+The release is deliberately left as a draft. Review the attached assets, write the release notes by hand, and publish it manually; this repo generates no changelog. Both attach steps set `fail_on_unmatched_files: true` and are guarded on `refs/tags/`, so a run fails instead of publishing a partial release, and a `workflow_dispatch` run from a branch attaches nothing.
 
 Distribution note (ADR-005): writers install built binaries (Flathub, app
 stores, website installers); no source-package channel is maintained in-repo.

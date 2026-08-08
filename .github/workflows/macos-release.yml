@@ -2,9 +2,16 @@ name: macOS Signed Release
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: ${{ startsWith(github.ref, 'refs/tags/') && format('signed-release-{0}', github.ref_name) || format('signed-release-{0}-{1}', github.ref_name, github.run_id) }}
+  cancel-in-progress: false
 
 jobs:
   macos-signed:
@@ -144,3 +151,12 @@ jobs:
           path: |
             target/release/bundle/macos/ChickenScratch.app
             target/release/bundle/dmg/*.dmg
+
+      - name: Attach signed macOS DMG to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ChickenScratch ${{ github.ref_name }}
+          draft: true
+          fail_on_unmatched_files: true
+          files: target/release/bundle/dmg/*.dmg
