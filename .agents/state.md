@@ -38,6 +38,19 @@ decisions; `DEVLOG.md` holds history.
   end to end (signed, notarized, stapled, verified). This was
   release-infrastructure work outside the active engine-hardening phase,
   done on an explicit owner instruction spanning all their repos.
+- **Tag-triggered GitHub Release publishing landed, NEVER EXERCISED**
+  (`7505439` 2026-08-07): both signed-release workflows now also trigger on
+  a `v*` tag push and attach their verified artifacts to that tag's DRAFT
+  release via `softprops/action-gh-release@v2` — macOS the notarized DMG
+  (the `.app` is a directory, so it stays a CI artifact only), Windows the
+  signed MSI and NSIS installer. Draft is deliberate: this repo has never
+  published a GitHub release and has no release-notes convention, so the
+  owner reviews and publishes by hand. The two runs share one concurrency
+  group so they converge on one release instead of racing to create it.
+  None of the tag path is proven: no `v*` tag has ever existed in this repo,
+  so the trigger, release creation, two-workflows-one-release convergence,
+  and protected-environment approval on a tag run are verifiable only by
+  pushing a real tag. `RELEASE.md` §3-§4 is the runbook.
 ## Blockers
 
 - None. Vault remote design is deliberately paused work, not a blocker to
@@ -69,6 +82,19 @@ decisions; `DEVLOG.md` holds history.
 
 - Declared suite: `.agents/repo-guidance.md` Verification section (canonical
   command set; do not copy a second enumeration here).
+- 2026-08-07 at `7505439` (tag-triggered release attachment): CI-and-docs-only
+  change, no Rust or UI source touched, so the declared suite was not re-run;
+  `scripts/check-release-metadata.sh` and `git diff --check` pass. All four
+  workflow YAML files parse under the repo's own `js-yaml` 4.1.1
+  (`ui/node_modules`), and 45 structural assertions over the parsed documents
+  hold: `v*` tag trigger added with `workflow_dispatch` kept,
+  `contents: write`, one shared concurrency group expression in both files,
+  attach step last in the job, `draft: true`,
+  `fail_on_unmatched_files: true`, the `refs/tags/` guard, every attached
+  glob also covered by the step that asserts signatures, and the attach step
+  the only conditional step in either workflow. That assertion set was proved
+  load-bearing: it exits non-zero against the pre-change workflows at
+  `4e49cb7`. Nothing requiring a real tag push was verified.
 - 2026-08-07 at `229341f` (Windows signed release workflow): CI-and-docs-only
   change, no Rust or UI source touched, so the declared suite was not re-run;
   `scripts/check-release-metadata.sh` and `git diff --check` pass. All four
