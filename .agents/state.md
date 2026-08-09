@@ -90,7 +90,7 @@ decisions; `DEVLOG.md` holds history.
   hold: `v*` tag trigger added with `workflow_dispatch` kept,
   `contents: write`, one shared concurrency group expression in both files,
   attach step last in the job, `draft: true`,
-  `fail_on_unmatched_files: true`, the `refs/tags/` guard, every attached
+  `fail_on_unmatched_files: true`, the `startsWith(github.ref, 'refs/tags/')` guard, every attached
   glob also covered by the step that asserts signatures, and the attach step
   the only conditional step in either workflow. That assertion set was proved
   load-bearing: it exits non-zero against the pre-change workflows at
