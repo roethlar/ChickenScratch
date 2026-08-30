@@ -408,6 +408,23 @@ pub fn word_diff_drafts(
 }
 
 #[tauri::command]
+pub fn list_draft_documents(
+    project_path: String,
+    draft: String,
+) -> Result<Vec<git::DraftDocument>, ChiknError> {
+    git::list_draft_documents(Path::new(&project_path), &draft)
+}
+
+#[tauri::command]
+pub fn read_draft_document(
+    project_path: String,
+    draft: String,
+    doc_path: String,
+) -> Result<String, ChiknError> {
+    git::read_draft_document(Path::new(&project_path), &draft, &doc_path)
+}
+
+#[tauri::command]
 pub fn has_changes(project_path: String) -> Result<bool, ChiknError> {
     git::has_changes(Path::new(&project_path))
 }

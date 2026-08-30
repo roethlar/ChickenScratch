@@ -131,6 +131,27 @@ export async function hasChanges(
   return invoke("has_changes", { projectPath });
 }
 
+/** A document inside another draft, read without switching to it. */
+export interface DraftDocument {
+  path: string;
+  name: string;
+}
+
+export async function listDraftDocuments(
+  projectPath: string,
+  draft: string
+): Promise<DraftDocument[]> {
+  return invoke("list_draft_documents", { projectPath, draft });
+}
+
+export async function readDraftDocument(
+  projectPath: string,
+  draft: string,
+  docPath: string
+): Promise<string> {
+  return invoke("read_draft_document", { projectPath, draft, docPath });
+}
+
 // ── Remote sync ──────────────────────────────────────────
 
 export interface SyncStatus {

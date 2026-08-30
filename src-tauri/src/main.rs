@@ -89,6 +89,8 @@ fn main() {
             git::word_diff,
             git::compare_drafts,
             git::word_diff_drafts,
+            git::list_draft_documents,
+            git::read_draft_document,
             io::get_project_stats,
             io::get_session_progress,
             io::get_writing_history,

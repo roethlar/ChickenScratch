@@ -16,8 +16,10 @@ import {
   Upload,
   Download,
   RefreshCw,
+  Eye,
 } from "lucide-react";
 import { DraftCompare } from "./DraftCompare";
+import { DraftPeek } from "./DraftPeek";
 import { useProjectStore } from "../../stores/projectStore";
 import { toastSuccess, toastError } from "../shared/Toast";
 import * as gitCmd from "../../commands/git";
@@ -40,6 +42,7 @@ export function Revisions() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
+  const [peekDraft, setPeekDraft] = useState<string | null>(null);
   // Surfaced from both pull (remote conflict) and draft merge (local
   // conflict); declared up here so handleMergeDraft can dispatch to it.
   // Carries the merge attestation captured when the conflict was
@@ -464,12 +467,20 @@ export function Revisions() {
                 key={draft.name}
                 className={`revision-item ${draft.is_active ? "active-draft" : ""}`}
               >
-                <div className="revision-info">
-                  <span className="revision-msg">
-                    {draft.name}
-                    {draft.is_active && " (active)"}
-                  </span>
-                </div>
+                {draft.is_active ? (
+                  <div className="revision-info">
+                    <span className="revision-msg">{draft.name} (active)</span>
+                  </div>
+                ) : (
+                  <button
+                    className="revision-info draft-peek-open"
+                    onClick={() => setPeekDraft(draft.name)}
+                    title="Look inside without switching"
+                  >
+                    <span className="revision-msg">{draft.name}</span>
+                    <Eye size={12} />
+                  </button>
+                )}
                 {!draft.is_active && (
                   <div className="draft-actions">
                     <button
@@ -510,6 +521,15 @@ export function Revisions() {
       </div>
 
       <DraftCompare open={showCompare} onClose={() => setShowCompare(false)} />
+      <DraftPeek
+        draft={peekDraft}
+        isActive={drafts.find((d) => d.name === peekDraft)?.is_active ?? false}
+        onClose={() => setPeekDraft(null)}
+        onSwitch={(name) => {
+          setPeekDraft(null);
+          handleSwitchDraft(name);
+        }}
+      />
 
       <div className="revisions-footer">
         <button className="revisions-backup-btn" onClick={handleBackup}>
