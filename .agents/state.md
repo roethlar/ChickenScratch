@@ -9,13 +9,15 @@ decisions; `DEVLOG.md` holds history.
 - Phase **Engine hardening — protect writers' work** is active as of
   2026-07-12 (`docs/CURRENT_PHASE.md` is authoritative). Its read-only audit
   and first approved safety slice are complete; the phase remains active.
-- **Owner-level break-it validation is IN FLIGHT, not yet run**
-  (2026-07-17): script at `.agents/break-it-validation.md` — import a
-  copy of the owner's "Corn 2.scriv", then crash/corrupt/strand/delete
-  attacks against the imported project. First driver attempt (Claude
-  Cowork) failed on this machine (`.agents/machines.md`); needs a
-  desktop-automation-capable session or owner-driven run. Any LOST DATA
-  verdict is a hardening bug and jumps the queue.
+- **Owner-level break-it validation EXECUTED 2026-08-29** (steps 1–9;
+  step 10 blocked): results table in `.agents/break-it-validation.md`.
+  One LOST DATA finding — after `.git` deletion the app opens the project
+  as healthy but Save Revision silently no-ops (no repo rebuild, no
+  commit, no error). Jumps the queue as the next fix. Secondary findings:
+  corrupt-meta and stranded-file handling are safe but **silent** (no
+  warning, no filename); invalid-UTF-8 meta blocks open with dev-speak
+  error; corkboard previews leak backslash escapes. Crash-kill tests all
+  SURVIVED. Run drove the signed release bundle via desktop automation.
 - **Phase close-out question posed to the owner, unanswered**
   (2026-07-17): "close the hardening phase and move to the Tauri
   reference-app phase?" The owner detoured to hands-on validation
@@ -64,10 +66,11 @@ decisions; `DEVLOG.md` holds history.
 
 ## Next
 
-1. **Run the break-it validation** (`.agents/break-it-validation.md`)
-   with a driver that can operate the desktop app — Cowork failed; use a
-   desktop-automation-capable session or walk the owner through it.
-   Report the verdict table; any LOST DATA finding becomes the next fix.
+1. **Fix the step-9 hardening bug** (from the 2026-08-29 break-it run):
+   deleting `.git` leaves the project open-able but Save Revision silently
+   discards revisions — expected open-time self-heal (rebuild repo) never
+   happens. Needs an approved plan (engine + format territory). Re-run
+   playbook steps 9–10 after the fix.
 2. **Then re-ask the phase close-out yes/no**: hardening phase done,
    move to the Tauri reference-app phase? (Posed 2026-07-17, unanswered.)
    The engine-side close-out evidence is in: mutation entry points

@@ -42,3 +42,24 @@ Ground rules for whoever drives it (agent or owner):
 
 - 2026-07-17: script prepared; Claude Cowork could not drive it; owner went
   to bed before an alternative driver ran. Not yet executed.
+- 2026-08-29: executed steps 1–9 (Claude Code driving the **signed release
+  bundle** `target/release/bundle/macos/ChickenScratch.app`, not dev mode —
+  both were running; the release app took focus and all interaction hit it).
+  Stopped at step 9 per ground rules (step failed; step 10 needs history).
+  Results below. Test project left at `~/chikn-validation/Corn 2.chikn` in
+  its post-step-9 state (no `.git`, one uncommitted edit) as evidence.
+
+## Results 2026-08-29
+
+| # | Attack | Expected | Actual | Verdict |
+|---|--------|----------|--------|---------|
+| 3 | Import Corn 2.scriv | binder ~18 docs | All docs imported, corkboard + editor fine. Bug: corkboard card previews show raw escapes (`Henks\'`, `\"…\"`); editor text is clean | SURVIVED (cosmetic import/preview bug) |
+| 4–5 | Two edits + Save Revision ×2 | both in history | Both appear ("validation edit 1"/"2") | SURVIVED |
+| 6 | kill -9 ×3 (after save; between autosave and commit) | clean reopen, nothing before last save missing, no junk | Clean reopen every time; no lock/tmp junk; autosaved-but-uncommitted text survived and was committable after relaunch. Minor: session killed right after import lost its Recent Projects entry | SURVIVED |
+| 7a | `opening.meta` → invalid-UTF-8 garbage | read-only open, plain-English warning naming file | Project **refuses to open**: banner "IO error: stream did not contain valid UTF-8" — dev-speak, no filename, back to welcome screen. Garbage byte-identical after | DEGRADED SAFELY (message fails I-level "plain English, name the file") |
+| 7b | `opening.meta` → valid-UTF-8 garbage (bad YAML) | same | Opens **normally, zero warning**; corrupt file silently renamed to `opening.meta.corrupt-<uuid>` (byte-identical), metadata reset to defaults. Writer never told | DEGRADED SAFELY but **silent** — warning missing |
+| 8 | Stranded `manuscript/stray.md` | read-only warning or safe adoption | Neither: file silently ignored — not in binder, no warning; file itself untouched | DEGRADED SAFELY but **silent** |
+| 9 | Delete `.git`; reopen | repo quietly rebuilt, Save Revision works | Opens fine, panel says "No revisions yet" (branch badge flips master→main), but **no repo is created — Save Revision silently no-ops**: no commit, no draft, no error; describe text just sits there. Text autosave to disk still works | **LOST DATA** (requested revision silently discarded) — hardening bug, becomes next fix |
+| 10 | Restore previous revision | revert + new history entry | Not runnable — no history exists after step 9 | BLOCKED by 9 |
+
+Screenshots live in the driving session, not on disk.
