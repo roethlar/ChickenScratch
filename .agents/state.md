@@ -9,6 +9,16 @@ decisions; `DEVLOG.md` holds history.
 - Phase **Engine hardening — protect writers' work** is active as of
   2026-07-12 (`docs/CURRENT_PHASE.md` is authoritative). Its read-only audit
   and first approved safety slice are complete; the phase remains active.
+- **Draft peek + Restore rewording SHIPPED** (owner-approved
+  `docs/plans/PLAN_DRAFT_PEEK.md`, 2026-08-29, commits
+  `1ac3ddc`/`846aa10`/`8d69a08`): read-only look inside any other draft
+  from the Drafts tab (core reads are pure git-object reads, guard test
+  pins zero worktree/HEAD mutation), and History's restore is now "Bring
+  back this version" with nothing-is-lost confirm wording. Codereview
+  over the session's range dispatched 2026-08-29 (codex gpt-5.6-sol
+  xhigh) — outcome recorded below when complete. Candidate follow-up,
+  not approved: `DocumentHistory.tsx` per-document restore still uses the
+  old "Restore" wording.
 - **Owner-level break-it validation EXECUTED 2026-08-29** (steps 1–9;
   step 10 blocked): results table in `.agents/break-it-validation.md`.
   One LOST DATA finding — after `.git` deletion the app opens the project

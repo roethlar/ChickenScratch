@@ -61,13 +61,16 @@ Three slices, one concern per commit, engine first:
 
 ## [MODEL] Tests
 
-- [ ] `cargo test -p chickenscratch-core` — new tests: list/read return the
+- [x] `cargo test -p chickenscratch-core` — new tests: list/read return the
       *other* draft's content; worktree + HEAD unchanged after reads
-      (guard: fails if an implementation ever checks out).
-- [ ] `ui: npm run test` — DraftPeek renders banner + read-only content;
-      no write command invoked from peek; Restore strings asserted.
-- [ ] Full declared suite (`.agents/repo-guidance.md` Verification) before
-      each commit.
+      (guard: fails if an implementation ever checks out; bite-proven with
+      an injected write, `1ac3ddc`).
+- [x] `ui: npm run test` — DraftPeek renders banner + read-only content;
+      no write command invoked from peek (`846aa10`); Restore strings
+      asserted (bite-proven, `8d69a08`).
+- [x] Full declared suite (`.agents/repo-guidance.md` Verification) before
+      each commit — Rust suite + release metadata green at each slice; UI
+      lint/test/build green for the UI slices.
 
 ## [MODEL] Owner verification (plain English)
 
