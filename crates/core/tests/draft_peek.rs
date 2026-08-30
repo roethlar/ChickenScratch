@@ -175,6 +175,22 @@ fn peek_parses_yaml_sidecar_names() {
 
     let docs = git::list_draft_documents(&root, &original).expect("list current");
     assert_eq!(docs[0].name, "It's Corn");
+
+    // Quoted whitespace is semantic in YAML and must survive decoding
+    // (dp-3 reopen): no post-decode trim.
+    fs::write(
+        root.join("manuscript/one.meta"),
+        "id: doc-one\nname: '  Padded  '\ncreated: '2025-01-01T00:00:00Z'\nmodified: '2025-01-01T00:00:00Z'\n",
+    )
+    .unwrap();
+    with_permit!(&root, |permit| git::save_revision(
+        &root,
+        "Padded name",
+        permit
+    ))
+    .expect("save padded name");
+    let docs = git::list_draft_documents(&root, &original).expect("list padded");
+    assert_eq!(docs[0].name, "  Padded  ");
 }
 
 #[test]

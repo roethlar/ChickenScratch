@@ -1767,7 +1767,10 @@ pub fn list_draft_documents(path: &Path, draft: &str) -> Result<Vec<DraftDocumen
         // Real YAML parse (dp-3): a hand-rolled line match mangled names
         // the project reader accepts (quoting, spacing, block scalars).
         let value: serde_yaml::Value = serde_yaml::from_slice(blob.content()).ok()?;
-        let name = value.get("name")?.as_str()?.trim();
+        // No post-decode trim: YAML already resolves syntactic spacing, and
+        // quoted names keep their whitespace on purpose — match the project
+        // reader (dp-3 reopen).
+        let name = value.get("name")?.as_str()?;
         (!name.is_empty()).then(|| name.to_string())
     };
 
