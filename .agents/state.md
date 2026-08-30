@@ -15,10 +15,14 @@ decisions; `DEVLOG.md` holds history.
   from the Drafts tab (core reads are pure git-object reads, guard test
   pins zero worktree/HEAD mutation), and History's restore is now "Bring
   back this version" with nothing-is-lost confirm wording. Codereview
-  over the session's range dispatched 2026-08-29 (codex gpt-5.6-sol
-  xhigh) — outcome recorded below when complete. Candidate follow-up,
-  not approved: `DocumentHistory.tsx` per-document restore still uses the
-  old "Restore" wording.
+  2026-08-29 (codex gpt-5.6-sol @ xhigh) over `c99acdd..0a891b2`:
+  3 findings, all fixed and verified accepted (`.agents/review/index.md`
+  dp-1..dp-3, commits `31c55c2`/`3b47d6f`/`4b70015`+`bfe52d1`) — backup
+  wording now draft-scoped, restore now genuinely saves to History first,
+  peek sidecar names YAML-parsed. Candidate follow-ups, not approved:
+  `DocumentHistory.tsx` per-document restore still uses the old "Restore"
+  wording; **owner decision open** — should "Back up" push *all* drafts
+  instead of only the current one? (dp-1 fixed the words, not the scope.)
 - **Owner-level break-it validation EXECUTED 2026-08-29** (steps 1–9;
   step 10 blocked): results table in `.agents/break-it-validation.md`.
   One LOST DATA finding — after `.git` deletion the app opens the project
