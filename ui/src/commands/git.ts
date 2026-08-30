@@ -17,9 +17,10 @@ export interface DraftVersion {
 
 export async function saveRevision(
   projectPath: string,
-  message: string
+  message: string,
+  lease?: LeaseHandle
 ): Promise<Revision> {
-  return mutatingInvoke("save_revision", { projectPath, message });
+  return mutatingInvoke("save_revision", { projectPath, message }, lease);
 }
 
 export async function listRevisions(

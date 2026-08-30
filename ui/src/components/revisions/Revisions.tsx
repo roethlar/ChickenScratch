@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { DraftCompare } from "./DraftCompare";
 import { DraftPeek } from "./DraftPeek";
+import { restoreWithHistorySave } from "./restoreFlow";
 import { useProjectStore } from "../../stores/projectStore";
 import { toastSuccess, toastError } from "../shared/Toast";
 import * as gitCmd from "../../commands/git";
@@ -130,8 +131,10 @@ export function Revisions() {
     // failure, where the old success-only reload left a stale buffer one
     // auto-save away from clobbering the restored tree (plan slice 3).
     try {
+      // Saves the current version to History first when needed — the
+      // dialog promises it, and the engine refuses dirty restores (dp-2).
       await runEpochOperation((lease) =>
-        gitCmd.restoreRevision(project.path, commitId, lease)
+        restoreWithHistorySave(project.path, commitId, lease)
       );
     } catch (e) {
       toastError(`Couldn't bring that version back. (${e})`);
