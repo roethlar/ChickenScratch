@@ -6,6 +6,26 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-08-29 — Draft peek ships; restore now saves to History first
+
+`PLAN_DRAFT_PEEK.md` shipped in three slices (`1ac3ddc`, `846aa10`,
+`8d69a08`): read-only peek into any other draft (core `list_draft_documents`
+/ `read_draft_document` are pure git-object reads — guard test fingerprints
+HEAD + worktree bytes and is bite-proven), a DraftPeek dialog behind the
+Drafts tab, and Restore reworded to "Bring back this version".
+
+Cross-harness codereview (codex gpt-5.6-sol @ xhigh) over the session range
+returned three findings, all fixed and independently verified with
+revert-fail/restore-pass guard proofs (`.agents/review/index.md` dp-1..dp-3):
+backup wording scoped to the draft the engine actually pushes (`31c55c2`);
+restore now saves the current version to History before restoring instead of
+erroring on a dirty tree — the dialog's promise was previously false
+(`3b47d6f`); peek sidecar names parsed with real YAML, whitespace-preserving
+after a reopen round (`4b70015`, `bfe52d1`). Open owner decision: should
+"Back up" cover all drafts, not just the current one?
+
+---
+
 ## 2026-07-16 — init_repo gated behind test-support feature
 
 **Change:** `7f85510` — `init_repo` was the one unguarded write path in
