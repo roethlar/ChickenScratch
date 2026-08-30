@@ -123,7 +123,7 @@ export function Revisions() {
 
   const handleRestore = async (commitId: string) => {
     if (!project) return;
-    if (!(await dialogConfirm("Restore to this revision? Your current work will be preserved as a new revision.")))
+    if (!(await dialogConfirm("Bring back this version? Your current version is saved to History first — nothing is lost.")))
       return;
     // Epoch-bumping: the barrier lifecycle freezes editing, drains the
     // buffer, and reloads + rebuilds on every result kind — including
@@ -134,7 +134,7 @@ export function Revisions() {
         gitCmd.restoreRevision(project.path, commitId, lease)
       );
     } catch (e) {
-      toastError(`Restore failed: ${e}`);
+      toastError(`Couldn't bring that version back. (${e})`);
     }
     await refresh();
   };
@@ -415,7 +415,7 @@ export function Revisions() {
                     className="revision-restore"
                     onClick={() => handleRestore(rev.id)}
                     disabled={barrierActive}
-                    title="Restore to this revision"
+                    title="Bring back this version"
                   >
                     <RotateCcw size={12} />
                   </button>
