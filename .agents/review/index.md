@@ -22,4 +22,4 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 | s4-4 | code | Stale merge-state responses cross projects (slice 4, codex) | `[x]`  | n/a (pre-commit fix in slice-4 working tree) |
 | dp-1 | code | "Everything backed up" overclaims a one-draft push (range c99acdd..0a891b2, codex) | `[x]`  | — (default-branch mode) |
 | dp-2 | code | Restore confirm promises a History save that never happens (range c99acdd..0a891b2, codex) | `[x]`  | — (default-branch mode) |
-| dp-3 | code | Peek sidecar names parsed as text lines, not YAML (range c99acdd..0a891b2, codex) | `[ ]`  | — (default-branch mode) |
+| dp-3 | code | Peek sidecar names parsed as text lines, not YAML (range c99acdd..0a891b2, codex) | `[x]`  | — (default-branch mode) |
