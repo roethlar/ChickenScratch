@@ -107,7 +107,7 @@ describe("MergeBanner actions", () => {
 
     render(<MergeBanner {...bannerProps} />);
     await act(async () => {
-      screen.getByText("Complete merge").click();
+      screen.getByText("Finish combining").click();
     });
 
     expect(completeMergeMock).toHaveBeenCalledTimes(1);
@@ -123,7 +123,7 @@ describe("MergeBanner actions", () => {
   it("Abort skips the drain — the buffer holds discarded edits", async () => {
     render(<MergeBanner {...bannerProps} />);
     await act(async () => {
-      screen.getByText("Abort merge").click();
+      screen.getByText("Go back to my version").click();
     });
 
     expect(abortMock).toHaveBeenCalledTimes(1);
@@ -136,7 +136,7 @@ describe("MergeBanner actions", () => {
     promptMock.mockImplementationOnce(async () => null as unknown as string);
     render(<MergeBanner {...bannerProps} />);
     await act(async () => {
-      screen.getByText("Complete merge").click();
+      screen.getByText("Finish combining").click();
     });
     expect(completeMergeMock).not.toHaveBeenCalled();
   });
@@ -147,12 +147,12 @@ describe("MergeBanner actions", () => {
       lease = acquireLease();
     });
     render(<MergeBanner {...bannerProps} />);
-    expect(screen.getByText("Complete merge")).toBeDisabled();
-    expect(screen.getByText("Abort merge")).toBeDisabled();
+    expect(screen.getByText("Finish combining")).toBeDisabled();
+    expect(screen.getByText("Go back to my version")).toBeDisabled();
     act(() => {
       lease.release();
     });
-    expect(screen.getByText("Complete merge")).toBeEnabled();
+    expect(screen.getByText("Finish combining")).toBeEnabled();
   });
 });
 

@@ -6,13 +6,16 @@ import {
   Save,
   History,
   RotateCcw,
-  GitBranch,
-  GitMerge,
+  FileStack,
+  ArrowRightLeft,
+  Route,
+  Combine,
+  Columns2,
   HardDrive,
   Cloud,
   Upload,
   Download,
-  GitCompare,
+  RefreshCw,
 } from "lucide-react";
 import { DraftCompare } from "./DraftCompare";
 import { useProjectStore } from "../../stores/projectStore";
@@ -151,14 +154,14 @@ export function Revisions() {
         gitCmd.switchDraft(project.path, name, lease)
       );
     } catch (e) {
-      toastError(`Switch failed: ${e}`);
+      toastError(`Couldn't switch drafts. (${e})`);
     }
     await refresh();
   };
 
   const handleMergeDraft = async (name: string) => {
     if (!project) return;
-    if (!(await dialogConfirm(`Merge "${name}" into the current draft?`))) return;
+    if (!(await dialogConfirm(`Combine "${name}" into the current draft?`))) return;
     try {
       // F-009: merge_draft returns a tagged result. Ok(Conflicts) has
       // ALREADY rewritten the working tree, so it gets the same
@@ -175,7 +178,7 @@ export function Revisions() {
         });
       }
     } catch (e) {
-      toastError(`Merge failed: ${e}`);
+      toastError(`Couldn't combine drafts. (${e})`);
     }
     await refresh();
   };
@@ -195,7 +198,7 @@ export function Revisions() {
         await refresh();
       });
     } catch (e) {
-      toastError(`Backup failed: ${e}`);
+      toastError(`Couldn't back up. (${e})`);
     }
   };
 
@@ -203,13 +206,13 @@ export function Revisions() {
     if (!project) return;
     setSyncBusy(true);
     try {
-      await runWithEditorFlush("Push", async () => {
+      await runWithEditorFlush("Back up", async () => {
         await gitCmd.syncPush(project.path);
-        toastSuccess("Pushed to remote.");
+        toastSuccess("Backed up online.");
         await refresh();
       });
     } catch (e) {
-      toastError(`Push failed: ${e}`);
+      toastError(`Couldn't back up online. (${e})`);
     }
     setSyncBusy(false);
   };
@@ -222,13 +225,13 @@ export function Revisions() {
     if (!project) return;
     setSyncBusy(true);
     try {
-      await runWithEditorFlush("Fetch", async () => {
+      await runWithEditorFlush("Check", async () => {
         await gitCmd.syncFetch(project.path);
-        toastSuccess("Fetched from remote.");
+        toastSuccess("Checked — see summary above.");
         await refresh();
       });
     } catch (e) {
-      toastError(`Fetch failed: ${e}`);
+      toastError(`Couldn't check for changes. (${e})`);
     }
     setSyncBusy(false);
   };
@@ -249,10 +252,10 @@ export function Revisions() {
           toastSuccess("Already up to date.");
           break;
         case "fast_forward":
-          toastSuccess("Pulled (fast-forward).");
+          toastSuccess("Latest changes downloaded.");
           break;
         case "merged":
-          toastSuccess("Pulled and merged.");
+          toastSuccess("Changes downloaded and combined with yours.");
           break;
         case "conflicts": {
           const ms = await gitCmd.mergeState(project.path).catch(() => null);
@@ -265,7 +268,7 @@ export function Revisions() {
       }
       await refresh();
     } catch (e) {
-      toastError(`Pull failed: ${e}`);
+      toastError(`Couldn't get changes. (${e})`);
     }
     setSyncBusy(false);
   };
@@ -280,11 +283,11 @@ export function Revisions() {
         (lease) => gitCmd.syncAbortPull(project.path, lease),
         { skipDrain: true }
       );
-      toastSuccess("Merge aborted; local restored.");
+      toastSuccess("Your version is back.");
       setConflict(null);
       await refresh();
     } catch (e) {
-      toastError(`Abort failed: ${e}`);
+      toastError(`Couldn't go back. (${e})`);
     }
     setSyncBusy(false);
   };
@@ -310,11 +313,11 @@ export function Revisions() {
           gitCmd.forceResolveMerge(project.path, conflict.attestation!, lease),
         { skipDrain: true }
       );
-      toastSuccess("Conflicts resolved with the incoming version.");
+      toastSuccess("Done — using the other version.");
       setConflict(null);
       await refresh();
     } catch (e) {
-      toastError(`Overwrite failed: ${e}`);
+      toastError(`Couldn't switch to the other version. (${e})`);
       // A fail-closed refusal means the merge drifted since the dialog
       // appeared. Re-capture the live state so the dialog shows what a
       // fresh confirmation would actually act on — otherwise the stale
@@ -367,13 +370,13 @@ export function Revisions() {
           className={tab === "drafts" ? "active" : ""}
           onClick={() => setTab("drafts")}
         >
-          <GitBranch size={14} /> Drafts
+          <FileStack size={14} /> Drafts
         </button>
         <button
           className={tab === "threads" ? "active" : ""}
           onClick={() => setTab("threads")}
         >
-          <GitBranch size={14} /> Threads
+          <Route size={14} /> Threads
         </button>
       </div>
 
@@ -474,25 +477,25 @@ export function Revisions() {
                       disabled={barrierActive}
                       title="Switch to this draft"
                     >
-                      <GitBranch size={12} />
+                      <ArrowRightLeft size={12} />
                     </button>
                     <button
                       onClick={() => handleMergeDraft(draft.name)}
                       disabled={barrierActive}
-                      title="Merge into current draft"
+                      title="Combine into current draft"
                     >
-                      <GitMerge size={12} />
+                      <Combine size={12} />
                     </button>
                   </div>
                 )}
               </div>
             ))}
             <button className="drafts-new-btn" onClick={handleNewDraft}>
-              <GitBranch size={14} /> New Draft Version
+              <FileStack size={14} /> New Draft Version
             </button>
             {drafts.length >= 2 && (
               <button className="drafts-new-btn" onClick={() => setShowCompare(true)}>
-                <GitCompare size={14} /> Compare Drafts
+                <Columns2 size={14} /> Compare Drafts
               </button>
             )}
           </div>
@@ -571,10 +574,10 @@ function ConflictDialog({
         tabIndex={-1}
         onKeyDown={onDialogKeyDown}
       >
-        <h3 id={titleId}>Merge conflicts</h3>
+        <h3 id={titleId}>Both versions changed the same text</h3>
         <p>
           The incoming changes touch the same files you did. The files now
-          show both versions with conflict markers. Pick one:
+          show both versions, marked so you can choose. Pick one:
         </p>
         <ul className="conflict-files">
           {files.slice(0, 10).map((f) => <li key={f}><code>{f}</code></li>)}
@@ -585,19 +588,19 @@ function ConflictDialog({
             ref={manualButtonRef}
             onClick={onResolveManually}
             disabled={busy}
-            title="Close this dialog and edit the marked files; the merge bar stays until you complete or abort"
+            title="Close this dialog and edit the marked files; the bar stays until you finish combining or go back"
           >
-            Resolve manually
+            Let me pick line by line
           </button>
           <button onClick={onAbort} disabled={busy}>
-            Abort merge (keep your version)
+            Keep my version
           </button>
           <button
             onClick={onForce}
             disabled={busy || !forceReady}
             className="conflict-danger"
           >
-            Take the incoming version
+            Use the other version
           </button>
         </div>
       </div>
@@ -620,11 +623,11 @@ function SyncControls({
 }) {
   const enabled = !!status?.has_remote;
   const summary = (() => {
-    if (!enabled) return "Configure a remote in Settings › Remote";
-    if (status!.ahead === 0 && status!.behind === 0) return "Up to date with remote";
+    if (!enabled) return "Set up online backup in Settings › Sync & Backup";
+    if (status!.ahead === 0 && status!.behind === 0) return "Everything backed up";
     const parts: string[] = [];
-    if (status!.ahead) parts.push(`${status!.ahead} to push`);
-    if (status!.behind) parts.push(`${status!.behind} to pull`);
+    if (status!.ahead) parts.push(`${status!.ahead} to back up`);
+    if (status!.behind) parts.push(`${status!.behind} to download`);
     return parts.join(" · ");
   })();
 
@@ -635,18 +638,22 @@ function SyncControls({
         <span>{summary}</span>
       </div>
       <div className="revisions-sync-actions">
-        <button onClick={onFetch} disabled={!enabled || busy} title="Fetch from remote (no merge)">
-          <Download size={12} /> Fetch
+        <button
+          onClick={onFetch}
+          disabled={!enabled || busy}
+          title="Check for changes (without touching your draft)"
+        >
+          <RefreshCw size={12} /> Check
         </button>
         <button
           onClick={onPull}
           disabled={!enabled || busy}
-          title="Pull from remote (fetch + merge)"
+          title="Download changes and combine them with yours"
         >
-          <Download size={12} /> Pull
+          <Download size={12} /> Get changes
         </button>
-        <button onClick={onPush} disabled={!enabled || busy} title="Push to remote">
-          <Upload size={12} /> Push
+        <button onClick={onPush} disabled={!enabled || busy} title="Back up online">
+          <Upload size={12} /> Back up
         </button>
       </div>
     </div>
@@ -830,7 +837,7 @@ function ThreadsList({
         })
       )}
       <button className="drafts-new-btn" onClick={handleNew}>
-        <GitBranch size={14} /> New Thread
+        <Route size={14} /> New Thread
       </button>
     </div>
   );

@@ -139,7 +139,7 @@ export function Settings({
                 ["general", "General"],
                 ["writing", "Writing"],
                 ["backup", "Backup"],
-                ["remote", "Remote"],
+                ["remote", "Sync & Backup"],
                 ["ai", "AI"],
                 ["compile", "Compile"],
                 ["shortcuts", "Shortcuts"],
@@ -298,7 +298,7 @@ export function Settings({
 
             {tab === "remote" && (
               <div className="settings-section">
-                <Field label="Remote URL">
+                <Field label="Backup address">
                   <input
                     type="text"
                     value={settings.remote.url || ""}
@@ -308,9 +308,9 @@ export function Settings({
                     placeholder="https://github.com/you/your-novel.git"
                   />
                   <p className="settings-hint">
-                    A git URL — GitHub, Gitea, or any host you own. Use this for
-                    syncing the same project across machines. For local testing
-                    you can point at <code>file:///path/to/bare-repo.git</code>.
+                    Where your project is backed up online — for example a free
+                    GitHub account. Also lets you work on the same project from
+                    another machine.
                   </p>
                 </Field>
                 <Field label="Username">
@@ -347,12 +347,11 @@ export function Settings({
                     )}
                   </div>
                   <p className="settings-hint">
-                    Stored in the OS keyring. Use a token scoped to just this
-                    repository. SSH URLs fall back to your ssh-agent if no token
-                    is set.
+                    Stored securely on this computer. Use a token that only has
+                    access to this one project.
                   </p>
                 </Field>
-                <Field label="Auto-Push on Save Revision">
+                <Field label="Back up automatically">
                   <input
                     type="checkbox"
                     checked={settings.remote.auto_push_on_revision}
@@ -361,8 +360,8 @@ export function Settings({
                     }
                   />
                   <p className="settings-hint">
-                    Push to the remote every time you save a named revision.
-                    Push failures don't block the revision.
+                    Backs up online every time you save a named revision. If
+                    the backup fails, your revision is still saved.
                   </p>
                 </Field>
               </div>

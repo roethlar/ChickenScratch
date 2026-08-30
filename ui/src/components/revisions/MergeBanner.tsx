@@ -1,4 +1,4 @@
-import { GitMerge } from "lucide-react";
+import { Combine } from "lucide-react";
 import { dialogConfirm, dialogPrompt } from "../shared/Dialog";
 import { toastError, toastSuccess } from "../shared/Toast";
 import * as gitCmd from "../../commands/git";
@@ -29,17 +29,17 @@ export function MergeBanner({
 
   const handleComplete = async () => {
     const message = await dialogPrompt(
-      "Describe this merge for the revision history:",
-      "Merged incoming changes"
+      "Describe this combined version for the revision history:",
+      "Combined incoming changes"
     );
     if (!message?.trim()) return;
     try {
       await runEpochOperation((lease) =>
         gitCmd.completeMerge(projectPath, message.trim(), lease)
       );
-      toastSuccess("Merge completed.");
+      toastSuccess("Versions combined.");
     } catch (e) {
-      toastError(`Complete failed: ${e}`);
+      toastError(`Couldn't finish combining. (${e})`);
     }
     onChanged();
   };
@@ -47,7 +47,7 @@ export function MergeBanner({
   const handleAbort = async () => {
     if (
       !(await dialogConfirm(
-        "Abort the merge and go back to your version from before it? The incoming changes will be discarded."
+        "Go back to your version from before the combine? The incoming changes will be discarded."
       ))
     )
       return;
@@ -58,9 +58,9 @@ export function MergeBanner({
         (lease) => gitCmd.syncAbortPull(projectPath, lease),
         { skipDrain: true }
       );
-      toastSuccess("Merge aborted; your version restored.");
+      toastSuccess("Your version is back.");
     } catch (e) {
-      toastError(`Abort failed: ${e}`);
+      toastError(`Couldn't go back. (${e})`);
     }
     onChanged();
   };
@@ -68,21 +68,21 @@ export function MergeBanner({
   const conflictCount = state.conflicted_files.length;
   return (
     <div className="merge-banner">
-      <GitMerge size={14} />
+      <Combine size={14} />
       <span className="merge-banner-text">
-        A merge is in progress
+        Two versions are being combined
         {conflictCount > 0 &&
           ` — ${conflictCount} file${conflictCount === 1 ? "" : "s"} still` +
-            " showing conflict markers"}
-        . Edit the marked files to keep what you want, then complete the
-        merge — or abort to go back.
+            " showing both versions"}
+        . Edit the marked files to keep what you want, then finish
+        combining — or go back to your version.
       </span>
       <div className="merge-banner-actions">
         <button onClick={handleComplete} disabled={barrierActive}>
-          Complete merge
+          Finish combining
         </button>
         <button onClick={handleAbort} disabled={barrierActive}>
-          Abort merge
+          Go back to my version
         </button>
       </div>
     </div>

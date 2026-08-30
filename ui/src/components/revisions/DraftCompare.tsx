@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useId, useRef } from "react";
-import { X, GitCompare, ArrowRightLeft } from "lucide-react";
+import { X, Columns2, ArrowRightLeft } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
 import * as gitCmd from "../../commands/git";
 import type { FileDiff, DraftVersion } from "../../commands/git";
@@ -95,7 +95,7 @@ export function DraftCompare({ open, onClose }: DraftCompareProps) {
         onKeyDown={onDialogKeyDown}
       >
         <div className="draft-compare-header">
-          <GitCompare size={14} />
+          <Columns2 size={14} />
           <span id={titleId}>Compare Drafts</span>
           <div style={{ flex: 1 }} />
           <button
