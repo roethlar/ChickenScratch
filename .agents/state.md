@@ -13,7 +13,9 @@ decisions; `DEVLOG.md` holds history.
   step 10 blocked): results table in `.agents/break-it-validation.md`.
   One LOST DATA finding — after `.git` deletion the app opens the project
   as healthy but Save Revision silently no-ops (no repo rebuild, no
-  commit, no error). Jumps the queue as the next fix. Secondary findings:
+  commit, no error). Jumps the queue as the next fix — plan drafted
+  2026-08-29: `docs/plans/PLAN_HISTORY_SELF_HEAL.md` (approved as a plan;
+  implementation NOT yet approved). Secondary findings:
   corrupt-meta and stranded-file handling are safe but **silent** (no
   warning, no filename); invalid-UTF-8 meta blocks open with dev-speak
   error; corkboard previews leak backslash escapes. Crash-kill tests all
