@@ -1764,16 +1764,11 @@ pub fn list_draft_documents(path: &Path, draft: &str) -> Result<Vec<DraftDocumen
         let meta_path = format!("{}.meta", doc_path.strip_suffix(".md")?);
         let entry = tree.get_path(std::path::Path::new(&meta_path)).ok()?;
         let blob = repo.find_blob(entry.id()).ok()?;
-        let text = String::from_utf8_lossy(blob.content()).to_string();
-        text.lines().find_map(|line| {
-            let value = line.strip_prefix("name:")?.trim();
-            let value = value
-                .strip_prefix('"')
-                .and_then(|v| v.strip_suffix('"'))
-                .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
-                .unwrap_or(value);
-            (!value.is_empty()).then(|| value.to_string())
-        })
+        // Real YAML parse (dp-3): a hand-rolled line match mangled names
+        // the project reader accepts (quoting, spacing, block scalars).
+        let value: serde_yaml::Value = serde_yaml::from_slice(blob.content()).ok()?;
+        let name = value.get("name")?.as_str()?.trim();
+        (!name.is_empty()).then(|| name.to_string())
     };
 
     Ok(doc_paths

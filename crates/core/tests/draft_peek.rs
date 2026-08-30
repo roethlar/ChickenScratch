@@ -155,6 +155,29 @@ fn peek_errors_are_plain_results_not_panics() {
 }
 
 #[test]
+fn peek_parses_yaml_sidecar_names() {
+    let tmp = TempDir::new().unwrap();
+    let (root, original) = init_two_draft_project(&tmp);
+
+    // serde_yaml itself emits doubled single quotes for names like this;
+    // the old line parser displayed them mangled (dp-3 guard).
+    fs::write(
+        root.join("manuscript/one.meta"),
+        "id: doc-one\nname: 'It''s Corn'\ncreated: '2025-01-01T00:00:00Z'\nmodified: '2025-01-01T00:00:00Z'\n",
+    )
+    .unwrap();
+    with_permit!(&root, |permit| git::save_revision(
+        &root,
+        "Quoted name",
+        permit
+    ))
+    .expect("save quoted name");
+
+    let docs = git::list_draft_documents(&root, &original).expect("list current");
+    assert_eq!(docs[0].name, "It's Corn");
+}
+
+#[test]
 fn peek_falls_back_to_file_stem_without_sidecar_name() {
     let tmp = TempDir::new().unwrap();
     let (root, original) = init_two_draft_project(&tmp);
