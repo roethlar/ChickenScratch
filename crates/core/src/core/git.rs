@@ -1710,6 +1710,108 @@ pub fn word_diff_drafts(
     Ok(simple_word_diff(&old_words, &new_words))
 }
 
+/// A document at a draft's tip, listed without touching the working tree.
+#[derive(Debug, Clone, Serialize)]
+pub struct DraftDocument {
+    /// Repo-relative document path (e.g. `manuscript/one.md`).
+    pub path: String,
+    /// Display name: the sidecar's `name:` when present, else the file stem.
+    pub name: String,
+}
+
+/// Resolve a local draft (branch) name to its tip tree — a pure object read.
+fn draft_tip_tree<'r>(repo: &'r Repository, draft: &str) -> Result<git2::Tree<'r>, ChiknError> {
+    let branch = repo
+        .find_branch(draft, BranchType::Local)
+        .map_err(|e| ChiknError::Unknown(format!("Draft '{}' not found: {}", draft, e)))?;
+    let commit = branch
+        .get()
+        .peel_to_commit()
+        .map_err(|e| ChiknError::Unknown(format!("Can't resolve {}: {}", draft, e)))?;
+    commit
+        .tree()
+        .map_err(|e| ChiknError::Unknown(format!("Can't read tree for {}: {}", draft, e)))
+}
+
+/// List the documents at a draft's tip (read-only peek).
+///
+/// Pure git-object read: no checkout, no HEAD move, no working-tree write —
+/// which is why no `WritePermit` is required. Display names come from the
+/// sibling `.meta` sidecar's `name:` line when one exists at the same tip
+/// (tolerant read — a missing or unparsable sidecar falls back to the file
+/// stem, per I5).
+pub fn list_draft_documents(path: &Path, draft: &str) -> Result<Vec<DraftDocument>, ChiknError> {
+    let repo = Repository::open(path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    let tree = draft_tip_tree(&repo, draft)?;
+
+    let mut doc_paths = Vec::new();
+    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+        if entry.kind() == Some(git2::ObjectType::Blob) {
+            if let Some(file_name) = entry.name() {
+                let full = format!("{}{}", dir, file_name);
+                if full.ends_with(".md") && !full.starts_with(".git") {
+                    doc_paths.push(full);
+                }
+            }
+        }
+        git2::TreeWalkResult::Ok
+    })
+    .map_err(|e| ChiknError::Unknown(format!("Failed to list draft documents: {}", e)))?;
+    doc_paths.sort();
+
+    let sidecar_name = |doc_path: &str| -> Option<String> {
+        let meta_path = format!("{}.meta", doc_path.strip_suffix(".md")?);
+        let entry = tree.get_path(std::path::Path::new(&meta_path)).ok()?;
+        let blob = repo.find_blob(entry.id()).ok()?;
+        let text = String::from_utf8_lossy(blob.content()).to_string();
+        text.lines().find_map(|line| {
+            let value = line.strip_prefix("name:")?.trim();
+            let value = value
+                .strip_prefix('"')
+                .and_then(|v| v.strip_suffix('"'))
+                .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
+                .unwrap_or(value);
+            (!value.is_empty()).then(|| value.to_string())
+        })
+    };
+
+    Ok(doc_paths
+        .into_iter()
+        .map(|doc_path| {
+            let name = sidecar_name(&doc_path).unwrap_or_else(|| {
+                std::path::Path::new(&doc_path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(&doc_path)
+                    .to_string()
+            });
+            DraftDocument {
+                path: doc_path,
+                name,
+            }
+        })
+        .collect())
+}
+
+/// Read one document's text at a draft's tip (read-only peek; see
+/// `list_draft_documents` for why no `WritePermit` is involved).
+pub fn read_draft_document(path: &Path, draft: &str, doc_path: &str) -> Result<String, ChiknError> {
+    let repo = Repository::open(path)
+        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    let tree = draft_tip_tree(&repo, draft)?;
+    let entry = tree.get_path(std::path::Path::new(doc_path)).map_err(|e| {
+        ChiknError::Unknown(format!(
+            "Document '{}' not found in draft '{}': {}",
+            doc_path, draft, e
+        ))
+    })?;
+    let blob = repo
+        .find_blob(entry.id())
+        .map_err(|e| ChiknError::Unknown(format!("Failed to read '{}': {}", doc_path, e)))?;
+    Ok(String::from_utf8_lossy(blob.content()).to_string())
+}
+
 /// Check if the working tree has uncommitted changes.
 pub fn has_changes(path: &Path) -> Result<bool, ChiknError> {
     let repo = Repository::open(path)
