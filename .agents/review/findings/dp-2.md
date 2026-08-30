@@ -3,9 +3,24 @@
 **Severity**: MEDIUM — with unsaved-to-History edits, the promised save
 doesn't occur and the restore errors out after the writer already confirmed;
 confusing refusal, no data loss (the engine refuses rather than discards).
-**Status**: Open
+**Status**: Verified
 **Branch**: — (default-branch mode)
-**Commit**: (filled in after commit)
+**Commit**: `3b47d6f`
+
+## Reviewer comments
+Reviewer: codex / gpt-5.6-sol / xhigh / standard
+Harness: codex-cli (MCP transport), thread 01a0545b-6929-7ca3-8ac4-796a70a7b1da
+Reviewed: 3b47d6f358b34069090ac15cd62ea30755f35091
+Base: 31c55c29c79cd36541e3e12f6cc256fb513fd4ed
+guard_confirmed: true (sequencing reverted in reviewer's worktree →
+restoreFlow guard FAIL; head restored → PASS)
+Verdict: accepted — 2026-08-29 (UTC). Comments:
+- ui/src/components/revisions/restoreFlow.ts:40 — dirty worktrees saved
+  under the active lease before restore; revert failed the guard, head
+  passed.
+- ui/src/components/revisions/Revisions.tsx:137 — handleRestore routes
+  through restoreWithHistorySave; targeted lint and production build pass.
+Record committed as part of verification history.
 
 ## Evidence
 `ui/src/components/revisions/Revisions.tsx:126` (as of `8d69a08`) — confirm
