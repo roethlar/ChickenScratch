@@ -644,7 +644,7 @@ function SyncControls({
   const enabled = !!status?.has_remote;
   const summary = (() => {
     if (!enabled) return "Set up online backup in Settings › Sync & Backup";
-    if (status!.ahead === 0 && status!.behind === 0) return "Everything backed up";
+    if (status!.ahead === 0 && status!.behind === 0) return "This draft is backed up";
     const parts: string[] = [];
     if (status!.ahead) parts.push(`${status!.ahead} to back up`);
     if (status!.behind) parts.push(`${status!.behind} to download`);
@@ -672,8 +672,12 @@ function SyncControls({
         >
           <Download size={12} /> Get changes
         </button>
-        <button onClick={onPush} disabled={!enabled || busy} title="Back up online">
-          <Upload size={12} /> Back up
+        <button
+          onClick={onPush}
+          disabled={!enabled || busy}
+          title="Back up this draft online"
+        >
+          <Upload size={12} /> Back up this draft
         </button>
       </div>
     </div>
