@@ -1,14 +1,16 @@
 # Machine-Specific Facts
 
-Dated notes per machine, per the `handoff` rule in `AGENTS.md`. Prune stale
-entries during `catchup` hygiene sweeps.
+Dated notes per machine. Prune stale entries during catchup hygiene sweeps.
 
-## nagatha.local (macOS 26.5.2)
+## nagatha (macOS; previously recorded as nagatha.local)
 
-- 2026-07-17: Claude Cowork could not drive the Tauri-app break-it
-  validation (`.agents/break-it-validation.md`) on this machine — don't
-  retry that driver blindly; use a desktop-automation-capable session or
-  hand the owner the steps.
-- 2026-07-17: Owner's real Scrivener projects live at `~/Dev/scrivner`
-  (15 projects; "Corn 2.scriv" is the largest). Validation sandbox
-  convention: `~/chikn-validation/`.
+- 2026-09-17: `~/Dev/scrivner` exists. It holds the owner's original
+  Scrivener projects; validation must use copies. The chosen source and
+  script are in `.agents/break-it-validation.md`.
+- 2026-09-17: `~/chikn-validation/` no longer exists. The historical
+  post-step-9 test project recorded on 2026-08-29 is not available at its
+  recorded location; recreate the sandbox before resuming validation.
+- The earlier Claude Cowork driver limitation is superseded for planning
+  purposes by the successful desktop-driven run recorded in
+  `.agents/break-it-validation.md`; that run did not record the app's
+  source revision.

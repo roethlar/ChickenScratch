@@ -1,6 +1,6 @@
 # Review status
 
-Workflow: see `.agents/playbooks/reviewloop.md`.
+Workflow: see `.agents/playbooks/codereview.md`.
 Per-item detail: see `.agents/review/findings/<id>.md`.
 
 ## Legend

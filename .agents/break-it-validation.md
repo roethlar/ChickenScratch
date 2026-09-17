@@ -2,9 +2,10 @@
 
 Manual/driven acceptance test for the engine-hardening phase: import a copy
 of a real Scrivener project, then attack it and confirm the protections hold.
-Written 2026-07-17; not yet run (first driver attempt failed — see
-`.agents/machines.md`). Any LOST DATA verdict is a hardening bug and becomes
-the next fix.
+Written 2026-07-17; the first driven run is recorded below. The signed
+bundle source revision was not recorded, so observations must be rechecked
+against an identified current build before selecting a code fix. Any
+confirmed LOST DATA verdict becomes the next hardening fix.
 
 Ground rules for whoever drives it (agent or owner):
 
@@ -46,8 +47,19 @@ Ground rules for whoever drives it (agent or owner):
   bundle** `target/release/bundle/macos/ChickenScratch.app`, not dev mode —
   both were running; the release app took focus and all interaction hit it).
   Stopped at step 9 per ground rules (step failed; step 10 needs history).
-  Results below. Test project left at `~/chikn-validation/Corn 2.chikn` in
-  its post-step-9 state (no `.git`, one uncommitted edit) as evidence.
+  Results below. The test project was left in its post-step-9 state
+  (no `.git`, one uncommitted edit); current machine availability is
+  recorded in `.agents/machines.md`.
+
+## Source check 2026-09-17
+
+As of `a2d8a39`, the Tauri open path already calls permit-backed reader
+self-heal, including `pre_repair_git` for an absent repository. Current
+reads also do not quarantine corrupt sidecars. These contradict the plan
+diagnosis and parts of the observed release behavior; the runtime cause
+remains unverified. Preserve the results below as historical observations,
+not a verified description of this source revision. See `.agents/state.md`
+Blockers for the next action. No desktop test was rerun during this check.
 
 ## Results 2026-08-29
 

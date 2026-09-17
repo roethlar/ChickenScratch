@@ -3,6 +3,52 @@
 Landed or superseded entries rotated verbatim out of `.agents/state.md` by
 the `handoff` operator, newest batch first. History only — never load-bearing.
 
+## Rotated 2026-09-17 (catchup hygiene sweep)
+
+These entries are preserved verbatim, including superseded release claims;
+current verified evidence is in `.agents/state.md`.
+
+- **Draft peek + Restore rewording SHIPPED** (owner-approved
+  `docs/plans/PLAN_DRAFT_PEEK.md`, 2026-08-29, commits
+  `1ac3ddc`/`846aa10`/`8d69a08`): read-only look inside any other draft
+  from the Drafts tab (core reads are pure git-object reads, guard test
+  pins zero worktree/HEAD mutation), and History's restore is now "Bring
+  back this version" with nothing-is-lost confirm wording. Codereview
+  2026-08-29 (codex gpt-5.6-sol @ xhigh) over `c99acdd..0a891b2`:
+  3 findings, all fixed and verified accepted (`.agents/review/index.md`
+  dp-1..dp-3, commits `31c55c2`/`3b47d6f`/`4b70015`+`bfe52d1`) — backup
+  wording now draft-scoped, restore now genuinely saves to History first,
+  peek sidecar names YAML-parsed. Candidate follow-ups, not approved:
+  `DocumentHistory.tsx` per-document restore still uses the old "Restore"
+  wording; **owner decision open** — should "Back up" push *all* drafts
+  instead of only the current one? (dp-1 fixed the words, not the scope.)
+- **Windows signed release CI landed and PROVEN GREEN** (`229341f`
+  2026-08-07; validated by run 31228420981 the same day):
+  `.github/workflows/windows-release.yml` builds the first-ever Windows
+  Tauri bundles in this repo and signs the MSI and NSIS installers via
+  Azure Trusted Signing, with `Get-AuthenticodeSignature ... Status -eq
+  'Valid'` hard-asserted and passing. The first attempt 403'd on a wrong
+  repo secret (`AZURE_SIGNING_ACCOUNT` must be `roethlar-app-signing`, the
+  Artifact Signing account — not the app registration's name); fixed at the
+  secret level, no workflow change. The pre-existing macOS signed workflow
+  also had its first live-secrets run the same day: run 31229465450, green
+  end to end (signed, notarized, stapled, verified). This was
+  release-infrastructure work outside the active engine-hardening phase,
+  done on an explicit owner instruction spanning all their repos.
+- **Tag-triggered GitHub Release publishing landed, NEVER EXERCISED**
+  (`7505439` 2026-08-07): both signed-release workflows now also trigger on
+  a `v*` tag push and attach their verified artifacts to that tag's DRAFT
+  release via `softprops/action-gh-release@v2` — macOS the notarized DMG
+  (the `.app` is a directory, so it stays a CI artifact only), Windows the
+  signed MSI and NSIS installer. Draft is deliberate: this repo has never
+  published a GitHub release and has no release-notes convention, so the
+  owner reviews and publishes by hand. The two runs share one concurrency
+  group so they converge on one release instead of racing to create it.
+  None of the tag path is proven: no `v*` tag has ever existed in this repo,
+  so the trigger, release creation, two-workflows-one-release convergence,
+  and protected-environment approval on a tag run are verifiable only by
+  pushing a real tag. `RELEASE.md` §3-§4 is the runbook.
+
 ## Rotated 2026-07-28 (catchup hygiene sweep)
 
 - **Fresh-fidelity operation boundary shipped** 2026-07-12 in `a0e7621`

@@ -2,156 +2,97 @@
 
 First read for current repo state at session start. Session-level layer only —
 `docs/CURRENT_PHASE.md` is the authoritative phase plan; `docs/adr/` holds
-decisions; `DEVLOG.md` holds history.
+decisions; `DEVLOG.md` holds history. Completed state entries live in
+`docs/history/state-archive.md`.
 
 ## Now
 
-- Phase **Engine hardening — protect writers' work** is active as of
-  2026-07-12 (`docs/CURRENT_PHASE.md` is authoritative). Its read-only audit
-  and first approved safety slice are complete; the phase remains active.
-- **Draft peek + Restore rewording SHIPPED** (owner-approved
-  `docs/plans/PLAN_DRAFT_PEEK.md`, 2026-08-29, commits
-  `1ac3ddc`/`846aa10`/`8d69a08`): read-only look inside any other draft
-  from the Drafts tab (core reads are pure git-object reads, guard test
-  pins zero worktree/HEAD mutation), and History's restore is now "Bring
-  back this version" with nothing-is-lost confirm wording. Codereview
-  2026-08-29 (codex gpt-5.6-sol @ xhigh) over `c99acdd..0a891b2`:
-  3 findings, all fixed and verified accepted (`.agents/review/index.md`
-  dp-1..dp-3, commits `31c55c2`/`3b47d6f`/`4b70015`+`bfe52d1`) — backup
-  wording now draft-scoped, restore now genuinely saves to History first,
-  peek sidecar names YAML-parsed. Candidate follow-ups, not approved:
-  `DocumentHistory.tsx` per-document restore still uses the old "Restore"
-  wording; **owner decision open** — should "Back up" push *all* drafts
-  instead of only the current one? (dp-1 fixed the words, not the scope.)
-- **Owner-level break-it validation EXECUTED 2026-08-29** (steps 1–9;
-  step 10 blocked): results table in `.agents/break-it-validation.md`.
-  One LOST DATA finding — after `.git` deletion the app opens the project
-  as healthy but Save Revision silently no-ops (no repo rebuild, no
-  commit, no error). Jumps the queue as the next fix — plan drafted
-  2026-08-29: `docs/plans/PLAN_HISTORY_SELF_HEAL.md` (approved as a plan;
-  implementation NOT yet approved). Secondary findings:
-  corrupt-meta and stranded-file handling are safe but **silent** (no
-  warning, no filename); invalid-UTF-8 meta blocks open with dev-speak
-  error; corkboard previews leak backslash escapes. Crash-kill tests all
-  SURVIVED. Run drove the signed release bundle via desktop automation.
-- **Phase close-out question posed to the owner, unanswered**
-  (2026-07-17): "close the hardening phase and move to the Tauri
-  reference-app phase?" The owner detoured to hands-on validation
-  first (above) — re-ask after the validation runs.
-- **Ranked unapproved hardening follow-ups** (re-based on `7f85510`):
-  first, Scrivener asset import still copies directly into `.chikn`
-  outside core and reports failures only to stderr. Also parked:
-  revision staging of recovery artifacts. Neither is approved for
-  implementation yet.
-- **Windows signed release CI landed and PROVEN GREEN** (`229341f`
-  2026-08-07; validated by run 31228420981 the same day):
-  `.github/workflows/windows-release.yml` builds the first-ever Windows
-  Tauri bundles in this repo and signs the MSI and NSIS installers via
-  Azure Trusted Signing, with `Get-AuthenticodeSignature ... Status -eq
-  'Valid'` hard-asserted and passing. The first attempt 403'd on a wrong
-  repo secret (`AZURE_SIGNING_ACCOUNT` must be `roethlar-app-signing`, the
-  Artifact Signing account — not the app registration's name); fixed at the
-  secret level, no workflow change. The pre-existing macOS signed workflow
-  also had its first live-secrets run the same day: run 31229465450, green
-  end to end (signed, notarized, stapled, verified). This was
-  release-infrastructure work outside the active engine-hardening phase,
-  done on an explicit owner instruction spanning all their repos.
-- **Tag-triggered GitHub Release publishing landed, NEVER EXERCISED**
-  (`7505439` 2026-08-07): both signed-release workflows now also trigger on
-  a `v*` tag push and attach their verified artifacts to that tag's DRAFT
-  release via `softprops/action-gh-release@v2` — macOS the notarized DMG
-  (the `.app` is a directory, so it stays a CI artifact only), Windows the
-  signed MSI and NSIS installer. Draft is deliberate: this repo has never
-  published a GitHub release and has no release-notes convention, so the
-  owner reviews and publishes by hand. The two runs share one concurrency
-  group so they converge on one release instead of racing to create it.
-  None of the tag path is proven: no `v*` tag has ever existed in this repo,
-  so the trigger, release creation, two-workflows-one-release convergence,
-  and protected-environment approval on a tag run are verifiable only by
-  pushing a real tag. `RELEASE.md` §3-§4 is the runbook.
+- Phase **Engine hardening — protect writers' work** remains active;
+  `docs/CURRENT_PHASE.md` owns the phase and exit criteria.
+- **Break-it validation needs a current-build recheck before a fix is chosen.**
+  `.agents/break-it-validation.md` owns the 2026-08-29 observations and
+  unfinished steps. `docs/plans/PLAN_HISTORY_SELF_HEAL.md` was drafted on
+  the owner's go to draft a plan; implementation approval is not recorded.
+  Its claim that nothing rebuilds missing history contradicts current code
+  (see Blockers). Keep the observed release-app failure as evidence without
+  treating its proposed cause as verified at the current source revision.
+- **Phase close-out question remains unanswered** (posed 2026-07-17):
+  close hardening and move to the Tauri reference-app phase? The owner
+  detoured to hands-on validation; resolve the validation evidence first.
+- **Parked hardening follow-ups**, source rechecked 2026-09-17 as of
+  `a2d8a39`: Scrivener asset import still calls `fs::copy` outside core and
+  reports failures to stderr (`crates/cli/src/scrivener/converter/mod.rs`).
+  Revision staging still uses `add_all(["*"])` while generated ignores do
+  not cover atomic `.X.tmp-*` names (`crates/core/src/core/git.rs`). Neither
+  concern has implementation approval. The rest of the format-lock audit
+  lives under Out of scope in `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md`;
+  current reader repair notices remain stderr-only and `Project` still has
+  no project-level `fields` map.
+- **Draft-peek follow-ups remain unapproved**, rechecked as of `a2d8a39`:
+  `DocumentHistory.tsx` still uses the old Restore wording. The owner
+  decision on backing up all drafts remains open; `push_remote` still
+  pushes the current draft only. The completed review record is
+  `.agents/review/index.md` (dp-1 through dp-3).
+- Vault/remote design remains deliberately paused under
+  `docs/CURRENT_PHASE.md` and Slice 2 of
+  `docs/plans/PLAN_TRUST_FOUNDATIONS.md`, including the guided-token
+  question. No new approval was found in the current records.
+
 ## Blockers
 
-- None. Vault remote design is deliberately paused work, not a blocker to
-  the active engine-hardening phase.
+- **The history-fix plan's diagnosis is contradicted by source**, verified
+  2026-09-17 as of `a2d8a39`: `load_project_inner` calls
+  `reader::read_project_with_repair`; its SelfHeal path calls
+  `pre_repair_git`, which recreates an absent repository through
+  `git::init_repo`. Existing reader tests cover missing and unopenable
+  repositories. The validation record does not identify the signed
+  bundle's source revision, so its observed no-op cannot establish that
+  this path is absent from current code. Reproduce with an identified
+  current build before approving implementation; the plan itself was not
+  edited during this records-only sweep.
+- **Validation evidence is not ready to resume in place.** The recorded
+  test sandbox is absent on the current machine (see `.agents/machines.md`).
+  The same run's corrupt-sidecar quarantine also differs from current
+  source: the fidelity probe classifies corruption as Degraded and reads
+  do not quarantine. Preserve the historical observations, recreate a copy
+  of the test project, and identify the app build for the next run.
 
 ## Known drift (recorded, not yet fixed)
 
 - `docs/AGENT-WORKFLOW.md` section 5 still lists the earlier narrow command
-  set while `.agents/repo-guidance.md` records the current CI-matching suite.
-  Reconcile in a deliberate pass; it does not block the phase.
+  set while `.agents/repo-guidance.md` records the current CI-matching
+  Rust/UI suite. Rechecked as of `a2d8a39`; the workflow also runs its
+  cross-frontend harness and Windows process tests. The conflicting
+  workflow guide is outside the records-only cleanup scope.
 
 ## Next
 
-1. **Fix the step-9 hardening bug** (from the 2026-08-29 break-it run):
-   deleting `.git` leaves the project open-able but Save Revision silently
-   discards revisions — expected open-time self-heal (rebuild repo) never
-   happens. Needs an approved plan (engine + format territory). Re-run
-   playbook steps 9–10 after the fix.
-2. **Then re-ask the phase close-out yes/no**: hardening phase done,
-   move to the Tauri reference-app phase? (Posed 2026-07-17, unanswered.)
-   The engine-side close-out evidence is in: mutation entry points
-   re-audited 2026-07-17 (all permit-gated; `init_repo` gated behind
-   `test-support`), parked findings re-verified against tip.
-3. The next ranked follow-up (Scrivener asset-import boundary) remains
-   parked, one concern per later approval.
-4. Slice 2 (vault) remains NOT approved. No vault work until a fresh owner
-   decision on remote design and the plan's open v1 guided-token question.
+1. **Recheck the history-loss validation against an identified current
+   build**, using a fresh copy of the test project. Trace the existing
+   self-heal path, then revise `docs/plans/PLAN_HISTORY_SELF_HEAL.md` only
+   from confirmed behavior before seeking implementation approval.
+   Finish the blocked restore validation after history works.
+2. Then re-ask whether to close hardening and move to the Tauri
+   reference-app phase. The phase declaration remains the owner's call.
+3. Scrivener asset-import safety remains the next parked concern, one
+   approval and one concern at a time. Vault work remains paused.
 
 ## Verification
 
-- Declared suite: `.agents/repo-guidance.md` Verification section (canonical
-  command set; do not copy a second enumeration here).
-- 2026-08-07 at `7505439` (tag-triggered release attachment): CI-and-docs-only
-  change, no Rust or UI source touched, so the declared suite was not re-run;
-  `scripts/check-release-metadata.sh` and `git diff --check` pass. All four
-  workflow YAML files parse under the repo's own `js-yaml` 4.1.1
-  (`ui/node_modules`), and 45 structural assertions over the parsed documents
-  hold: `v*` tag trigger added with `workflow_dispatch` kept,
-  `contents: write`, one shared concurrency group expression in both files,
-  attach step last in the job, `draft: true`,
-  `fail_on_unmatched_files: true`, the `startsWith(github.ref, 'refs/tags/')` guard, every attached
-  glob also covered by the step that asserts signatures, and the attach step
-  the only conditional step in either workflow. That assertion set was proved
-  load-bearing: it exits non-zero against the pre-change workflows at
-  `4e49cb7`. Nothing requiring a real tag push was verified.
-- 2026-08-07 at `229341f` (Windows signed release workflow): CI-and-docs-only
-  change, no Rust or UI source touched, so the declared suite was not re-run;
-  `scripts/check-release-metadata.sh` and `git diff --check` pass. All four
-  workflow YAML files parse under `js-yaml`, and every `run:` block of the new
-  workflow parses under the PowerShell 7 parser. The two gates were proved
-  behaviourally under an exact emulation of the runner's `pwsh -command
-  ". 'file'"` invocation: the secrets gate exits non-zero for unset, empty,
-  and whitespace-only values and zero only when all six are present; the
-  signature gate exits non-zero for `NotSigned`, `UnknownError`, and
-  `HashMismatch` and zero only for `Valid`. Nothing requiring a Windows
-  runner was verified.
-- 2026-07-27 at merge `260c744` (worktree branch `init_repo` gating merged
-  into master; worktree and branch removed after content-landed proof):
-  the full declared suite green locally — fmt, clippy, all Rust tests,
-  release metadata, and the ui lint/build/test portion.
-- Last full-suite green before that: 2026-07-16 at code tip `d6fa9b5` (rustc 1.97.0,
-  current stable — no CI-version gap): the exact declared suite. Each of
-  the three new commits was additionally verified in isolation via
-  `git rebase --exec` (core lib check + lib tests per commit), so every
-  intermediate commit builds and passes.
-- 2026-07-16 at `6b4b4ac` (write_project hierarchy guard): `cargo fmt
-  --check`, `cargo clippy --all-targets -- -D warnings`, and full test
-  suites green across all four crates. Rust portion of the declared
-  suite only — the ui/release-metadata portions were untouched by this
-  work and last ran green at `d6fa9b5`.
-- 2026-07-16 at `7f85510` (`init_repo` test-support gating, on top of
-  the master merge `f49d57d`): `cargo fmt --check`, `cargo clippy
-  --all-targets -- -D warnings`, and `cargo test --workspace
-  --all-targets` green. Rust portion of the declared suite only, as
-  above.
-- Prior green at `354fbc0` included the slice-4 red/green guard drills
-  (per finding and per protection; DEVLOG epoch-guard entry).
-- Remote CI as of `552706d` (checked live 2026-07-28): Tauri Bundles green;
-  GitHub Validation red on `utils::process::tests::process_helper_caps_
-  combined_stdout_and_stderr` with Darwin `EPERM` on the macOS runner — the
-  same flake class tolerated by the 2026-07-11 process-helper fix, and the
-  identical code passed Validation on `262d00b` and locally. Re-run the
-  same day: green — confirmed runner flake, not a regression.
+- Declared suite: `.agents/repo-guidance.md` Verification section.
+- Live CI checked 2026-09-17 **as of `a2d8a39`**: Validation run
+  `33335376706` and Tauri Bundles run `33335376726` both succeeded.
+- **Tag release path has been exercised**, correcting the superseded
+  claim in the archive: `v1.0.0` identifies `4dc0b22`; macOS Signed Release
+  run `31232776419` and Windows Signed Release run `31232776468` both
+  succeeded on that tag. The GitHub release was published 2026-08-08 and
+  has its DMG, MSI, and NSIS installer attached, verified live 2026-09-17.
+  Runbook: `RELEASE.md`; release:
+  <https://github.com/roethlar/ChickenScratch/releases/tag/v1.0.0>.
+- This catchup changed records only. `git diff --check` is the applicable
+  local verification; Rust/UI tests and desktop validation were not run.
+  Source inspection establishes the plan contradiction, not the runtime
+  cause of the historical release-app failure.
 
 ## Active Sources
 
@@ -160,13 +101,6 @@ decisions; `DEVLOG.md` holds history.
 
 ## Unrecorded Repo Memory
 
-- None known. The completed 63-finding review cycle is archived in
-  `REVIEW.md` + `.review/`; its hardening (safe paths, keyring secrets,
-  dirty-worktree guards, process limits) is covered by `docs/INVARIANTS.md`
-  I5–I6 and the engine tests. The format-lock audit's out-of-scope findings
-  are recorded in `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md` under "Out of
-  scope" — re-verified against tip 2026-07-16: still open are
-  `save_revision` staging quarantine/orphaned temp files, stderr-only
-  SelfHeal repair notices, and no project-level `fields` map; the
-  non-transactional-save and `include_in_compile` case-sensitivity
-  findings are closed there (`d6fa9b5`, `ae6bc01`).
+- None known. The completed legacy review cycle is archived in `REVIEW.md`
+  and `.review/`; the format-lock audit owns its out-of-scope findings in
+  `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md`.
