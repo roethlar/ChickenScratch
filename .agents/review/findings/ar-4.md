@@ -1,7 +1,7 @@
 # ar-4: Relative '..' output paths falsely refused as nested
 
 **Severity**: LOW — a valid CLI invocation (`../Sibling.chikn` from inside a project) is refused; workaround: absolute path
-**Status**: Open
+**Status**: In progress
 **Branch**: — (default-branch mode)
 **Commit**: (pending)
 
@@ -16,16 +16,32 @@ Note: the reviewer's environment routes shell commands through a PreToolUse hook
 cwd `/work/Outer.chikn`, output `../Sibling.chikn`: `create_project` refuses with 'inside the project Outer'.
 
 ## What
+`enclosing_project` walked lexical ancestors, so a path like
+`Outer.chikn/../Sibling.chikn` listed `Outer.chikn` as an ancestor and was
+refused although it lands beside the project.
 
 ## Approach
+Resolve `.`/`..` lexically, then canonicalize the nearest existing parent
+(follows symlinks) before walking ancestors, so the check uses where the
+project will actually be created.
 
 ## Files changed
+- `crates/core/src/core/project/writer.rs` — path resolution in
+  `enclosing_project`; guard test extended
 
 ## Guard proof
+- `core::project::writer::tests::test_create_project_refuses_inside_existing_project`
+  — now also creates `Outer.chikn/../Dotted.chikn` and expects success.
+  Failed before the fix ("a '..' path that resolves outside the project
+  must be allowed"); passes with it. The nested refusals still pass.
 
 ## Coder dispute (if any)
 None.
 
 ## Known gaps
+The test uses an absolute path containing `..` rather than changing the
+process working directory (global state, racy under parallel tests); the
+relative-path case goes through the same resolution after `current_dir`
+is joined.
 
 ## Reviewer comments

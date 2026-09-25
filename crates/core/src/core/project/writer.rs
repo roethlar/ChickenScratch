@@ -240,7 +240,28 @@ fn enclosing_project(path: &Path) -> Option<PathBuf> {
     } else {
         std::env::current_dir().ok()?.join(path)
     };
-    absolute
+    // Resolve '.'/'..' lexically, then the real location of the nearest
+    // existing parent (symlinks), so the check follows where the project
+    // would actually land — '/p/Outer.chikn/../Sib.chikn' is a sibling,
+    // not nested (review finding ar-4).
+    let mut resolved = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            other => resolved.push(other.as_os_str()),
+        }
+    }
+    let resolved = match (resolved.parent(), resolved.file_name()) {
+        (Some(parent), Some(name)) => match parent.canonicalize() {
+            Ok(real_parent) => real_parent.join(name),
+            Err(_) => resolved.clone(),
+        },
+        _ => resolved.clone(),
+    };
+    resolved
         .ancestors()
         .skip(1)
         .find(|dir| dir.join(PROJECT_FILE).is_file() && dir.join(MANUSCRIPT_FOLDER).is_dir())
@@ -991,6 +1012,14 @@ mod tests {
 
         let sibling = temp_dir.path().join("Sibling.chikn");
         assert!(create_project(&sibling, "Sibling").is_ok());
+
+        // ar-4: '..' leaves the project — not nested, must be allowed.
+        let dotted = outer.join("..").join("Dotted.chikn");
+        assert!(
+            create_project(&dotted, "Dotted").is_ok(),
+            "a '..' path that resolves outside the project must be allowed"
+        );
+        assert!(temp_dir.path().join("Dotted.chikn").is_dir());
     }
 
     #[test]
