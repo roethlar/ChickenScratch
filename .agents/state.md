@@ -15,8 +15,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   `.git` and Save Revision commits. `docs/plans/PLAN_HISTORY_SELF_HEAL.md`
   is marked superseded/on hold; implementation approval was never given.
 - **Phase close-out question remains unanswered** (posed 2026-07-17):
-  close hardening and move to the Tauri reference-app phase? The owner
-  detoured to hands-on validation; resolve the validation evidence first.
+  close hardening and move to the Tauri reference-app phase? An agent
+  (Claude Code, 2026-08-29) ran the break-it test; the owner has not used
+  the app. Resolve that test's evidence first.
 - **Parked hardening follow-ups**, source rechecked 2026-09-25 as of
   `a891ed5`: Scrivener asset import still calls `fs::copy` outside core and
   reports failures to stderr (`crates/cli/src/scrivener/converter/mod.rs`).
@@ -57,7 +58,7 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 ## Next
 
 1. **GUI rerun of break-it steps 9–10** on a freshly built current app
-   (owner, or a GUI-capable agent), per `.agents/break-it-validation.md`
+   (a GUI-capable agent; the owner has not used the app), per `.agents/break-it-validation.md`
    "Engine repro 2026-09-25". Rewrite or retire the history plan from what
    it shows.
 2. Then re-ask whether to close hardening and move to the Tauri
