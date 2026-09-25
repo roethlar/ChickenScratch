@@ -160,13 +160,31 @@ fn classified_git_error_as(
 }
 
 /// Untracked worktree entries that revision history deliberately leaves
-/// out: another git repository inside the project (typically a second
-/// project saved into this one's folder). `add_all` refuses to stage an
-/// embedded repository, which used to fail every Save Revision; counting it
-/// as a change kept the tree permanently dirty (PLAN_REVISION_STAGING_SAFETY).
+/// out (PLAN_REVISION_STAGING_SAFETY):
+/// - another git repository inside the project (typically a second project
+///   saved into this one's folder). `add_all` refuses to stage an embedded
+///   repository, which used to fail every Save Revision; counting it as a
+///   change kept the tree permanently dirty.
+/// - a leftover `.<name>.tmp-<suffix>` from an interrupted atomic write
+///   (`writer::atomic_write_file`), which would otherwise be committed.
 fn is_excluded_from_history(workdir: &Path, relative: &Path) -> bool {
+    if is_atomic_write_leftover(relative) {
+        return true;
+    }
     let full = workdir.join(relative);
     full.is_dir() && full.join(".git").exists()
+}
+
+fn is_atomic_write_leftover(relative: &Path) -> bool {
+    relative
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            name.starts_with('.')
+                && name
+                    .find(".tmp-")
+                    .is_some_and(|at| at > 1 && at + ".tmp-".len() < name.len())
+        })
 }
 
 /// Stage every change except the entries `is_excluded_from_history` skips.
@@ -2224,6 +2242,45 @@ mod tests {
             !has_changes(&project_path).unwrap(),
             "the ignored nested repository must not keep the tree dirty"
         );
+    }
+
+    /// An interrupted atomic write leaves `.<name>.tmp-<suffix>` beside the
+    /// target; it must never be committed into history or keep the tree
+    /// dirty (PLAN_REVISION_STAGING_SAFETY.md step 2).
+    #[test]
+    fn atomic_write_leftovers_are_skipped_by_staging_and_change_checks() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("Leftover.chikn");
+        std::fs::create_dir_all(project_path.join("manuscript")).unwrap();
+        init_repo(&project_path).unwrap();
+        std::fs::write(project_path.join("manuscript/one.md"), "baseline").unwrap();
+        let token = token_for_test_project(&project_path);
+        token
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "Baseline", permit)
+            })
+            .unwrap();
+
+        let leftover = "manuscript/.one.md.tmp-Ab12Cd";
+        std::fs::write(project_path.join(leftover), "half-written").unwrap();
+        assert!(
+            !has_changes(&project_path).unwrap(),
+            "a leftover temp file alone must not count as a change"
+        );
+
+        std::fs::write(project_path.join("manuscript/one.md"), "edited").unwrap();
+        let revision = token
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "Edited", permit)
+            })
+            .unwrap();
+        let repo = Repository::open(&project_path).unwrap();
+        let tree = repo
+            .find_commit(Oid::from_str(&revision.id).unwrap())
+            .unwrap()
+            .tree()
+            .unwrap();
+        assert!(tree.get_path(Path::new(leftover)).is_err());
     }
 
     #[test]
