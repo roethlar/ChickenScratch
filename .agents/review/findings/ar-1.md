@@ -47,3 +47,19 @@ probes Full, so that path is no longer reached by this failure. Not changed
 here.
 
 ## Reviewer comments
+Reviewer: codex / gpt-5.6-sol / xhigh / frontier
+  escalated: T2 (HIGH; inline pair, session-only)
+Harness: codex-cli 0.156.0 (CLI transport, --json; env note: shell routed via ptk PreToolUse hook)
+Reviewed: 3fafd3349226a715e37582da210c1cdea02d9f13
+Base: 0d81c1bff2821ea82d22cf4a8ca3d4ce901d836b
+guard_confirmed: true
+Verdict: reopened — 2026-09-25 (UTC)
+Comments: converter/mod.rs:165-174 — failures tracked by destination
+path; two same-titled attachments share a path, so one failed copy
+removed both (reproduced; base had rejected duplicate paths).
+
+Repair (follow-up commit, no amend): media destinations are made unique
+against every document path (unique_slug checks only `.md`); new guard
+`test_import_same_titled_attachments_fail_independently` (FAILs with the
+uniqueness loop disabled, PASSes restored). Redispatch: repair-delta,
+T5 (ceiling).

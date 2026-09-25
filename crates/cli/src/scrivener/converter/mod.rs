@@ -518,13 +518,24 @@ fn convert_binder_items_inner(
                     if media_src.exists() {
                         let doc_id = Uuid::new_v4().to_string();
                         let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
-                        let slug = chickenscratch_core::utils::slug::unique_slug(
+                        // unique_slug only checks `.md` paths; two attachments
+                        // with the same title and extension must still land
+                        // at distinct files (review finding ar-1, reopen).
+                        let base_slug = chickenscratch_core::utils::slug::unique_slug(
                             &doc_name,
                             &format!("{}/", target_folder),
                             documents,
                         );
-                        let file_name = format!("{}.{}", slug, ext);
-                        let dest_rel = format!("{}/{}", target_folder, file_name);
+                        let mut dest_rel = format!("{}/{}.{}", target_folder, base_slug, ext);
+                        let mut counter = 1;
+                        while documents
+                            .values()
+                            .any(|d| d.path.eq_ignore_ascii_case(&dest_rel))
+                        {
+                            dest_rel =
+                                format!("{}/{}-{}.{}", target_folder, base_slug, counter, ext);
+                            counter += 1;
+                        }
 
                         // The actual file copy happens after write_project, below
 
@@ -918,6 +929,70 @@ mod tests {
                 .any(|d| d.path == "manuscript/reference-pdf.pdf"),
             "a failed attachment must be dropped from the project"
         );
+        assert!(matches!(
+            fidelity::probe_project_fidelity(&output_path).unwrap(),
+            fidelity::Fidelity::Full
+        ));
+    }
+
+    /// ar-1 reopen: two attachments with the same title must get distinct
+    /// files, so one failing copy cannot remove the other from the project.
+    #[cfg(unix)]
+    #[test]
+    fn test_import_same_titled_attachments_fail_independently() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Twins.scriv");
+        let output_path = temp_dir.path().join("Twins.chikn");
+        let good = "F8F9FDEF-FD9F-4A8C-B33D-3434A1220AE1";
+        let bad = "F8F9FDEF-FD9F-4A8C-B33D-3434A1220AE2";
+        for (uuid, bytes) in [(good, b"%PDF good" as &[u8]), (bad, b"%PDF bad")] {
+            let dir = scriv_path.join("Files").join("Data").join(uuid);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("content.pdf"), bytes).unwrap();
+        }
+        let bad_file = scriv_path.join("Files/Data").join(bad).join("content.pdf");
+        fs::set_permissions(&bad_file, fs::Permissions::from_mode(0o000)).unwrap();
+        if fs::read(&bad_file).is_ok() {
+            eprintln!("Skipping: running with permission to read mode-000 files");
+            return;
+        }
+        fs::write(
+            scriv_path.join("Twins.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="3.0">
+    <Binder>
+        <BinderItem UUID="{good}" Type="PDF">
+            <Title>Scan</Title>
+            <MetaData><FileExtension>pdf</FileExtension></MetaData>
+        </BinderItem>
+        <BinderItem UUID="{bad}" Type="PDF">
+            <Title>Scan</Title>
+            <MetaData><FileExtension>pdf</FileExtension></MetaData>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#
+            ),
+        )
+        .unwrap();
+
+        let report = import_scriv_with_report(&scriv_path, &output_path, None)
+            .expect("one failed twin must not fail the import");
+        fs::set_permissions(&bad_file, fs::Permissions::from_mode(0o644)).unwrap();
+
+        let kept: Vec<_> = report
+            .project
+            .documents
+            .values()
+            .filter(|d| d.name == "Scan")
+            .collect();
+        assert_eq!(kept.len(), 1, "exactly the readable twin stays listed");
+        assert_eq!(
+            fs::read(output_path.join(&kept[0].path)).unwrap(),
+            b"%PDF good"
+        );
+        assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
         assert!(matches!(
             fidelity::probe_project_fidelity(&output_path).unwrap(),
             fidelity::Fidelity::Full
