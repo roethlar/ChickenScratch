@@ -125,11 +125,11 @@ pub fn import_scriv(
                 let parts: Vec<&str> = value.splitn(2, '|').collect();
                 if parts.len() == 2 {
                     let src = Path::new(parts[0]);
-                    let dest = output_path.join(parts[1]);
-                    if let Some(parent) = dest.parent() {
-                        let _ = fs::create_dir_all(parent);
-                    }
-                    if let Err(e) = fs::copy(src, &dest) {
+                    // Through core: safe-path parents, atomic write (I2).
+                    let copied = fs::read(src).map_err(ChiknError::from).and_then(|bytes| {
+                        writer::write_project_app_file(permit, Path::new(parts[1]), &bytes)
+                    });
+                    if let Err(e) = copied {
                         eprintln!("Failed to copy media file {}: {}", uuid, e);
                     }
                 }
@@ -650,6 +650,26 @@ fn clean_scrivener_markup(content: &str, uuid_to_path: &HashMap<String, String>)
 
 #[cfg(test)]
 mod tests {
+    /// I2 guard (PLAN_IMPORT_MEDIA_SAFETY step 1): the importer must write
+    /// into the project only through `chickenscratch-core`. A raw
+    /// `fs::copy` bypassed the safe-path and atomic-write machinery.
+    #[test]
+    fn importer_writes_project_files_only_through_core() {
+        let source = include_str!("mod.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap();
+        for needle in [
+            concat!("fs::", "copy("),
+            concat!("fs::", "write("),
+            concat!("fs::", "create_dir"),
+            concat!("File::", "create("),
+        ] {
+            assert!(
+                !production.contains(needle),
+                "importer production code must not call {needle}"
+            );
+        }
+    }
+
     use super::*;
     use tempfile::TempDir;
 
