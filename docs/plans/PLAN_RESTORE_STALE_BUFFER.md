@@ -1,4 +1,4 @@
-# Plan: Stop the editor overwriting a restored version
+# Plan: Stop the editor overwriting restored or switched text
 
 **Owner request (quote):**
 > "continue with as much as possible while not requiring me" (2026-09-25).
@@ -37,9 +37,11 @@ and the restore is silently undone (GUI rerun 2026-09-25,
   fresh `modified`).
 - Proof: a throwaway build with `setEditable(..., false)` (not committed)
   left the disk matching the restored revision.
-- Assumption, unverified: every barrier operation (switch draft, merge,
-  pull, abort) shares this path and can write stale text into the new
-  tree the same way.
+- **Switch draft is confirmed affected too** (GUI, 2026-09-25): an edit
+  saved only on draft "alt", then switching to master, left master's
+  worktree holding the alt-only text; the next Save Revision on master
+  would commit it there. Merge, pull, and abort share the same barrier
+  path (assumption, unverified).
 
 ## [MODEL] Approach
 

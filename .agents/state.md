@@ -15,7 +15,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   restored file; reopening shows the newer text again. Cause confirmed
   (Tiptap `setEditable` emits an update when the barrier releases). Fix
   drafted, **not approved**: `docs/plans/PLAN_RESTORE_STALE_BUFFER.md`.
-  Likely also affects switch draft / merge / pull (unverified).
+  **Switching drafts is confirmed affected too**: the other draft's text
+  lands in the current draft's files. Merge / pull likely (unverified).
 - **Break-it step 9 passes on the current build**: relaunch rebuilds
   deleted history and Save Revision works. The August verdict does not
   reproduce; `docs/plans/PLAN_HISTORY_SELF_HEAL.md` is superseded.

@@ -77,6 +77,11 @@ Claude Code drove a freshly built release bundle (`cargo tauri build
 | 7b | `bits.meta` → valid-UTF-8 bad YAML; reopen | same | Opens **read-only**, no quarantine, file byte-identical. Banner wrongly says "This project was made by an older version…"; the real reason ("the notes file 'manuscript/bits.meta' is damaged") appears only as a hover tooltip | DEGRADED SAFELY (misleading banner) |
 | 8 | Stray `manuscript/stray.md`; reopen | read-only warning or safe adoption | Opens read-only; "stray" listed in the binder; same misleading banner, real reason only in the tooltip; nothing on disk changed | DEGRADED SAFELY (misleading banner) |
 
+Extra check, same session: create draft "alt", add "ALTONLY" to Opening,
+save a revision, switch to master. Screen shows master's text, but
+master's worktree on disk holds the alt-only text (dirty vs master HEAD).
+**LOST DATA / cross-draft contamination**, same cause as step 10.
+
 Step 10 cause (confirmed with a throwaway build): Tiptap's
 `setEditable` emits an update by default, so releasing the restore
 barrier marks the stale buffer dirty and the reload flush writes it to
