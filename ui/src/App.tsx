@@ -31,6 +31,7 @@ import {
 import { toastError } from "./components/shared/Toast";
 import { dialogPrompt } from "./components/shared/Dialog";
 import * as docCmd from "./commands/document";
+import { ReadOnlyBanner } from "./components/shared/ReadOnlyBanner";
 
 const CommandPalette = lazy(() =>
   import("./components/command-palette/CommandPalette").then((module) => ({
@@ -378,13 +379,7 @@ export default function App() {
           />
         )}
         {readOnly && !mergeState?.in_progress && (
-          <div
-            className="readonly-banner"
-            title={readOnlyReasons.join("\n")}
-          >
-            This project was made by an older version and opens read-only —
-            nothing will be changed.
-          </div>
+          <ReadOnlyBanner reasons={readOnlyReasons} />
         )}
         <div className="view-toolbar">
           <button

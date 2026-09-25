@@ -834,6 +834,13 @@
   flex-shrink: 0;
 }
 
+.readonly-banner-reasons {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
 /* ── Merge-in-progress banner ──────────────────────── */
 /* Persistent while merge state exists on disk (survives restart): the
    writer always has a way out — Complete or Abort. */
