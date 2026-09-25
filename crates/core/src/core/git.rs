@@ -301,8 +301,15 @@ pub fn save_revision(
     permit: &WritePermit<'_>,
 ) -> Result<Revision, ChiknError> {
     permit.ensure_valid_for(path)?;
-    let repo = Repository::open(path)
-        .map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?;
+    // A history folder that vanished while the project was open (sync
+    // tool, disk cleanup) is rebuilt here, exactly as the open-time
+    // self-heal would, instead of failing every save until a relaunch
+    // (PLAN_SAVE_REBUILDS_HISTORY). Never touches an existing `.git`.
+    let repo = if path.join(".git").exists() {
+        Repository::open(path).map_err(|e| ChiknError::Unknown(format!("Not a git repo: {}", e)))?
+    } else {
+        init_repo(path)?
+    };
 
     // Never commit during an in-progress merge — for ANY caller (manual
     // save, auto-commit timer, backup, restore internals). add_all below
@@ -2281,6 +2288,38 @@ mod tests {
             .tree()
             .unwrap();
         assert!(tree.get_path(Path::new(leftover)).is_err());
+    }
+
+    /// PLAN_SAVE_REBUILDS_HISTORY: `.git` removed while the project is
+    /// open — the next Save Revision rebuilds it instead of failing with
+    /// "Not a git repo" until the app is relaunched.
+    #[test]
+    fn save_revision_rebuilds_history_deleted_mid_session() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("Vanished.chikn");
+        std::fs::create_dir_all(project_path.join("manuscript")).unwrap();
+        init_repo(&project_path).unwrap();
+        std::fs::write(project_path.join("manuscript/one.md"), "baseline").unwrap();
+        let token = token_for_test_project(&project_path);
+
+        std::fs::remove_dir_all(project_path.join(".git")).unwrap();
+        std::fs::write(project_path.join("manuscript/one.md"), "after loss").unwrap();
+
+        let revision = token
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "After loss", permit)
+            })
+            .expect("save must rebuild a missing history folder");
+        let repo = Repository::open(&project_path).unwrap();
+        let tree = repo
+            .find_commit(Oid::from_str(&revision.id).unwrap())
+            .unwrap()
+            .tree()
+            .unwrap();
+        let blob = repo
+            .find_blob(tree.get_path(Path::new("manuscript/one.md")).unwrap().id())
+            .unwrap();
+        assert_eq!(blob.content(), b"after loss");
     }
 
     #[test]
