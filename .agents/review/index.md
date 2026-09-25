@@ -26,4 +26,4 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 | ar-1 | code | Failed attachment copy leaves a Degraded project shown writable (range a4d39f1..e2b3d1b, codex) | `[x]`  | — (default-branch mode) |
 | ar-2 | code | Attachments missing at discovery still silently dropped (range a4d39f1..e2b3d1b, codex) | `[x]`  | — (default-branch mode) |
 | ar-3 | code | Already-staged temp leftovers can still be committed (range a4d39f1..e2b3d1b, codex) | `[x]`  | — (default-branch mode) |
-| ar-4 | code | Relative '..' output paths falsely refused as nested (range a4d39f1..e2b3d1b, codex) | `[ ]`  | — (default-branch mode) |
+| ar-4 | code | Relative '..' output paths falsely refused as nested (range a4d39f1..e2b3d1b, codex) | `[x]`  | — (default-branch mode) |

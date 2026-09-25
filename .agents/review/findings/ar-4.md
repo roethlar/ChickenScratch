@@ -1,9 +1,9 @@
 # ar-4: Relative '..' output paths falsely refused as nested
 
 **Severity**: LOW — a valid CLI invocation (`../Sibling.chikn` from inside a project) is refused; workaround: absolute path
-**Status**: In progress
+**Status**: Verified
 **Branch**: — (default-branch mode)
-**Commit**: (pending)
+**Commit**: `10b8d68` + repairs `99846bb`, `b0ee3b5`, `453c78e`
 
 Source: Reviewer (generation): codex / gpt-5.6-sol / xhigh / frontier (inline, session-only; same pair the owner named for dp-1..dp-3; no T1 match)
 Range: a4d39f1d849e5d92efa8b7aceb2a83b7093d62d3..e2b3d1bd11fd673bde4933bd63b5487fe4c3927b, codex-cli 0.156.0, 2026-09-25 UTC, capability_ok true.
@@ -89,3 +89,12 @@ as resolved, before the nested check (`enclosing_project` now takes the
 resolved path). Guard extended: `Outer/NeverMadeHop/..` must be refused
 with `project.yaml` byte-identical — FAILED at b0ee3b5, PASSES now.
 Redispatch: repair-delta, T5 (ceiling).
+Reviewer: codex / gpt-5.6-sol / xhigh / frontier
+  escalated: T5 (ceiling) — fresh session
+Harness: codex-cli 0.156.0 (CLI, --json)
+Reviewed: 453c78ecb1ce04f6cdadf7f08e1246dd94e15864
+Base: b0ee3b5eea8e49cde095a13ba59b159c889cb770
+guard_confirmed: true
+Verdict: accepted — 2026-09-25 (UTC). Comments: overwrite case closed;
+PASS/FAIL/PASS observed; core lib 137/137; no adjacent regression.
+Record committed as part of verification history.
