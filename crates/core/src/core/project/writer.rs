@@ -240,27 +240,33 @@ fn enclosing_project(path: &Path) -> Option<PathBuf> {
     } else {
         std::env::current_dir().ok()?.join(path)
     };
-    // Resolve '.'/'..' lexically, then the real location of the nearest
-    // existing parent (symlinks), so the check follows where the project
-    // would actually land — '/p/Outer.chikn/../Sib.chikn' is a sibling,
-    // not nested (review finding ar-4).
-    let mut resolved = PathBuf::new();
-    for component in absolute.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                resolved.pop();
+    // Resolve where the project would really land, the way the OS does:
+    // canonicalize the longest existing prefix (symlinks first, then its
+    // '..'), and only then apply the not-yet-existing tail — so
+    // 'Outer.chikn/../Sib.chikn' is a sibling, while 'jump/../X.chikn'
+    // with `jump` -> 'Outer.chikn/manuscript' is inside Outer
+    // (review finding ar-4 and its reopen).
+    let mut existing = absolute.clone();
+    let mut tail: Vec<std::ffi::OsString> = Vec::new();
+    while !existing.exists() {
+        match existing.file_name() {
+            Some(name) => {
+                tail.push(name.to_os_string());
+                existing.pop();
             }
-            other => resolved.push(other.as_os_str()),
+            None => break,
         }
     }
-    let resolved = match (resolved.parent(), resolved.file_name()) {
-        (Some(parent), Some(name)) => match parent.canonicalize() {
-            Ok(real_parent) => real_parent.join(name),
-            Err(_) => resolved.clone(),
-        },
-        _ => resolved.clone(),
-    };
+    let mut resolved = existing.canonicalize().unwrap_or(existing);
+    for name in tail.iter().rev() {
+        match Path::new(name).components().next() {
+            Some(Component::ParentDir) => {
+                resolved.pop();
+            }
+            Some(Component::CurDir) => {}
+            _ => resolved.push(name),
+        }
+    }
     resolved
         .ancestors()
         .skip(1)
@@ -1020,6 +1026,20 @@ mod tests {
             "a '..' path that resolves outside the project must be allowed"
         );
         assert!(temp_dir.path().join("Dotted.chikn").is_dir());
+
+        // ar-4 reopen: '..' after a symlink follows the link's real parent,
+        // as the OS does. `jump` -> Outer/manuscript, so jump/.. is Outer.
+        #[cfg(unix)]
+        {
+            let jump = temp_dir.path().join("jump");
+            std::os::unix::fs::symlink(outer.join("manuscript"), &jump).unwrap();
+            let sneaky = jump.join("..").join("Sneaky.chikn");
+            assert!(
+                create_project(&sneaky, "Sneaky").is_err(),
+                "a '..' through a symlink into the project must be refused"
+            );
+            assert!(!outer.join("Sneaky.chikn").exists());
+        }
     }
 
     #[test]

@@ -45,3 +45,16 @@ relative-path case goes through the same resolution after `current_dir`
 is joined.
 
 ## Reviewer comments
+Reviewer: codex / gpt-5.6-sol / high / standard (inline pair, session-only)
+Harness: codex-cli 0.156.0 (CLI, --json)
+Reviewed: 10b8d684f0187cc23e804b1ca4fa50a3dc976952
+Base: ed968955813ac2714149c92d9d03c1831d500658
+guard_confirmed: true
+Verdict: reopened — 2026-09-25 (UTC). Comments: writer.rs:248 removes
+`..` lexically before resolving symlinks; `jump/../Nested.chikn` with
+`jump` -> `Outer.chikn/manuscript` lands inside Outer but passes the guard.
+Repair (follow-up commit, no amend): canonicalize the longest existing
+prefix first (OS order: symlinks, then its `..`), then apply the
+non-existent tail. Guard extended: `jump/../Sneaky.chikn` through a
+symlink into the project must be refused — FAILED on the reviewed commit,
+PASSES with the repair. Redispatch: repair-delta, T5 (standard -> frontier).
