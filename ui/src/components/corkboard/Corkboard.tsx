@@ -7,6 +7,7 @@ import * as docCmd from "../../commands/document";
 import { toastError, toastSuccess } from "../shared/Toast";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { selectDocumentWithEditorFlush } from "../editor/navigationGuards";
+import { plainPreview } from "../../utils/plainPreview";
 
 type GroupBy = "none" | "label" | "status" | "keyword";
 
@@ -201,9 +202,7 @@ function Card({
   onClick: () => void;
   onStartLink: () => void;
 }) {
-  const preview = doc.synopsis ||
-    doc.content?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200) ||
-    "";
+  const preview = doc.synopsis || plainPreview(doc.content || "") || "";
 
   const linkedNames = (doc.links || [])
     .map((id) => allDocs[id]?.name)
