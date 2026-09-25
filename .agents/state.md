@@ -52,11 +52,7 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Known drift (recorded, not yet fixed)
 
-- `docs/AGENT-WORKFLOW.md` section 5 still lists the earlier narrow command
-  set while `.agents/repo-guidance.md` records the current CI-matching
-  Rust/UI suite. Rechecked as of `a891ed5`; the workflow also runs its
-  cross-frontend harness and Windows process tests. The conflicting
-  workflow guide is outside the records-only cleanup scope.
+- None known.
 
 ## Next
 

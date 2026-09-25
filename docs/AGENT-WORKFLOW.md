@@ -50,12 +50,15 @@ Engine (`crates/core`) → Tauri commands → UI (`ui/`). Match existing style. 
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p chickenscratch-core --all-targets -- -D warnings
-cargo test -p chickenscratch-core --lib
-cargo clippy -p chickenscratch --all-targets -- -D warnings
-cargo test -p chickenscratch --bins
-cd ui && npm run lint && npm run build
+cargo clippy --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
+cargo test --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
+scripts/check-release-metadata.sh
+cd ui && npm run lint && npm run build && npm run test
 ```
+
+These mirror `.github/workflows/validation.yml`, which additionally runs the
+cross-frontend harness (`crates/core/tests/cross_frontend/run.sh`) and the
+Windows process tests. Keep this list in step with that workflow.
 
 Full release: [`RELEASE.md`](../RELEASE.md).
 
