@@ -6,6 +6,27 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-09-25 — Hands-on app testing: 13 fixes, Codex-reviewed
+
+Owner goal: "assume I actually want a working app. find issues, plan
+fixes, fix, review with codex." An agent drove the built app with computer
+use on disposable copies and found 13 issues (`.agents/app-issues.md`),
+each fixed in its own commit with a guard test. The worst: Restore and
+draft switching were silently undone on disk — Tiptap's `setEditable`
+emits an update, so releasing the epoch barrier saved the stale buffer
+over the new tree (`8679de4`). Others: a project inside another broke
+every Save Revision (staging now skips nested repos and temp leftovers;
+creating a nested project is refused), a non-UTF-8 sidecar locked writers
+out, the red close button never closed the window (missing
+`core:window:allow-destroy`), import dropped attachments silently and
+copied them outside core (I2). The August break-it "LOST DATA" on deleted
+history did not reproduce on current source.
+
+Codex (`gpt-5.6-sol`) reviewed `a4d39f1..e2b3d1b` and raised ar-1..ar-4;
+all four fixed and verified accepted (ar-1 after one repair, ar-4 after
+three — the last caught a regression where `Outer/Missing/..` could write
+over Outer). Records: `.agents/review/index.md`. Nothing pushed.
+
 ## 2026-08-29 — Draft peek ships; restore now saves to History first
 
 `PLAN_DRAFT_PEEK.md` shipped in three slices (`1ac3ddc`, `846aa10`,

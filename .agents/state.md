@@ -15,8 +15,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   switching were silently undone on disk (fixed, GUI re-verified); a
   project inside another broke all revision saves (fixed + now refused);
   the red close button never closed the window (fixed). Codex
-  defect review over `a4d39f1..e2b3d1b` dispatched; results go to
-  `.agents/review/`.
+  defect review over `a4d39f1..e2b3d1b` raised ar-1..ar-4; all fixed and
+  verified accepted (`.agents/review/index.md`).
 - **Break-it steps 7–10 rechecked on the current build (2026-09-25)**:
   deleted history rebuilds on reopen and on save; damaged sidecars open
   read-only with the real reason shown. `PLAN_HISTORY_SELF_HEAL.md` is
@@ -50,9 +50,11 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **Finish the Codex review** of `a4d39f1..e2b3d1b`: triage each finding
-   per `.agents/playbooks/codereview.md`, fix admitted ones one commit
-   each, record verdicts in `.agents/review/`.
+1. **Owner: push** the session's commits when ready (`.agents/push-policy.md`;
+   CI has not seen them). Remaining known gaps, unapproved: Tauri
+   `import_scrivener` still ignores a failed post-import token acquisition
+   (not reachable after ar-1); welcome-screen errors keep a
+   developer-ish "Invalid project:" prefix.
 2. Then re-ask whether to close hardening and move to the Tauri
    reference-app phase. The phase declaration remains the owner's call.
    Vault work remains paused.
@@ -61,7 +63,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 - Declared suite: `.agents/repo-guidance.md` Verification section.
 - Full declared suite plus the CI cross-frontend harness ran green
-  locally 2026-09-25 **as of `e2b3d1b`**. Desktop GUI checks of each fix
+  locally 2026-09-25 **as of `cd48252`**; final GUI smoke (restore holds
+  on disk, red close button closes) on that build. Desktop GUI checks of each fix
   were run by computer use on disposable copies in `~/chikn-validation/`.
   Nothing from this session has been pushed; CI has not seen it.
 - Live CI checked 2026-09-17 **as of `a2d8a39`**: Validation run
