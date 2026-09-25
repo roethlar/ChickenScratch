@@ -4,6 +4,9 @@
 > "assume I actually want a working app. find issues, plan fixes, fix,
 > review with codex." (2026-09-25)
 
+**Status:** Steps 1–3 implemented 2026-09-25, one commit each; each guard
+test failed before its fix. GUI check pending with the next build.
+
 **Phase check:** [x] Allowed by `CURRENT_PHASE.md` (Engine hardening)
 [x] Not paused
 

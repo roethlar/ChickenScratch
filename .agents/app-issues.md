@@ -11,7 +11,7 @@ fix; each engine fix has a plan under `docs/plans/`.
 | 2 | Read-only banner always blames "an older version"; real reason hidden in tooltip | Misleading | Fixed `15cd5b0` |
 | 3 | Non-UTF-8 `.meta` makes project refuse to open with a nameless I/O error | Locked out | Fixed `7c3ebe0` |
 | 4 | A project folder (or any git repo) inside a project makes every Save Revision fail: `Failed to stage files: invalid path 'Nested.chikn/'` | History broken | Fixed (staging safety step 1) |
-| 5 | New Project dialog defaults to the last folder, which can be inside an existing project; creating a project inside another is allowed | Causes #4 | Open |
+| 5 | New Project dialog defaults to the last folder, which can be inside an existing project; creating a project inside another is allowed | Causes #4 | Fixed (staging safety step 3: engine refuses) |
 | 6 | Newly created (and imported) projects are not added to Recent Projects | Usability | Open |
 | 7 | Error toasts vanish after 3.5 s and use developer wording (`Unknown error: …class=Index (10)`) — easy to miss a failed save | Silent-ish failure | Open |
 | 8 | Save Revision after `.git` is deleted mid-session fails until relaunch (jargon error) | Recoverable | Open, low |

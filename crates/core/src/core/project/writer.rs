@@ -34,7 +34,7 @@ use std::path::{Component, Path, PathBuf};
 use super::fidelity::WritePermit;
 use super::format::{
     get_document_meta_path, get_project_file_path, get_threads_path, CHARACTERS_FOLDER,
-    FORMAT_VERSION, LOCATIONS_FOLDER, REQUIRED_FOLDERS,
+    FORMAT_VERSION, LOCATIONS_FOLDER, MANUSCRIPT_FOLDER, PROJECT_FILE, REQUIRED_FOLDERS,
 };
 use super::reader::{
     collect_hierarchy_paths, lift_legacy_novelist_keys, DocumentMetadata, ProjectMetadata,
@@ -162,6 +162,22 @@ pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
         )));
     }
 
+    // Never inside another project: the outer project's history would
+    // pick the new one up as an embedded repository, and the writer would
+    // be editing one project's files from inside another's
+    // (PLAN_REVISION_STAGING_SAFETY step 3).
+    if let Some(outer) = enclosing_project(path) {
+        let outer_name = outer
+            .file_stem()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| outer.display().to_string());
+        return Err(ChiknError::InvalidProject(format!(
+            "{} would be inside the project '{}'. Choose a folder outside it.",
+            path.display(),
+            outer_name
+        )));
+    }
+
     // Create directory structure
     create_project_structure(path)?;
 
@@ -214,6 +230,21 @@ pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
     let _ = crate::core::git::init_repo(path);
 
     Ok(project)
+}
+
+/// The nearest ancestor of `path` that is itself a `.chikn` project
+/// (holds both `project.yaml` and a `manuscript/` folder), if any.
+fn enclosing_project(path: &Path) -> Option<PathBuf> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().ok()?.join(path)
+    };
+    absolute
+        .ancestors()
+        .skip(1)
+        .find(|dir| dir.join(PROJECT_FILE).is_file() && dir.join(MANUSCRIPT_FOLDER).is_dir())
+        .map(Path::to_path_buf)
 }
 
 /// Creates the required folder structure for a .chikn project
@@ -935,6 +966,31 @@ mod tests {
         assert!(project_path.exists());
         assert!(get_manuscript_path(&project_path).exists());
         assert!(get_research_path(&project_path).exists());
+    }
+
+    /// PLAN_REVISION_STAGING_SAFETY step 3: New Project / import must not
+    /// place a project inside an existing one (the save dialog defaults to
+    /// the last-used folder, which can be inside a project).
+    #[test]
+    fn test_create_project_refuses_inside_existing_project() {
+        let temp_dir = TempDir::new().unwrap();
+        let outer = temp_dir.path().join("Outer.chikn");
+        create_project(&outer, "Outer").unwrap();
+
+        let nested = outer.join("Nested.chikn");
+        let err = create_project(&nested, "Nested").unwrap_err();
+        assert!(
+            err.to_string().contains("inside the project 'Outer'"),
+            "error must name the enclosing project: {err}"
+        );
+        assert!(!nested.exists(), "nothing may be written on refusal");
+
+        let deep = outer.join("manuscript").join("Deep.chikn");
+        assert!(create_project(&deep, "Deep").is_err());
+        assert!(!deep.exists());
+
+        let sibling = temp_dir.path().join("Sibling.chikn");
+        assert!(create_project(&sibling, "Sibling").is_ok());
     }
 
     #[test]
