@@ -23,3 +23,7 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 | dp-1 | code | "Everything backed up" overclaims a one-draft push (range c99acdd..0a891b2, codex) | `[x]`  | — (default-branch mode) |
 | dp-2 | code | Restore confirm promises a History save that never happens (range c99acdd..0a891b2, codex) | `[x]`  | — (default-branch mode) |
 | dp-3 | code | Peek sidecar names parsed as text lines, not YAML (range c99acdd..0a891b2, codex) | `[x]`  | — (default-branch mode) |
+| ar-1 | code | Failed attachment copy leaves a Degraded project shown writable (range a4d39f1..e2b3d1b, codex) | `[ ]`  | — (default-branch mode) |
+| ar-2 | code | Attachments missing at discovery still silently dropped (range a4d39f1..e2b3d1b, codex) | `[ ]`  | — (default-branch mode) |
+| ar-3 | code | Already-staged temp leftovers can still be committed (range a4d39f1..e2b3d1b, codex) | `[ ]`  | — (default-branch mode) |
+| ar-4 | code | Relative '..' output paths falsely refused as nested (range a4d39f1..e2b3d1b, codex) | `[ ]`  | — (default-branch mode) |
