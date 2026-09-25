@@ -159,6 +159,32 @@ fn classified_git_error_as(
     git_error(kind, format!("{context}: {error}"))
 }
 
+/// Untracked worktree entries that revision history deliberately leaves
+/// out: another git repository inside the project (typically a second
+/// project saved into this one's folder). `add_all` refuses to stage an
+/// embedded repository, which used to fail every Save Revision; counting it
+/// as a change kept the tree permanently dirty (PLAN_REVISION_STAGING_SAFETY).
+fn is_excluded_from_history(workdir: &Path, relative: &Path) -> bool {
+    let full = workdir.join(relative);
+    full.is_dir() && full.join(".git").exists()
+}
+
+/// Stage every change except the entries `is_excluded_from_history` skips.
+fn stage_all(repo: &Repository, index: &mut git2::Index) -> Result<(), git2::Error> {
+    let workdir = repo.workdir().map(Path::to_path_buf);
+    let mut skip_excluded = |relative: &Path, _spec: &[u8]| -> i32 {
+        match &workdir {
+            Some(dir) if is_excluded_from_history(dir, relative) => 1,
+            _ => 0,
+        }
+    };
+    index.add_all(
+        ["*"].iter(),
+        IndexAddOption::DEFAULT,
+        Some(&mut skip_excluded as &mut git2::IndexMatchedPath),
+    )
+}
+
 fn repo_has_changes(repo: &Repository) -> Result<bool, ChiknError> {
     let mut opts = StatusOptions::new();
     opts.include_untracked(true).recurse_untracked_dirs(true);
@@ -167,7 +193,15 @@ fn repo_has_changes(repo: &Repository) -> Result<bool, ChiknError> {
         .statuses(Some(&mut opts))
         .map_err(|e| classified_git_error("Failed to get worktree status", e))?;
 
-    Ok(!statuses.is_empty())
+    let workdir = repo.workdir();
+    Ok(statuses.iter().any(|entry| {
+        let excluded = entry.status() == git2::Status::WT_NEW
+            && match (workdir, entry.path()) {
+                (Some(dir), Some(path)) => is_excluded_from_history(dir, Path::new(path)),
+                _ => false,
+            };
+        !excluded
+    }))
 }
 
 fn reject_dirty_worktree(repo: &Repository, operation: &str) -> Result<(), ChiknError> {
@@ -272,8 +306,7 @@ pub fn save_revision(
     let mut index = repo
         .index()
         .map_err(|e| ChiknError::Unknown(format!("Failed to get index: {}", e)))?;
-    index
-        .add_all(["*"].iter(), IndexAddOption::DEFAULT, None)
+    stage_all(&repo, &mut index)
         .map_err(|e| ChiknError::Unknown(format!("Failed to stage files: {}", e)))?;
     index
         .write()
@@ -401,8 +434,7 @@ pub fn complete_merge(
     recovery.ensure_valid_for(path)?;
     // Point of no return: staging marks every conflicted path resolved.
     let _epoch_bump = recovery.arm_epoch_bump();
-    index
-        .add_all(["*"].iter(), IndexAddOption::DEFAULT, None)
+    stage_all(&repo, &mut index)
         .map_err(|e| ChiknError::Unknown(format!("Failed to stage files: {}", e)))?;
     index
         .write()
@@ -2146,6 +2178,51 @@ mod tests {
 
         assert!(
             matches!(result, Err(ChiknError::Unknown(message)) if message.contains("Failed to create backup directory"))
+        );
+    }
+
+    /// A project folder that ends up inside another project (or any other
+    /// embedded git repo) made every Save Revision fail with
+    /// "Failed to stage files: invalid path 'Nested.chikn/'", and kept the
+    /// tree permanently dirty so restore and draft switching failed too
+    /// (PLAN_REVISION_STAGING_SAFETY.md step 1).
+    #[test]
+    fn nested_repository_is_skipped_by_staging_and_change_checks() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("Outer.chikn");
+        std::fs::create_dir_all(project_path.join("manuscript")).unwrap();
+        init_repo(&project_path).unwrap();
+        std::fs::write(project_path.join("manuscript/one.md"), "baseline").unwrap();
+        let token = token_for_test_project(&project_path);
+        token
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "Baseline", permit)
+            })
+            .unwrap();
+
+        let nested = project_path.join("Nested.chikn");
+        std::fs::create_dir_all(&nested).unwrap();
+        Repository::init(&nested).unwrap();
+        std::fs::write(nested.join("project.yaml"), "name: Nested\n").unwrap();
+        std::fs::write(project_path.join("manuscript/one.md"), "edited").unwrap();
+
+        let revision = token
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "With nested", permit)
+            })
+            .expect("a nested repository must not block Save Revision");
+
+        let repo = Repository::open(&project_path).unwrap();
+        let tree = repo
+            .find_commit(Oid::from_str(&revision.id).unwrap())
+            .unwrap()
+            .tree()
+            .unwrap();
+        assert!(tree.get_path(Path::new("Nested.chikn")).is_err());
+        assert!(tree.get_path(Path::new("manuscript/one.md")).is_ok());
+        assert!(
+            !has_changes(&project_path).unwrap(),
+            "the ignored nested repository must not keep the tree dirty"
         );
     }
 
