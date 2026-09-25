@@ -17,7 +17,7 @@
 
 use chrono::Utc;
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 static SCRIV_LINK_RE: LazyLock<Regex> =
@@ -138,12 +138,16 @@ pub fn import_scriv_with_report(
     let revision_message = format!("Imported from Scrivener: {}", scriv_project.name);
     let mut warnings = Vec::new();
     token.with_write_permit(output_path, |permit| {
-        // Save the converted project.
-        writer::write_project(&mut chikn_project, permit)?;
-
-        // Copy media files into the project as part of the same logical
-        // import operation. The operation permit is intentionally reused
-        // through the initial revision so no intermediate tree is re-probed.
+        // Copy media files into the project FIRST, as part of the same
+        // logical import operation (the writer never writes non-.md content,
+        // so the later write_project cannot clobber them). An attachment
+        // that fails is dropped from the project before it is written: a
+        // hierarchy entry for a missing file probes Degraded, which would
+        // leave the writer an "editable" project whose saves are refused
+        // (review finding ar-1). The operation permit is intentionally
+        // reused through the initial revision so no intermediate tree is
+        // re-probed.
+        let mut failed_paths: HashSet<String> = HashSet::new();
         for (key, value) in &uuid_to_path {
             if let Some(uuid) = key.strip_prefix("__media__") {
                 let parts: Vec<&str> = value.splitn(2, '|').collect();
@@ -158,10 +162,20 @@ pub fn import_scriv_with_report(
                             "The attachment '{}' (Scrivener item {}) could not be copied: {}",
                             parts[1], uuid, e
                         ));
+                        failed_paths.insert(parts[1].to_string());
                     }
                 }
             }
         }
+        if !failed_paths.is_empty() {
+            chikn_project
+                .documents
+                .retain(|_, doc| !failed_paths.contains(&doc.path));
+            remove_hierarchy_paths(&mut chikn_project.hierarchy, &failed_paths);
+        }
+
+        // Save the converted project.
+        writer::write_project(&mut chikn_project, permit)?;
 
         // Initial commit with all converted content.
         if let Err(e) =
@@ -178,6 +192,16 @@ pub fn import_scriv_with_report(
         project: chikn_project,
         warnings,
     })
+}
+
+/// Drop hierarchy document nodes whose path is in `paths`, at any depth.
+fn remove_hierarchy_paths(nodes: &mut Vec<TreeNode>, paths: &HashSet<String>) {
+    nodes.retain(|node| !matches!(node, TreeNode::Document { path, .. } if paths.contains(path)));
+    for node in nodes.iter_mut() {
+        if let TreeNode::Folder { children, .. } = node {
+            remove_hierarchy_paths(children, paths);
+        }
+    }
 }
 
 /// Finds the .scrivx file in a .scriv directory
@@ -873,6 +897,21 @@ mod tests {
             "the skipped attachment must be named: {:?}",
             report.warnings
         );
+        // ar-1: the failed attachment must not stay listed in the project —
+        // a hierarchy entry for a missing file probes Degraded, so the app
+        // would present an editable project whose every save is refused.
+        assert!(
+            !report
+                .project
+                .documents
+                .values()
+                .any(|d| d.path == "manuscript/reference-pdf.pdf"),
+            "a failed attachment must be dropped from the project"
+        );
+        assert!(matches!(
+            fidelity::probe_project_fidelity(&output_path).unwrap(),
+            fidelity::Fidelity::Full
+        ));
     }
 
     #[test]

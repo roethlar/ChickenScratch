@@ -1,7 +1,7 @@
 # ar-1: Failed attachment copy leaves a Degraded project presented as writable
 
 **Severity**: HIGH — the writer is shown an editable project whose every save is refused, and reopening shows it read-only
-**Status**: Open
+**Status**: In progress
 **Branch**: — (default-branch mode)
 **Commit**: (pending)
 
@@ -16,16 +16,34 @@ Note: the reviewer's environment routes shell commands through a PreToolUse hook
 An attachment that exists at discovery but cannot be read or written: import returns with a warning, the UI shows an editable project, no token is cached, subsequent saves are rejected; reopening shows it read-only.
 
 ## What
+The import report (PLAN_IMPORT_MEDIA_SAFETY step 2) named a failed
+attachment but left its hierarchy entry, so the imported project probed
+Degraded while the app treated it as writable.
 
 ## Approach
+Copy attachments before `write_project` (the writer never writes non-.md
+content, so the order is safe) and drop every failed attachment from
+`documents` and the hierarchy (`remove_hierarchy_paths`, any depth) before
+the project is written. The project that is written and committed only
+lists files that exist, so it probes Full.
 
 ## Files changed
+- `crates/cli/src/scrivener/converter/mod.rs` — copy-then-write order,
+  `remove_hierarchy_paths`, extended guard test
 
 ## Guard proof
+- `chikn-converter` `test_import_reports_attachment_that_could_not_be_copied`
+  — asserts the failed attachment is absent from the project and the
+  output probes Full. Before the fix it failed ("a failed attachment must
+  be dropped from the project"); with the fix it passes.
 
 ## Coder dispute (if any)
 None.
 
 ## Known gaps
+`import_scrivener` (Tauri) still ignores a failed post-import token
+acquisition and the UI assumes writable; with this fix a fresh import
+probes Full, so that path is no longer reached by this failure. Not changed
+here.
 
 ## Reviewer comments
