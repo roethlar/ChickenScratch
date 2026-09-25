@@ -9,29 +9,27 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 - Phase **Engine hardening — protect writers' work** remains active;
   `docs/CURRENT_PHASE.md` owns the phase and exit criteria.
-- **Fixed: Restore and draft switch no longer undo themselves on disk**
-  (`docs/plans/PLAN_RESTORE_STALE_BUFFER.md`, 2026-09-25): guard test
-  `ui/src/test/editorBarrierRelease.test.tsx`; GUI re-verified. Codex
-  review pending.
-- **Break-it step 9 passes on the current build**: relaunch rebuilds
-  deleted history and Save Revision works. The August verdict does not
-  reproduce; `docs/plans/PLAN_HISTORY_SELF_HEAL.md` is superseded.
-- **Read-only banner is misleading** (steps 7b, 8): it always says "made
-  by an older version"; the real reason only shows on hover. Step 7a
-  (invalid UTF-8) still refuses to open with a technical error. Unapproved.
+- **Owner goal 2026-09-25: working app — find, plan, fix, Codex review.**
+  Hands-on GUI testing found 13 issues; all fixed one commit each
+  (`.agents/app-issues.md` is the tracker). Headline: Restore and draft
+  switching were silently undone on disk (fixed, GUI re-verified); a
+  project inside another broke all revision saves (fixed + now refused);
+  the red close button never closed the window (fixed). Codex
+  defect review over `a4d39f1..e2b3d1b` dispatched; results go to
+  `.agents/review/`.
+- **Break-it steps 7–10 rechecked on the current build (2026-09-25)**:
+  deleted history rebuilds on reopen and on save; damaged sidecars open
+  read-only with the real reason shown. `PLAN_HISTORY_SELF_HEAL.md` is
+  superseded.
 - **Phase close-out question remains unanswered** (posed 2026-07-17):
   close hardening and move to the Tauri reference-app phase? An agent
   (Claude Code, 2026-08-29) ran the break-it test; the owner has not used
   the app. Resolve that test's evidence first.
-- **Parked hardening follow-ups**, source rechecked 2026-09-25 as of
-  `a891ed5`: Scrivener asset import still calls `fs::copy` outside core and
-  reports failures to stderr (`crates/cli/src/scrivener/converter/mod.rs`).
-  Revision staging still uses `add_all(["*"])` while generated ignores do
-  not cover atomic `.X.tmp-*` names (`crates/core/src/core/git.rs`). Neither
-  concern has implementation approval. The rest of the format-lock audit
-  lives under Out of scope in `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md`;
-  current reader repair notices remain stderr-only and `Project` still has
-  no project-level `fields` map.
+- **Parked hardening follow-ups**: the Scrivener asset-import and
+  temp-file staging items are fixed (app issues #9, #10). The rest of the
+  format-lock audit lives under Out of scope in
+  `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md`; reader repair notices remain
+  stderr-only and `Project` still has no project-level `fields` map.
 - **Draft-peek follow-ups remain unapproved**, rechecked as of `a891ed5`:
   `DocumentHistory.tsx` still uses the old Restore wording. The owner
   decision on backing up all drafts remains open; `push_remote` still
@@ -52,20 +50,20 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **Owner goal 2026-09-25**: keep finding and fixing issues (one plan
-   and one commit per concern), then run a Codex `codereview` over the
-   landed range.
+1. **Finish the Codex review** of `a4d39f1..e2b3d1b`: triage each finding
+   per `.agents/playbooks/codereview.md`, fix admitted ones one commit
+   each, record verdicts in `.agents/review/`.
 2. Then re-ask whether to close hardening and move to the Tauri
    reference-app phase. The phase declaration remains the owner's call.
-3. Scrivener asset-import safety remains the next parked concern, one
-   approval and one concern at a time. Vault work remains paused.
+   Vault work remains paused.
 
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section.
-- Full declared suite ran green locally 2026-09-25 **as of `85a10c0`**
-  (fmt, clippy, Rust tests, release metadata, UI lint/build/test). The
-  cross-frontend harness and desktop GUI were not run.
+- Full declared suite plus the CI cross-frontend harness ran green
+  locally 2026-09-25 **as of `e2b3d1b`**. Desktop GUI checks of each fix
+  were run by computer use on disposable copies in `~/chikn-validation/`.
+  Nothing from this session has been pushed; CI has not seen it.
 - Live CI checked 2026-09-17 **as of `a2d8a39`**: Validation run
   `33335376706` and Tauri Bundles run `33335376726` both succeeded.
 - **Tag release path has been exercised**, correcting the superseded
