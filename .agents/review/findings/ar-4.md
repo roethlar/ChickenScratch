@@ -58,3 +58,18 @@ prefix first (OS order: symlinks, then its `..`), then apply the
 non-existent tail. Guard extended: `jump/../Sneaky.chikn` through a
 symlink into the project must be refused — FAILED on the reviewed commit,
 PASSES with the repair. Redispatch: repair-delta, T5 (standard -> frontier).
+Reviewer: codex / gpt-5.6-sol / xhigh / frontier
+  escalated: T5 (repair-delta, fresh session)
+Harness: codex-cli 0.156.0 (CLI, --json)
+Reviewed: 99846bb84980bec56f838e5d84fb80766bd20275
+Base: 10b8d684f0187cc23e804b1ca4fa50a3dc976952
+guard_confirmed: true
+Verdict: reopened — 2026-09-25 (UTC). Comments: the symlink case is
+closed, but a missing prefix ending in `..` stops resolution:
+`Outer/MissingHop/../../EscapedSibling.chikn` falsely refused;
+`jump/MissingHop/../SneakyAfterMissing.chikn` allowed inside Outer.
+Repair 2 (follow-up commit): resolve component by component as the OS /
+create_dir_all would — canonicalize each existing prefix, enter and leave
+missing folders. Guard extended with both reopen cases; the missing-hop
+symlink case FAILS against the previous repair's `enclosing_project` and
+PASSES now. Redispatch: repair-delta, T5 (ceiling).

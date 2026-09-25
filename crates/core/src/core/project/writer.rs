@@ -240,31 +240,26 @@ fn enclosing_project(path: &Path) -> Option<PathBuf> {
     } else {
         std::env::current_dir().ok()?.join(path)
     };
-    // Resolve where the project would really land, the way the OS does:
-    // canonicalize the longest existing prefix (symlinks first, then its
-    // '..'), and only then apply the not-yet-existing tail — so
-    // 'Outer.chikn/../Sib.chikn' is a sibling, while 'jump/../X.chikn'
-    // with `jump` -> 'Outer.chikn/manuscript' is inside Outer
-    // (review finding ar-4 and its reopen).
-    let mut existing = absolute.clone();
-    let mut tail: Vec<std::ffi::OsString> = Vec::new();
-    while !existing.exists() {
-        match existing.file_name() {
-            Some(name) => {
-                tail.push(name.to_os_string());
-                existing.pop();
-            }
-            None => break,
-        }
-    }
-    let mut resolved = existing.canonicalize().unwrap_or(existing);
-    for name in tail.iter().rev() {
-        match Path::new(name).components().next() {
-            Some(Component::ParentDir) => {
+    // Resolve where the project would really land, one component at a
+    // time as the OS (and create_dir_all) would: each existing prefix is
+    // canonicalized (following symlinks) before the next '..' is applied,
+    // and a not-yet-existing folder is simply entered and left. So
+    // 'Outer/Missing/../../Sib.chikn' is a sibling, while
+    // 'jump/../X.chikn' with `jump` -> 'Outer/manuscript' is inside Outer
+    // (review finding ar-4 and its reopens).
+    let mut resolved = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
                 resolved.pop();
             }
-            Some(Component::CurDir) => {}
-            _ => resolved.push(name),
+            other => {
+                resolved.push(other.as_os_str());
+                if let Ok(real) = resolved.canonicalize() {
+                    resolved = real;
+                }
+            }
         }
     }
     resolved
@@ -1039,7 +1034,26 @@ mod tests {
                 "a '..' through a symlink into the project must be refused"
             );
             assert!(!outer.join("Sneaky.chikn").exists());
+
+            // Second reopen: '..' across not-yet-existing folders.
+            let after_missing = jump
+                .join("MissingHop")
+                .join("..")
+                .join("AfterMissing.chikn");
+            assert!(
+                create_project(&after_missing, "AfterMissing").is_err(),
+                "'..' over a missing folder behind a symlink must still be refused"
+            );
         }
+        let escaped = outer
+            .join("MissingHop")
+            .join("..")
+            .join("..")
+            .join("Escaped.chikn");
+        assert!(
+            create_project(&escaped, "Escaped").is_ok(),
+            "'..' over a missing folder that leaves the project must be allowed"
+        );
     }
 
     #[test]
