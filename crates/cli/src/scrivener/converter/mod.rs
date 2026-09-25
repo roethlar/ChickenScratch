@@ -167,6 +167,11 @@ pub fn import_scriv_with_report(
                 }
             }
         }
+        for (key, message) in &uuid_to_path {
+            if key.starts_with("__skipped__") {
+                warnings.push(message.clone());
+            }
+        }
         if !failed_paths.is_empty() {
             chikn_project
                 .documents
@@ -562,13 +567,18 @@ fn convert_binder_items_inner(
                             format!("{}|{}", media_src.display(), dest_rel),
                         );
                     } else {
-                        eprintln!(
-                            "Skipping binder item \"{}\" (type: {}, file not found)",
-                            title, other
+                        // Reported to the writer via ImportReport (ar-2):
+                        // the attachment is not in the Scrivener package.
+                        uuid_to_path.insert(
+                            format!("__skipped__{}", item.uuid),
+                            format!("The attachment '{title}' was not found in the Scrivener project and was not imported."),
                         );
                     }
                 } else {
-                    eprintln!("Skipping binder item \"{}\" (type: {})", title, other);
+                    uuid_to_path.insert(
+                        format!("__skipped__{}", item.uuid),
+                        format!("The Scrivener item '{title}' ({other}) is not a kind ChickenScratch can import and was left out."),
+                    );
                 }
             }
         }
@@ -912,6 +922,39 @@ mod tests {
             fidelity::probe_project_fidelity(&output_path).unwrap(),
             fidelity::Fidelity::Full
         ));
+    }
+
+    /// ar-2: an attachment the binder lists but the package lacks must be
+    /// reported, not just printed to a hidden console.
+    #[test]
+    fn test_import_reports_attachment_missing_from_scrivener_package() {
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Missing.scriv");
+        let output_path = temp_dir.path().join("Missing.chikn");
+        fs::create_dir_all(&scriv_path).unwrap();
+        fs::write(
+            scriv_path.join("Missing.scrivx"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="3.0">
+    <Binder>
+        <BinderItem UUID="F8F9FDEF-FD9F-4A8C-B33D-3434A1220ADE" Type="Image">
+            <Title>Lost Map</Title>
+            <MetaData>
+                <FileExtension>png</FileExtension>
+            </MetaData>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#,
+        )
+        .unwrap();
+
+        let report = import_scriv_with_report(&scriv_path, &output_path, None)
+            .expect("a missing attachment must not fail the import");
+        assert!(
+            report.warnings.iter().any(|w| w.contains("Lost Map")),
+            "the missing attachment must be named: {:?}",
+            report.warnings
+        );
     }
 
     #[test]
