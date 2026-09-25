@@ -1138,7 +1138,21 @@ fn read_document_metadata_or_default(
         return Ok(default_document_metadata(fallback_identity));
     }
 
-    let meta_content = fs::read_to_string(meta_path)?;
+    // Bytes first: a sidecar that is not valid UTF-8 is as corrupt as one
+    // that is not valid YAML, and must degrade the same way instead of
+    // aborting the whole read (the fidelity probe already calls it
+    // CorruptSidecar).
+    let meta_bytes = fs::read(meta_path)?;
+    let meta_content = match String::from_utf8(meta_bytes) {
+        Ok(text) => text,
+        Err(_) => {
+            eprintln!(
+                "Unreadable (non-UTF-8) document metadata treated as missing without changing the file: {}",
+                meta_path.display()
+            );
+            return Ok(default_document_metadata(fallback_identity));
+        }
+    };
     match serde_yaml::from_str::<DocumentMetadata>(&meta_content) {
         Ok(mut metadata) => {
             lift_legacy_novelist_keys(&mut metadata);
@@ -1770,6 +1784,26 @@ hierarchy: []
             project_yaml_before,
             "reading corrupt metadata must not rewrite project.yaml"
         );
+    }
+
+    #[test]
+    fn test_read_tolerates_non_utf8_document_meta() {
+        // Break-it step 7a: binary garbage in a sidecar must degrade like
+        // unparseable YAML (hierarchy identity, file untouched), not abort
+        // the whole read with a nameless "stream did not contain valid
+        // UTF-8" error that locks the writer out of the project.
+        let (_temp, project_path) = create_test_project();
+        let meta_path = project_path.join("manuscript/chapter-01.meta");
+        let garbage: &[u8] = b"\xff\xfe\x00garbage\x80\x81";
+        fs::write(&meta_path, garbage).unwrap();
+
+        let project = read_project_readonly(&project_path).unwrap();
+
+        let document = project.documents.get("doc1").unwrap();
+        assert_eq!(document.id, "doc1");
+        assert_eq!(document.name, "Chapter 1");
+        assert_eq!(fs::read(&meta_path).unwrap(), garbage);
+        assert_eq!(count_corrupt_meta_quarantines(&project_path), 0);
     }
 
     #[test]
