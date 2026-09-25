@@ -16,7 +16,21 @@ export function toast(text: string, type: "success" | "error" | "info" = "info")
 }
 
 export function toastSuccess(text: string) { toast(text, "success"); }
-export function toastError(text: string) { toast(text, "error"); }
+export function toastError(text: string) { toast(plainErrorText(text), "error"); }
+
+/**
+ * Strip developer noise from engine error text before a writer sees it:
+ * the catch-all "Unknown error: " prefix and libgit2's trailing
+ * "; class=Index (10); code=NotFound (-3)" codes (app issues 2026-09-25,
+ * #7). The message itself is kept — it usually names the file or step.
+ */
+export function plainErrorText(text: string): string {
+  return text
+    .replace(/Unknown error: /g, "")
+    .replace(/;\s*class=\w+ \(-?\d+\)/g, "")
+    .replace(/;\s*code=\w+ \(-?\d+\)/g, "")
+    .trim();
+}
 
 export function ToastProvider() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);

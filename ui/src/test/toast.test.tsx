@@ -29,3 +29,19 @@ describe("toasts", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+describe("error wording", () => {
+  it("drops catch-all prefixes and libgit2 codes but keeps the message", async () => {
+    const { plainErrorText } = await import("../components/shared/Toast");
+    expect(
+      plainErrorText(
+        "Save failed: Unknown error: Failed to stage files: invalid path 'Nested.chikn/'; class=Index (10)"
+      )
+    ).toBe("Save failed: Failed to stage files: invalid path 'Nested.chikn/'");
+    expect(
+      plainErrorText(
+        "Save failed: Unknown error: Not a git repo: could not find repository at '/p'; class=Repository (6); code=NotFound (-3)"
+      )
+    ).toBe("Save failed: Not a git repo: could not find repository at '/p'");
+  });
+});
