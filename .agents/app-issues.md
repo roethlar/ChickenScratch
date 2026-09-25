@@ -17,3 +17,5 @@ fix; each engine fix has a plan under `docs/plans/`.
 | 8 | Save Revision after `.git` is deleted mid-session fails until relaunch (jargon error) | Recoverable | Fixed (save rebuilds history) |
 | 9 | Revision staging uses `add_all(["*"])`; atomic-write temp files `.X.tmp-*` are not ignored (parked since 2026-07) | Junk in history | Fixed (staging safety step 2) |
 | 10 | Scrivener asset import copies files with `fs::copy` outside core and reports failures only to stderr (parked since 2026-07) | I2 violation / silent loss | Fixed (`PLAN_IMPORT_MEDIA_SAFETY`) |
+| 11 | Corkboard card previews show raw Markdown escapes (`Henks\'`, `\"…\"`) — seen 2026-08-29 and 2026-09-25 | Cosmetic | Fixed |
+| 12 | Export's save dialog opens in the last-used folder (often inside a project), dropping the .docx into the project and its history | Junk in project | Fixed (defaults beside the project) |

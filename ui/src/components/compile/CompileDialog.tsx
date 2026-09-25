@@ -6,6 +6,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { flushPendingEditorSave } from "../editor/editorRef";
 import { useModalFocusTrap } from "../shared/Dialog";
+import { exportDefaultPath } from "../../utils/exportPath";
 
 interface CompileDialogProps {
   open: boolean;
@@ -44,7 +45,7 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
   const handleExport = async () => {
     const outputPath = await save({
       title: "Export Manuscript",
-      defaultPath: `${title || project.name}.docx`,
+      defaultPath: exportDefaultPath(project.path, title || project.name),
       filters: [
         { name: "Word", extensions: ["docx"] },
         { name: "PDF", extensions: ["pdf"] },
