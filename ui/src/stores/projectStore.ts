@@ -93,6 +93,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const project = await projectCmd.createProject(name, path);
       set({ project, readOnly: false, readOnlyReasons: [], activeDocId: null, activeDoc: null, error: null });
+      addRecentProject(project.name, project.path).catch(() => {});
     } catch (e) {
       set({ error: String(e) });
     }
@@ -102,6 +103,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const project = await projectCmd.importScrivener(scrivPath, outputPath);
       set({ project, readOnly: false, readOnlyReasons: [], activeDocId: null, activeDoc: null, error: null });
+      addRecentProject(project.name, project.path).catch(() => {});
     } catch (e) {
       set({ error: String(e) });
     }
