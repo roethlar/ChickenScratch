@@ -9,11 +9,12 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 - Phase **Engine hardening — protect writers' work** remains active;
   `docs/CURRENT_PHASE.md` owns the phase and exit criteria.
-- **Break-it step 9 ("delete history") passes at the engine layer; a GUI
-  rerun is the remaining check.** Engine repro 2026-09-25 as of `53ed7e0`
-  (`.agents/break-it-validation.md`): a fresh open rebuilds a deleted
-  `.git` and Save Revision commits. `docs/plans/PLAN_HISTORY_SELF_HEAL.md`
-  is marked superseded/on hold; implementation approval was never given.
+- **Break-it steps 9–10 pass on the current build** (GUI rerun 2026-09-25,
+  `.agents/break-it-validation.md`): relaunch rebuilds deleted history,
+  Save Revision and Restore work. The August LOST DATA verdict does not
+  reproduce. `docs/plans/PLAN_HISTORY_SELF_HEAL.md` is superseded. Unapproved
+  polish: plain-English wording for the not-a-repo save error, and a
+  "history was rebuilt" notice.
 - **Phase close-out question remains unanswered** (posed 2026-07-17):
   close hardening and move to the Tauri reference-app phase? An agent
   (Claude Code, 2026-08-29) ran the break-it test; the owner has not used
@@ -39,17 +40,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Blockers
 
-- **Break-it steps 9–10 need a desktop-app rerun** that an agent without
-  GUI control cannot do: build the current app, recreate the sandbox, delete
-  `.git`, fully quit and relaunch, save a revision, then restore. Open
-  questions for that run: did the 2026-08-29 run truly reopen, and why was
-  no error shown (the code does toast on save failure).
-- **Validation evidence is not ready to resume in place.** The recorded
-  test sandbox is absent on the current machine (see `.agents/machines.md`).
-  The same run's corrupt-sidecar quarantine also differs from current
-  source: the fidelity probe classifies corruption as Degraded and reads
-  do not quarantine. Preserve the historical observations, recreate a copy
-  of the test project, and identify the app build for the next run.
+- **Break-it steps 7a, 7b, and 8 were not rerun on the current build.**
+  Source says the August corrupt-sidecar quarantine no longer happens
+  (reads now open Degraded/read-only instead); unconfirmed in the app.
 
 ## Known drift (recorded, not yet fixed)
 
@@ -57,10 +50,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **GUI rerun of break-it steps 9–10** on a freshly built current app
-   (a GUI-capable agent; the owner has not used the app), per `.agents/break-it-validation.md`
-   "Engine repro 2026-09-25". Rewrite or retire the history plan from what
-   it shows.
+1. **GUI rerun of break-it steps 7–8** (corrupt sidecar, stray file) on the
+   current build, same method as the 2026-09-25 rerun.
 2. Then re-ask whether to close hardening and move to the Tauri
    reference-app phase. The phase declaration remains the owner's call.
 3. Scrivener asset-import safety remains the next parked concern, one

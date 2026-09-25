@@ -27,18 +27,21 @@ whose Save Revision does nothing, with no error — every revision they think
 they saved is silently discarded (break-it validation 2026-08-29, step 9,
 verdict LOST DATA).
 
-## Status 2026-09-25 — diagnosis superseded, plan on hold
+## Status 2026-09-25 — diagnosis superseded; bug does not reproduce
 
 A command-boundary repro against current source (`.agents/break-it-validation.md`,
 "Engine repro 2026-09-25") shows slice 1 already exists: a fresh open
 of a project with a deleted `.git` recreates the repo through
 `reader::pre_repair_git`, and Save Revision then commits. The trace below
 ("Nothing anywhere rebuilds the repo") is wrong for this source and is kept
-only as history. Still open and unconfirmed: whether the 2026-08-29 run
-really reopened, why no error toast appeared, and whether a plain-English
-"history rebuilt" notice (slice 2) is wanted. Do not implement from this
-plan until a GUI rerun of break-it steps 9–10 on a current build settles
-those; then rewrite the plan from what it shows.
+only as history. A GUI rerun the same day (`.agents/break-it-validation.md`, "GUI rerun
+2026-09-25") confirmed it in the built app: relaunch rebuilds history,
+Save Revision and Restore work, and a save without a relaunch shows an
+error toast rather than silently doing nothing. Slices 1 and 3 are not
+needed. What remains are two unapproved polish items: plain-English
+wording for that error, and a one-time "history was rebuilt" notice
+(slice 2). Do not implement from this plan; a new, smaller plan would be
+needed if the owner wants them.
 
 ## [MODEL] Current behavior (traced 2026-08-29 — superseded, see Status)
 
