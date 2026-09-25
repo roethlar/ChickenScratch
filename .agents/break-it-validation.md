@@ -61,7 +61,7 @@ remains unverified. Preserve the results below as historical observations,
 not a verified description of this source revision. See `.agents/state.md`
 Blockers for the next action. No desktop test was rerun during this check.
 
-## GUI rerun 2026-09-25 (steps 9–10)
+## GUI rerun 2026-09-25 (steps 7–10)
 
 Claude Code drove a freshly built release bundle (`cargo tauri build
 --bundles app` at `51edb36`, unsigned local build) through computer use, on
@@ -72,9 +72,17 @@ Claude Code drove a freshly built release bundle (`cargo tauri build
 | 4 | Edit + Save Revision "validation edit 1" | appears in history | Appears; toast "Revision saved." | SURVIVED |
 | 9a | Delete `.git` while the project stays open; edit; Save Revision | error, nothing lost | Red toast: `Save failed: Unknown error: Not a git repo: could not find repository at '…'; class=Repository (6); code=NotFound (-3)`. History list still shows the lost revision until reload. Text autosave kept working | DEGRADED SAFELY (loud, but developer jargon, not plain English) |
 | 9b | Quit the app, relaunch, open from Recent Projects | repo quietly rebuilt, Save Revision works | `.git` recreated at open; panel shows "No revisions yet" and a "main" badge; Save Revision "after rebuild" commits and the badge becomes "master". No notice tells the writer earlier revisions are gone | SURVIVED (silent rebuild) |
-| 10 | Edit + save "validation edit 3", restore "after rebuild" | text reverts, restore is a NEW entry | Confirm dialog "Bring back this version? …"; text reverted (edit 3 gone); new entry "Restored to: after rebuild" on top | SURVIVED |
+| 10 | Edit + save "validation edit 3", restore "after rebuild" | text reverts, restore is a NEW entry | On screen: text reverted, new entry "Restored to: after rebuild". **On disk: the pre-restore text was written back over the restored file in the same second** (git status dirty vs the restore commit). Quit and reopen shows the pre-restore text. Reproduced on a clean retest ("validation edit 4") | **LOST DATA** (restore silently undone) |
+| 7a | `bits.meta` → invalid-UTF-8 garbage; reopen | read-only open, plain-English warning naming file | Unchanged from August: refuses to open, banner "IO error: stream did not contain valid UTF-8", no filename. File byte-identical | DEGRADED SAFELY (dev-speak, no filename) |
+| 7b | `bits.meta` → valid-UTF-8 bad YAML; reopen | same | Opens **read-only**, no quarantine, file byte-identical. Banner wrongly says "This project was made by an older version…"; the real reason ("the notes file 'manuscript/bits.meta' is damaged") appears only as a hover tooltip | DEGRADED SAFELY (misleading banner) |
+| 8 | Stray `manuscript/stray.md`; reopen | read-only warning or safe adoption | Opens read-only; "stray" listed in the binder; same misleading banner, real reason only in the tooltip; nothing on disk changed | DEGRADED SAFELY (misleading banner) |
 
-Conclusion: the 2026-08-29 step-9 LOST DATA verdict does not reproduce on
+Step 10 cause (confirmed with a throwaway build): Tiptap's
+`setEditable` emits an update by default, so releasing the restore
+barrier marks the stale buffer dirty and the reload flush writes it to
+disk. Plan: `docs/plans/PLAN_RESTORE_STALE_BUFFER.md`.
+
+Conclusion for step 9: the 2026-08-29 LOST DATA verdict does not reproduce on
 current source. That run's silent no-op remains unexplained (its bundle's
 build is unknown). Candidate follow-ups, none approved: plain-English
 wording for the not-a-repo save error; a one-time "history was rebuilt"

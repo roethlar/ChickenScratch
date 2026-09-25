@@ -9,12 +9,19 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 - Phase **Engine hardening — protect writers' work** remains active;
   `docs/CURRENT_PHASE.md` owns the phase and exit criteria.
-- **Break-it steps 9–10 pass on the current build** (GUI rerun 2026-09-25,
-  `.agents/break-it-validation.md`): relaunch rebuilds deleted history,
-  Save Revision and Restore work. The August LOST DATA verdict does not
-  reproduce. `docs/plans/PLAN_HISTORY_SELF_HEAL.md` is superseded. Unapproved
-  polish: plain-English wording for the not-a-repo save error, and a
-  "history was rebuilt" notice.
+- **NEW LOST DATA finding — Restore is silently undone on disk** (GUI
+  rerun 2026-09-25, `.agents/break-it-validation.md`). After "Bring back
+  this version", the editor writes the pre-restore text back over the
+  restored file; reopening shows the newer text again. Cause confirmed
+  (Tiptap `setEditable` emits an update when the barrier releases). Fix
+  drafted, **not approved**: `docs/plans/PLAN_RESTORE_STALE_BUFFER.md`.
+  Likely also affects switch draft / merge / pull (unverified).
+- **Break-it step 9 passes on the current build**: relaunch rebuilds
+  deleted history and Save Revision works. The August verdict does not
+  reproduce; `docs/plans/PLAN_HISTORY_SELF_HEAL.md` is superseded.
+- **Read-only banner is misleading** (steps 7b, 8): it always says "made
+  by an older version"; the real reason only shows on hover. Step 7a
+  (invalid UTF-8) still refuses to open with a technical error. Unapproved.
 - **Phase close-out question remains unanswered** (posed 2026-07-17):
   close hardening and move to the Tauri reference-app phase? An agent
   (Claude Code, 2026-08-29) ran the break-it test; the owner has not used
@@ -40,9 +47,7 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Blockers
 
-- **Break-it steps 7a, 7b, and 8 were not rerun on the current build.**
-  Source says the August corrupt-sidecar quarantine no longer happens
-  (reads now open Degraded/read-only instead); unconfirmed in the app.
+- **Restore fix needs an owner go** (`docs/plans/PLAN_RESTORE_STALE_BUFFER.md`).
 
 ## Known drift (recorded, not yet fixed)
 
@@ -50,8 +55,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **GUI rerun of break-it steps 7–8** (corrupt sidecar, stray file) on the
-   current build, same method as the 2026-09-25 rerun.
+1. **On owner go, implement `docs/plans/PLAN_RESTORE_STALE_BUFFER.md`**,
+   then re-verify restore and draft switching in the app.
 2. Then re-ask whether to close hardening and move to the Tauri
    reference-app phase. The phase declaration remains the owner's call.
 3. Scrivener asset-import safety remains the next parked concern, one
