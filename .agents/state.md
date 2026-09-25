@@ -19,8 +19,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 - **Phase close-out question remains unanswered** (posed 2026-07-17):
   close hardening and move to the Tauri reference-app phase? The owner
   detoured to hands-on validation; resolve the validation evidence first.
-- **Parked hardening follow-ups**, source rechecked 2026-09-17 as of
-  `a2d8a39`: Scrivener asset import still calls `fs::copy` outside core and
+- **Parked hardening follow-ups**, source rechecked 2026-09-25 as of
+  `a891ed5`: Scrivener asset import still calls `fs::copy` outside core and
   reports failures to stderr (`crates/cli/src/scrivener/converter/mod.rs`).
   Revision staging still uses `add_all(["*"])` while generated ignores do
   not cover atomic `.X.tmp-*` names (`crates/core/src/core/git.rs`). Neither
@@ -28,7 +28,7 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   lives under Out of scope in `docs/plans/PLAN_FORMAT_LOCK_ENGINE.md`;
   current reader repair notices remain stderr-only and `Project` still has
   no project-level `fields` map.
-- **Draft-peek follow-ups remain unapproved**, rechecked as of `a2d8a39`:
+- **Draft-peek follow-ups remain unapproved**, rechecked as of `a891ed5`:
   `DocumentHistory.tsx` still uses the old Restore wording. The owner
   decision on backing up all drafts remains open; `push_remote` still
   pushes the current draft only. The completed review record is
@@ -41,7 +41,7 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 ## Blockers
 
 - **The history-fix plan's diagnosis is contradicted by source**, verified
-  2026-09-17 as of `a2d8a39`: `load_project_inner` calls
+  2026-09-25 as of `a891ed5`: `load_project_inner` calls
   `reader::read_project_with_repair`; its SelfHeal path calls
   `pre_repair_git`, which recreates an absent repository through
   `git::init_repo`. Existing reader tests cover missing and unopenable
@@ -61,7 +61,7 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 - `docs/AGENT-WORKFLOW.md` section 5 still lists the earlier narrow command
   set while `.agents/repo-guidance.md` records the current CI-matching
-  Rust/UI suite. Rechecked as of `a2d8a39`; the workflow also runs its
+  Rust/UI suite. Rechecked as of `a891ed5`; the workflow also runs its
   cross-frontend harness and Windows process tests. The conflicting
   workflow guide is outside the records-only cleanup scope.
 
@@ -89,10 +89,6 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   has its DMG, MSI, and NSIS installer attached, verified live 2026-09-17.
   Runbook: `RELEASE.md`; release:
   <https://github.com/roethlar/ChickenScratch/releases/tag/v1.0.0>.
-- This catchup changed records only. `git diff --check` is the applicable
-  local verification; Rust/UI tests and desktop validation were not run.
-  Source inspection establishes the plan contradiction, not the runtime
-  cause of the historical release-app failure.
 
 ## Active Sources
 
