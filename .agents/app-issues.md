@@ -19,3 +19,4 @@ fix; each engine fix has a plan under `docs/plans/`.
 | 10 | Scrivener asset import copies files with `fs::copy` outside core and reports failures only to stderr (parked since 2026-07) | I2 violation / silent loss | Fixed (`PLAN_IMPORT_MEDIA_SAFETY`) |
 | 11 | Corkboard card previews show raw Markdown escapes (`Henks\'`, `\"…\"`) — seen 2026-08-29 and 2026-09-25 | Cosmetic | Fixed |
 | 12 | Export's save dialog opens in the last-used folder (often inside a project), dropping the .docx into the project and its history | Junk in project | Fixed (defaults beside the project) |
+| 13 | The red window close button saves but never closes the window (capability lacked `core:window:allow-destroy`, which the close handler's `destroy()` needs) | Can't close app | Fixed |

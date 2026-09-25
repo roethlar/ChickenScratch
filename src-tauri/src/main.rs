@@ -118,4 +118,18 @@ mod tests {
         assert!(!validator.is_match("javascript:x//https://y"));
         assert!(!validator.is_match("vscode://file/foo#https://x"));
     }
+
+    /// The UI's `onCloseRequested` handler saves, then calls
+    /// `window.destroy()` to finish closing. Without this permission the
+    /// destroy call is refused and the red close button does nothing
+    /// (app issues 2026-09-25, #13).
+    #[test]
+    fn main_window_may_destroy_itself_after_close_handler() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        let permissions = capability["permissions"].as_array().unwrap();
+        assert!(permissions
+            .iter()
+            .any(|p| p.as_str() == Some("core:window:allow-destroy")));
+    }
 }
