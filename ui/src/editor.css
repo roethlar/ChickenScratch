@@ -2973,6 +2973,24 @@
   max-width: 360px;
 }
 
+.toast-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.toast-dismiss {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
 .toast-success { background: #16a34a; }
 .toast-error { background: #dc2626; }
 .toast-info { background: color-mix(in srgb, var(--color-text) 85%, var(--color-accent)); }
