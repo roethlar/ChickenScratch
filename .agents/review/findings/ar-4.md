@@ -73,3 +73,19 @@ create_dir_all would — canonicalize each existing prefix, enter and leave
 missing folders. Guard extended with both reopen cases; the missing-hop
 symlink case FAILS against the previous repair's `enclosing_project` and
 PASSES now. Redispatch: repair-delta, T5 (ceiling).
+Reviewer: codex / gpt-5.6-sol / xhigh / frontier
+  escalated: T5 (ceiling) — fresh session
+Harness: codex-cli 0.156.0 (CLI, --json)
+Reviewed: b0ee3b5eea8e49cde095a13ba59b159c889cb770
+Base: 99846bb84980bec56f838e5d84fb80766bd20275
+guard_confirmed: true
+Verdict: reopened — 2026-09-25 (UTC). Comments: both missing-folder
+cases closed; regression: `Outer.chikn/MissingHop/..` does not exist
+lexically but resolves to Outer itself; `ancestors().skip(1)` skips it,
+so create_project succeeds and overwrites Outer's metadata.
+Repair 3 (follow-up commit): `create_project` resolves the target once
+(`resolve_creation_path`) and refuses when the path exists as written OR
+as resolved, before the nested check (`enclosing_project` now takes the
+resolved path). Guard extended: `Outer/NeverMadeHop/..` must be refused
+with `project.yaml` byte-identical — FAILED at b0ee3b5, PASSES now.
+Redispatch: repair-delta, T5 (ceiling).

@@ -154,8 +154,13 @@ fn write_threads_if_any(project: &Project) -> Result<(), ChiknError> {
 /// # Ok(()) }
 /// ```
 pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
-    // Check if path already exists
-    if path.exists() {
+    // Where the project would really land ('..' and symlinks resolved).
+    let resolved = resolve_creation_path(path);
+
+    // Check if path already exists — spelled as given or as resolved:
+    // 'Outer.chikn/Missing/..' does not exist as written but IS Outer, and
+    // must never be written over (review finding ar-4, third reopen).
+    if path.exists() || resolved.as_deref().is_some_and(Path::exists) {
         return Err(ChiknError::InvalidFormat(format!(
             "Project already exists: {}",
             path.display()
@@ -166,7 +171,7 @@ pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
     // pick the new one up as an embedded repository, and the writer would
     // be editing one project's files from inside another's
     // (PLAN_REVISION_STAGING_SAFETY step 3).
-    if let Some(outer) = enclosing_project(path) {
+    if let Some(outer) = resolved.as_deref().and_then(enclosing_project) {
         let outer_name = outer
             .file_stem()
             .map(|name| name.to_string_lossy().into_owned())
@@ -232,9 +237,9 @@ pub fn create_project(path: &Path, name: &str) -> Result<Project, ChiknError> {
     Ok(project)
 }
 
-/// The nearest ancestor of `path` that is itself a `.chikn` project
-/// (holds both `project.yaml` and a `manuscript/` folder), if any.
-fn enclosing_project(path: &Path) -> Option<PathBuf> {
+/// Where `path` would really be created, resolved one component at a time
+/// as the OS (and `create_dir_all`) would.
+fn resolve_creation_path(path: &Path) -> Option<PathBuf> {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -262,6 +267,13 @@ fn enclosing_project(path: &Path) -> Option<PathBuf> {
             }
         }
     }
+    Some(resolved)
+}
+
+/// The nearest proper ancestor of an already-resolved target that is itself
+/// a `.chikn` project (holds both `project.yaml` and a `manuscript/`
+/// folder), if any.
+fn enclosing_project(resolved: &Path) -> Option<PathBuf> {
     resolved
         .ancestors()
         .skip(1)
@@ -1054,6 +1066,16 @@ mod tests {
             create_project(&escaped, "Escaped").is_ok(),
             "'..' over a missing folder that leaves the project must be allowed"
         );
+
+        // Third reopen: a path that resolves to an existing project itself
+        // must be refused, never written over.
+        let outer_yaml = fs::read(outer.join("project.yaml")).unwrap();
+        let onto_outer = outer.join("NeverMadeHop").join("..");
+        assert!(
+            create_project(&onto_outer, "Clobber").is_err(),
+            "a path resolving to an existing project must be refused"
+        );
+        assert_eq!(fs::read(outer.join("project.yaml")).unwrap(), outer_yaml);
     }
 
     #[test]
