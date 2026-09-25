@@ -70,6 +70,29 @@ pub fn import_scriv(
     output_path: &Path,
     pandoc_path: Option<&Path>,
 ) -> Result<Project, ChiknError> {
+    let report = import_scriv_with_report(scriv_path, output_path, pandoc_path)?;
+    for warning in &report.warnings {
+        eprintln!("Import warning: {warning}");
+    }
+    Ok(report.project)
+}
+
+/// A finished import plus plain-English problems that did not stop it
+/// (an attachment that could not be copied, a first revision that could
+/// not be saved). Callers with a UI show `warnings` to the writer.
+#[derive(Debug)]
+pub struct ImportReport {
+    pub project: Project,
+    pub warnings: Vec<String>,
+}
+
+/// [`import_scriv`], returning the problems that did not stop the import
+/// instead of printing them (PLAN_IMPORT_MEDIA_SAFETY step 2).
+pub fn import_scriv_with_report(
+    scriv_path: &Path,
+    output_path: &Path,
+    pandoc_path: Option<&Path>,
+) -> Result<ImportReport, ChiknError> {
     // Find .scrivx file
     let scrivx_file = find_scrivx_file(scriv_path)?;
 
@@ -113,6 +136,7 @@ pub fn import_scriv(
     chikn_project.documents = documents;
 
     let revision_message = format!("Imported from Scrivener: {}", scriv_project.name);
+    let mut warnings = Vec::new();
     token.with_write_permit(output_path, |permit| {
         // Save the converted project.
         writer::write_project(&mut chikn_project, permit)?;
@@ -130,19 +154,30 @@ pub fn import_scriv(
                         writer::write_project_app_file(permit, Path::new(parts[1]), &bytes)
                     });
                     if let Err(e) = copied {
-                        eprintln!("Failed to copy media file {}: {}", uuid, e);
+                        warnings.push(format!(
+                            "The attachment '{}' (Scrivener item {}) could not be copied: {}",
+                            parts[1], uuid, e
+                        ));
                     }
                 }
             }
         }
 
         // Initial commit with all converted content.
-        let _ =
-            chickenscratch_core::core::git::save_revision(output_path, &revision_message, permit);
+        if let Err(e) =
+            chickenscratch_core::core::git::save_revision(output_path, &revision_message, permit)
+        {
+            warnings.push(format!(
+                "Your text was imported, but the first saved version could not be created ({e}). Use Save Revision to create one."
+            ));
+        }
         Ok(())
     })?;
 
-    Ok(chikn_project)
+    Ok(ImportReport {
+        project: chikn_project,
+        warnings,
+    })
 }
 
 /// Finds the .scrivx file in a .scriv directory
@@ -785,6 +820,59 @@ mod tests {
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert!(!output_path.join("manuscript/escape.md").exists());
+    }
+
+    /// PLAN_IMPORT_MEDIA_SAFETY step 2: an attachment that cannot be copied
+    /// is reported to the caller (the app shows it) instead of only being
+    /// printed to a hidden console; the rest of the import still succeeds.
+    #[cfg(unix)]
+    #[test]
+    fn test_import_reports_attachment_that_could_not_be_copied() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Media.scriv");
+        let output_path = temp_dir.path().join("Media.chikn");
+        let uuid = "F8F9FDEF-FD9F-4A8C-B33D-3434A1220ADD";
+        let media_dir = scriv_path.join("Files").join("Data").join(uuid);
+        fs::create_dir_all(&media_dir).unwrap();
+        let media = media_dir.join("content.pdf");
+        fs::write(&media, b"%PDF sample").unwrap();
+        fs::set_permissions(&media, fs::Permissions::from_mode(0o000)).unwrap();
+        if fs::read(&media).is_ok() {
+            eprintln!("Skipping: running with permission to read mode-000 files");
+            return;
+        }
+
+        fs::write(
+            scriv_path.join("Media.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="3.0">
+    <Binder>
+        <BinderItem UUID="{uuid}" Type="Image">
+            <Title>Reference PDF</Title>
+            <MetaData>
+                <FileExtension>pdf</FileExtension>
+            </MetaData>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#
+            ),
+        )
+        .unwrap();
+
+        let report = import_scriv_with_report(&scriv_path, &output_path, None)
+            .expect("one unreadable attachment must not fail the import");
+        fs::set_permissions(&media, fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.contains("manuscript/reference-pdf.pdf")),
+            "the skipped attachment must be named: {:?}",
+            report.warnings
+        );
     }
 
     #[test]

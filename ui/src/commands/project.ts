@@ -27,10 +27,16 @@ export async function saveProject(project: Project): Promise<Project> {
   return mutatingInvoke("save_project", { project });
 }
 
+/** A finished import plus problems that did not stop it. */
+export interface ImportedProject {
+  project: Project;
+  warnings: string[];
+}
+
 export async function importScrivener(
   scrivPath: string,
   outputPath: string
-): Promise<Project> {
+): Promise<ImportedProject> {
   return mutatingInvoke("import_scrivener", {
     scrivPath,
     outputPath,

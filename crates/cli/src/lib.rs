@@ -6,5 +6,5 @@
 
 pub mod scrivener;
 
-pub use scrivener::converter::import_scriv;
+pub use scrivener::converter::{import_scriv, import_scriv_with_report, ImportReport};
 pub use scrivener::exporter::export_to_scriv;

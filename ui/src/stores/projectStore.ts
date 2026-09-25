@@ -4,6 +4,7 @@ import type { LeaseHandle } from "../commands/barrier";
 import * as projectCmd from "../commands/project";
 import * as docCmd from "../commands/document";
 import { addRecentProject } from "../commands/settings";
+import { toastError } from "../components/shared/Toast";
 
 export interface FlowDoc {
   docId: string;
@@ -101,9 +102,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   importScrivener: async (scrivPath: string, outputPath: string) => {
     try {
-      const project = await projectCmd.importScrivener(scrivPath, outputPath);
+      const { project, warnings } = await projectCmd.importScrivener(scrivPath, outputPath);
       set({ project, readOnly: false, readOnlyReasons: [], activeDocId: null, activeDoc: null, error: null });
       addRecentProject(project.name, project.path).catch(() => {});
+      // Problems that did not stop the import (an attachment that could
+      // not be copied, no first revision) — tell the writer which.
+      if (warnings.length > 0) {
+        toastError(`Imported with problems:\n${warnings.join("\n")}`);
+      }
     } catch (e) {
       set({ error: String(e) });
     }

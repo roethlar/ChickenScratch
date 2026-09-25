@@ -8,6 +8,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const addRecentMock = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("../commands/settings", () => ({ addRecentProject: addRecentMock }));
+const toastErrorMock = vi.hoisted(() => vi.fn());
+vi.mock("../components/shared/Toast", () => ({ toastError: toastErrorMock }));
 vi.mock("../commands/project", () => ({
   createProject: vi.fn(async (name: string, parent: string) => ({
     name,
@@ -15,9 +17,10 @@ vi.mock("../commands/project", () => ({
     documents: {},
   })),
   importScrivener: vi.fn(async (_scriv: string, out: string) => ({
-    name: "Imported",
-    path: out,
-    documents: {},
+    project: { name: "Imported", path: out, documents: {} },
+    warnings: out.includes("Broken")
+      ? ["The attachment 'research/map.png' (Scrivener item X) could not be copied: denied"]
+      : [],
   })),
 }));
 
@@ -36,5 +39,11 @@ describe("recent projects", () => {
   it("records a newly imported project", async () => {
     await useProjectStore.getState().importScrivener("/in/Old.scriv", "/writing/Old.chikn");
     expect(addRecentMock).toHaveBeenCalledWith("Imported", "/writing/Old.chikn");
+  });
+
+  it("tells the writer about attachments an import could not copy", async () => {
+    toastErrorMock.mockClear();
+    await useProjectStore.getState().importScrivener("/in/Old.scriv", "/writing/Broken.chikn");
+    expect(toastErrorMock).toHaveBeenCalledWith(expect.stringContaining("research/map.png"));
   });
 });

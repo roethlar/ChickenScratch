@@ -16,4 +16,4 @@ fix; each engine fix has a plan under `docs/plans/`.
 | 7 | Error toasts vanish after 3.5 s and use developer wording (`Unknown error: …class=Index (10)`) — easy to miss a failed save | Silent-ish failure | Fixed (errors persist; codes stripped) |
 | 8 | Save Revision after `.git` is deleted mid-session fails until relaunch (jargon error) | Recoverable | Fixed (save rebuilds history) |
 | 9 | Revision staging uses `add_all(["*"])`; atomic-write temp files `.X.tmp-*` are not ignored (parked since 2026-07) | Junk in history | Fixed (staging safety step 2) |
-| 10 | Scrivener asset import copies files with `fs::copy` outside core and reports failures only to stderr (parked since 2026-07) | I2 violation / silent loss | Open |
+| 10 | Scrivener asset import copies files with `fs::copy` outside core and reports failures only to stderr (parked since 2026-07) | I2 violation / silent loss | Fixed (`PLAN_IMPORT_MEDIA_SAFETY`) |

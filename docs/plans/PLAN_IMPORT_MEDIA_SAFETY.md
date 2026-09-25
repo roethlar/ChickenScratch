@@ -4,6 +4,8 @@
 > "assume I actually want a working app. find issues, plan fixes, fix,
 > review with codex." (2026-09-25)
 
+**Status:** Steps 1–2 implemented 2026-09-25, one commit each.
+
 **Phase check:** [x] Allowed by `CURRENT_PHASE.md` (Engine hardening)
 [x] Not paused
 

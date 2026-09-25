@@ -131,17 +131,25 @@ pub fn save_project(
     })
 }
 
+/// Result of a Scrivener import: the new project plus plain-English
+/// problems that did not stop the import (for the UI to show).
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportedProject {
+    pub project: Project,
+    pub warnings: Vec<String>,
+}
+
 #[tauri::command]
 pub fn import_scrivener(
     scriv_path: String,
     output_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
     tokens: State<'_, ProjectTokens>,
-) -> Result<Project, ChiknError> {
+) -> Result<ImportedProject, ChiknError> {
     let settings = crate::commands::settings::get_app_settings();
     let (pandoc_path, _) = crate::commands::settings::resolve_pandoc(&settings)?;
     write_locks.with_project_lock(&output_path, || {
-        let project = chikn_converter::import_scriv(
+        let report = chikn_converter::import_scriv_with_report(
             Path::new(&scriv_path),
             Path::new(&output_path),
             Some(pandoc_path.as_path()),
@@ -150,7 +158,10 @@ pub fn import_scrivener(
         if let Ok(token) = fidelity::acquire_write_token(Path::new(&output_path)) {
             let _ = tokens.store(Path::new(&output_path), token);
         }
-        Ok(project)
+        Ok(ImportedProject {
+            project: report.project,
+            warnings: report.warnings,
+        })
     })
 }
 
