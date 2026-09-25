@@ -68,6 +68,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section.
+- Full declared suite ran green locally 2026-09-25 **as of `85a10c0`**
+  (fmt, clippy, Rust tests, release metadata, UI lint/build/test). The
+  cross-frontend harness and desktop GUI were not run.
 - Live CI checked 2026-09-17 **as of `a2d8a39`**: Validation run
   `33335376706` and Tauri Bundles run `33335376726` both succeeded.
 - **Tag release path has been exercised**, correcting the superseded
