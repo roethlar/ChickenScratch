@@ -1,7 +1,7 @@
 # ar-3: Already-staged atomic-write leftovers can still be committed
 
 **Severity**: LOW — needs a leftover already in the index (prior partial save or external tool); then junk enters history
-**Status**: Open
+**Status**: In progress
 **Branch**: — (default-branch mode)
 **Commit**: (pending)
 
@@ -16,12 +16,24 @@ Note: the reviewer's environment routes shell commands through a PreToolUse hook
 `manuscript/.one.md.tmp-X` already staged: Save Revision commits it.
 
 ## What
+The staging exclusion only filtered new `add_all` matches; an excluded
+path already present in the index survived into `write_tree`.
 
 ## Approach
+After `add_all`, `stage_all` removes index entries that are excluded from
+history and not tracked by HEAD (never touching tracked files).
+`repo_has_changes` treats excluded entries in new-only states
+(`WT_NEW`/`INDEX_NEW`) as not unsaved work, since the next stage drops
+them.
 
 ## Files changed
+- `crates/core/src/core/git.rs` — `stage_all` index cleanup,
+  `repo_has_changes` status filter, guard test
 
 ## Guard proof
+- `core::git::tests::already_staged_atomic_write_leftover_is_not_committed`
+  — stages a leftover, saves, asserts it is absent from the commit and the
+  tree is clean. Failed before the fix; passes with it.
 
 ## Coder dispute (if any)
 None.

@@ -200,7 +200,30 @@ fn stage_all(repo: &Repository, index: &mut git2::Index) -> Result<(), git2::Err
         ["*"].iter(),
         IndexAddOption::DEFAULT,
         Some(&mut skip_excluded as &mut git2::IndexMatchedPath),
-    )
+    )?;
+
+    // The callback only stops NEW additions. An excluded entry already in
+    // the index (a save that failed after writing it, or an outside tool)
+    // would still reach write_tree, so drop any that HEAD does not already
+    // track (review finding ar-3). Tracked files are never touched.
+    let Some(dir) = workdir else {
+        return Ok(());
+    };
+    let head_tree = repo.head().ok().and_then(|head| head.peel_to_tree().ok());
+    let stale: Vec<std::path::PathBuf> = index
+        .iter()
+        .filter_map(|entry| {
+            let path = std::path::PathBuf::from(String::from_utf8_lossy(&entry.path).into_owned());
+            let tracked = head_tree
+                .as_ref()
+                .is_some_and(|tree| tree.get_path(&path).is_ok());
+            (!tracked && is_excluded_from_history(&dir, &path)).then_some(path)
+        })
+        .collect();
+    for path in stale {
+        index.remove_path(&path)?;
+    }
+    Ok(())
 }
 
 fn repo_has_changes(repo: &Repository) -> Result<bool, ChiknError> {
@@ -213,7 +236,10 @@ fn repo_has_changes(repo: &Repository) -> Result<bool, ChiknError> {
 
     let workdir = repo.workdir();
     Ok(statuses.iter().any(|entry| {
-        let excluded = entry.status() == git2::Status::WT_NEW
+        // New-only states (untracked, or staged but not in HEAD): the next
+        // stage_all drops these, so they are not unsaved work.
+        let new_only = (git2::Status::WT_NEW | git2::Status::INDEX_NEW).contains(entry.status());
+        let excluded = new_only
             && match (workdir, entry.path()) {
                 (Some(dir), Some(path)) => is_excluded_from_history(dir, Path::new(path)),
                 _ => false,
@@ -2320,6 +2346,48 @@ mod tests {
             .find_blob(tree.get_path(Path::new("manuscript/one.md")).unwrap().id())
             .unwrap();
         assert_eq!(blob.content(), b"after loss");
+    }
+
+    /// ar-3: a leftover already staged in the index (a prior save that
+    /// failed after writing the index, or an external tool) must still be
+    /// kept out of the revision.
+    #[test]
+    fn already_staged_atomic_write_leftover_is_not_committed() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("Staged.chikn");
+        std::fs::create_dir_all(project_path.join("manuscript")).unwrap();
+        init_repo(&project_path).unwrap();
+        std::fs::write(project_path.join("manuscript/one.md"), "baseline").unwrap();
+        let token = token_for_test_project(&project_path);
+        token
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "Baseline", permit)
+            })
+            .unwrap();
+
+        let leftover = "manuscript/.one.md.tmp-Zz99Yy";
+        std::fs::write(project_path.join(leftover), "half-written").unwrap();
+        {
+            let repo = Repository::open(&project_path).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new(leftover)).unwrap();
+            index.write().unwrap();
+        }
+        std::fs::write(project_path.join("manuscript/one.md"), "edited").unwrap();
+
+        let revision = token
+            .with_write_permit(&project_path, |permit| {
+                save_revision(&project_path, "Edited", permit)
+            })
+            .unwrap();
+        let repo = Repository::open(&project_path).unwrap();
+        let tree = repo
+            .find_commit(Oid::from_str(&revision.id).unwrap())
+            .unwrap()
+            .tree()
+            .unwrap();
+        assert!(tree.get_path(Path::new(leftover)).is_err());
+        assert!(!has_changes(&project_path).unwrap());
     }
 
     #[test]
