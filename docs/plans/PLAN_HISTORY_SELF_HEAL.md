@@ -27,7 +27,20 @@ whose Save Revision does nothing, with no error — every revision they think
 they saved is silently discarded (break-it validation 2026-08-29, step 9,
 verdict LOST DATA).
 
-## [MODEL] Current behavior (traced 2026-08-29)
+## Status 2026-09-25 — diagnosis superseded, plan on hold
+
+A command-boundary repro against current source (`.agents/break-it-validation.md`,
+"Engine repro 2026-09-25") shows slice 1 already exists: a fresh open
+of a project with a deleted `.git` recreates the repo through
+`reader::pre_repair_git`, and Save Revision then commits. The trace below
+("Nothing anywhere rebuilds the repo") is wrong for this source and is kept
+only as history. Still open and unconfirmed: whether the 2026-08-29 run
+really reopened, why no error toast appeared, and whether a plain-English
+"history rebuilt" notice (slice 2) is wanted. Do not implement from this
+plan until a GUI rerun of break-it steps 9–10 on a current build settles
+those; then rewrite the plan from what it shows.
+
+## [MODEL] Current behavior (traced 2026-08-29 — superseded, see Status)
 
 - `fidelity::probe_project_fidelity` classifies a repo-less project as
   `Full`, so `load_project_inner` (`src-tauri/src/commands/project.rs`)

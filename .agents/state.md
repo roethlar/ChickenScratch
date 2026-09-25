@@ -9,13 +9,11 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 - Phase **Engine hardening — protect writers' work** remains active;
   `docs/CURRENT_PHASE.md` owns the phase and exit criteria.
-- **Break-it validation needs a current-build recheck before a fix is chosen.**
-  `.agents/break-it-validation.md` owns the 2026-08-29 observations and
-  unfinished steps. `docs/plans/PLAN_HISTORY_SELF_HEAL.md` was drafted on
-  the owner's go to draft a plan; implementation approval is not recorded.
-  Its claim that nothing rebuilds missing history contradicts current code
-  (see Blockers). Keep the observed release-app failure as evidence without
-  treating its proposed cause as verified at the current source revision.
+- **Break-it step 9 ("delete history") passes at the engine layer; a GUI
+  rerun is the remaining check.** Engine repro 2026-09-25 as of `53ed7e0`
+  (`.agents/break-it-validation.md`): a fresh open rebuilds a deleted
+  `.git` and Save Revision commits. `docs/plans/PLAN_HISTORY_SELF_HEAL.md`
+  is marked superseded/on hold; implementation approval was never given.
 - **Phase close-out question remains unanswered** (posed 2026-07-17):
   close hardening and move to the Tauri reference-app phase? The owner
   detoured to hands-on validation; resolve the validation evidence first.
@@ -40,16 +38,11 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Blockers
 
-- **The history-fix plan's diagnosis is contradicted by source**, verified
-  2026-09-25 as of `a891ed5`: `load_project_inner` calls
-  `reader::read_project_with_repair`; its SelfHeal path calls
-  `pre_repair_git`, which recreates an absent repository through
-  `git::init_repo`. Existing reader tests cover missing and unopenable
-  repositories. The validation record does not identify the signed
-  bundle's source revision, so its observed no-op cannot establish that
-  this path is absent from current code. Reproduce with an identified
-  current build before approving implementation; the plan itself was not
-  edited during this records-only sweep.
+- **Break-it steps 9–10 need a desktop-app rerun** that an agent without
+  GUI control cannot do: build the current app, recreate the sandbox, delete
+  `.git`, fully quit and relaunch, save a revision, then restore. Open
+  questions for that run: did the 2026-08-29 run truly reopen, and why was
+  no error shown (the code does toast on save failure).
 - **Validation evidence is not ready to resume in place.** The recorded
   test sandbox is absent on the current machine (see `.agents/machines.md`).
   The same run's corrupt-sidecar quarantine also differs from current
@@ -67,11 +60,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **Recheck the history-loss validation against an identified current
-   build**, using a fresh copy of the test project. Trace the existing
-   self-heal path, then revise `docs/plans/PLAN_HISTORY_SELF_HEAL.md` only
-   from confirmed behavior before seeking implementation approval.
-   Finish the blocked restore validation after history works.
+1. **GUI rerun of break-it steps 9–10** on a freshly built current app
+   (owner, or a GUI-capable agent), per `.agents/break-it-validation.md`
+   "Engine repro 2026-09-25". Rewrite or retire the history plan from what
+   it shows.
 2. Then re-ask whether to close hardening and move to the Tauri
    reference-app phase. The phase declaration remains the owner's call.
 3. Scrivener asset-import safety remains the next parked concern, one

@@ -61,6 +61,38 @@ remains unverified. Preserve the results below as historical observations,
 not a verified description of this source revision. See `.agents/state.md`
 Blockers for the next action. No desktop test was rerun during this check.
 
+## Engine repro 2026-09-25
+
+As of `53ed7e0`, a throwaway command-boundary test (discarded worktree,
+nothing committed) drove the real `load_project_inner` path:
+
+- **Delete `.git`, then a fresh open (new token registry, as after an app
+  relaunch):** the project opens writable, `.git` is recreated, and
+  `save_revision` commits; `list_revisions` shows the new revision. The
+  step-9 expectation holds at the engine/command layer.
+- **Delete `.git` while the project stays open (no reopen):**
+  `save_revision` returns `Err(Unknown("Not a git repo: …"))` — an error,
+  not a silent no-op. Nothing rebuilds history until the next open.
+- The open path (`reader.rs`, `fidelity.rs`, `commands/project.rs`) is
+  unchanged since before the 2026-08-29 run; self-heal landed 2026-07-16
+  (`0d3c027`). The release bundle used on 2026-08-29 no longer exists, so
+  its build date cannot be checked.
+- UI: with no drafts listed, `Revisions.tsx` falls back to the badge
+  "main", so the observed "master→main" flip and "No revisions yet"
+  match an empty rebuilt repo as well as an absent one.
+- `handleSave` catches a rejected `save_revision` and calls `toastError`;
+  `ToastProvider` is mounted in `main.tsx`. The code offers no explanation
+  for the missing toast. Assumption, unverified: the 2026-08-29 run either
+  did not truly reopen (same-session save) or used a stale bundle, and the
+  missing toast has a separate cause (e.g. `flushPendingEditorSave` never
+  settling).
+
+Remaining check needs the desktop app (owner or a GUI-capable driver):
+build the current app, recreate the sandbox (script step 1), and re-run
+steps 9–10 with a full quit and relaunch between deleting `.git` and
+saving. Also try a save after deleting `.git` *without* a relaunch and
+note whether an error appears.
+
 ## Results 2026-08-29
 
 | # | Attack | Expected | Actual | Verdict |
