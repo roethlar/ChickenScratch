@@ -1,9 +1,9 @@
 # ar-1: Failed attachment copy leaves a Degraded project presented as writable
 
 **Severity**: HIGH — the writer is shown an editable project whose every save is refused, and reopening shows it read-only
-**Status**: In progress
+**Status**: Verified
 **Branch**: — (default-branch mode)
-**Commit**: (pending)
+**Commit**: `3fafd33` + repair `c50ccbe`
 
 Source: Reviewer (generation): codex / gpt-5.6-sol / xhigh / frontier (inline, session-only; same pair the owner named for dp-1..dp-3; no T1 match)
 Range: a4d39f1d849e5d92efa8b7aceb2a83b7093d62d3..e2b3d1bd11fd673bde4933bd63b5487fe4c3927b, codex-cli 0.156.0, 2026-09-25 UTC, capability_ok true.
@@ -63,3 +63,13 @@ against every document path (unique_slug checks only `.md`); new guard
 `test_import_same_titled_attachments_fail_independently` (FAILs with the
 uniqueness loop disabled, PASSes restored). Redispatch: repair-delta,
 T5 (ceiling).
+
+Reviewer: codex / gpt-5.6-sol / xhigh / frontier
+  escalated: T2, T5 (ceiling) — fresh session
+Harness: codex-cli 0.156.0 (CLI, --json)
+Reviewed: c50ccbe974f4affd1083056f52133bdab353be53
+Base: 3fafd3349226a715e37582da210c1cdea02d9f13 (repair-delta)
+guard_confirmed: true
+Verdict: accepted — 2026-09-25 (UTC). Comments: PASS/FAIL/PASS observed;
+one failed copy now removes only its own entry; converter suite 25/25.
+Record committed as part of verification history.
