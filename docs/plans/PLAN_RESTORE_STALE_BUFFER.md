@@ -1,8 +1,13 @@
 # Plan: Stop the editor overwriting restored or switched text
 
 **Owner request (quote):**
-> "continue with as much as possible while not requiring me" (2026-09-25).
-> Drafting only; implementation approval is not given.
+> "assume I actually want a working app. find issues, plan fixes, fix,
+> review with codex." (2026-09-25 — the implementation go.)
+
+**Status:** Implemented 2026-09-25 (steps 1–3 in one commit: the
+word-count change is a direct consequence of step 1). GUI re-verified:
+restore and draft switch both leave the disk matching the screen,
+including after quit and reopen.
 
 **Phase check:** [x] Allowed by `CURRENT_PHASE.md` (Engine hardening —
 "close each approved high-risk item one concern at a time, with a guard

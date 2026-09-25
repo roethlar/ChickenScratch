@@ -1,4 +1,4 @@
-import { useEditor, EditorContent, type Editor as TipTapEditor } from "@tiptap/react";
+import { useEditor, useEditorState, EditorContent, type Editor as TipTapEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import CharacterCount from "@tiptap/extension-character-count";
@@ -277,9 +277,15 @@ export function Editor() {
   // Same while an epoch-bumping operation holds the barrier: keystrokes
   // during an awaited restore/pull would live only in a buffer the
   // rebuild is about to replace (plan slice 3, round 3).
+  //
+  // emitUpdate=false: Tiptap's setEditable emits an update by default,
+  // which reached debouncedSave and marked the buffer dirty the moment
+  // the barrier released — the reload flush then wrote the pre-operation
+  // text over the restored/switched tree (PLAN_RESTORE_STALE_BUFFER.md).
+  // An editability change is never an edit.
   const barrierActive = useBarrierActive();
   useEffect(() => {
-    if (editor) editor.setEditable(!readOnly && !barrierActive);
+    if (editor) editor.setEditable(!readOnly && !barrierActive, false);
   }, [editor, readOnly, barrierActive]);
 
   // Ctrl+F / Ctrl+H shortcuts
@@ -468,6 +474,15 @@ export function Editor() {
   const project = useProjectStore((s) => s.project);
   const sessionStartWords = useProjectStore((s) => s.sessionStartWords);
 
+  // Subscribe to the editor's own transactions: document loads use
+  // emitUpdate=false and leave React state untouched, so reading the
+  // count during render alone would show a stale total until typing.
+  const words =
+    useEditorState({
+      editor,
+      selector: ({ editor: ed }) => ed?.storage.characterCount.words() ?? 0,
+    }) ?? 0;
+
   // Flow mode: render even without activeDoc
   if (!activeDoc && !flowDocs) {
     return (
@@ -477,7 +492,7 @@ export function Editor() {
     );
   }
 
-  const words = editor?.storage.characterCount.words() ?? 0;
+
   const saveLabel = saving ? "Saving..." : dirty ? "Modified" : "Saved";
   const totalProjectWords = project
     ? Object.values(project.documents).reduce((sum, doc) => {

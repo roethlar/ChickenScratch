@@ -9,14 +9,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 - Phase **Engine hardening — protect writers' work** remains active;
   `docs/CURRENT_PHASE.md` owns the phase and exit criteria.
-- **NEW LOST DATA finding — Restore is silently undone on disk** (GUI
-  rerun 2026-09-25, `.agents/break-it-validation.md`). After "Bring back
-  this version", the editor writes the pre-restore text back over the
-  restored file; reopening shows the newer text again. Cause confirmed
-  (Tiptap `setEditable` emits an update when the barrier releases). Fix
-  drafted, **not approved**: `docs/plans/PLAN_RESTORE_STALE_BUFFER.md`.
-  **Switching drafts is confirmed affected too**: the other draft's text
-  lands in the current draft's files. Merge / pull likely (unverified).
+- **Fixed: Restore and draft switch no longer undo themselves on disk**
+  (`docs/plans/PLAN_RESTORE_STALE_BUFFER.md`, 2026-09-25): guard test
+  `ui/src/test/editorBarrierRelease.test.tsx`; GUI re-verified. Codex
+  review pending.
 - **Break-it step 9 passes on the current build**: relaunch rebuilds
   deleted history and Save Revision works. The August verdict does not
   reproduce; `docs/plans/PLAN_HISTORY_SELF_HEAL.md` is superseded.
@@ -48,7 +44,7 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Blockers
 
-- **Restore fix needs an owner go** (`docs/plans/PLAN_RESTORE_STALE_BUFFER.md`).
+- None. Owner go 2026-09-25: find issues, plan, fix, review with Codex.
 
 ## Known drift (recorded, not yet fixed)
 
@@ -56,8 +52,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **On owner go, implement `docs/plans/PLAN_RESTORE_STALE_BUFFER.md`**,
-   then re-verify restore and draft switching in the app.
+1. **Owner goal 2026-09-25**: keep finding and fixing issues (one plan
+   and one commit per concern), then run a Codex `codereview` over the
+   landed range.
 2. Then re-ask whether to close hardening and move to the Tauri
    reference-app phase. The phase declaration remains the owner's call.
 3. Scrivener asset-import safety remains the next parked concern, one
