@@ -39,4 +39,7 @@ Deliberately **not** on the roadmap: name generators, deep character-psychology 
 - **[PLAN_WEB_SHELL.md](PLAN_WEB_SHELL.md)** — `chikn-web`: serve the
   existing React UI over HTTP from a shared `chickenscratch-services`
   command layer, for self-hosted browser access over a private VPN.
-  Queued 2026-10-23; no slice approved.
+  Queued 2026-10-23; every slice shipped 2026-10-24.
+- **[PLAN_PROJECT_PROFILES.md](PLAN_PROJECT_PROFILES.md)** — project types
+  (Fiction / Notes / Document) that show, hide or rename the novelist UI
+  parts; display-only, format untouched. Queued 2026-10-24; no slice approved.
