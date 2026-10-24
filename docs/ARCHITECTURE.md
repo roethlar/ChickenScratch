@@ -1,6 +1,6 @@
 # Architecture
 
-**Last verified:** commit `b1ee466` (2026-07-10)  
+**Last verified:** 2026-10-24 (services extraction, [ADR-007](adr/ADR-007-web-shell-shared-services.md))\
 **Governed by:** [`INVARIANTS.md`](INVARIANTS.md)
 
 ---
@@ -38,6 +38,10 @@ REMOVED (ADR-004; history in git):
   linux/ Qt frontend
 ```
 
+The Tauri shell (and the planned `chikn-web` shell, `docs/plans/PLAN_WEB_SHELL.md`)
+reach the engine through `crates/services` (`chickenscratch-services`), the
+shared command layer; the TUI and the converter call the engine directly.
+
 ## Crate map
 
 | Path | Crate / binary | Role |
@@ -45,10 +49,11 @@ REMOVED (ADR-004; history in git):
 | `crates/core/` | `chickenscratch-core` (ChickenEngine) | **Engine** — pure .chikn format, git on .chikn projects, compile from .chikn content. Converters (Scrivener etc.) live outside and use the engine. |
 | `crates/cli/` | `chikn-converter` | CLI: Scrivener → `.chikn` |
 | `crates/tui/` | `chikn` | Terminal UI over engine |
-| `src-tauri/` | `chickenscratch` | Tauri backend: thin commands → core + app services (settings, AI, keyring) |
+| `crates/services/` | `chickenscratch-services` | **App services** — the command layer every shell wraps: project, document, git, compile, import and search operations; per-project write locks and fresh permits; app settings; keyring; AI client. No UI framework dependency. |
+| `src-tauri/` | `chickenscratch` | Tauri desktop shell: one thin wrapper per service function (`State` extractors in, events out) plus the native Scrivener picker |
 | `ui/` | (npm package) | React frontend: TipTap editor, panels, dialogs |
 
-Cargo workspace: root `Cargo.toml` — members are `crates/core`, `crates/cli`, `crates/tui`, `src-tauri`.
+Cargo workspace: root `Cargo.toml` — members are `crates/core`, `crates/cli`, `crates/tui`, `crates/services`, `src-tauri`.
 
 ## What belongs in the engine vs the app
 
@@ -61,14 +66,21 @@ Cargo workspace: root `Cargo.toml` — members are `crates/core`, `crates/cli`, 
 - Scrivener `.scriv` conversion
 - Word diff for revision viewer (data layer)
 
-### Tauri backend (`src-tauri`)
+### App services (`crates/services`)
 
-- Expose engine operations as Tauri commands
+- One plain function per user-facing operation (the former Tauri command bodies)
 - App-global settings (`~/.config/chickenscratch/settings.json`)
 - Keyring for secrets (AI keys, remote tokens)
-- AI HTTP calls (not format)
-- Process locks for concurrent project writes
+- AI HTTP calls (not format); streamed output goes through the `AiStreamSink` trait
+- Per-project write locks and the fresh-permit boundary for every mutation
 - Does **not** duplicate reader/writer logic — imports `chickenscratch_core::...`
+- Depends on no UI framework ([ADR-007](adr/ADR-007-web-shell-shared-services.md))
+
+### Tauri backend (`src-tauri`)
+
+- Wraps each service function as a Tauri command: `State` extractors in, event emitter out
+- Native Scrivener folder picker (desktop-only)
+- Nothing else — no format logic, no settings, no git. Acceptance: `src-tauri/src` references no `chickenscratch_core` reader, writer, hierarchy or git *function*
 
 ### React UI (`ui/`)
 

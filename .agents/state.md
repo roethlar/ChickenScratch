@@ -13,8 +13,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   ("no direction change, just the next side quest. plan it, add it to the
   queue"). Plan: `docs/plans/PLAN_WEB_SHELL.md` — a `chikn-web` server
   that serves the existing React UI over HTTP from a shared
-  `chickenscratch-services` command layer. No slice is approved for code;
-  each needs its own go, slice 1 (services extraction) first.
+  `chickenscratch-services` command layer. **Owner 2026-10-24: "follow the
+  queue and get as much as you can done"** — the go for the plan's slices in
+  order, one commit each. Slice 1 (services extraction, ADR-007) landed
+  2026-10-24; progress per slice is on the plan's status line.
 - **Owner goal 2026-09-25: working app — find, plan, fix, Codex review.**
   Hands-on GUI testing found 13 issues; all fixed one commit each
   (`.agents/app-issues.md` is the tracker). Headline: Restore and draft
@@ -52,7 +54,14 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Known drift (recorded, not yet fixed)
 
-- None known.
+- **Tauri crate not compiled on magneto (Linux dev box, 2026-10-24).**
+  `webkit2gtk-4.1` / `javascriptcoregtk-4.1` are not installed, so
+  `cargo check -p chickenscratch` fails in the `javascriptcore-rs-sys` build
+  script before reaching our code. The slice-1 Tauri wrappers were
+  type-checked against a scratch stub of the `tauri` API (`State`,
+  `AppHandle`, `Emitter`, no-op `#[command]`) instead; CI's macOS runner is
+  the real check. Installing the WebKitGTK dev package is an owner call
+  (system change).
 
 ## Next
 
@@ -64,10 +73,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 2. Then re-ask whether to close hardening and move to the Tauri
    reference-app phase. The phase declaration remains the owner's call.
    Vault work remains paused.
-3. **Queued side quest: web shell** (`docs/plans/PLAN_WEB_SHELL.md`).
-   When the owner picks it up, propose slice 1 (extract
-   `chickenscratch-services`, pure refactor) and ask for its go separately
-   from the server slices.
+3. **Web shell side quest in progress** (`docs/plans/PLAN_WEB_SHELL.md`):
+   continue with the next unshipped slice on the plan's status line.
 
 ## Verification
 

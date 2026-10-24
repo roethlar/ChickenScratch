@@ -619,23 +619,15 @@ name = "chickenscratch"
 version = "1.0.0"
 dependencies = [
  "chickenscratch-core",
- "chikn-converter",
- "chrono",
- "dirs",
- "git2",
- "keyring",
+ "chickenscratch-services",
  "regex",
- "reqwest 0.12.28",
  "rfd 0.15.4",
  "serde",
  "serde_json",
- "serde_yaml",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-shell",
- "tempfile",
- "uuid",
 ]
 
 [[package]]
@@ -656,6 +648,25 @@ dependencies = [
  "thiserror 2.0.18",
  "uuid",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "chickenscratch-services"
+version = "1.0.0"
+dependencies = [
+ "chickenscratch-core",
+ "chikn-converter",
+ "chrono",
+ "dirs",
+ "git2",
+ "keyring",
+ "regex",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]

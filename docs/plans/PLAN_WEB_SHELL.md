@@ -3,8 +3,9 @@
 **Status:** Queued 2026-10-23 as an owner side quest. Owner wording: "no
 direction change, just the next side quest. plan it, add it to the queue".
 The active phase (`docs/CURRENT_PHASE.md`, Engine hardening) is unchanged.
-**No slice is approved for code.** Each slice below needs its own go, asked
-one at a time in chat and recorded on this line when given.
+Owner 2026-10-24: "follow the queue and get as much as you can done" —
+taken as the go for the queued slices, in order, one commit each.
+Progress: slice 1 (services extraction) landed 2026-10-24.
 
 **Owner request (quote):**
 > hi! I want to make a web app version of chickenscratch that I can access

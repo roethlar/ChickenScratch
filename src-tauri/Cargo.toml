@@ -10,31 +10,11 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 chickenscratch-core = { path = "../crates/core" }
-chikn-converter = { path = "../crates/cli" }
+chickenscratch-services = { path = "../crates/services" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-chrono = "0.4"
-uuid = { version = "1", features = ["v4"] }
-dirs = "6"
 regex = "1"
 rfd = "0.15"
-reqwest = { version = "0.12", features = ["json", "blocking"] }
-serde_yaml = "0.9.34"
-keyring = { version = "3.6.3", features = [
-  "apple-native",
-  "windows-native",
-  "linux-native-sync-persistent",
-  "crypto-rust",
-] }
-
-[dev-dependencies]
-# Re-declare core with the test-only fixture surface (feature unification
-# turns it on for this crate's tests without touching release builds).
-chickenscratch-core = { path = "../crates/core", features = ["test-support"] }
-tempfile = "3.27.0"
-# Same version as chickenscratch-core: the command-boundary tests inspect
-# repository state (MERGE_HEAD, merge-commit parents) directly.
-git2 = "0.19"

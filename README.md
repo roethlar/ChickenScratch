@@ -77,7 +77,8 @@ ChickenScratch/
 ├── crates/core/        # Rust library: .chikn format, Scrivener conversion, git
 ├── crates/cli/         # chikn-converter binary
 ├── crates/tui/         # Terminal UI (Ratatui)
-├── src-tauri/          # Tauri app backend (commands, settings, AI)
+├── crates/services/    # Shared command layer (settings, AI, write permits) for every shell
+├── src-tauri/          # Tauri desktop shell (thin wrappers over crates/services)
 ├── ui/                 # React + TypeScript + TipTap frontend
 └── docs/               # Format spec, design docs, user guide
 ```
