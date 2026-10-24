@@ -65,6 +65,24 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Known drift (recorded, not yet fixed)
 
+- **CI red on the engine's process helper after the 2026-10-24 push** (GitHub
+  Validation run `40071873531`; the previous green was `a2d8a39` on rustc
+  1.98.0, 2026-08-30 image). Core is untouched by the web-shell and profile
+  work and `Cargo.lock` bumped no versions; what changed is the toolchain
+  (stable is now rustc 1.99.1). Two failures: (1) Windows job: linking the
+  core test binary fails with 11 unresolved `advapi32` symbols (`Reg*`,
+  `Crypt*`, `GetNamedSecurityInfoW`) from `libgit2-sys 0.17.0+1.8.1` —
+  the newer std no longer links advapi32 implicitly; fix candidates: a core
+  `build.rs` emitting `cargo:rustc-link-lib=advapi32` on Windows, or
+  upgrading `git2` to 0.21 / `libgit2-sys` 0.18. (2) macOS job:
+  `utils::process::tests::process_helper_caps_combined_stdout_and_stderr`
+  gets `EPERM` from `kill(-pgid, SIGKILL)` while the leader still runs
+  (`process.rs:1066`); needs investigation on macOS 26. Both are
+  hardening-phase engine items awaiting an owner go.
+- **Desktop wrappers verified by CI**: Tauri Bundles run `40071873562`
+  built the Tauri app (macOS) at `3a8db4e`, so the slice-1 wrappers compile
+  with the real `tauri` crate; the local WebKitGTK gap below no longer
+  blocks anything.
 - **Tauri crate not compiled on magneto (Linux dev box, 2026-10-24).**
   `webkit2gtk-4.1` / `javascriptcoregtk-4.1` are not installed, so
   `cargo check -p chickenscratch` fails in the `javascriptcore-rs-sys` build
@@ -84,11 +102,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **Pushed to `origin` (magneto Gitea) 2026-10-24** on the owner's "push when
-   done". No GitHub remote is configured on this machine, so the GitHub
-   Validation workflow has not run; the Tauri wrappers are still unverified on
-   a machine with WebKitGTK until a push reaches GitHub or the owner builds
-   the desktop app. Remaining known gaps, unapproved: Tauri
+1. **CI red for pre-existing engine reasons** (Known drift): propose to the
+   owner the Windows `advapi32` link fix and a macOS look at the process-group
+   kill; each is one hardening slice needing its own go. Remaining known gaps, unapproved: Tauri
    `import_scrivener` still ignores a failed post-import token acquisition
    (not reachable after ar-1); welcome-screen errors keep a
    developer-ish "Invalid project:" prefix.
@@ -112,8 +128,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   tests). The Tauri crate did not compile on this box (Known drift); its
   wrappers were type-checked against the `tauri` stub at `c3e171d`. Live
   smoke of `chikn-web` (page, auth, create/list project, embedded assets)
-  passed. Pushed to origin (Gitea) 2026-10-24; GitHub CI not reached (no
-  GitHub remote here).
+  passed. Pushed 2026-10-24 to `origin` (Gitea) and, after the owner added
+  the `github` remote, to GitHub: Tauri Bundles `40071873562` succeeded;
+  Validation `40071873531` failed in two pre-existing core process-helper
+  tests under rustc 1.99.1 (Known drift).
 - Full declared suite plus the CI cross-frontend harness ran green
   locally 2026-09-25 **as of `cd48252`**; final GUI smoke (restore holds
   on disk, red close button closes) on that build. Desktop GUI checks of each fix
