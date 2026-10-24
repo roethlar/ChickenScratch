@@ -68,11 +68,20 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   `AppHandle`, `Emitter`, no-op `#[command]`) instead; CI's macOS runner is
   the real check. Installing the WebKitGTK dev package is an owner call
   (system change).
+- **Flaky core test (observed once, 2026-10-24):**
+  `core::git::tests::failed_restore_after_tree_mutation_invalidates_outstanding_tokens`
+  failed at `crates/core/src/core/git.rs:2069` in one full-suite run and
+  passed on an immediate rerun and in four other runs the same day. The
+  engine was not touched by the web-shell work. Assumption (unverified): the
+  test flips the process-wide `failpoints::AFTER_TREE_MUTATION` flag, which
+  another restore test running in parallel can observe. Hardening-phase item;
+  needs its own go.
 
 ## Next
 
-1. **Owner: push** the session's commits when ready (`.agents/push-policy.md`;
-   CI has not seen them). Remaining known gaps, unapproved: Tauri
+1. **Owner: push** the 12 web-shell commits (`bb6fa82..c3e171d`) when ready
+   (`.agents/push-policy.md`; CI has not seen them and is the first real
+   compile of the Tauri wrappers). Remaining known gaps, unapproved: Tauri
    `import_scrivener` still ignores a failed post-import token acquisition
    (not reachable after ar-1); welcome-screen errors keep a
    developer-ish "Invalid project:" prefix.
@@ -87,6 +96,13 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section.
+- **2026-10-24 as of `c3e171d`** (web shell, 12 unpushed commits): fmt, clippy
+  `-D warnings` and tests green for core, services, web, tui, converter;
+  release-metadata script; cross-frontend harness; UI lint/build/test (87
+  tests). The Tauri crate did not compile on this box (Known drift); its
+  wrappers were type-checked against the `tauri` stub at `c3e171d`. Live
+  smoke of `chikn-web` (page, auth, create/list project, embedded assets)
+  passed. CI has not seen these commits.
 - Full declared suite plus the CI cross-frontend harness ran green
   locally 2026-09-25 **as of `cd48252`**; final GUI smoke (restore holds
   on disk, red close button closes) on that build. Desktop GUI checks of each fix
