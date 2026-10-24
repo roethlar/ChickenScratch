@@ -65,20 +65,20 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Known drift (recorded, not yet fixed)
 
-- **CI red on the engine's process helper after the 2026-10-24 push** (GitHub
-  Validation run `40071873531`; the previous green was `a2d8a39` on rustc
-  1.98.0, 2026-08-30 image). Core is untouched by the web-shell and profile
-  work and `Cargo.lock` bumped no versions; what changed is the toolchain
-  (stable is now rustc 1.99.1). Two failures: (1) Windows job: linking the
-  core test binary fails with 11 unresolved `advapi32` symbols (`Reg*`,
-  `Crypt*`, `GetNamedSecurityInfoW`) from `libgit2-sys 0.17.0+1.8.1` —
-  the newer std no longer links advapi32 implicitly; fix candidates: a core
-  `build.rs` emitting `cargo:rustc-link-lib=advapi32` on Windows, or
-  upgrading `git2` to 0.21 / `libgit2-sys` 0.18. (2) macOS job:
-  `utils::process::tests::process_helper_caps_combined_stdout_and_stderr`
-  gets `EPERM` from `kill(-pgid, SIGKILL)` while the leader still runs
-  (`process.rs:1066`); needs investigation on macOS 26. Both are
-  hardening-phase engine items awaiting an owner go.
+- **CI red under rustc 1.99.1 — fixed locally, not yet proven on CI**
+  (GitHub Validation run `40071873531` at `3a8db4e`; previous green was
+  `a2d8a39` on rustc 1.98.0). Owner go 2026-10-24 "fix ci"; plan
+  `docs/plans/PLAN_CI_RUST_199.md`. (1) Windows: `libgit2-sys 0.17` relied
+  on std linking `advapi32.lib`; std 1.99 binds that DLL via raw-dylib, so
+  the core test runner failed to link. Fix `3f9024b`: `crates/core/build.rs`
+  emits `rustc-link-lib=advapi32` on Windows. Alternative left open:
+  upgrade `git2` 0.19 → 0.21. (2) macOS: XNU `killpg` returns `EPERM` for a
+  group with no live member and marks the leader exited before it is
+  reapable; `kill_tree` accepted `EPERM` only when `try_wait` already saw the
+  exit, losing the race in `process_helper_caps_combined_stdout_and_stderr`.
+  Fix `818eb2a`: on `EPERM`, poll `try_wait` up to 500 ms before believing
+  the error. Neither fix is exercisable on the Linux box (both branches are
+  inert here); the GitHub runners are the proof. **Push needs its own go.**
 - **Desktop wrappers verified by CI**: Tauri Bundles run `40071873562`
   built the Tauri app (macOS) at `3a8db4e`, so the slice-1 wrappers compile
   with the real `tauri` crate; the local WebKitGTK gap below no longer
@@ -102,9 +102,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **CI red for pre-existing engine reasons** (Known drift): propose to the
-   owner the Windows `advapi32` link fix and a macOS look at the process-group
-   kill; each is one hardening slice needing its own go. Remaining known gaps, unapproved: Tauri
+1. **Push the two CI fixes and watch Validation** (`3f9024b`, `818eb2a`;
+   Known drift): push needs an owner go (`.agents/push-policy.md`); then
+   check the Windows and macOS Validation jobs. If macOS still fails, the
+   next suspect is the leader-exit grace window length. Remaining known gaps, unapproved: Tauri
    `import_scrivener` still ignores a failed post-import token acquisition
    (not reachable after ar-1); welcome-screen errors keep a
    developer-ish "Invalid project:" prefix.
@@ -122,6 +123,12 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section.
+- **2026-10-24 as of `818eb2a`** (two CI fixes, unpushed): fmt, clippy
+  `-D warnings` and tests green for core, services, web, tui, converter
+  (137 core tests, the once-flaky restore test included this run);
+  release-metadata script; UI lint/build/test (98 tests). Tauri crate not
+  compiled on this box (Known drift). The Windows link line and the Darwin
+  `EPERM` branch cannot fire on Linux, so CI is the only proof for both.
 - **2026-10-24 as of `c3e171d`** (web shell, 12 unpushed commits): fmt, clippy
   `-D warnings` and tests green for core, services, web, tui, converter;
   release-metadata script; cross-frontend harness; UI lint/build/test (87

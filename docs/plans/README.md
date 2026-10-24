@@ -42,4 +42,9 @@ Deliberately **not** on the roadmap: name generators, deep character-psychology 
   Queued 2026-10-23; every slice shipped 2026-10-24.
 - **[PLAN_PROJECT_PROFILES.md](PLAN_PROJECT_PROFILES.md)** — project types
   (Fiction / Notes / Document) that show, hide or rename the novelist UI
-  parts; display-only, format untouched. Queued 2026-10-24; no slice approved.
+  parts; display-only, format untouched. Queued 2026-10-24; all four slices
+  shipped the same day.
+- **[PLAN_CI_RUST_199.md](PLAN_CI_RUST_199.md)** — CI green again under
+  rustc 1.99: Windows `advapi32` link for `libgit2-sys`, macOS `killpg`
+  EPERM race in the process helper. Owner go "fix ci" 2026-10-24; both
+  commits landed, awaiting push.
