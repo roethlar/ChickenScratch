@@ -6,7 +6,8 @@ import { isWeb, getWebToken, setWebEventsAvailable, AUTH_REQUIRED_EVENT } from "
 import { listWebProjects, getWebInfo, takeOverProject, type WebProject } from "../../commands/web";
 import { useProjectStore } from "../../stores/projectStore";
 import { useSettingsStore } from "../../stores/settingsStore";
-import { pickScrivFolder } from "../../commands/project";
+import { pickScrivFolder, updateProjectMetadata } from "../../commands/project";
+import { NewProjectDialog, type NewProjectChoice } from "./NewProjectDialog";
 import {
   getRecentProjects,
   checkPandoc,
@@ -24,6 +25,8 @@ export function Welcome() {
   const error = useProjectStore((s) => s.error);
   const clearError = useProjectStore((s) => s.clearError);
   const [busy, setBusy] = useState(false);
+  /** Pending New Project: the desktop path already knows where (from the save dialog). */
+  const [newProject, setNewProject] = useState<{ name: string; parent: string } | "ask-name" | null>(null);
   const [recent, setRecent] = useState<RecentProject[]>([]);
   const [pandocWarning, setPandocWarning] = useState<string | null>(null);
 
@@ -87,30 +90,70 @@ export function Welcome() {
       defaultPath: "Untitled.chikn",
     });
     if (dir) {
-      setBusy(true);
       const normalized = dir.replace(/\\/g, "/");
       const name = normalized.split("/").pop()?.replace(".chikn", "") || "Untitled";
       const parent = normalized.substring(0, normalized.lastIndexOf("/"));
-      await createProject(name, parent);
-      setBusy(false);
+      setNewProject({ name, parent });
     }
   };
 
-  const handleCreateWeb = async () => {
-    const name = await dialogPrompt("Name for the new project", "Notes");
-    if (name === null) return;
-    if (!isValidProjectName(name)) {
-      toastError("Use a plain name: no slashes, and not starting with a dot.");
-      return;
-    }
+  const handleCreateWeb = () => {
     if (!webRoot) {
       toastError("The server has not reported its projects folder yet. Try again in a moment.");
       return;
     }
+    setNewProject("ask-name");
+  };
+
+  /** Stamp the chosen type on the project the store just created. */
+  const applyProjectType = async (projectType: string) => {
+    const created = useProjectStore.getState().project;
+    if (!created) return;
+    const meta = created.metadata ?? {};
+    try {
+      const updated = await updateProjectMetadata({
+        projectPath: created.path,
+        title: meta.title ?? null,
+        author: meta.author ?? null,
+        projectType,
+        genre: meta.genre ?? null,
+        theme: meta.theme ?? null,
+        summary: meta.summary ?? null,
+        sessionTarget: meta.session_target ?? null,
+      });
+      useProjectStore.getState().setProject(updated);
+    } catch (e) {
+      toastError(`Project created, but its type could not be saved: ${e}`);
+    }
+  };
+
+  const handleNewProjectChoice = async (choice: NewProjectChoice) => {
+    const pending = newProject;
+    setNewProject(null);
+    if (!pending) return;
+    let name: string;
+    let parent: string;
+    if (pending === "ask-name") {
+      if (!choice.name || !isValidProjectName(choice.name)) {
+        toastError("Use a plain name: no slashes, and not starting with a dot.");
+        return;
+      }
+      if (!webRoot) return;
+      name = choice.name.trim();
+      parent = webRoot;
+    } else {
+      name = pending.name;
+      parent = pending.parent;
+    }
     setBusy(true);
-    await createProject(name.trim(), webRoot);
-    const loaded = await fetchWeb();
-    if (loaded) setWebProjects(loaded[1]);
+    await createProject(name, parent);
+    if (useProjectStore.getState().project) {
+      await applyProjectType(choice.projectType);
+    }
+    if (web) {
+      const loaded = await fetchWeb();
+      if (loaded) setWebProjects(loaded[1]);
+    }
     setBusy(false);
   };
 
@@ -253,6 +296,13 @@ export function Welcome() {
           </div>
         )}
 
+        <NewProjectDialog
+          open={newProject !== null}
+          askName={newProject === "ask-name"}
+          defaultProfile={web ? "notes" : "fiction"}
+          onSubmit={handleNewProjectChoice}
+          onCancel={() => setNewProject(null)}
+        />
         {web && needsToken ? (
           <WebTokenGate onDone={onTokenEntered} />
         ) : web ? (

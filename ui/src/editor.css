@@ -3875,3 +3875,57 @@
 .lease-banner-text {
   flex: 1;
 }
+
+/* ── New Project dialog: type choice ── */
+.new-project-dialog {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  width: min(30rem, 92vw);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+.new-project-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 1rem 1rem;
+}
+.new-project-types {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.new-project-types legend {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  padding: 0;
+  margin-bottom: 0.4rem;
+}
+.new-project-type {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.6rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.new-project-type.selected {
+  border-color: var(--color-accent);
+}
+.new-project-type input {
+  grid-row: span 2;
+}
+.new-project-type-label {
+  font-weight: 600;
+}
+.new-project-type-hint {
+  grid-column: 2;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}

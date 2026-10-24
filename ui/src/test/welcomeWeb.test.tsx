@@ -37,7 +37,13 @@ vi.mock("../platform", () => ({
   pickSaveFile: vi.fn(async () => null),
 }));
 
-vi.mock("../commands/project", () => ({ pickScrivFolder: vi.fn(async () => null) }));
+const updateMetaMock = vi.hoisted(() =>
+  vi.fn(async (args: { projectType: string | null }) => ({ path: "/srv/root/Scratch.chikn", metadata: { project_type: args.projectType } }))
+);
+vi.mock("../commands/project", () => ({
+  pickScrivFolder: vi.fn(async () => null),
+  updateProjectMetadata: updateMetaMock,
+}));
 const pickServerFolderMock = vi.hoisted(() => vi.fn(async () => "/srv/root/Research/Draft.scriv"));
 vi.mock("../components/shared/folderPickerRequest", () => ({ pickServerFolder: pickServerFolderMock }));
 vi.mock("../commands/settings", () => ({
@@ -52,23 +58,31 @@ const createProjectMock = vi.hoisted(() =>
 const importScrivenerMock = vi.hoisted(() =>
   vi.fn<(scriv: string, out: string) => Promise<void>>(async () => {})
 );
+const setProjectMock = vi.hoisted(() => vi.fn());
 const storeState = vi.hoisted(() => ({
   openProject: openProjectMock,
   createProject: createProjectMock,
   importScrivener: importScrivenerMock,
   error: null as string | null,
   clearError: vi.fn(),
+  project: null as null | { path: string; metadata: Record<string, unknown> },
+  setProject: setProjectMock,
 }));
-vi.mock("../stores/projectStore", () => ({
-  useProjectStore: (sel: (s: typeof storeState) => unknown) => sel(storeState),
-}));
+vi.mock("../stores/projectStore", () => {
+  const useProjectStore = (sel: (s: typeof storeState) => unknown) => sel(storeState);
+  useProjectStore.getState = () => storeState;
+  return { useProjectStore };
+});
 const loadSettingsMock = vi.hoisted(() => vi.fn());
 vi.mock("../stores/settingsStore", () => ({
   useSettingsStore: { getState: () => ({ loadSettings: loadSettingsMock }) },
 }));
 
 const promptMock = vi.hoisted(() => vi.fn(async () => "Scratch"));
-vi.mock("../components/shared/Dialog", () => ({ dialogPrompt: promptMock }));
+vi.mock("../components/shared/Dialog", () => ({
+  dialogPrompt: promptMock,
+  useModalFocusTrap: () => ({ dialogRef: { current: null }, onDialogKeyDown: () => {} }),
+}));
 const toastErrorMock = vi.hoisted(() => vi.fn());
 vi.mock("../components/shared/Toast", () => ({ toastError: toastErrorMock }));
 
@@ -107,19 +121,51 @@ describe("Welcome in the browser shell", () => {
     expect(pickServerFolderMock).toHaveBeenCalledWith(expect.stringContaining(".scriv"), { suffix: ".scriv" });
   });
 
-  it("creates a project under the server root from just a name", async () => {
+  it("creates a project under the server root from a name and a type (Notes by default)", async () => {
+    createProjectMock.mockImplementationOnce(async () => {
+      storeState.project = { path: "/srv/root/Scratch.chikn", metadata: {} };
+    });
     render(<Welcome />);
     await screen.findByText("Notes");
     fireEvent.click(screen.getByText("New Project"));
+    const nameField = await screen.findByLabelText("Name");
+    expect((screen.getByRole("radio", { name: /^Notes/ }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.change(nameField, { target: { value: "Scratch" } });
+    fireEvent.click(screen.getByText("Create"));
+
     await waitFor(() => expect(createProjectMock).toHaveBeenCalledWith("Scratch", "/srv/root"));
-    expect(listProjectsMock).toHaveBeenCalledTimes(2);
+    await waitFor(() =>
+      expect(updateMetaMock).toHaveBeenCalledWith(
+        expect.objectContaining({ projectPath: "/srv/root/Scratch.chikn", projectType: "Notes" })
+      )
+    );
+    expect(setProjectMock).toHaveBeenCalled();
+    await waitFor(() => expect(listProjectsMock).toHaveBeenCalledTimes(2));
+    storeState.project = null;
+  });
+
+  it("stores the fiction type when Fiction is chosen", async () => {
+    createProjectMock.mockImplementationOnce(async () => {
+      storeState.project = { path: "/srv/root/Novel.chikn", metadata: {} };
+    });
+    render(<Welcome />);
+    await screen.findByText("Notes");
+    fireEvent.click(screen.getByText("New Project"));
+    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Novel" } });
+    fireEvent.click(screen.getByRole("radio", { name: /^Fiction/ }));
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() =>
+      expect(updateMetaMock).toHaveBeenCalledWith(expect.objectContaining({ projectType: "Novel" }))
+    );
+    storeState.project = null;
   });
 
   it("refuses a name that is a path and says why", async () => {
-    promptMock.mockResolvedValueOnce("../escape");
     render(<Welcome />);
     await screen.findByText("Notes");
     fireEvent.click(screen.getByText("New Project"));
+    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "../escape" } });
+    fireEvent.click(screen.getByText("Create"));
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalled());
     expect(createProjectMock).not.toHaveBeenCalled();
   });

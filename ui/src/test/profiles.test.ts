@@ -79,4 +79,3 @@ describe("applying a profile", () => {
     expect(visibleTemplates(backend, PROFILES.document).map((t) => t.id)).toEqual(["outline"]);
   });
 });
-
