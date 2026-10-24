@@ -420,6 +420,34 @@ async fn export_validates_format_and_reports_a_missing_pandoc_plainly() {
     )
     .await;
     let project_path = project["path"].as_str().unwrap().to_string();
+    // Something to compile: one document inside the Manuscript folder.
+    let manuscript_id = project["hierarchy"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["name"] == json!("Manuscript"))
+        .and_then(|n| n["id"].as_str())
+        .expect("manuscript folder")
+        .to_string();
+    let with_doc = ok(
+        &h.app,
+        "create_document",
+        json!({ "projectPath": project_path, "name": "Opening", "parentId": manuscript_id }),
+    )
+    .await;
+    let doc_id = with_doc["documents"]
+        .as_object()
+        .unwrap()
+        .values()
+        .find(|d| d["name"] == json!("Opening"))
+        .map(|d| d["id"].as_str().unwrap().to_string())
+        .unwrap();
+    ok(
+        &h.app,
+        "update_document_content",
+        json!({ "projectPath": project_path, "docId": doc_id, "content": "Export me." }),
+    )
+    .await;
 
     let (status, body, _) = call(
         &h.app,
