@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { FolderOpen, FilePlus, FileDown, Clock, AlertTriangle, ExternalLink } from "lucide-react";
 import { openExternal, pickFolder, pickSaveFile } from "../../platform";
+import { pickServerFolder } from "../shared/folderPickerRequest";
 import { isWeb, getWebToken, AUTH_REQUIRED_EVENT } from "../../commands/transport";
 import { listWebProjects, getWebInfo, type WebProject } from "../../commands/web";
 import { useProjectStore } from "../../stores/projectStore";
@@ -112,6 +113,30 @@ export function Welcome() {
     setBusy(false);
   };
 
+  const handleImportWeb = async () => {
+    const scrivPath = await pickServerFolder(
+      "Choose the .scriv folder (copy it under the projects folder first)",
+      { suffix: ".scriv" }
+    );
+    if (!scrivPath) return;
+    const stem = scrivPath.replace(/\\/g, "/").split("/").pop()?.replace(/\.scriv$/i, "") || "Imported";
+    const name = await dialogPrompt("Name for the imported project", stem);
+    if (name === null) return;
+    if (!isValidProjectName(name)) {
+      toastError("Use a plain name: no slashes, and not starting with a dot.");
+      return;
+    }
+    if (!webRoot) {
+      toastError("The server has not reported its projects folder yet. Try again in a moment.");
+      return;
+    }
+    setBusy(true);
+    await importScrivener(scrivPath, `${webRoot.replace(/\/$/, "")}/${name.trim()}.chikn`);
+    const loaded = await fetchWeb();
+    if (loaded) setWebProjects(loaded[1]);
+    setBusy(false);
+  };
+
   const handleImport = async () => {
     const scrivPath = await pickScrivFolder();
     if (!scrivPath) return;
@@ -209,6 +234,10 @@ export function Welcome() {
               <button className="welcome-btn" onClick={handleCreateWeb} disabled={busy}>
                 <FilePlus size={20} />
                 <span>New Project</span>
+              </button>
+              <button className="welcome-btn" onClick={handleImportWeb} disabled={busy}>
+                <FileDown size={20} />
+                <span>Import Scrivener</span>
               </button>
             </div>
             <div className="welcome-recent">

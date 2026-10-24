@@ -35,6 +35,8 @@ vi.mock("../platform", () => ({
 }));
 
 vi.mock("../commands/project", () => ({ pickScrivFolder: vi.fn(async () => null) }));
+const pickServerFolderMock = vi.hoisted(() => vi.fn(async () => "/srv/root/Research/Draft.scriv"));
+vi.mock("../components/shared/folderPickerRequest", () => ({ pickServerFolder: pickServerFolderMock }));
 vi.mock("../commands/settings", () => ({
   getRecentProjects: vi.fn(async () => [{ name: "Old", path: "/srv/root/sub/Old.chikn" }]),
   checkPandoc: vi.fn(async () => "pandoc 3"),
@@ -44,10 +46,13 @@ const openProjectMock = vi.hoisted(() => vi.fn<(path: string) => Promise<void>>(
 const createProjectMock = vi.hoisted(() =>
   vi.fn<(name: string, path: string) => Promise<void>>(async () => {})
 );
+const importScrivenerMock = vi.hoisted(() =>
+  vi.fn<(scriv: string, out: string) => Promise<void>>(async () => {})
+);
 const storeState = vi.hoisted(() => ({
   openProject: openProjectMock,
   createProject: createProjectMock,
-  importScrivener: vi.fn(),
+  importScrivener: importScrivenerMock,
   error: null as string | null,
   clearError: vi.fn(),
 }));
@@ -85,12 +90,18 @@ describe("Welcome in the browser shell", () => {
     await waitFor(() => expect(openProjectMock).toHaveBeenCalledWith("/srv/root/Notes.chikn"));
   });
 
-  it("hides the desktop-only buttons", async () => {
+  it("hides the native Open Project button and imports Scrivener through the server picker", async () => {
+    promptMock.mockResolvedValueOnce("Draft");
     render(<Welcome />);
     await screen.findByText("Notes");
-    expect(screen.queryByText("Import Scrivener")).toBeNull();
     expect(screen.queryByText("Open Project")).toBeNull();
     expect(screen.getByText("New Project")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Import Scrivener"));
+    await waitFor(() =>
+      expect(importScrivenerMock).toHaveBeenCalledWith("/srv/root/Research/Draft.scriv", "/srv/root/Draft.chikn")
+    );
+    expect(pickServerFolderMock).toHaveBeenCalledWith(expect.stringContaining(".scriv"), { suffix: ".scriv" });
   });
 
   it("creates a project under the server root from just a name", async () => {
