@@ -447,3 +447,94 @@ async fn export_validates_format_and_reports_a_missing_pandoc_plainly() {
     assert!(!h.root.join("Scratch Notes.html").exists());
     assert!(!Path::new(&project_path).join("Scratch Notes.html").exists());
 }
+
+fn multipart(fields: &[(&str, Option<&str>, &[u8])]) -> (String, Vec<u8>) {
+    let boundary = "----chiknboundary7MA4YWxkTrZu0gW";
+    let mut body = Vec::new();
+    for (name, file_name, data) in fields {
+        body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+        match file_name {
+            Some(f) => body.extend_from_slice(
+                format!("Content-Disposition: form-data; name=\"{name}\"; filename=\"{f}\"\r\nContent-Type: application/octet-stream\r\n\r\n").as_bytes(),
+            ),
+            None => body.extend_from_slice(format!("Content-Disposition: form-data; name=\"{name}\"\r\n\r\n").as_bytes()),
+        }
+        body.extend_from_slice(data);
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
+#[tokio::test]
+async fn import_upload_adds_the_file_as_a_document_and_leaves_no_copy_behind() {
+    let h = harness();
+    let project = ok(
+        &h.app,
+        "create_project",
+        json!({ "name": "Scratch", "path": path_str(&h.root) }),
+    )
+    .await;
+    let project_path = project["path"].as_str().unwrap().to_string();
+
+    let (ct, body) = multipart(&[
+        ("projectPath", None, project_path.as_bytes()),
+        ("parentId", None, b""),
+        (
+            "file",
+            Some("../../Shopping list.md"),
+            b"# Shopping\n\n- eggs\n",
+        ),
+    ]);
+    let (status, result, _) = call(
+        &h.app,
+        Request::post("/api/import-upload")
+            .header(header::CONTENT_TYPE, ct)
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .body(Body::from(body))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    let doc = result["documents"]
+        .as_object()
+        .unwrap()
+        .values()
+        .find(|d| d["name"] == json!("Shopping list"))
+        .expect("imported document");
+    assert_eq!(doc["content"], json!("# Shopping\n\n- eggs\n"));
+    assert!(doc["path"].as_str().unwrap().starts_with("manuscript/"));
+    // The upload was staged outside the root and is gone.
+    assert!(!h.root.join("Shopping list.md").exists());
+    assert!(!Path::new(&project_path).join("Shopping list.md").exists());
+
+    // Outside the root: refused, nothing imported.
+    let (ct, body) = multipart(&[
+        ("projectPath", None, path_str(&h.outside).as_bytes()),
+        ("file", Some("x.md"), b"x"),
+    ]);
+    let (status, _, _) = call(
+        &h.app,
+        Request::post("/api/import-upload")
+            .header(header::CONTENT_TYPE, ct)
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .body(Body::from(body))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Missing file: a plain 400.
+    let (ct, body) = multipart(&[("projectPath", None, project_path.as_bytes())]);
+    let (status, msg, _) = call(
+        &h.app,
+        Request::post("/api/import-upload")
+            .header(header::CONTENT_TYPE, ct)
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .body(Body::from(body))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(msg, json!("Invalid upload: missing file"));
+}

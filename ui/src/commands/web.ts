@@ -4,6 +4,7 @@
  * live under its root and where that root is.
  */
 import { webFetch, webGet } from "./transport";
+import type { Project } from "../types";
 
 export interface WebProject {
   name: string;
@@ -64,4 +65,21 @@ export function downloadBlob(blob: Blob, fileName: string): void {
   anchor.remove();
   // Give the browser a tick to start the download before revoking.
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * Import a file chosen in the browser. The server stages it in a temporary
+ * folder, runs the ordinary import, and deletes the staging copy.
+ */
+export async function importUpload(
+  projectPath: string,
+  file: File,
+  parentId?: string
+): Promise<Project> {
+  const form = new FormData();
+  form.append("projectPath", projectPath);
+  if (parentId) form.append("parentId", parentId);
+  form.append("file", file, file.name);
+  const res = await webFetch("/api/import-upload", { method: "POST", body: form });
+  return (await res.json()) as Project;
 }

@@ -16,6 +16,7 @@ pub mod gate;
 pub mod projects;
 pub mod state;
 pub mod static_ui;
+pub mod upload;
 
 pub use app::build_router;
 pub use gate::{Gate, GateError, PathArg};

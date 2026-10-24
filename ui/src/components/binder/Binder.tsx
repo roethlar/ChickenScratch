@@ -22,8 +22,9 @@ import { useProjectStore, type FlowDoc } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
 import { importFile } from "../../commands/io";
 import { dialogPrompt, dialogConfirm, useModalFocusTrap } from "../shared/Dialog";
-import { pickOpenFile, WEB_NOT_AVAILABLE } from "../../platform";
+import { pickOpenFile, pickBrowserFile } from "../../platform";
 import { isWeb } from "../../commands/transport";
+import { importUpload } from "../../commands/web";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { listTemplates, createFromTemplate, type Template } from "../../commands/templates";
 import { DragProvider, useDrag } from "./DragContext";
@@ -407,18 +408,32 @@ function BinderInner() {
   const handleImportFile = useCallback(
     async (parentId?: string) => {
       if (!projectInfo) return;
+      const supported = [
+        "docx", "odt", "rtf", "epub", "md", "markdown", "txt", "html", "htm",
+        "latex", "tex", "rst", "org", "textile", "fb2",
+      ];
       if (isWeb()) {
-        toastError(WEB_NOT_AVAILABLE);
+        // Browser shell: the file comes from this device and is uploaded;
+        // the server stages it outside the projects root and imports it.
+        const file = await pickBrowserFile(supported.map((ext) => `.${ext}`).join(","));
+        if (!file) {
+          closeMenu();
+          return;
+        }
+        try {
+          const updated = await importUpload(projectInfo.path, file, parentId);
+          setProject(updated);
+          toastSuccess("File imported");
+        } catch (e) {
+          toastError(`Import failed: ${e}`);
+        }
         closeMenu();
         return;
       }
       const filePath = await pickOpenFile({
         title: "Import File",
         filters: [
-          { name: "All Supported", extensions: [
-            "docx", "odt", "rtf", "epub", "md", "markdown", "txt", "html", "htm",
-            "latex", "tex", "rst", "org", "textile", "fb2",
-          ]},
+          { name: "All Supported", extensions: supported },
           { name: "Word", extensions: ["docx"] },
           { name: "Markdown", extensions: ["md", "markdown", "txt"] },
           { name: "HTML", extensions: ["html", "htm"] },

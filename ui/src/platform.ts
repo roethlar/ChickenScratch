@@ -117,3 +117,24 @@ export function registerCloseHandler(
   window.addEventListener("beforeunload", handler);
   return () => window.removeEventListener("beforeunload", handler);
 }
+
+/**
+ * Browser-side file chooser for the web shell: the file itself comes back
+ * (to be uploaded), not a server path. Resolves null when the user cancels.
+ */
+export function pickBrowserFile(accept: string): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.style.display = "none";
+    const finish = (file: File | null) => {
+      input.remove();
+      resolve(file);
+    };
+    input.addEventListener("change", () => finish(input.files?.[0] ?? null), { once: true });
+    input.addEventListener("cancel", () => finish(null), { once: true });
+    document.body.appendChild(input);
+    input.click();
+  });
+}

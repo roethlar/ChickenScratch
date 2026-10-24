@@ -9,7 +9,7 @@ Progress: slices 1 (services extraction), 2 (frontend transport and platform
 seams), 3a (`chikn-web` server: dispatch, auth, gate, static UI) and 3b (web
 Welcome: server project list, create by name, token gate) landed 2026-10-24.
 The owner-usable milestone is reached: edit, save, revisions from a browser.
-Slice 4a (export as download) landed 2026-10-24.
+Slices 4a (export as download) and 4b (import by upload) landed 2026-10-24.
 
 **Owner request (quote):**
 > hi! I want to make a web app version of chickenscratch that I can access

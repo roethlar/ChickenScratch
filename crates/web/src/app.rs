@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
+    extract::DefaultBodyLimit,
     http::StatusCode,
     middleware,
     routing::{get, post},
@@ -8,7 +9,10 @@ use axum::{
 };
 use tower_http::trace::TraceLayer;
 
-use crate::{auth, commands, export, projects, state::AppState, static_ui};
+use crate::{auth, commands, export, projects, state::AppState, static_ui, upload};
+
+/// 50 MiB: the same cap the desktop's bounded Pandoc runs use.
+pub const MAX_BODY_BYTES: usize = 50 * 1024 * 1024;
 
 async fn no_events() -> (StatusCode, Json<&'static str>) {
     (
@@ -25,11 +29,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/projects", get(projects::list))
         .route("/info", get(projects::info))
         .route("/export", post(export::export))
+        .route("/import-upload", post(upload::import_upload))
         .route("/events", get(no_events))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_token,
-        ));
+        ))
+        // Whole projects travel in one body (save_project) and uploads
+        // can be large documents; axum's 2 MiB default is too small.
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES));
 
     let [csp, nosniff, referrer] = static_ui::security_headers();
 
