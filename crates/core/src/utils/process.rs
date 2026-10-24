@@ -323,18 +323,40 @@ mod platform {
             let err = io::Error::last_os_error();
             match err.raw_os_error() {
                 Some(libc::ESRCH) => Ok(()),
-                // Darwin quirk: signaling a process group whose leader has
-                // already exited but is not yet reaped (a zombie) can fail
-                // with EPERM even for our own child. When the leader is
-                // confirmed exited, the group is dead or dying and the
-                // caller's cap/timeout verdict must not be masked by this
-                // kill error. EPERM with a still-running leader remains an
-                // error.
-                Some(libc::EPERM) if matches!(self.child.try_wait(), Ok(Some(_))) => Ok(()),
+                // Darwin quirk: `kill(-pgid)` reports EPERM, not ESRCH, when
+                // the group has no live member left to signal, and the
+                // kernel marks the leader exited before the parent can reap
+                // it. So EPERM here normally means "the group is dead or
+                // dying" — including the few milliseconds where `try_wait`
+                // still says the leader is running. Give the leader that
+                // window to finish exiting before believing the error; the
+                // caller's cap/timeout verdict must not be masked by it.
+                // EPERM with a leader that stays alive remains an error.
+                Some(libc::EPERM) if self.leader_exits_within(LEADER_EXIT_GRACE) => Ok(()),
                 _ => Err(err),
             }
         }
+
+        /// Poll `try_wait` until the leader is reaped or `grace` runs out.
+        fn leader_exits_within(&mut self, grace: Duration) -> bool {
+            let deadline = Instant::now() + grace;
+            loop {
+                match self.child.try_wait() {
+                    Ok(Some(_)) => return true,
+                    Ok(None) if Instant::now() < deadline => {
+                        thread::sleep(Duration::from_millis(2));
+                    }
+                    Ok(None) | Err(_) => return false,
+                }
+            }
+        }
     }
+
+    /// How long `kill_tree` waits for an exiting leader to become reapable
+    /// before treating a Darwin EPERM as a real error. The wait only happens
+    /// when the kill itself already failed, so it costs nothing on the happy
+    /// path.
+    const LEADER_EXIT_GRACE: Duration = Duration::from_millis(500);
 
     pub(super) fn spawn(command: &mut Command) -> io::Result<ChildProcessTree> {
         command.process_group(0);
