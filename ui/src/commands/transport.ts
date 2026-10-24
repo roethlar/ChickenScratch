@@ -31,7 +31,38 @@ export interface TransportEvent<T> {
 
 /** Fired on `window` when the web server answers 401 (token missing or stale). */
 export const AUTH_REQUIRED_EVENT = "cs-web-auth-required";
+/** Fired on `window` when the server answers 409: another tab or device holds the project. */
+export const LEASE_CONFLICT_EVENT = "cs-web-lease-conflict";
+export interface LeaseConflictDetail {
+  command: string;
+  args: Record<string, unknown> | undefined;
+}
 const TOKEN_KEY = "cs-web-token";
+const SESSION_KEY = "cs-web-session";
+const SESSION_HEADER = "X-CS-Session";
+
+let sessionId: string | null = null;
+
+/** A random id for this tab, kept across reloads of the same tab. */
+export function getSessionId(): string {
+  if (sessionId) return sessionId;
+  try {
+    const stored = window.sessionStorage.getItem(SESSION_KEY);
+    if (stored) {
+      sessionId = stored;
+      return stored;
+    }
+  } catch {
+    /* no sessionStorage */
+  }
+  sessionId = crypto.randomUUID();
+  try {
+    window.sessionStorage.setItem(SESSION_KEY, sessionId);
+  } catch {
+    /* lives for this page only */
+  }
+  return sessionId;
+}
 
 export function isWeb(): boolean {
   return !isTauri();
@@ -102,7 +133,9 @@ export function clearWebToken(): void {
 
 function authHeaders(): Record<string, string> {
   const token = getWebToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const headers: Record<string, string> = { [SESSION_HEADER]: getSessionId() };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
 }
 
 // ── Commands ─────────────────────────────────────────────────────────
@@ -132,6 +165,10 @@ async function webInvoke<T>(
   if (res.ok) {
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
+  }
+  if (res.status === 409) {
+    const detail: LeaseConflictDetail = { command, args };
+    window.dispatchEvent(new CustomEvent(LEASE_CONFLICT_EVENT, { detail }));
   }
   throw await failure(res);
 }
@@ -275,6 +312,7 @@ function ensureEventStream(): Promise<boolean> {
 /** Test hook: forget the token-from-URL check and any registered listeners. */
 export function resetTransportForTests(): void {
   urlTokenChecked = false;
+  sessionId = null;
   webListeners.clear();
   streamConnecting = null;
   webEventsAvailable = false;

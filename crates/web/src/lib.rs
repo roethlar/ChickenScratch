@@ -15,6 +15,7 @@ pub mod events;
 pub mod export;
 pub mod fs_browse;
 pub mod gate;
+pub mod lease;
 pub mod projects;
 pub mod state;
 pub mod static_ui;

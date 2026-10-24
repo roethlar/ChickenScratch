@@ -100,3 +100,12 @@ export function listServerDirs(path = ""): Promise<DirListing> {
   const query = path ? `?path=${encodeURIComponent(path)}` : "";
   return webGet<DirListing>(`/api/fs/dirs${query}`);
 }
+
+/** Make this tab the writer for a project another tab or device holds. */
+export async function takeOverProject(projectPath: string): Promise<void> {
+  await webFetch("/api/lease/take", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectPath }),
+  });
+}

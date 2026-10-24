@@ -3,7 +3,7 @@ import { FolderOpen, FilePlus, FileDown, Clock, AlertTriangle, ExternalLink } fr
 import { openExternal, pickFolder, pickSaveFile } from "../../platform";
 import { pickServerFolder } from "../shared/folderPickerRequest";
 import { isWeb, getWebToken, setWebEventsAvailable, AUTH_REQUIRED_EVENT } from "../../commands/transport";
-import { listWebProjects, getWebInfo, type WebProject } from "../../commands/web";
+import { listWebProjects, getWebInfo, takeOverProject, type WebProject } from "../../commands/web";
 import { useProjectStore } from "../../stores/projectStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { pickScrivFolder } from "../../commands/project";
@@ -155,9 +155,27 @@ export function Welcome() {
     setBusy(false);
   };
 
+  const [lastOpenAttempt, setLastOpenAttempt] = useState<string | null>(null);
   const handleOpenRecent = async (path: string) => {
+    setLastOpenAttempt(path);
     setBusy(true);
     await openProject(path);
+    setBusy(false);
+  };
+
+  // The server refused the open because another tab or device holds the
+  // project (browser shell): offer to take it over and open again.
+  const leaseRefused = web && !!error && error.includes("open in another browser tab");
+  const handleTakeOver = async () => {
+    if (!lastOpenAttempt) return;
+    setBusy(true);
+    try {
+      await takeOverProject(lastOpenAttempt);
+      clearError();
+      await openProject(lastOpenAttempt);
+    } catch (e) {
+      toastError(`Could not take over: ${e}`);
+    }
     setBusy(false);
   };
 
@@ -224,6 +242,14 @@ export function Welcome() {
         {error && (
           <div className="welcome-error" onClick={clearError}>
             {error}
+          </div>
+        )}
+        {leaseRefused && lastOpenAttempt && (
+          <div className="welcome-actions">
+            <button className="welcome-btn" onClick={handleTakeOver} disabled={busy}>
+              <FolderOpen size={20} />
+              <span>Take over and open</span>
+            </button>
           </div>
         )}
 

@@ -9,7 +9,7 @@ use axum::{
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    auth, commands, events, export, fs_browse, projects, state::AppState, static_ui, upload,
+    auth, commands, events, export, fs_browse, lease, projects, state::AppState, static_ui, upload,
 };
 
 /// 50 MiB: the same cap the desktop's bounded Pandoc runs use.
@@ -19,7 +19,12 @@ pub const MAX_BODY_BYTES: usize = 50 * 1024 * 1024;
 /// everywhere else.
 pub fn build_router(state: Arc<AppState>) -> Router {
     let api = Router::new()
-        .route("/cmd/{name}", post(commands::handle))
+        .route(
+            "/cmd/{name}",
+            post(commands::handle)
+                .route_layer(middleware::from_fn_with_state(state.clone(), lease::guard)),
+        )
+        .route("/lease/take", post(lease::take))
         .route("/projects", get(projects::list))
         .route("/info", get(projects::info))
         .route("/export", post(export::export))

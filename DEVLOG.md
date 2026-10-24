@@ -35,8 +35,10 @@ project list + create by name + token gate (`83a1886`), export as download
 folder picker (`6accc96`), Scrivener import (`944966a`), and an opt-in
 `embed-ui` feature for a single-file binary with the run notes in the user
 guide, and live AI streaming over server-sent events (`GET /api/events`,
-a `WebSink` behind the same `AiStreamSink` trait). A single-writer lease
-remains an optional follow-up on the plan.
+a `WebSink` behind the same `AiStreamSink` trait), and a single-writer
+lease per project: the first browser session to write holds it, another tab
+or device gets `409` and a Take-over offer, and an idle lease frees itself
+after two minutes.
 
 **Verification.** Declared suite extended to the two new crates and green
 on the Linux dev box for core, services, web, tui, converter; UI lint/

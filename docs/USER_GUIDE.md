@@ -335,8 +335,9 @@ link with your computer's VPN address instead of `127.0.0.1`:
   copied under the root first.
 - **Some shortcuts belong to the browser.** Ctrl+N, Ctrl+Shift+P and Ctrl+P
   may be taken by the browser; remap them in **Settings > Shortcuts**.
-- **One writer at a time.** Two tabs or devices editing the same document
-  overwrite each other, just as two desktop windows would.
+- **One writer at a time.** The first tab or device to open a project holds
+  it; another one that tries to write is told so and offered **Take over**.
+  A project nobody has written to for two minutes is free again.
 
 ### Keeping it safe
 

@@ -20,8 +20,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   Welcome) and 4a–4d (export download, upload import, server folder picker,
   Scrivener import) and 6 (embed-ui single binary, user guide, release
   runbook, records) landed 2026-10-24 — the browser now covers everything the
-  desktop does, including live AI streaming (slice 5, SSE); DEVLOG has the
-  entry. Only the optional slice 7 (single-writer lease) remains on the plan.
+  desktop does, including live AI streaming (slice 5, SSE) and a single-
+  writer lease for two devices on one project (slice 7). Every slice of the
+  plan has shipped; DEVLOG has the entry.
 - **Owner goal 2026-09-25: working app — find, plan, fix, Codex review.**
   Hands-on GUI testing found 13 issues; all fixed one commit each
   (`.agents/app-issues.md` is the tracker). Headline: Restore and draft
@@ -78,9 +79,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 2. Then re-ask whether to close hardening and move to the Tauri
    reference-app phase. The phase declaration remains the owner's call.
    Vault work remains paused.
-3. **Web shell side quest**: all slices but the optional single-writer lease
-   (slice 7) shipped; the owner's first real browser session is the next
-   evidence to gather.
+3. **Web shell side quest**: every slice shipped. The owner's first real
+   browser session (build, run with `--root`, open the link from another
+   device) is the next evidence to gather; CI on a push is the first check of
+   the Tauri wrappers on a machine with WebKitGTK.
 
 ## Verification
 

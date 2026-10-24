@@ -6,6 +6,7 @@ use chickenscratch_services::{AiStreamRegistry, ProjectTokens, ProjectWriteLocks
 
 use crate::events::{self, SseEvent};
 use crate::gate::Gate;
+use crate::lease::Leases;
 use crate::static_ui::UiSource;
 
 /// Everything the handlers share. One instance per server process.
@@ -22,6 +23,8 @@ pub struct AppState {
     pub ai_registry: AiStreamRegistry,
     /// Fan-out for the browser's server-sent events (AI streaming).
     pub events: broadcast::Sender<SseEvent>,
+    /// Single-writer lease per project for browser sessions.
+    pub leases: Leases,
 }
 
 impl AppState {
@@ -43,6 +46,7 @@ impl AppState {
             tokens: ProjectTokens::default(),
             ai_registry: AiStreamRegistry::default(),
             events: events::channel(),
+            leases: Leases::default(),
         })
     }
 }

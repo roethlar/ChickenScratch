@@ -12,8 +12,8 @@ The owner-usable milestone is reached: edit, save, revisions from a browser.
 Slices 4a (export as download), 4b (import by upload), 4c (server folder
 picker), 4d (Scrivener import in the browser) and 6 (embed-ui single binary,
 user guide, release runbook, TODO/ROADMAP/DEVLOG records) landed 2026-10-24.
-Slice 6 was taken before slice 5; slice 5 (AI streaming over SSE) landed
-2026-10-24 too. Only the optional slice 7 (single-writer lease) remains.
+Slice 6 was taken before slice 5; slices 5 (AI streaming over SSE) and 7
+(single-writer lease) landed 2026-10-24 too. **Every slice has shipped.**
 
 **Owner request (quote):**
 > hi! I want to make a web app version of chickenscratch that I can access

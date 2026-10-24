@@ -24,9 +24,11 @@ const listProjectsMock = vi.hoisted(() =>
 const infoMock = vi.hoisted(() =>
   vi.fn(async () => ({ root: "/srv/root", version: "1.0.0", events: false }))
 );
+const takeOverMock = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("../commands/web", () => ({
   listWebProjects: listProjectsMock,
   getWebInfo: infoMock,
+  takeOverProject: takeOverMock,
 }));
 
 vi.mock("../platform", () => ({
@@ -142,6 +144,25 @@ describe("Welcome in the browser shell", () => {
     await screen.findByText("Notes");
     window.dispatchEvent(new CustomEvent("cs-web-auth-required"));
     await screen.findByLabelText("Access token");
+  });
+});
+
+describe("Welcome lease take-over", () => {
+  it("offers to take over when the server refused the open", async () => {
+    // The store is a plain object here: the mocked open sets the error the
+    // real store would set, and the component re-renders when busy clears.
+    openProjectMock.mockImplementationOnce(async () => {
+      storeState.error = "This project is open in another browser tab or device. Take over?";
+    });
+    render(<Welcome />);
+    fireEvent.click(await screen.findByText("Notes"));
+    await waitFor(() => expect(openProjectMock).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(await screen.findByText("Take over and open"));
+    await waitFor(() => expect(takeOverMock).toHaveBeenCalledWith("/srv/root/Notes.chikn"));
+    await waitFor(() => expect(openProjectMock).toHaveBeenCalledTimes(2));
+    expect(storeState.clearError).toHaveBeenCalled();
+    storeState.error = null;
   });
 });
 

@@ -172,7 +172,7 @@ open items that lived here are in this file's git history.
 - [x] Export as download, import by upload, server folder picker, Scrivener import from the browser
 - [x] `--features embed-ui` single binary; user-guide section; release runbook step
 - [x] Live AI streaming over server-sent events (`GET /api/events`)
-- [ ] Single-writer session lease for two devices on one project (plan slice 7, optional)
+- [x] Single-writer session lease: 409 + Take over when another tab or device holds the project
 
 ### Platform packaging
 - [ ] Windows testing and packaging (.msi)

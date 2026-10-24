@@ -652,3 +652,171 @@ fn urlencode(s: &str) -> String {
     }
     out
 }
+
+fn cmd_as(name: &str, args: Value, session: &str) -> Request<Body> {
+    Request::post(format!("/api/cmd/{name}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+        .header("x-cs-session", session)
+        .body(Body::from(args.to_string()))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn second_session_is_refused_until_it_takes_over() {
+    let h = harness();
+    let project = ok(
+        &h.app,
+        "create_project",
+        json!({ "name": "Scratch", "path": path_str(&h.root) }),
+    )
+    .await;
+    let project_path = project["path"].as_str().unwrap().to_string();
+    let held = json!("This project is open in another browser tab or device. Take over?");
+
+    // Tab A opens and writes.
+    let (status, _, _) = call(
+        &h.app,
+        cmd_as("load_project", json!({ "path": project_path }), "tab-a"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = call(
+        &h.app,
+        cmd_as(
+            "save_revision",
+            json!({ "projectPath": project_path, "message": "a" }),
+            "tab-a",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Tab B may read but not open-for-writing or write.
+    let (status, _, _) = call(
+        &h.app,
+        cmd_as(
+            "list_revisions",
+            json!({ "projectPath": project_path }),
+            "tab-b",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body, _) = call(
+        &h.app,
+        cmd_as("load_project", json!({ "path": project_path }), "tab-b"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body, held);
+    let (status, _, _) = call(
+        &h.app,
+        cmd_as(
+            "save_revision",
+            json!({ "projectPath": project_path, "message": "b" }),
+            "tab-b",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // A still writes; a client without a session id is not arbitrated.
+    let (status, _, _) = call(
+        &h.app,
+        cmd_as(
+            "save_revision",
+            json!({ "projectPath": project_path, "message": "a2" }),
+            "tab-a",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = call(
+        &h.app,
+        cmd(
+            "has_changes",
+            json!({ "projectPath": project_path }),
+            Some(TOKEN),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Another project is independent.
+    let other = ok(
+        &h.app,
+        "create_project",
+        json!({ "name": "Other", "path": path_str(&h.root) }),
+    )
+    .await;
+    let (status, _, _) = call(
+        &h.app,
+        cmd_as("load_project", json!({ "path": other["path"] }), "tab-b"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // B takes over; now A is the one refused.
+    let (status, _, _) = call(
+        &h.app,
+        Request::post("/api/lease/take")
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .header("x-cs-session", "tab-b")
+            .body(Body::from(
+                json!({ "projectPath": project_path }).to_string(),
+            ))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = call(
+        &h.app,
+        cmd_as(
+            "save_revision",
+            json!({ "projectPath": project_path, "message": "b2" }),
+            "tab-b",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body, _) = call(
+        &h.app,
+        cmd_as(
+            "update_document_content",
+            json!({ "projectPath": project_path, "docId": "x", "content": "y" }),
+            "tab-a",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body, held);
+
+    // Take-over needs a session id and stays inside the root.
+    let (status, _, _) = call(
+        &h.app,
+        Request::post("/api/lease/take")
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .body(Body::from(
+                json!({ "projectPath": project_path }).to_string(),
+            ))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _, _) = call(
+        &h.app,
+        Request::post("/api/lease/take")
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .header("x-cs-session", "tab-b")
+            .body(Body::from(
+                json!({ "projectPath": path_str(&h.outside) }).to_string(),
+            ))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}

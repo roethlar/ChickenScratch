@@ -20,6 +20,7 @@ import {
   parseSseBlock,
   resetTransportForTests,
   AUTH_REQUIRED_EVENT,
+  LEASE_CONFLICT_EVENT,
 } from "../commands/transport";
 import { aiTransformStream } from "../commands/ai";
 
@@ -159,5 +160,32 @@ describe("web transport: live event stream", () => {
     push(': keep-alive\n\nevent: ai:done\ndata: {"id":"r1"}\n\n');
     await vi.waitFor(() => expect(received).toEqual([{ id: "r1", delta: "Hel" }]));
     unlisten();
+  });
+});
+
+describe("web transport: single-writer lease", () => {
+  it("sends a stable per-tab session id and announces a 409 with the command's args", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(null));
+    await invoke("has_changes", { projectPath: "/p" });
+    const first = (fetchMock.mock.calls[0][1]?.headers as Record<string, string>)["X-CS-Session"];
+    expect(first).toMatch(/[0-9a-f-]{36}/);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse("This project is open in another browser tab or device. Take over?", 409)
+    );
+    const announced = vi.fn();
+    window.addEventListener(LEASE_CONFLICT_EVENT, announced);
+    await expect(invoke("update_document_content", { projectPath: "/p", docId: "d", content: "x" })).rejects.toBe(
+      "This project is open in another browser tab or device. Take over?"
+    );
+    const second = (fetchMock.mock.calls[1][1]?.headers as Record<string, string>)["X-CS-Session"];
+    expect(second).toBe(first);
+    expect(announced).toHaveBeenCalledTimes(1);
+    const detail = (announced.mock.calls[0][0] as CustomEvent).detail;
+    expect(detail).toEqual({
+      command: "update_document_content",
+      args: { projectPath: "/p", docId: "d", content: "x" },
+    });
+    window.removeEventListener(LEASE_CONFLICT_EVENT, announced);
   });
 });
