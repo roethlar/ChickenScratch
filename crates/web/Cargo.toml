@@ -22,8 +22,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 subtle = "2"
 dirs = "6"
 uuid = { version = "1", features = ["v4"] }
+tempfile = "3.27.0"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
-tempfile = "3.27.0"

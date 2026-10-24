@@ -377,3 +377,73 @@ async fn ui_is_served_with_security_headers_and_info_reports_the_root() {
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn export_validates_format_and_reports_a_missing_pandoc_plainly() {
+    let h = harness();
+    let project = ok(
+        &h.app,
+        "create_project",
+        json!({ "name": "Scratch", "path": path_str(&h.root) }),
+    )
+    .await;
+    let project_path = project["path"].as_str().unwrap().to_string();
+
+    let (status, body, _) = call(
+        &h.app,
+        Request::post("/api/export")
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .body(Body::from(
+                json!({ "projectPath": project_path, "format": "exe" }).to_string(),
+            ))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body, json!("Unknown export format: exe"));
+
+    // Outside the root: gated before anything is compiled.
+    let (status, _, _) = call(
+        &h.app,
+        Request::post("/api/export")
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .body(Body::from(
+                json!({ "projectPath": path_str(&h.outside), "format": "html" }).to_string(),
+            ))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let res = h.app.clone().oneshot(Request::post("/api/export").header(header::CONTENT_TYPE, "application/json").header(header::AUTHORIZATION, format!("Bearer {TOKEN}")).body(Body::from(json!({ "projectPath": project_path, "format": "html", "title": "Scratch Notes" }).to_string())).unwrap()).await.unwrap();
+    let status = res.status();
+    let headers = res.headers().clone();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    if status == StatusCode::OK {
+        // Pandoc is installed on this machine: a real download comes back.
+        assert_eq!(
+            headers[header::CONTENT_DISPOSITION],
+            "attachment; filename=\"Scratch Notes.html\""
+        );
+        assert!(headers[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/html"));
+        assert!(!bytes.is_empty());
+    } else {
+        // No Pandoc: the same plain ChiknError string the desktop shows.
+        assert_eq!(
+            status,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{}",
+            String::from_utf8_lossy(&bytes)
+        );
+        let msg: String = serde_json::from_slice(&bytes).unwrap();
+        assert!(msg.contains("Pandoc"), "{msg}");
+    }
+    // Nothing was written next to or inside the project.
+    assert!(!h.root.join("Scratch Notes.html").exists());
+    assert!(!Path::new(&project_path).join("Scratch Notes.html").exists());
+}

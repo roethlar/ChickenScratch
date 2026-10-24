@@ -8,7 +8,7 @@ use axum::{
 };
 use tower_http::trace::TraceLayer;
 
-use crate::{auth, commands, projects, state::AppState, static_ui};
+use crate::{auth, commands, export, projects, state::AppState, static_ui};
 
 async fn no_events() -> (StatusCode, Json<&'static str>) {
     (
@@ -24,6 +24,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/cmd/{name}", post(commands::handle))
         .route("/projects", get(projects::list))
         .route("/info", get(projects::info))
+        .route("/export", post(export::export))
         .route("/events", get(no_events))
         .layer(middleware::from_fn_with_state(
             state.clone(),

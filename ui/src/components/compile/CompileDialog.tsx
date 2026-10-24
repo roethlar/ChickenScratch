@@ -1,9 +1,10 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
-import { compileProject } from "../../commands/io";
-import { pickSaveFile, WEB_NOT_AVAILABLE } from "../../platform";
+import { compileProject, getCompileFormats } from "../../commands/io";
+import { pickSaveFile } from "../../platform";
 import { isWeb } from "../../commands/transport";
+import { exportManuscript, downloadBlob } from "../../commands/web";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { flushPendingEditorSave } from "../editor/editorRef";
 import { useModalFocusTrap } from "../shared/Dialog";
@@ -20,6 +21,7 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
   const titleFieldId = useId();
   const authorFieldId = useId();
   const separatorFieldId = useId();
+  const formatFieldId = useId();
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
@@ -27,6 +29,14 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
   const [titlePage, setTitlePage] = useState(true);
   const [manuscriptFormat, setManuscriptFormat] = useState(false);
   const [compiling, setCompiling] = useState(false);
+  // Browser shell: no save dialog to pick the format from, so ask here.
+  const web = isWeb();
+  const [format, setFormat] = useState("docx");
+  const [formats, setFormats] = useState<[string, string][]>([]);
+  useEffect(() => {
+    if (!open || !web) return;
+    getCompileFormats().then(setFormats).catch(() => {});
+  }, [open, web]);
   const { dialogRef, onDialogKeyDown } = useModalFocusTrap<HTMLDivElement>(
     open && !!project,
     onClose,
@@ -43,11 +53,30 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
 
   if (!open || !project) return null;
 
-  const handleExport = async () => {
-    if (isWeb()) {
-      toastError(WEB_NOT_AVAILABLE);
-      return;
+  const handleExportWeb = async () => {
+    setCompiling(true);
+    try {
+      await flushPendingEditorSave();
+      const { blob, fileName } = await exportManuscript({
+        projectPath: project.path,
+        format,
+        title: title || undefined,
+        author: author || undefined,
+        sectionSeparator: separator,
+        includeTitlePage: titlePage,
+        manuscriptFormat,
+      });
+      downloadBlob(blob, fileName);
+      toastSuccess("Export ready: " + fileName);
+      onClose();
+    } catch (e) {
+      toastError("Export failed: " + e);
     }
+    setCompiling(false);
+  };
+
+  const handleExport = async () => {
+    if (web) return handleExportWeb();
     const outputPath = await pickSaveFile({
       title: "Export Manuscript",
       defaultPath: exportDefaultPath(project.path, title || project.name),
@@ -115,6 +144,17 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
               placeholder="Author name"
             />
           </div>
+          {web && (
+            <div className="compile-field">
+              <label htmlFor={formatFieldId}>Format</label>
+              <select id={formatFieldId} value={format} onChange={(e) => setFormat(e.target.value)}>
+                {(formats.length > 0 ? formats : [["docx", "Word Document (.docx)"]]).map(([ext, label]) => (
+                  <option key={ext} value={ext}>{label}</option>
+                ))}
+              </select>
+              <span className="compile-hint">The file downloads to this device when it is ready.</span>
+            </div>
+          )}
           <div className="compile-field">
             <label htmlFor={separatorFieldId}>Section Separator</label>
             <input

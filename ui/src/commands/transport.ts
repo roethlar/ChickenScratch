@@ -138,9 +138,22 @@ async function webInvoke<T>(
 
 /** GET a web-only endpoint (`/api/projects`, `/api/info`): same token, same error contract. */
 export async function webGet<T>(path: string): Promise<T> {
-  const res = await fetch(path, { headers: authHeaders() });
-  if (res.ok) return (await res.json()) as T;
-  throw await failure(res);
+  const res = await webFetch(path, {});
+  return (await res.json()) as T;
+}
+
+/**
+ * Any other web-only request (downloads, uploads): adds the token, and turns
+ * a non-2xx answer into the same plain-string rejection `invoke` uses. The
+ * caller reads the successful response body itself.
+ */
+export async function webFetch(path: string, init: RequestInit): Promise<Response> {
+  const res = await fetch(path, {
+    ...init,
+    headers: { ...(init.headers as Record<string, string> | undefined), ...authHeaders() },
+  });
+  if (!res.ok) throw await failure(res);
+  return res;
 }
 
 /** The rejection value for a failed request: the backend's plain string, as Tauri rejects. */

@@ -33,6 +33,7 @@ use serde::Serialize;
 use crate::gate::{GateError, PathArg};
 use crate::state::AppState;
 
+#[derive(Debug)]
 pub enum CmdError {
     Chikn(ChiknError),
     Gate(GateError),
