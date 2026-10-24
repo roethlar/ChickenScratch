@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 
+use chickenscratch_web::static_ui::UiSource;
 use chickenscratch_web::{build_router, AppState};
 
 #[derive(Parser, Debug)]
@@ -41,15 +42,43 @@ struct Cli {
     #[arg(long, env = "CHIKN_WEB_TOKEN")]
     token: Option<String>,
 
-    /// Folder with the built UI (index.html + assets/).
-    #[arg(long, default_value = "ui/dist")]
-    ui_dir: PathBuf,
+    /// Folder with the built UI (index.html + assets/). Defaults to the assets
+    /// embedded in this binary when it was built with `--features embed-ui`,
+    /// otherwise to `ui/dist` in the current directory.
+    #[arg(long)]
+    ui_dir: Option<PathBuf>,
 }
 
 enum TokenSource {
     Flag,
     File,
     Generated,
+}
+
+fn ui_dir_source(dir: PathBuf) -> Result<UiSource, String> {
+    if dir.join("index.html").is_file() {
+        Ok(UiSource::Dir(dir))
+    } else {
+        Err(format!(
+            "UI build not found at {} — run `cd ui && npm run build`, pass --ui-dir, \
+or build chikn-web with --features embed-ui",
+            dir.display()
+        ))
+    }
+}
+
+fn resolve_ui(flag: Option<PathBuf>) -> Result<UiSource, String> {
+    if let Some(dir) = flag {
+        return ui_dir_source(dir);
+    }
+    #[cfg(feature = "embed-ui")]
+    {
+        Ok(UiSource::Embedded)
+    }
+    #[cfg(not(feature = "embed-ui"))]
+    {
+        ui_dir_source(PathBuf::from("ui/dist"))
+    }
 }
 
 fn token_file() -> Option<PathBuf> {
@@ -118,13 +147,13 @@ async fn main() -> ExitCode {
 
     let cli = Cli::parse();
 
-    if !cli.ui_dir.join("index.html").is_file() {
-        eprintln!(
-            "UI build not found at {} — run `cd ui && npm run build` or pass --ui-dir",
-            cli.ui_dir.display()
-        );
-        return ExitCode::from(2);
-    }
+    let ui = match resolve_ui(cli.ui_dir) {
+        Ok(ui) => ui,
+        Err(msg) => {
+            eprintln!("{msg}");
+            return ExitCode::from(2);
+        }
+    };
 
     let (token, source) = match resolve_token(cli.token) {
         Ok(t) => t,
@@ -134,7 +163,7 @@ async fn main() -> ExitCode {
         }
     };
 
-    let state = match AppState::new(&cli.root, token.clone(), cli.ui_dir.clone()) {
+    let state = match AppState::new(&cli.root, token.clone(), ui) {
         Ok(s) => Arc::new(s),
         Err(e) => {
             eprintln!("projects root {}: {e}", cli.root.display());
@@ -154,7 +183,7 @@ async fn main() -> ExitCode {
     tracing::info!(
         bind = %addr,
         root = %state.root.display(),
-        ui_dir = %state.ui_dir.display(),
+        ui = %state.ui,
         token_source = match source {
             TokenSource::Flag => "flag or CHIKN_WEB_TOKEN",
             TokenSource::File => "token file",

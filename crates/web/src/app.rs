@@ -42,9 +42,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     let [csp, nosniff, referrer] = static_ui::security_headers();
 
-    Router::new()
-        .nest("/api", api)
-        .fallback_service(static_ui::service(&state.ui_dir))
+    let router = static_ui::mount(Router::new().nest("/api", api), &state.ui);
+    router
         .layer(csp)
         .layer(nosniff)
         .layer(referrer)

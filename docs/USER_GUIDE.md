@@ -286,6 +286,88 @@ remains untouched as a backup.
 
 ---
 
+## Web version (self-hosted)
+
+ChickenScratch can also run as a small web server on a computer you control,
+so you can write from any browser on your own network or VPN. It is the same
+app as the desktop version — same editor, binder, history, drafts, search,
+statistics and settings — serving your projects from one folder on that
+computer. Nothing is sent to a cloud service.
+
+### Starting it
+
+Build once (needs Rust and Node):
+
+```bash
+cd ui && npm install && npm run build && cd ..
+cargo build --release -p chickenscratch-web --features embed-ui
+```
+
+Then run it, pointing at the folder that holds (or will hold) your `.chikn`
+projects:
+
+```bash
+./target/release/chikn-web --root ~/Notes
+```
+
+The first run prints an **access token** and a link like
+`http://127.0.0.1:7391/?token=…`. Open that link once in each browser you
+use; the token is remembered there. The token is also stored in your config
+folder (`~/.config/chickenscratch/web-token` on Linux) so later runs reuse it.
+If a browser ever asks for it again, paste the token from that file.
+
+To reach it from other devices, listen on all interfaces and open the same
+link with your computer's VPN address instead of `127.0.0.1`:
+
+```bash
+./target/release/chikn-web --root ~/Notes --bind 0.0.0.0:7391
+```
+
+### What is different in a browser
+
+- **Projects live under the root folder.** The welcome screen lists every
+  project found there; **New Project** asks only for a name. There is no
+  "Open Project" dialog for arbitrary locations.
+- **Export downloads.** Compile produces a file your browser downloads
+  instead of asking where to save.
+- **Import uploads.** Import File takes a file from the device you are
+  browsing on; Import Scrivener expects the `.scriv` folder to have been
+  copied under the root first.
+- **Live AI typing is not available yet.** AI commands still work; the
+  result arrives all at once.
+- **Some shortcuts belong to the browser.** Ctrl+N, Ctrl+Shift+P and Ctrl+P
+  may be taken by the browser; remap them in **Settings > Shortcuts**.
+- **One writer at a time.** Two tabs or devices editing the same document
+  overwrite each other, just as two desktop windows would.
+
+### Keeping it safe
+
+- The server speaks plain HTTP. Keep it on your own network or VPN, or put a
+  reverse proxy with TLS in front of it. Do not expose it to the open
+  internet.
+- Every request needs the token, and the server only ever touches files
+  under `--root` (plus the backup folder you choose in Settings).
+- To run it in the background on Linux, a user service works well:
+
+```ini
+# ~/.config/systemd/user/chikn-web.service
+[Unit]
+Description=ChickenScratch web shell
+
+[Service]
+ExecStart=%h/.local/bin/chikn-web --root %h/Notes --bind 0.0.0.0:7391
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user enable --now chikn-web
+```
+
+---
+
 ## Terminal UI (`chikn`)
 
 ChickenScratch ships with a terminal frontend for writing in an SSH session, a tmux pane, or any environment where a full GUI isn't practical. It reads and writes the same `.chikn` projects as the desktop app.

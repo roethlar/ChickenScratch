@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use chickenscratch_services::{AiStreamRegistry, ProjectTokens, ProjectWriteLocks};
 
 use crate::gate::Gate;
+use crate::static_ui::UiSource;
 
 /// Everything the handlers share. One instance per server process.
 pub struct AppState {
@@ -10,8 +11,8 @@ pub struct AppState {
     pub root: PathBuf,
     /// The bearer token every `/api/*` request must carry.
     pub token: String,
-    /// Folder holding the built UI (`index.html` and `assets/`).
-    pub ui_dir: PathBuf,
+    /// Where the built UI comes from (a folder, or assets embedded in the binary).
+    pub ui: UiSource,
     pub gate: Gate,
     pub locks: ProjectWriteLocks,
     pub tokens: ProjectTokens,
@@ -20,7 +21,7 @@ pub struct AppState {
 
 impl AppState {
     /// `root` must exist; it is canonicalized so symlinked roots still work.
-    pub fn new(root: &Path, token: String, ui_dir: PathBuf) -> std::io::Result<Self> {
+    pub fn new(root: &Path, token: String, ui: UiSource) -> std::io::Result<Self> {
         let root = root.canonicalize()?;
         if !root.is_dir() {
             return Err(std::io::Error::new(
@@ -32,7 +33,7 @@ impl AppState {
             gate: Gate::new(vec![root.clone()]),
             root,
             token,
-            ui_dir,
+            ui,
             locks: ProjectWriteLocks::default(),
             tokens: ProjectTokens::default(),
             ai_registry: AiStreamRegistry::default(),

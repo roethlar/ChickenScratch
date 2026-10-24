@@ -12,6 +12,7 @@ use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+use chickenscratch_web::static_ui::UiSource;
 use chickenscratch_web::{build_router, AppState};
 
 const TOKEN: &str = "test-token-123";
@@ -32,7 +33,7 @@ fn harness() -> Harness {
     fs::create_dir_all(&outside).unwrap();
     fs::create_dir_all(&ui).unwrap();
     fs::write(ui.join("index.html"), "<!doctype html><title>stub</title>").unwrap();
-    let state = AppState::new(&root, TOKEN.to_string(), ui).unwrap();
+    let state = AppState::new(&root, TOKEN.to_string(), UiSource::Dir(ui)).unwrap();
     Harness {
         root: state.root.clone(),
         outside: outside.canonicalize().unwrap(),

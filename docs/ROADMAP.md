@@ -87,6 +87,12 @@ Feature sections named "(Tauri)" are desktop-app features; "(TUI)" sections desc
 - Recent projects, Wayland compatibility
 - AI via reqwest (no curl dependency)
 
+**Web shell (`chikn-web`) — shipped 2026-10-24 ([ADR-007](adr/ADR-007-web-shell-shared-services.md))**
+- The same React UI served over HTTP by a small Rust server; engine in-process through the shared `chickenscratch-services` command layer
+- Self-hosted and single-user: bearer token, one projects root the server never leaves, same-origin CSP
+- Browser replacements for desktop dialogs: server project list, export as download, import by upload, server folder picker
+- `--features embed-ui` builds one file with the UI inside
+
 **Format (engine) — v1.2 lock, shipped 2026-07-09**
 - Genre-agnostic schema: one generic `fields` map per document; novelist keys are UI conventions ([UI_CONVENTIONS_NOVELIST.md](UI_CONVENTIONS_NOVELIST.md))
 - Unknown-key preservation at every open surface (`.meta`, `project.yaml`, thread entries) — saves never silently destroy other tools' data

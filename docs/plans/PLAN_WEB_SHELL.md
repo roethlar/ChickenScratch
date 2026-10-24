@@ -10,7 +10,10 @@ seams), 3a (`chikn-web` server: dispatch, auth, gate, static UI) and 3b (web
 Welcome: server project list, create by name, token gate) landed 2026-10-24.
 The owner-usable milestone is reached: edit, save, revisions from a browser.
 Slices 4a (export as download), 4b (import by upload), 4c (server folder
-picker) and 4d (Scrivener import in the browser) landed 2026-10-24.
+picker), 4d (Scrivener import in the browser) and 6 (embed-ui single binary,
+user guide, release runbook, TODO/ROADMAP/DEVLOG records) landed 2026-10-24.
+Slice 6 was taken before the optional slice 5 (AI streaming), which with
+slice 7 (single-writer lease) remains open.
 
 **Owner request (quote):**
 > hi! I want to make a web app version of chickenscratch that I can access

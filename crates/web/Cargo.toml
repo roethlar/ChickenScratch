@@ -23,6 +23,12 @@ subtle = "2"
 dirs = "6"
 uuid = { version = "1", features = ["v4"] }
 tempfile = "3.27.0"
+rust-embed = { version = "8", optional = true }
+
+[features]
+# Compile ui/dist into the binary so one file can be copied to the host.
+# Off by default so `cargo test` needs no UI build; release builds opt in.
+embed-ui = ["dep:rust-embed"]
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

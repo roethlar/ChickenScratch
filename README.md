@@ -64,7 +64,7 @@ HTTP, so keep it off the open internet or put TLS in front of it).
 
 ```bash
 cd ui && npm install && npm run build && cd ..
-cargo build --release -p chickenscratch-web
+cargo build --release -p chickenscratch-web --features embed-ui   # UI baked in: one file to copy
 ./target/release/chikn-web --root ~/Notes            # localhost:7391
 ./target/release/chikn-web --root ~/Notes --bind 0.0.0.0:7391
 ```

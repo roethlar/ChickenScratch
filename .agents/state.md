@@ -18,9 +18,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   order, one commit each. Slices 1 (services extraction, ADR-007), 2
   (frontend transport + platform seams), 3a (`chikn-web` server) and 3b (web
   Welcome) and 4a–4d (export download, upload import, server folder picker,
-  Scrivener import) landed 2026-10-24 — the browser now covers everything the
-  desktop does except live AI streaming; progress per slice is on the plan's
-  status line.
+  Scrivener import) and 6 (embed-ui single binary, user guide, release
+  runbook, records) landed 2026-10-24 — the browser now covers everything the
+  desktop does except live AI streaming; DEVLOG has the entry. Optional
+  slices 5 (SSE streaming) and 7 (single-writer lease) remain on the plan.
 - **Owner goal 2026-09-25: working app — find, plan, fix, Codex review.**
   Hands-on GUI testing found 13 issues; all fixed one commit each
   (`.agents/app-issues.md` is the tracker). Headline: Restore and draft
@@ -77,8 +78,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 2. Then re-ask whether to close hardening and move to the Tauri
    reference-app phase. The phase declaration remains the owner's call.
    Vault work remains paused.
-3. **Web shell side quest in progress** (`docs/plans/PLAN_WEB_SHELL.md`):
-   continue with the next unshipped slice on the plan's status line.
+3. **Web shell side quest**: core slices shipped. Optional slice 5 (live AI
+   streaming over SSE) and slice 7 (single-writer lease) remain on the plan;
+   the owner's first real browser session is the next evidence to gather.
 
 ## Verification
 

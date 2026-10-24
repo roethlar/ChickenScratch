@@ -164,6 +164,16 @@ Superseded by [ADR-004](docs/adr/ADR-004-deprecated-native-engines.md): the
 SwiftUI, Qt6, and WinUI native experiments were deprecated and removed. The
 open items that lived here are in this file's git history.
 
+### Web shell (`chikn-web`) — shipped 2026-10-24 ([plan](docs/plans/PLAN_WEB_SHELL.md), [ADR-007](docs/adr/ADR-007-web-shell-shared-services.md))
+- [x] Command layer extracted to `chickenscratch-services`; Tauri wrappers are transport only
+- [x] UI reaches the backend through one transport (Tauri IPC or same-origin JSON) and one platform seam
+- [x] `chikn-web` binary: token auth, projects-root gate, every command as `POST /api/cmd/<name>`, static UI
+- [x] Browser Welcome: server project list, create by name, token gate
+- [x] Export as download, import by upload, server folder picker, Scrivener import from the browser
+- [x] `--features embed-ui` single binary; user-guide section; release runbook step
+- [ ] Live AI streaming over server-sent events (plan slice 5, optional)
+- [ ] Single-writer session lease for two devices on one project (plan slice 7, optional)
+
 ### Platform packaging
 - [ ] Windows testing and packaging (.msi)
 - [ ] Flatpak for Linux

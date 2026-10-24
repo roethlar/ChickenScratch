@@ -18,6 +18,8 @@ Files that must be updated for each release:
 - `crates/core/Cargo.toml`
 - `crates/cli/Cargo.toml`
 - `crates/tui/Cargo.toml`
+- `crates/services/Cargo.toml`
+- `crates/web/Cargo.toml`
 
 Do not tag until `scripts/check-release-metadata.sh --release <version>` passes and any remaining `rg '0\.1\.0-alpha|Alpha|alpha'` matches have been reviewed as intentional.
 
@@ -29,8 +31,8 @@ Run from the repository root:
 scripts/check-release-metadata.sh
 cargo fmt --all -- --check
 cargo metadata --locked --format-version 1 >/dev/null
-cargo clippy --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
-cargo test --locked -p chickenscratch-core -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
+cargo clippy --locked -p chickenscratch-core -p chickenscratch-services -p chickenscratch-web -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
+cargo test --locked -p chickenscratch-core -p chickenscratch-services -p chickenscratch-web -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
 cd ui && npm ci && npm run lint && npm run build && cd ..
 ```
 
@@ -105,6 +107,20 @@ Invoke-TrustedSigning -Endpoint $env:AZURE_SIGNING_ENDPOINT -CodeSigningAccountN
 
 Linux and Windows artifact builds must be validated on their native hosts or via CI.
 
+Web shell (`chikn-web`, ADR-007) — a single binary with the UI embedded; built
+after `npm run build` so `ui/dist` exists, on the host OS it will run on:
+
+```bash
+cargo build --release -p chickenscratch-web --features embed-ui --locked
+test -x target/release/chikn-web
+./target/release/chikn-web --root "$(mktemp -d)" --token smoke --bind 127.0.0.1:7399 &
+curl -fsS -H 'Authorization: Bearer smoke' http://127.0.0.1:7399/api/info
+kill %1
+```
+
+There is no CI job or signed artifact for the web shell yet; it is distributed as a
+built binary the owner copies to their own machine (ADR-005 posture).
+
 ## 4. Cut The Tag
 
 After validation passes and final release metadata is committed, create the tag:
@@ -143,3 +159,6 @@ Open a sample project in the released app and verify:
 - App close waits for pending saves.
 - Settings secrets are not written in plaintext.
 - Scrivener import rejects hostile path traversal fixtures.
+- Web shell: `chikn-web --root <temp folder>` prints a link; from a browser,
+  create a project, type, reload (text persists), Save Revision, History
+  lists it; the API refuses a request without the token (401).

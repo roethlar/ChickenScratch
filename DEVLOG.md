@@ -6,6 +6,46 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-10-24 — Web shell: one command layer, `chikn-web` serves the same UI
+
+Owner side quest (2026-10-23): "a web app version of chickenscratch that I
+can access from anywhere (vpn…) to store notes, write markdown docs" without
+cloud services; "no direction change, just the next side quest" — the
+hardening phase stays active. Plan: `docs/plans/PLAN_WEB_SHELL.md`;
+decision: `docs/adr/ADR-007-web-shell-shared-services.md`.
+
+**Architecture change.** The 75 Tauri command bodies moved verbatim into a
+new library crate `crates/services` (`chickenscratch-services`) together
+with `ProjectWriteLocks`, `ProjectTokens`, settings/keyring and the AI
+client; `src-tauri` is now one thin wrapper per command (`State` in, events
+out via an `AiStreamSink` trait) plus the desktop-only Scrivener picker
+(`ef262d9`). The React UI reaches the backend through a single transport
+(`ui/src/commands/transport.ts`: Tauri IPC, or same-origin JSON with a
+bearer token) and a single platform seam for dialogs/links/close hook;
+ESLint forbids `@tauri-apps/*` anywhere else (`44ef76c`).
+
+**New shell.** `crates/web` → `chikn-web`: axum server, engine in-process,
+`POST /api/cmd/<name>` mirroring every command with the Tauri contract
+(camelCase args, `ChiknError` as a 422 string), bearer token on every API
+request, a projects-root gate that resolves paths through symlinks and
+refuses anything outside `--root`, same-origin CSP (`c7fc992`). Browser
+replacements for desktop-only affordances landed one per commit: server
+project list + create by name + token gate (`83a1886`), export as download
+(`45110fa`), import by upload staged outside the root (`c3bb76e`), server
+folder picker (`6accc96`), Scrivener import (`944966a`), and an opt-in
+`embed-ui` feature for a single-file binary with the run notes in the user
+guide (this entry's commit). Live AI streaming (SSE) and a single-writer
+lease remain optional follow-ups on the plan.
+
+**Verification.** Declared suite extended to the two new crates and green
+on the Linux dev box for core, services, web, tui, converter; UI lint/
+build/test (80 tests, 20 new). The Tauri crate itself cannot compile on
+that box (no `webkit2gtk-4.1`); its wrappers were type-checked against a
+scratch stub of the `tauri` API and CI remains the real check — recorded in
+`.agents/state.md` Known drift. Nothing pushed.
+
+---
+
 ## 2026-09-25 — Hands-on app testing: 13 fixes, Codex-reviewed
 
 Owner goal: "assume I actually want a working app. find issues, plan
