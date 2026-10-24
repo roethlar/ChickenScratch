@@ -13,6 +13,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import {
   invoke,
+  listen,
   getWebToken,
   setWebToken,
   clearWebToken,
@@ -135,5 +136,28 @@ describe("AI streaming without an event channel", () => {
     });
 
     expect(chunks).toEqual([]);
+  });
+});
+
+describe("web transport: live event stream", () => {
+  it("resolves listen() once connected and dispatches parsed events", async () => {
+    let push: (chunk: string) => void = () => {};
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        push = (chunk) => controller.enqueue(new TextEncoder().encode(chunk));
+      },
+    });
+    fetchMock.mockResolvedValueOnce(
+      new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } })
+    );
+    const received: unknown[] = [];
+
+    const unlisten = await listen<{ id: string; delta: string }>("ai:chunk", (e) => received.push(e.payload));
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/events");
+
+    push('event: ai:chunk\ndata: {"id":"r1","delta":"Hel"}\n\n');
+    push(': keep-alive\n\nevent: ai:done\ndata: {"id":"r1"}\n\n');
+    await vi.waitFor(() => expect(received).toEqual([{ id: "r1", delta: "Hel" }]));
+    unlisten();
   });
 });

@@ -318,6 +318,22 @@ async fn desktop_only_commands_say_so() {
             .contains("not available in the web version"),
         "{body}"
     );
+    // AI streaming is wired through the SSE sink: never "unknown command".
+    // With AI disabled or unconfigured it refuses with the settings message.
+    let (status, body, _) = call(
+        &h.app,
+        cmd(
+            "ai_transform_stream",
+            json!({ "content": "x", "operation": "polish", "requestId": "r1" }),
+            Some(TOKEN),
+        ),
+    )
+    .await;
+    assert_ne!(status, StatusCode::NOT_FOUND);
+    assert!(
+        status == StatusCode::OK || body.as_str().is_some_and(|s| s.contains("AI")),
+        "{status} {body}"
+    );
 }
 
 #[tokio::test]
@@ -366,17 +382,32 @@ async fn ui_is_served_with_security_headers_and_info_reports_the_root() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(info["root"], json!(path_str(&h.root)));
-    assert_eq!(info["events"], json!(false));
+    assert_eq!(info["events"], json!(true));
 
+    // The event channel answers as a live SSE stream (the body never ends,
+    // so only status and headers are checked) and still needs the token.
+    let res = h
+        .app
+        .clone()
+        .oneshot(
+            Request::get("/api/events")
+                .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(res.headers()[header::CONTENT_TYPE]
+        .to_str()
+        .unwrap()
+        .starts_with("text/event-stream"));
     let (status, _, _) = call(
         &h.app,
-        Request::get("/api/events")
-            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
-            .body(Body::empty())
-            .unwrap(),
+        Request::get("/api/events").body(Body::empty()).unwrap(),
     )
     .await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

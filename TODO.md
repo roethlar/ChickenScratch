@@ -171,7 +171,7 @@ open items that lived here are in this file's git history.
 - [x] Browser Welcome: server project list, create by name, token gate
 - [x] Export as download, import by upload, server folder picker, Scrivener import from the browser
 - [x] `--features embed-ui` single binary; user-guide section; release runbook step
-- [ ] Live AI streaming over server-sent events (plan slice 5, optional)
+- [x] Live AI streaming over server-sent events (`GET /api/events`)
 - [ ] Single-writer session lease for two devices on one project (plan slice 7, optional)
 
 ### Platform packaging

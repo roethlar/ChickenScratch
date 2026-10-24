@@ -333,8 +333,6 @@ link with your computer's VPN address instead of `127.0.0.1`:
 - **Import uploads.** Import File takes a file from the device you are
   browsing on; Import Scrivener expects the `.scriv` folder to have been
   copied under the root first.
-- **Live AI typing is not available yet.** AI commands still work; the
-  result arrives all at once.
 - **Some shortcuts belong to the browser.** Ctrl+N, Ctrl+Shift+P and Ctrl+P
   may be taken by the browser; remap them in **Settings > Shortcuts**.
 - **One writer at a time.** Two tabs or devices editing the same document

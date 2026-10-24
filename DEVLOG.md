@@ -34,8 +34,9 @@ project list + create by name + token gate (`83a1886`), export as download
 (`45110fa`), import by upload staged outside the root (`c3bb76e`), server
 folder picker (`6accc96`), Scrivener import (`944966a`), and an opt-in
 `embed-ui` feature for a single-file binary with the run notes in the user
-guide (this entry's commit). Live AI streaming (SSE) and a single-writer
-lease remain optional follow-ups on the plan.
+guide, and live AI streaming over server-sent events (`GET /api/events`,
+a `WebSink` behind the same `AiStreamSink` trait). A single-writer lease
+remains an optional follow-up on the plan.
 
 **Verification.** Declared suite extended to the two new crates and green
 on the Linux dev box for core, services, web, tui, converter; UI lint/

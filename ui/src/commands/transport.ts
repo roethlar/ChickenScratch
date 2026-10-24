@@ -175,7 +175,7 @@ async function failure(res: Response): Promise<string> {
 
 type Listener = (event: TransportEvent<unknown>) => void;
 const webListeners = new Map<string, Set<Listener>>();
-let streamRunning = false;
+let streamConnecting: Promise<boolean> | null = null;
 
 export async function listen<T>(
   event: string,
@@ -188,7 +188,9 @@ export async function listen<T>(
   const listener = handler as Listener;
   set.add(listener);
   webListeners.set(event, set);
-  ensureEventStream();
+  // Resolve only once the stream is open, so a command issued right after
+  // `listen()` cannot emit before this page is receiving.
+  await ensureEventStream();
   return () => {
     set.delete(listener);
     if (set.size === 0) webListeners.delete(event);
@@ -226,19 +228,25 @@ function dispatchSse(block: string): void {
   }
 }
 
-function ensureEventStream(): void {
-  if (streamRunning) return;
-  streamRunning = true;
+/** Open (or reuse) the page's event stream. Resolves true once connected. */
+function ensureEventStream(): Promise<boolean> {
+  if (streamConnecting) return streamConnecting;
+  let connected: (ok: boolean) => void = () => {};
+  const ready = new Promise<boolean>((resolve) => {
+    connected = resolve;
+  });
+  streamConnecting = ready;
   void (async () => {
     try {
       // Plain fetch rather than EventSource: EventSource cannot send the
       // Authorization header, which would force the token into the URL.
       const res = await fetch("/api/events", { headers: authHeaders() });
       if (!res.ok || !res.body) {
-        // 404 until the server grows an event channel (plan slice 5).
+        connected(false);
         return;
       }
       setWebEventsAvailable(true);
+      connected(true);
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -256,16 +264,18 @@ function ensureEventStream(): void {
     } catch {
       /* connection lost; the next listen() reconnects */
     } finally {
-      streamRunning = false;
+      connected(false);
+      streamConnecting = null;
       setWebEventsAvailable(false);
     }
   })();
+  return ready;
 }
 
 /** Test hook: forget the token-from-URL check and any registered listeners. */
 export function resetTransportForTests(): void {
   urlTokenChecked = false;
   webListeners.clear();
-  streamRunning = false;
+  streamConnecting = null;
   webEventsAvailable = false;
 }

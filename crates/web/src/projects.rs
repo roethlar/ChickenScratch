@@ -21,7 +21,7 @@ pub struct ProjectEntry {
 pub struct Info {
     pub root: String,
     pub version: &'static str,
-    /// Whether `/api/events` is live (AI streaming); false until plan slice 5.
+    /// Whether `/api/events` is live (AI streaming).
     pub events: bool,
 }
 
@@ -86,7 +86,7 @@ pub async fn info(State(state): State<Arc<AppState>>) -> Json<Info> {
     Json(Info {
         root: state.root.to_string_lossy().into_owned(),
         version: env!("CARGO_PKG_VERSION"),
-        events: false,
+        events: true,
     })
 }
 

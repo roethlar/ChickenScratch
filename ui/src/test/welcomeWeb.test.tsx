@@ -14,6 +14,7 @@ vi.mock("../commands/transport", () => ({
   isWeb: () => true,
   getWebToken: () => tokenState.value,
   setWebToken: setWebTokenMock,
+  setWebEventsAvailable: vi.fn(),
   AUTH_REQUIRED_EVENT: "cs-web-auth-required",
 }));
 

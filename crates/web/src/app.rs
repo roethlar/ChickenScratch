@@ -2,24 +2,18 @@ use std::sync::Arc;
 
 use axum::{
     extract::DefaultBodyLimit,
-    http::StatusCode,
     middleware,
     routing::{get, post},
-    Json, Router,
+    Router,
 };
 use tower_http::trace::TraceLayer;
 
-use crate::{auth, commands, export, fs_browse, projects, state::AppState, static_ui, upload};
+use crate::{
+    auth, commands, events, export, fs_browse, projects, state::AppState, static_ui, upload,
+};
 
 /// 50 MiB: the same cap the desktop's bounded Pandoc runs use.
 pub const MAX_BODY_BYTES: usize = 50 * 1024 * 1024;
-
-async fn no_events() -> (StatusCode, Json<&'static str>) {
-    (
-        StatusCode::NOT_FOUND,
-        Json("This server has no event channel yet"),
-    )
-}
 
 /// The whole server as one router: `/api/*` behind the token check, the UI
 /// everywhere else.
@@ -31,7 +25,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/export", post(export::export))
         .route("/import-upload", post(upload::import_upload))
         .route("/fs/dirs", get(fs_browse::dirs))
-        .route("/events", get(no_events))
+        .route("/events", get(events::stream))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_token,

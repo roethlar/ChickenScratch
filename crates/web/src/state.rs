@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
 
+use tokio::sync::broadcast;
+
 use chickenscratch_services::{AiStreamRegistry, ProjectTokens, ProjectWriteLocks};
 
+use crate::events::{self, SseEvent};
 use crate::gate::Gate;
 use crate::static_ui::UiSource;
 
@@ -17,6 +20,8 @@ pub struct AppState {
     pub locks: ProjectWriteLocks,
     pub tokens: ProjectTokens,
     pub ai_registry: AiStreamRegistry,
+    /// Fan-out for the browser's server-sent events (AI streaming).
+    pub events: broadcast::Sender<SseEvent>,
 }
 
 impl AppState {
@@ -37,6 +42,7 @@ impl AppState {
             locks: ProjectWriteLocks::default(),
             tokens: ProjectTokens::default(),
             ai_registry: AiStreamRegistry::default(),
+            events: events::channel(),
         })
     }
 }

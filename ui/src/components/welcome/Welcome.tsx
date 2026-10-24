@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { FolderOpen, FilePlus, FileDown, Clock, AlertTriangle, ExternalLink } from "lucide-react";
 import { openExternal, pickFolder, pickSaveFile } from "../../platform";
 import { pickServerFolder } from "../shared/folderPickerRequest";
-import { isWeb, getWebToken, AUTH_REQUIRED_EVENT } from "../../commands/transport";
+import { isWeb, getWebToken, setWebEventsAvailable, AUTH_REQUIRED_EVENT } from "../../commands/transport";
 import { listWebProjects, getWebInfo, type WebProject } from "../../commands/web";
 import { useProjectStore } from "../../stores/projectStore";
 import { useSettingsStore } from "../../stores/settingsStore";
@@ -60,6 +60,7 @@ export function Welcome() {
         const [info, projects] = loaded;
         setWebRoot(info.root);
         setWebProjects(projects);
+        setWebEventsAvailable(info.events);
       });
     }
   }, [web, needsToken, fetchWeb]);

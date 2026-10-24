@@ -30,6 +30,7 @@ use chickenscratch_services::{AppSettings, ChiknError, Project, SessionTarget};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::events::WebSink;
 use crate::gate::{GateError, PathArg};
 use crate::state::AppState;
 
@@ -150,6 +151,7 @@ args! {
     Content { content: String }
     Transform { content: String, operation: String }
     RequestId { request_id: String }
+    AiStream { content: String, operation: String, request_id: String }
     // git
     ProjectPath { project_path: PathArg }
     ProjectMessage { project_path: PathArg, message: String }
@@ -452,7 +454,18 @@ async fn dispatch(st: Arc<AppState>, name: &str, body: Bytes) -> Result<Response
             })
             .await?
         }
-        "ai_transform_stream" => return Err(not_in_web("Live AI streaming")),
+        "ai_transform_stream" => {
+            run(st, body, |a: AiStream, s| {
+                Ok(ai::ai_transform_stream(
+                    Arc::new(WebSink(s.events.clone())),
+                    &s.ai_registry,
+                    a.content,
+                    a.operation,
+                    a.request_id,
+                )?)
+            })
+            .await?
+        }
         "cancel_ai_transform_stream" => {
             run(st, body, |a: RequestId, s| {
                 Ok(ai::cancel_ai_transform_stream(
