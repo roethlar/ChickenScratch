@@ -538,3 +538,85 @@ async fn import_upload_adds_the_file_as_a_document_and_leaves_no_copy_behind() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(msg, json!("Invalid upload: missing file"));
 }
+
+#[tokio::test]
+async fn folder_browser_stays_inside_the_root() {
+    let h = harness();
+    fs::create_dir_all(h.root.join("Research").join("Draft.scriv")).unwrap();
+    fs::create_dir_all(h.root.join(".git")).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&h.outside, h.root.join("escape")).unwrap();
+    let auth = format!("Bearer {TOKEN}");
+
+    let (status, listing, _) = call(
+        &h.app,
+        Request::get("/api/fs/dirs")
+            .header(header::AUTHORIZATION, &auth)
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listing["path"], json!(path_str(&h.root)));
+    assert_eq!(listing["parent"], Value::Null);
+    assert_eq!(
+        listing["dirs"],
+        json!([{ "name": "Research", "path": path_str(&h.root.join("Research")) }])
+    );
+
+    let (status, listing, _) = call(
+        &h.app,
+        Request::get(format!(
+            "/api/fs/dirs?path={}",
+            urlencode(&path_str(&h.root.join("Research")))
+        ))
+        .header(header::AUTHORIZATION, &auth)
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listing["parent"], json!(path_str(&h.root)));
+    assert_eq!(listing["dirs"][0]["name"], json!("Draft.scriv"));
+
+    let (status, _, _) = call(
+        &h.app,
+        Request::get(format!(
+            "/api/fs/dirs?path={}",
+            urlencode(&path_str(&h.outside))
+        ))
+        .header(header::AUTHORIZATION, &auth)
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    #[cfg(unix)]
+    {
+        let (status, _, _) = call(
+            &h.app,
+            Request::get(format!(
+                "/api/fs/dirs?path={}",
+                urlencode(&path_str(&h.root.join("escape")))
+            ))
+            .header(header::AUTHORIZATION, &auth)
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+}
+
+fn urlencode(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}

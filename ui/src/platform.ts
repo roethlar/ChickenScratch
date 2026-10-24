@@ -3,9 +3,10 @@
  * link in the system browser, and the close-window hook.
  *
  * Inside Tauri these call the Tauri plugins. In a plain browser (the
- * `chikn-web` shell) the pickers answer `null` — callers already treat that as
- * "cancelled" — until the web replacements land (plan slice 4), links open in
- * a new tab, and page unload is the close hook.
+ * `chikn-web` shell) folder picking browses the server's projects root, file
+ * picking returns the device's file for upload (`pickBrowserFile`), saving to
+ * a path has no equivalent (exports download instead, so `pickSaveFile`
+ * answers `null`), links open in a new tab, and page unload is the close hook.
  *
  * Together with `commands/transport.ts` this is the only module allowed to
  * import from `@tauri-apps/*` (ESLint `no-restricted-imports`).
@@ -14,6 +15,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
+import { pickServerFolder } from "./components/shared/folderPickerRequest";
 
 export interface FileFilter {
   name: string;
@@ -22,6 +24,8 @@ export interface FileFilter {
 
 export interface PickFolderOptions {
   title?: string;
+  /** Web shell only: the chosen folder's name must end with this (e.g. ".scriv"). */
+  suffix?: string;
 }
 
 export interface PickFileOptions {
@@ -39,7 +43,7 @@ export interface PickSaveOptions {
 export const WEB_NOT_AVAILABLE = "Not available in the web version yet.";
 
 export async function pickFolder(options: PickFolderOptions = {}): Promise<string | null> {
-  if (!isTauri()) return null;
+  if (!isTauri()) return pickServerFolder(options.title ?? "Choose a folder", { suffix: options.suffix });
   const picked = await dialogOpen({ directory: true, title: options.title });
   return typeof picked === "string" ? picked : null;
 }

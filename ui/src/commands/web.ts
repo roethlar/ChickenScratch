@@ -83,3 +83,20 @@ export async function importUpload(
   const res = await webFetch("/api/import-upload", { method: "POST", body: form });
   return (await res.json()) as Project;
 }
+
+export interface DirEntry {
+  name: string;
+  path: string;
+}
+
+export interface DirListing {
+  path: string;
+  parent: string | null;
+  dirs: DirEntry[];
+}
+
+/** Sub-folders of one folder under the server root (empty path = the root). */
+export function listServerDirs(path = ""): Promise<DirListing> {
+  const query = path ? `?path=${encodeURIComponent(path)}` : "";
+  return webGet<DirListing>(`/api/fs/dirs${query}`);
+}

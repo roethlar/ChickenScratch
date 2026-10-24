@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useId, useRef } from "react";
 import { X, FolderOpen } from "lucide-react";
-import { pickFolder, WEB_NOT_AVAILABLE } from "../../platform";
-import { isWeb } from "../../commands/transport";
+import { pickFolder } from "../../platform";
 import {
   getAppSettings,
   saveAppSettings,
@@ -261,10 +260,6 @@ export function Settings({
                     <button
                       className="settings-browse-btn"
                       onClick={async () => {
-                        if (isWeb()) {
-                          toastError(WEB_NOT_AVAILABLE);
-                          return;
-                        }
                         const dir = await pickFolder({ title: "Choose Backup Folder" });
                         if (dir) update("backup", "backup_directory", dir);
                       }}
