@@ -33,3 +33,10 @@ unfinished Tier 3 work is a later priority.
   research (inline PDF/image preview), split editor.
 
 Deliberately **not** on the roadmap: name generators, deep character-psychology forms, snowflake-method spreadsheets. These bloat the UI with features that look good in a feature list and then nobody uses.
+
+## Queued side quests (owner-queued, outside the active phase)
+
+- **[PLAN_WEB_SHELL.md](PLAN_WEB_SHELL.md)** — `chikn-web`: serve the
+  existing React UI over HTTP from a shared `chickenscratch-services`
+  command layer, for self-hosted browser access over a private VPN.
+  Queued 2026-10-23; no slice approved.
