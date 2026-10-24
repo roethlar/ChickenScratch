@@ -65,10 +65,11 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Known drift (recorded, not yet fixed)
 
-- **CI red under rustc 1.99.1 — fixed locally, not yet proven on CI**
-  (GitHub Validation run `40071873531` at `3a8db4e`; previous green was
-  `a2d8a39` on rustc 1.98.0). Owner go 2026-10-24 "fix ci"; plan
-  `docs/plans/PLAN_CI_RUST_199.md`. (1) Windows: `libgit2-sys 0.17` relied
+- **CI red under rustc 1.99.1 — fixed and proven green** (Validation run
+  `40105127486` at `150bfcf` succeeded on all three runners, 2026-10-24;
+  the red run was `40071873531` at `3a8db4e`). Owner go "fix ci", then
+  "push"; plan `docs/plans/PLAN_CI_RUST_199.md`. Kept here one cycle as the
+  record of cause. (1) Windows: `libgit2-sys 0.17` relied
   on std linking `advapi32.lib`; std 1.99 binds that DLL via raw-dylib, so
   the core test runner failed to link. Fix `3f9024b`: `crates/core/build.rs`
   emits `rustc-link-lib=advapi32` on Windows. Alternative left open:
@@ -78,7 +79,7 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   exit, losing the race in `process_helper_caps_combined_stdout_and_stderr`.
   Fix `818eb2a`: on `EPERM`, poll `try_wait` up to 500 ms before believing
   the error. Neither fix is exercisable on the Linux box (both branches are
-  inert here); the GitHub runners are the proof. **Push needs its own go.**
+  inert here); the GitHub runners were the proof.
 - **Desktop wrappers verified by CI**: Tauri Bundles run `40071873562`
   built the Tauri app (macOS) at `3a8db4e`, so the slice-1 wrappers compile
   with the real `tauri` crate; the local WebKitGTK gap below no longer
@@ -102,10 +103,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **Push the two CI fixes and watch Validation** (`3f9024b`, `818eb2a`;
-   Known drift): push needs an owner go (`.agents/push-policy.md`); then
-   check the Windows and macOS Validation jobs. If macOS still fails, the
-   next suspect is the leader-exit grace window length. Remaining known gaps, unapproved: Tauri
+1. **Nothing in flight.** CI is green at `150bfcf`. Candidate hardening
+   slices, each needing its own go: the flaky restore-token test (Known
+   drift), the `git2` 0.19 → 0.21 upgrade that would retire
+   `crates/core/build.rs`. Remaining known gaps, unapproved: Tauri
    `import_scrivener` still ignores a failed post-import token acquisition
    (not reachable after ar-1); welcome-screen errors keep a
    developer-ish "Invalid project:" prefix.
@@ -123,7 +124,11 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section.
-- **2026-10-24 as of `818eb2a`** (two CI fixes, unpushed): fmt, clippy
+- **2026-10-24 as of `150bfcf`, pushed to `origin` and `github`**: GitHub
+  Validation run `40105127486` succeeded (Linux harness, Windows process
+  helper, macOS); Tauri Bundles run `40105127518` was still in progress
+  when recorded (it passed at `3a8db4e` and only core changed since).
+- **2026-10-24 as of `818eb2a`** (two CI fixes): fmt, clippy
   `-D warnings` and tests green for core, services, web, tui, converter
   (137 core tests, the once-flaky restore test included this run);
   release-metadata script; UI lint/build/test (98 tests). Tauri crate not

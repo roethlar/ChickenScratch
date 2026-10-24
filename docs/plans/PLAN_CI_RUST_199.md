@@ -55,12 +55,12 @@ single-concern commits, one per failure.
 
 ## [MODEL] Tests
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --locked -p chickenscratch-core --all-targets -- -D warnings`
-- [ ] `cargo test --locked -p chickenscratch-core --lib utils::process`
-- [ ] Declared suite minus the Tauri crate on the Linux box
-- [ ] Real proof is the GitHub Validation run on `windows-2025-vs2026` and
-      `macos-26-arm64` after the push (push needs its own go).
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --locked -p chickenscratch-core --all-targets -- -D warnings`
+- [x] `cargo test --locked -p chickenscratch-core --lib utils::process`
+- [x] Declared suite minus the Tauri crate on the Linux box
+- [x] Real proof is the GitHub Validation run on `windows-2025-vs2026` and
+      `macos-26-arm64` after the push — run `40105127486`, success.
 
 ## [MODEL] Owner verification (plain English)
 
@@ -74,4 +74,6 @@ Linux, Windows and macOS."
 
 ## Status
 
-- 2026-10-24: both commits landed locally; awaiting push go.
+- 2026-10-24: both commits landed locally; owner "push"; pushed as
+  `150bfcf`. Validation run `40105127486` green on all three runners.
+  Plan complete.

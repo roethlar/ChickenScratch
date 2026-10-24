@@ -46,5 +46,5 @@ Deliberately **not** on the roadmap: name generators, deep character-psychology 
   shipped the same day.
 - **[PLAN_CI_RUST_199.md](PLAN_CI_RUST_199.md)** — CI green again under
   rustc 1.99: Windows `advapi32` link for `libgit2-sys`, macOS `killpg`
-  EPERM race in the process helper. Owner go "fix ci" 2026-10-24; both
-  commits landed, awaiting push.
+  EPERM race in the process helper. Owner go "fix ci" 2026-10-24; pushed
+  the same day, Validation green on all runners.
