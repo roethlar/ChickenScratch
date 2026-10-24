@@ -133,6 +133,18 @@ async function webInvoke<T>(
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
   }
+  throw await failure(res);
+}
+
+/** GET a web-only endpoint (`/api/projects`, `/api/info`): same token, same error contract. */
+export async function webGet<T>(path: string): Promise<T> {
+  const res = await fetch(path, { headers: authHeaders() });
+  if (res.ok) return (await res.json()) as T;
+  throw await failure(res);
+}
+
+/** The rejection value for a failed request: the backend's plain string, as Tauri rejects. */
+async function failure(res: Response): Promise<string> {
   let body: unknown = null;
   try {
     body = await res.json();
@@ -143,8 +155,7 @@ async function webInvoke<T>(
     clearWebToken();
     window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
   }
-  // Reject with the plain string exactly as Tauri does for a ChiknError.
-  throw typeof body === "string" ? body : res.statusText || `HTTP ${res.status}`;
+  return typeof body === "string" ? body : res.statusText || `HTTP ${res.status}`;
 }
 
 // ── Events ───────────────────────────────────────────────────────────

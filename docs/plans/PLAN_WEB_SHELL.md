@@ -6,8 +6,9 @@ The active phase (`docs/CURRENT_PHASE.md`, Engine hardening) is unchanged.
 Owner 2026-10-24: "follow the queue and get as much as you can done" —
 taken as the go for the queued slices, in order, one commit each.
 Progress: slices 1 (services extraction), 2 (frontend transport and platform
-seams) and 3a (`chikn-web` server: dispatch, auth, gate, static UI) landed
-2026-10-24.
+seams), 3a (`chikn-web` server: dispatch, auth, gate, static UI) and 3b (web
+Welcome: server project list, create by name, token gate) landed 2026-10-24.
+The owner-usable milestone is reached: edit, save, revisions from a browser.
 
 **Owner request (quote):**
 > hi! I want to make a web app version of chickenscratch that I can access

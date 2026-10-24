@@ -3755,3 +3755,41 @@
   font-size: 0.82rem;
   opacity: 0.8;
 }
+
+/* ── Browser shell (chikn-web): token gate and server project list ── */
+.welcome-token {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 28rem;
+}
+.welcome-token-text {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+.welcome-token-text svg {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+.welcome-token-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+.welcome-token-field input {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.welcome-recent-empty {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  padding: 0.5rem 0.75rem;
+}

@@ -1,15 +1,20 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { FolderOpen, FilePlus, FileDown, Clock, AlertTriangle, ExternalLink } from "lucide-react";
-import { openExternal, pickFolder, pickSaveFile, WEB_NOT_AVAILABLE } from "../../platform";
-import { isWeb } from "../../commands/transport";
-import { toast } from "../shared/Toast";
+import { openExternal, pickFolder, pickSaveFile } from "../../platform";
+import { isWeb, getWebToken, AUTH_REQUIRED_EVENT } from "../../commands/transport";
+import { listWebProjects, getWebInfo, type WebProject } from "../../commands/web";
 import { useProjectStore } from "../../stores/projectStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import { pickScrivFolder } from "../../commands/project";
 import {
   getRecentProjects,
   checkPandoc,
   type RecentProject,
 } from "../../commands/settings";
+import { dialogPrompt } from "../shared/Dialog";
+import { toastError } from "../shared/Toast";
+import { WebTokenGate } from "./WebTokenGate";
+import { isValidProjectName } from "../../utils/projectName";
 
 export function Welcome() {
   const openProject = useProjectStore((s) => s.openProject);
@@ -21,20 +26,51 @@ export function Welcome() {
   const [recent, setRecent] = useState<RecentProject[]>([]);
   const [pandocWarning, setPandocWarning] = useState<string | null>(null);
 
+  // Browser shell (chikn-web): projects come from the server's root folder
+  // instead of a native folder picker, and the server wants a token first.
+  const web = isWeb();
+  const [needsToken, setNeedsToken] = useState(() => web && !getWebToken());
+  const [webProjects, setWebProjects] = useState<WebProject[]>([]);
+  const [webRoot, setWebRoot] = useState<string | null>(null);
+
+  // Resolves to the server's root and project list; the callers decide how
+  // to apply it (the effect below via `.then`, the create handler inline).
+  const fetchWeb = useCallback(
+    () =>
+      Promise.all([getWebInfo(), listWebProjects()]).catch((e) => {
+        // A 401 is handled by the token gate; anything else is worth a word.
+        if (getWebToken()) toastError(`Could not reach the server: ${e}`);
+        return null;
+      }),
+    []
+  );
+
   useEffect(() => {
+    if (web && needsToken) return;
     getRecentProjects().then(setRecent).catch(() => {});
     checkPandoc().catch(() => {
       setPandocWarning(
         "Pandoc is not installed. Scrivener import and manuscript export will not work. Install from pandoc.org."
       );
     });
-  }, []);
+    if (web) {
+      fetchWeb().then((loaded) => {
+        if (!loaded) return;
+        const [info, projects] = loaded;
+        setWebRoot(info.root);
+        setWebProjects(projects);
+      });
+    }
+  }, [web, needsToken, fetchWeb]);
+
+  useEffect(() => {
+    if (!web) return;
+    const onAuthRequired = () => setNeedsToken(true);
+    window.addEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
+    return () => window.removeEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
+  }, [web]);
 
   const handleOpen = async () => {
-    if (isWeb()) {
-      toast(WEB_NOT_AVAILABLE);
-      return;
-    }
     const selected = await pickFolder({ title: "Open .chikn Project" });
     if (selected) {
       setBusy(true);
@@ -44,10 +80,6 @@ export function Welcome() {
   };
 
   const handleCreate = async () => {
-    if (isWeb()) {
-      toast(WEB_NOT_AVAILABLE);
-      return;
-    }
     const dir = await pickSaveFile({
       title: "Create New Project",
       defaultPath: "Untitled.chikn",
@@ -62,11 +94,25 @@ export function Welcome() {
     }
   };
 
-  const handleImport = async () => {
-    if (isWeb()) {
-      toast(WEB_NOT_AVAILABLE);
+  const handleCreateWeb = async () => {
+    const name = await dialogPrompt("Name for the new project", "Notes");
+    if (name === null) return;
+    if (!isValidProjectName(name)) {
+      toastError("Use a plain name: no slashes, and not starting with a dot.");
       return;
     }
+    if (!webRoot) {
+      toastError("The server has not reported its projects folder yet. Try again in a moment.");
+      return;
+    }
+    setBusy(true);
+    await createProject(name.trim(), webRoot);
+    const loaded = await fetchWeb();
+    if (loaded) setWebProjects(loaded[1]);
+    setBusy(false);
+  };
+
+  const handleImport = async () => {
     const scrivPath = await pickScrivFolder();
     if (!scrivPath) return;
 
@@ -88,6 +134,43 @@ export function Welcome() {
     await openProject(path);
     setBusy(false);
   };
+
+  const onTokenEntered = () => {
+    setNeedsToken(false);
+    // Settings were requested at startup, before the token existed.
+    useSettingsStore.getState().loadSettings();
+  };
+
+  /** Server projects first, then recent entries the server list does not know. */
+  const webList = useMemo(() => {
+    const seen = new Set(webProjects.map((p) => p.path));
+    const extra = recent.filter((r) => !seen.has(r.path));
+    return [...webProjects, ...extra].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+    );
+  }, [webProjects, recent]);
+
+  const displayPath = (path: string) => {
+    const normalized = path.replace(/\\/g, "/");
+    if (web && webRoot) {
+      const root = webRoot.replace(/\\/g, "/").replace(/\/$/, "") + "/";
+      return normalized.startsWith(root) ? normalized.slice(root.length) : normalized;
+    }
+    return normalized.replace(/^(?:[A-Za-z]:)?\/Users\/[^/]+\//, "~/");
+  };
+
+  const renderProjectRow = (item: { name: string; path: string }) => (
+    <button
+      key={item.path}
+      className="welcome-recent-item"
+      onClick={() => handleOpenRecent(item.path)}
+      disabled={busy}
+      title={item.path}
+    >
+      <span className="welcome-recent-name">{item.name}</span>
+      <span className="welcome-recent-path">{displayPath(item.path)}</span>
+    </button>
+  );
 
   return (
     <div className="welcome">
@@ -118,41 +201,53 @@ export function Welcome() {
           </div>
         )}
 
-        <div className="welcome-actions">
-          <button className="welcome-btn" onClick={handleOpen} disabled={busy}>
-            <FolderOpen size={20} />
-            <span>Open Project</span>
-          </button>
-          <button className="welcome-btn" onClick={handleCreate} disabled={busy}>
-            <FilePlus size={20} />
-            <span>New Project</span>
-          </button>
-          <button className="welcome-btn" onClick={handleImport} disabled={busy}>
-            <FileDown size={20} />
-            <span>Import Scrivener</span>
-          </button>
-        </div>
-
-        {recent.length > 0 && (
-          <div className="welcome-recent">
-            <h3 className="welcome-recent-title">
-              <Clock size={14} /> Recent Projects
-            </h3>
-            {recent.map((r) => (
-              <button
-                key={r.path}
-                className="welcome-recent-item"
-                onClick={() => handleOpenRecent(r.path)}
-                disabled={busy}
-                title={r.path}
-              >
-                <span className="welcome-recent-name">{r.name}</span>
-                <span className="welcome-recent-path">
-                  {r.path.replace(/\\/g, "/").replace(/^(?:[A-Za-z]:)?\/Users\/[^/]+\//, "~/")}
-                </span>
+        {web && needsToken ? (
+          <WebTokenGate onDone={onTokenEntered} />
+        ) : web ? (
+          <>
+            <div className="welcome-actions">
+              <button className="welcome-btn" onClick={handleCreateWeb} disabled={busy}>
+                <FilePlus size={20} />
+                <span>New Project</span>
               </button>
-            ))}
-          </div>
+            </div>
+            <div className="welcome-recent">
+              <h3 className="welcome-recent-title">
+                <FolderOpen size={14} /> Projects on this server
+              </h3>
+              {webList.length === 0 ? (
+                <p className="welcome-recent-empty">No projects yet. Create one to start writing.</p>
+              ) : (
+                webList.map(renderProjectRow)
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="welcome-actions">
+              <button className="welcome-btn" onClick={handleOpen} disabled={busy}>
+                <FolderOpen size={20} />
+                <span>Open Project</span>
+              </button>
+              <button className="welcome-btn" onClick={handleCreate} disabled={busy}>
+                <FilePlus size={20} />
+                <span>New Project</span>
+              </button>
+              <button className="welcome-btn" onClick={handleImport} disabled={busy}>
+                <FileDown size={20} />
+                <span>Import Scrivener</span>
+              </button>
+            </div>
+
+            {recent.length > 0 && (
+              <div className="welcome-recent">
+                <h3 className="welcome-recent-title">
+                  <Clock size={14} /> Recent Projects
+                </h3>
+                {recent.map(renderProjectRow)}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
