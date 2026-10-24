@@ -1,4 +1,5 @@
 import { invoke } from "./transport";
+import { randomId } from "../utils/randomId";
 import { listen, supportsAiStreaming, type UnlistenFn } from "./transport";
 
 export interface AiSettings {
@@ -38,7 +39,7 @@ export async function aiTransform(
  * backend request and resolves without applying that event.
  */
 export function createAiStreamId(): string {
-  return crypto.randomUUID();
+  return randomId();
 }
 
 export async function cancelAiTransformStream(requestId: string): Promise<void> {

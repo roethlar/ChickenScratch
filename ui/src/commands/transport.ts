@@ -17,6 +17,7 @@
  */
 import { invoke as tauriInvoke, isTauri } from "@tauri-apps/api/core";
 import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
+import { randomId } from "../utils/randomId";
 
 export type { UnlistenFn };
 
@@ -55,7 +56,7 @@ export function getSessionId(): string {
   } catch {
     /* no sessionStorage */
   }
-  sessionId = crypto.randomUUID();
+  sessionId = randomId();
   try {
     window.sessionStorage.setItem(SESSION_KEY, sessionId);
   } catch {
