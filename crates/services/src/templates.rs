@@ -39,6 +39,29 @@ fn default_templates() -> Vec<Template> {
             name: "Outline".to_string(),
             content: "## Act 1\n\n- Inciting incident\n- Key scenes\n\n## Act 2\n\n- Rising action\n- Midpoint\n\n## Act 3\n\n- Climax\n- Resolution\n".to_string(),
         },
+        // Notes and document profiles (docs/plans/PLAN_PROJECT_PROFILES.md).
+        // Which of these a project sees is the UI profile's choice; the
+        // backend offers the whole list.
+        Template {
+            id: "meeting".to_string(),
+            name: "Meeting notes".to_string(),
+            content: "**Date:** \n\n**Attendees:** \n\n## Agenda\n\n- \n\n## Notes\n\n\n\n## Actions\n\n- [ ] \n".to_string(),
+        },
+        Template {
+            id: "decision".to_string(),
+            name: "Decision record".to_string(),
+            content: "## Context\n\n\n\n## Options considered\n\n1. \n2. \n\n## Decision\n\n\n\n## Consequences\n\n- \n".to_string(),
+        },
+        Template {
+            id: "howto".to_string(),
+            name: "How-to".to_string(),
+            content: "## Goal\n\n\n\n## Steps\n\n1. \n2. \n3. \n\n## Check it worked\n\n- \n".to_string(),
+        },
+        Template {
+            id: "daily".to_string(),
+            name: "Daily log".to_string(),
+            content: "## Today\n\n- \n\n## Notes\n\n\n\n## Tomorrow\n\n- \n".to_string(),
+        },
     ]
 }
 pub fn list_templates() -> Vec<Template> {
@@ -133,4 +156,36 @@ pub fn save_as_template(project_path: String, doc_id: String) -> Result<Template
         name: doc.name.clone(),
         content: doc.content.clone(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::default_templates;
+
+    #[test]
+    fn every_profile_template_exists_with_a_body() {
+        let templates = default_templates();
+        for id in [
+            "scene",
+            "chapter",
+            "character",
+            "setting",
+            "outline", // fiction
+            "meeting",
+            "decision",
+            "howto",
+            "daily", // notes / document
+        ] {
+            let t = templates
+                .iter()
+                .find(|t| t.id == id)
+                .unwrap_or_else(|| panic!("template {id} missing"));
+            assert!(!t.name.trim().is_empty(), "{id} has no name");
+            assert!(!t.content.trim().is_empty(), "{id} has no body");
+        }
+        let mut ids: Vec<&str> = templates.iter().map(|t| t.id.as_str()).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), templates.len(), "template ids must be unique");
+    }
 }
