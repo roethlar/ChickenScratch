@@ -9,6 +9,11 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 - Phase **Engine hardening — protect writers' work** remains active;
   `docs/CURRENT_PHASE.md` owns the phase and exit criteria.
+- **Owner 2026-10-24: project profiles shipped** (`docs/plans/PLAN_PROJECT_PROFILES.md`,
+  go: "complete all slices and push when done"): Fiction / Notes / Document
+  types show, hide or rename the novelist UI parts, display-only; New Project
+  asks for the type. UI-only plus four backend templates. Pushed with the
+  web-shell commits on the owner's instruction.
 - **Owner 2026-10-23: web shell queued as a side quest, no phase change**
   ("no direction change, just the next side quest. plan it, add it to the
   queue"). Plan: `docs/plans/PLAN_WEB_SHELL.md` — a `chikn-web` server
@@ -79,9 +84,11 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **Owner: push** the 12 web-shell commits (`bb6fa82..c3e171d`) when ready
-   (`.agents/push-policy.md`; CI has not seen them and is the first real
-   compile of the Tauri wrappers). Remaining known gaps, unapproved: Tauri
+1. **Pushed to `origin` (magneto Gitea) 2026-10-24** on the owner's "push when
+   done". No GitHub remote is configured on this machine, so the GitHub
+   Validation workflow has not run; the Tauri wrappers are still unverified on
+   a machine with WebKitGTK until a push reaches GitHub or the owner builds
+   the desktop app. Remaining known gaps, unapproved: Tauri
    `import_scrivener` still ignores a failed post-import token acquisition
    (not reachable after ar-1); welcome-screen errors keep a
    developer-ish "Invalid project:" prefix.
@@ -92,10 +99,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
    (2026-10-24: works over the VPN after the plain-HTTP random-id fix
    `a054e9d`). CI on a push is the first check of the Tauri wrappers on a
    machine with WebKitGTK.
-4. **Queued side quest: project profiles** (`docs/plans/PLAN_PROJECT_PROFILES.md`,
-   owner 2026-10-24 "plan it"): Fiction / Notes / Document types that show,
-   hide or rename the novelist UI parts, display-only. No slice approved;
-   propose slice 1 (profile table, no visible change) first.
+4. **Project profiles**: all four slices shipped 2026-10-24 (owner: "complete
+   all slices and push when done"); next evidence is the owner creating a
+   Notes project in the browser and seeing no fiction tools.
 
 ## Verification
 
@@ -106,7 +112,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   tests). The Tauri crate did not compile on this box (Known drift); its
   wrappers were type-checked against the `tauri` stub at `c3e171d`. Live
   smoke of `chikn-web` (page, auth, create/list project, embedded assets)
-  passed. CI has not seen these commits.
+  passed. Pushed to origin (Gitea) 2026-10-24; GitHub CI not reached (no
+  GitHub remote here).
 - Full declared suite plus the CI cross-frontend harness ran green
   locally 2026-09-25 **as of `cd48252`**; final GUI smoke (restore holds
   on disk, red close button closes) on that build. Desktop GUI checks of each fix

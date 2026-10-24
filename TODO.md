@@ -164,6 +164,12 @@ Superseded by [ADR-004](docs/adr/ADR-004-deprecated-native-engines.md): the
 SwiftUI, Qt6, and WinUI native experiments were deprecated and removed. The
 open items that lived here are in this file's git history.
 
+### Project profiles — shipped 2026-10-24 ([plan](docs/plans/PLAN_PROJECT_PROFILES.md))
+- [x] Fiction / Notes / Document profiles keyed off the stored `project_type`; empty or unknown type keeps the full fiction view
+- [x] Binder, views, inspector, revisions, statistics and preview follow the profile; standard folders renamed on screen only
+- [x] New Project asks for the type (Notes default in the browser, Fiction on the desktop)
+- [x] Meeting notes, Decision record, How-to and Daily log templates
+
 ### Web shell (`chikn-web`) — shipped 2026-10-24 ([plan](docs/plans/PLAN_WEB_SHELL.md), [ADR-007](docs/adr/ADR-007-web-shell-shared-services.md))
 - [x] Command layer extracted to `chickenscratch-services`; Tauri wrappers are transport only
 - [x] UI reaches the backend through one transport (Tauri IPC or same-origin JSON) and one platform seam

@@ -6,6 +6,31 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-10-24 — Project profiles: fiction vocabulary becomes one option
+
+Owner, after the first real web-shell run: "Characters and Locations is
+fiction specific. as a general note taking / markdown editor, those aren't
+necessarily ideal. how can we generalize?" — then "plan it" and "complete all
+slices and push when done". Plan: `docs/plans/PLAN_PROJECT_PROFILES.md`.
+
+**UI-only.** The stored `project_type` (already in `ProjectMeta`) now picks a
+profile in `ui/src/profiles.ts`: Fiction (everything as before), Notes (no
+entities, corkboard, timeline, threads, scene fields or session targets; top
+folder shown as "Notes", research as "Attachments"), Document (like Notes
+plus preview section titles). Empty or unknown types keep the full fiction
+view so no existing project loses a panel. Folder renames are display-only —
+`manuscript/` etc. keep their names on disk (I4/I5 untouched). New Project
+asks for the type (Notes default in the browser, Fiction on the desktop) and
+stamps it through the existing `update_project_metadata`; the backend
+template list gained meeting / decision / how-to / daily-log entries, with
+the profile choosing which to offer. Four commits, `71e2d20..f95ebcc`.
+
+**Verification.** UI lint/build/test (98 tests; decision helpers unit-tested),
+services clippy and tests; declared suite minus the Tauri crate on the Linux
+box (see the web-shell entry below for that gap).
+
+---
+
 ## 2026-10-24 — Web shell: one command layer, `chikn-web` serves the same UI
 
 Owner side quest (2026-10-23): "a web app version of chickenscratch that I

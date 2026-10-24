@@ -6,8 +6,27 @@
 
 1. Open ChickenScratch
 2. Click **New Project**
-3. Choose a name and location
-4. Your project opens with three folders: **Manuscript**, **Research**, and **Trash**
+3. Choose a name and location (in the web version, just a name)
+4. Pick what kind of project it is — **Notes**, **Fiction** or **Document**
+   (see *Project types* below)
+5. Your project opens with three folders: **Manuscript**, **Research**, and
+   **Trash** (shown as **Notes**, **Attachments** and **Trash** in a Notes
+   project)
+
+### Project types
+
+The type decides which parts of the app you see and what the standard
+folders are called. It changes nothing about how your files are stored, so
+you can switch at any time under **Preview → Edit Details → Type**, and a
+project opened by any type keeps all of its files.
+
+| Type | What you get |
+|------|--------------|
+| **Notes** | Binder, editor, search, history, drafts, export. No fiction tools. Top folder is called *Notes*; templates: Meeting notes, Decision record, How-to, Daily log. |
+| **Fiction** (Novel, Short Story, Novella, Screenplay) | Everything: Characters and Locations, Corkboard, Timeline, plot threads, scene details in the Inspector, session targets. |
+| **Document** (Essay, Document) | Like Notes, with section headers in the preview; templates: Outline, How-to, Decision record. |
+
+Projects from older versions have no type and show the full Fiction set.
 
 ### Opening an Existing Project
 

@@ -4,6 +4,12 @@ Key names that novelist-mode UIs agree to store in a document's `fields` map. **
 
 ## Scope
 
+- These conventions are what the app's **Fiction** project profile shows
+  (`ui/src/profiles.ts`, [PLAN_PROJECT_PROFILES.md](plans/PLAN_PROJECT_PROFILES.md)).
+  The Notes and Document profiles hide the panels that write them; the
+  stored keys are untouched either way, so a project can move between
+  profiles freely.
+
 - Applies to documents under a writer's manuscript (whatever folder the project treats as manuscript — by default `manuscript/`).
 - Does **not** apply to research, templates, or arbitrary files — UIs may attach other `fields` there by other conventions.
 - Optional. A novelist-mode UI can implement any subset. Fields a UI doesn't understand must still round-trip untouched (format guarantee).
