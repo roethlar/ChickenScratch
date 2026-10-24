@@ -10,6 +10,7 @@ import {
   type DayEntry,
 } from "../../commands/io";
 import * as sessionCmd from "../../commands/session";
+import { useProfile } from "../../profiles";
 import { toastError, toastSuccess } from "../shared/Toast";
 import { selectDocumentWithEditorFlush } from "../editor/navigationGuards";
 
@@ -20,6 +21,7 @@ interface StatsPanelProps {
 
 export function StatsPanel({ open, onClose }: StatsPanelProps) {
   const project = useProjectStore((s) => s.project);
+  const profile = useProfile();
   const readOnly = useProjectStore((s) => s.readOnly);
   const [stats, setStats] = useState<ProjectStats | null>(null);
   const [history, setHistory] = useState<DayEntry[]>([]);
@@ -78,7 +80,7 @@ export function StatsPanel({ open, onClose }: StatsPanelProps) {
         </div>
       </div>
 
-      <SessionTargetSection />
+      {profile.features.sessionTargets && <SessionTargetSection />}
 
       {recent.length > 1 && (
         <div className="stats-history">

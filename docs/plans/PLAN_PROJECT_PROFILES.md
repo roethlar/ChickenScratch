@@ -2,7 +2,8 @@
 
 **Status:** Queued 2026-10-24 as the next side-quest slice after the web shell.
 Owner wording: "plan it" (to the proposal below). Owner 2026-10-24: "complete all slices and push when done" — the go for all
-four slices and the push. Progress: slice 1 (profile table) landed 2026-10-24.
+four slices and the push. Progress: slices 1 (profile table) and 2 (profile applied to binder, views,
+inspector, revisions, statistics, preview) landed 2026-10-24.
 
 **Owner request (quote):**
 > this highlights other UI work that needs doing. Characters and Locations is

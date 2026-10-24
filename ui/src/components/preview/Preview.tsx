@@ -6,6 +6,7 @@ import { toastError } from "../shared/Toast";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import type { TreeNode, Document } from "../../types";
+import { PROFILES, profileFor, type ProfileId } from "../../profiles";
 
 /**
  * Render markdown to a sanitized HTML string. The Tauri webview ships with
@@ -143,7 +144,7 @@ export function Preview() {
   const title = project.metadata.title || project.name;
   const author = project.metadata.author;
   const projectType = project.metadata.project_type || "Document";
-  const showSectionTitles = ["Novel", "Novella", "Screenplay"].includes(projectType);
+  const showSectionTitles = profileFor(project.metadata.project_type).features.previewSectionTitles;
 
   return (
     <div className="preview">
@@ -178,12 +179,13 @@ export function Preview() {
                   Type
                   <select value={meta.project_type} disabled={barrierActive} onChange={(e) => setMeta({ ...meta, project_type: e.target.value })}>
                     <option value="">—</option>
-                    <option value="Novel">Novel</option>
-                    <option value="Short Story">Short Story</option>
-                    <option value="Novella">Novella</option>
-                    <option value="Screenplay">Screenplay</option>
-                    <option value="Essay">Essay</option>
-                    <option value="Document">Document</option>
+                    {(["notes", "fiction", "document"] as ProfileId[]).map((id) => (
+                      <optgroup key={id} label={`${PROFILES[id].label} — ${PROFILES[id].hint}`}>
+                        {PROFILES[id].typeOptions.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </optgroup>
+                    ))}
                   </select>
                 </label>
                 <label>

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useId, useRef } from "react";
 import { dialogPrompt, dialogConfirm, useModalFocusTrap } from "../shared/Dialog";
 import { flushPendingEditorSave } from "../editor/editorRef";
 import { selectDocumentWithEditorFlush } from "../editor/navigationGuards";
+import { useProfile } from "../../profiles";
 import {
   Save,
   History,
@@ -31,6 +32,7 @@ import { useBarrierActive } from "../../hooks/useBarrier";
 
 export function Revisions() {
   const project = useProjectStore((s) => s.project);
+  const profile = useProfile();
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [drafts, setDrafts] = useState<DraftVersion[]>([]);
   const [saving, setSaving] = useState(false);
@@ -378,12 +380,14 @@ export function Revisions() {
         >
           <FileStack size={14} /> Drafts
         </button>
-        <button
-          className={tab === "threads" ? "active" : ""}
-          onClick={() => setTab("threads")}
-        >
-          <Route size={14} /> Threads
-        </button>
+        {profile.features.threads && (
+          <button
+            className={tab === "threads" ? "active" : ""}
+            onClick={() => setTab("threads")}
+          >
+            <Route size={14} /> Threads
+          </button>
+        )}
       </div>
 
       <div className="revisions-body">
@@ -515,7 +519,7 @@ export function Revisions() {
           </div>
         )}
 
-        {tab === "threads" && project && (
+        {tab === "threads" && profile.features.threads && project && (
           <ThreadsList
             project={project}
             onChange={(p) => useProjectStore.getState().setProject(p)}

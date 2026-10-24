@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { folderLabel, profileFor, PROFILES, PROJECT_TYPE_OPTIONS } from "../profiles";
+import {
+  effectiveViewFor,
+  folderLabel,
+  profileFor,
+  visibleTemplates,
+  PROFILES,
+  PROJECT_TYPE_OPTIONS,
+} from "../profiles";
 
 describe("project profiles", () => {
   it("maps stored project types to profiles", () => {
@@ -51,3 +58,25 @@ describe("project profiles", () => {
     expect(PROFILES.notes.defaultType).toBe("Notes");
   });
 });
+
+describe("applying a profile", () => {
+  it("falls back to the editor when the remembered view is hidden", () => {
+    expect(effectiveViewFor("corkboard", PROFILES.notes)).toBe("editor");
+    expect(effectiveViewFor("timeline", PROFILES.document)).toBe("editor");
+    expect(effectiveViewFor("preview", PROFILES.notes)).toBe("preview");
+    expect(effectiveViewFor("corkboard", PROFILES.fiction)).toBe("corkboard");
+  });
+
+  it("offers only the profile's templates, in profile order, ignoring unknown ids", () => {
+    const backend = [
+      { id: "outline", name: "Outline" },
+      { id: "scene", name: "Scene" },
+      { id: "meeting", name: "Meeting notes" },
+      { id: "character", name: "Character Sheet" },
+    ];
+    expect(visibleTemplates(backend, PROFILES.notes).map((t) => t.id)).toEqual(["meeting"]);
+    expect(visibleTemplates(backend, PROFILES.fiction).map((t) => t.id)).toEqual(["scene", "character", "outline"]);
+    expect(visibleTemplates(backend, PROFILES.document).map((t) => t.id)).toEqual(["outline"]);
+  });
+});
+

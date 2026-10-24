@@ -129,3 +129,19 @@ export function useProfile(): Profile {
 export function folderLabel(storedName: string, profile: Profile): string {
   return (profile.folderLabels as Record<string, string>)[storedName] ?? storedName;
 }
+
+export type ViewId = "editor" | "corkboard" | "preview" | "timeline";
+
+/** A remembered view the profile hides falls back to the editor. */
+export function effectiveViewFor(view: ViewId, profile: Profile): ViewId {
+  if (view === "corkboard" && !profile.features.corkboard) return "editor";
+  if (view === "timeline" && !profile.features.timeline) return "editor";
+  return view;
+}
+
+/** The backend's template list narrowed to what this profile offers, in profile order. */
+export function visibleTemplates<T extends { id: string }>(templates: T[], profile: Profile): T[] {
+  return profile.templateIds
+    .map((id) => templates.find((t) => t.id === id))
+    .filter((t): t is T => t !== undefined);
+}

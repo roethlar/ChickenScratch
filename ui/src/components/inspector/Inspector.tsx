@@ -6,6 +6,7 @@ import type { Thread } from "../../types";
 import { toastError } from "../shared/Toast";
 import { getReloadGeneration } from "../../commands/barrier";
 import { useBarrierActive } from "../../hooks/useBarrier";
+import { useProfile } from "../../profiles";
 
 /** Map a doc path like "characters/sarah-bennett.md" → "sarah-bennett". */
 function entitySlug(path: string): string {
@@ -14,7 +15,6 @@ function entitySlug(path: string): string {
 }
 
 const STATUS_PRESETS = ["Draft", "Revised", "Final", "To Do", "In Progress"];
-const LABEL_PRESETS = ["Scene", "Chapter", "Outline", "Notes", "Research"];
 
 /**
  * Novelist-UI convention keys stored in `Document.fields`. See
@@ -220,6 +220,7 @@ function ThreadChips({
 
 export function Inspector() {
   const project = useProjectStore((s) => s.project);
+  const profile = useProfile();
   const activeDoc = useProjectStore((s) => s.activeDoc);
   const barrierActive = useBarrierActive();
   // Use the store's `setProject` so `activeDoc` re-derives from the new
@@ -455,8 +456,8 @@ export function Inspector() {
           <PresetSelect
             value={label}
             onChange={setLabel}
-            presets={LABEL_PRESETS}
-            placeholder="Scene, Chapter, Notes..."
+            presets={profile.labelPresets}
+            placeholder={`${profile.labelPresets.slice(0, 3).join(", ")}...`}
           />
         </div>
 
@@ -480,6 +481,7 @@ export function Inspector() {
           />
         </div>
 
+        {profile.features.sceneFields && (
         <div className="inspector-section">
           <button
             className="inspector-section-toggle"
@@ -611,6 +613,7 @@ export function Inspector() {
             </div>
           )}
         </div>
+        )}
 
         <div className="inspector-field inspector-toggle-field">
           <label>Include in Compile</label>

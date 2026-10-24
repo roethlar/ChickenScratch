@@ -27,6 +27,7 @@ import { isWeb } from "../../commands/transport";
 import { importUpload } from "../../commands/web";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { listTemplates, createFromTemplate, type Template } from "../../commands/templates";
+import { useProfile, folderLabel, visibleTemplates } from "../../profiles";
 import { DragProvider, useDrag } from "./DragContext";
 import {
   clearDocumentSelectionWithEditorFlush,
@@ -382,10 +383,12 @@ function BinderInner() {
     [projectInfo, hierarchy, setProject, closeMenu]
   );
 
+  const profile = useProfile();
   const [templates, setTemplates] = useState<Template[]>([]);
   useEffect(() => {
     listTemplates().then(setTemplates).catch(() => {});
   }, []);
+  const offeredTemplates = useMemo(() => visibleTemplates(templates, profile), [templates, profile]);
 
   const handleNewFromTemplate = useCallback(
     async (templateId: string, parentId?: string) => {
@@ -813,22 +816,26 @@ function BinderInner() {
           ))}
         </div>
 
-        <EntitySection
-          kind="character"
-          label="Characters"
-          projectPath={projectInfo.path}
-          activeDocId={activeDocId}
-          onSelect={handleSelectDocument}
-          onCreated={setProject}
-        />
-        <EntitySection
-          kind="location"
-          label="Locations"
-          projectPath={projectInfo.path}
-          activeDocId={activeDocId}
-          onSelect={handleSelectDocument}
-          onCreated={setProject}
-        />
+        {profile.features.entities && (
+          <>
+            <EntitySection
+              kind="character"
+              label="Characters"
+              projectPath={projectInfo.path}
+              activeDocId={activeDocId}
+              onSelect={handleSelectDocument}
+              onCreated={setProject}
+            />
+            <EntitySection
+              kind="location"
+              label="Locations"
+              projectPath={projectInfo.path}
+              activeDocId={activeDocId}
+              onSelect={handleSelectDocument}
+              onCreated={setProject}
+            />
+          </>
+        )}
       </div>
 
       {contextMenu && (
@@ -845,7 +852,7 @@ function BinderInner() {
           onMoveUp={handleMoveUp}
           onMoveDown={handleMoveDown}
           onImportFile={handleImportFile}
-          templates={templates}
+          templates={offeredTemplates}
           onNewFromTemplate={handleNewFromTemplate}
           onMoveTo={(nodeId: string) => {
             setMovingNodeId(nodeId);
@@ -1087,6 +1094,7 @@ function TreeItem({
   onFlowToggle?: (docId: string) => void;
   onFlowFolder?: (folderId: string) => void;
 }) {
+  const profile = useProfile();
   const open = node.type === "Folder" ? openFolders[node.id] ?? true : false;
   const drag = useDrag();
   const itemRef = useRef<HTMLDivElement>(null);
@@ -1252,7 +1260,7 @@ function TreeItem({
         ) : (
           <Folder size={14} className="binder-icon" />
         )}
-        <span className="binder-label">{node.name}</span>
+        <span className="binder-label">{folderLabel(node.name, profile)}</span>
         <span
           className="binder-more"
           aria-hidden="true"

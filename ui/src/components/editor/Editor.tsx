@@ -20,6 +20,7 @@ import { useBarrierActive } from "../../hooks/useBarrier";
 import { Markdown } from "tiptap-markdown";
 import * as docCmd from "../../commands/document";
 import { toastError } from "../shared/Toast";
+import { useProfile } from "../../profiles";
 import { FlowBoundary, buildFlowBoundary, splitFlowSections } from "./FlowBoundary";
 
 /**
@@ -51,6 +52,7 @@ function applyContentToStore(docId: string, markdown: string) {
 }
 
 export function Editor() {
+  const profile = useProfile();
   const activeDoc = useProjectStore((s) => s.activeDoc);
   const flowDocs = useProjectStore((s) => s.flowDocs);
   const saving = useProjectStore((s) => s.saving);
@@ -512,7 +514,7 @@ export function Editor() {
       />
       <div className="editor-scroll">
         <EditorContent editor={editor} />
-        <SessionBadge />
+        {profile.features.sessionTargets && <SessionBadge />}
       </div>
       <div className="editor-status">
         <span>

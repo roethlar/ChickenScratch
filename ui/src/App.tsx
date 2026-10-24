@@ -10,6 +10,7 @@ import { getCurrentEditor, flushPendingEditorSave } from "./components/editor/ed
 import { isBarrierActive } from "./commands/barrier";
 import { invoke } from "./commands/transport";
 import { openExternal, registerCloseHandler } from "./platform";
+import { effectiveViewFor, useProfile } from "./profiles";
 import * as gitCmd from "./commands/git";
 import {
   PenLine,
@@ -110,6 +111,9 @@ export default function App() {
   const [view, setView] = useState<View>(
     () => (localStorage.getItem("cs-view") as View) || "editor"
   );
+  const profile = useProfile();
+  // A remembered view this project's profile hides shows the editor instead.
+  const effectiveView = effectiveViewFor(view, profile);
   const [showInspector, setShowInspector] = useState(
     () => localStorage.getItem("cs-inspector") === "true"
   );
@@ -353,33 +357,37 @@ export default function App() {
         )}
         <div className="view-toolbar">
           <button
-            className={`view-btn ${view === "editor" ? "active" : ""}`}
+            className={`view-btn ${effectiveView === "editor" ? "active" : ""}`}
             onClick={() => setView("editor")}
             title="Editor"
           >
             <PenLine size={16} />
           </button>
+          {profile.features.corkboard && (
+            <button
+              className={`view-btn ${effectiveView === "corkboard" ? "active" : ""}`}
+              onClick={() => setView("corkboard")}
+              title="Corkboard"
+            >
+              <LayoutGrid size={16} />
+            </button>
+          )}
           <button
-            className={`view-btn ${view === "corkboard" ? "active" : ""}`}
-            onClick={() => setView("corkboard")}
-            title="Corkboard"
-          >
-            <LayoutGrid size={16} />
-          </button>
-          <button
-            className={`view-btn ${view === "preview" ? "active" : ""}`}
+            className={`view-btn ${effectiveView === "preview" ? "active" : ""}`}
             onClick={() => setView("preview")}
             title="Manuscript Preview"
           >
             <BookOpenIcon size={16} />
           </button>
-          <button
-            className={`view-btn ${view === "timeline" ? "active" : ""}`}
-            onClick={() => setView("timeline")}
-            title="Timeline"
-          >
-            <Clock size={16} />
-          </button>
+          {profile.features.timeline && (
+            <button
+              className={`view-btn ${effectiveView === "timeline" ? "active" : ""}`}
+              onClick={() => setView("timeline")}
+              title="Timeline"
+            >
+              <Clock size={16} />
+            </button>
+          )}
           <div style={{ flex: 1 }} />
           <button
             className={`view-btn ${showStats ? "active" : ""}`}
@@ -454,7 +462,7 @@ export default function App() {
           </button>
         </div>
         <Suspense fallback={null}>
-          {view === "editor" ? <Editor /> : view === "corkboard" ? <Corkboard /> : view === "preview" ? <Preview /> : <TimelineView />}
+          {effectiveView === "editor" ? <Editor /> : effectiveView === "corkboard" ? <Corkboard /> : effectiveView === "preview" ? <Preview /> : <TimelineView />}
         </Suspense>
       </div>
       <Suspense fallback={null}>
