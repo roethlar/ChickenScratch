@@ -22,7 +22,8 @@ import { useProjectStore, type FlowDoc } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
 import { importFile } from "../../commands/io";
 import { dialogPrompt, dialogConfirm, useModalFocusTrap } from "../shared/Dialog";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { pickOpenFile, WEB_NOT_AVAILABLE } from "../../platform";
+import { isWeb } from "../../commands/transport";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { listTemplates, createFromTemplate, type Template } from "../../commands/templates";
 import { DragProvider, useDrag } from "./DragContext";
@@ -406,7 +407,12 @@ function BinderInner() {
   const handleImportFile = useCallback(
     async (parentId?: string) => {
       if (!projectInfo) return;
-      const filePath = await openDialog({
+      if (isWeb()) {
+        toastError(WEB_NOT_AVAILABLE);
+        closeMenu();
+        return;
+      }
+      const filePath = await pickOpenFile({
         title: "Import File",
         filters: [
           { name: "All Supported", extensions: [

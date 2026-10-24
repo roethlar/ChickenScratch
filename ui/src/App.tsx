@@ -8,8 +8,8 @@ import { MergeBanner } from "./components/revisions/MergeBanner";
 import { useMergeState } from "./hooks/useMergeState";
 import { getCurrentEditor, flushPendingEditorSave } from "./components/editor/editorRef";
 import { isBarrierActive } from "./commands/barrier";
-import { invoke, isTauri } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "./commands/transport";
+import { openExternal, registerCloseHandler } from "./platform";
 import * as gitCmd from "./commands/git";
 import {
   PenLine,
@@ -219,7 +219,7 @@ export default function App() {
       const store = useProjectStore.getState();
       if (store.project) {
         try {
-          await invoke("backup_on_close", { projectPath: store.project.path });
+          await invoke("backup_on_close", { projectPath: store.project.path }, { keepalive: true });
         } catch {
           // Don't block close on backup failure
         }
@@ -227,41 +227,11 @@ export default function App() {
       return true;
     };
 
-    if (isTauri()) {
-      let unlisten: (() => void) | null = null;
-      let disposed = false;
-
-      getCurrentWindow().onCloseRequested(async (event) => {
-        const flushed = await flushAndBackupOnClose();
-        if (!flushed) {
-          event.preventDefault();
-          toastError(
-            "Close canceled because the latest editor changes could not be saved. Please retry, or check the editor for errors."
-          );
-        }
-      }).then((fn) => {
-        if (disposed) fn();
-        else unlisten = fn;
-      }).catch((err) => {
-        // If close-listener registration fails, keep the browser
-        // fallback below out of the Tauri path instead of adding a
-        // misleading best-effort handler.
-        console.warn("onCloseRequested registration failed", err);
-      });
-
-      return () => {
-        disposed = true;
-        unlisten?.();
-      };
-    }
-
-    const handler = () => {
-      // Browser-only fallback. `beforeunload` cannot reliably await
-      // promises, so the Tauri app uses `onCloseRequested` above.
-      flushAndBackupOnClose().catch(() => {});
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
+    return registerCloseHandler(flushAndBackupOnClose, () => {
+      toastError(
+        "Close canceled because the latest editor changes could not be saved. Please retry, or check the editor for errors."
+      );
+    });
   }, []);
 
   // Persist binder width
@@ -472,8 +442,7 @@ export default function App() {
             className="view-btn"
             onClick={async () => {
               try {
-                const { open } = await import("@tauri-apps/plugin-shell");
-                await open("https://github.com/mcoelho/ChickenScratch/blob/master/docs/USER_GUIDE.md");
+                await openExternal("https://github.com/mcoelho/ChickenScratch/blob/master/docs/USER_GUIDE.md");
               } catch {
                 // Fallback: show inline help
                 toastError("Could not open browser. See docs/USER_GUIDE.md in the project.");

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { FolderOpen, FilePlus, FileDown, Clock, AlertTriangle, ExternalLink } from "lucide-react";
-import { open as shellOpen } from "@tauri-apps/plugin-shell";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { openExternal, pickFolder, pickSaveFile, WEB_NOT_AVAILABLE } from "../../platform";
+import { isWeb } from "../../commands/transport";
+import { toast } from "../shared/Toast";
 import { useProjectStore } from "../../stores/projectStore";
 import { pickScrivFolder } from "../../commands/project";
 import {
@@ -30,10 +31,11 @@ export function Welcome() {
   }, []);
 
   const handleOpen = async () => {
-    const selected = await open({
-      directory: true,
-      title: "Open .chikn Project",
-    });
+    if (isWeb()) {
+      toast(WEB_NOT_AVAILABLE);
+      return;
+    }
+    const selected = await pickFolder({ title: "Open .chikn Project" });
     if (selected) {
       setBusy(true);
       await openProject(selected);
@@ -42,7 +44,11 @@ export function Welcome() {
   };
 
   const handleCreate = async () => {
-    const dir = await save({
+    if (isWeb()) {
+      toast(WEB_NOT_AVAILABLE);
+      return;
+    }
+    const dir = await pickSaveFile({
       title: "Create New Project",
       defaultPath: "Untitled.chikn",
     });
@@ -57,12 +63,16 @@ export function Welcome() {
   };
 
   const handleImport = async () => {
+    if (isWeb()) {
+      toast(WEB_NOT_AVAILABLE);
+      return;
+    }
     const scrivPath = await pickScrivFolder();
     if (!scrivPath) return;
 
     const defaultName =
       scrivPath.replace(/\\/g, "/").split("/").pop()?.replace(".scriv", ".chikn") || "Imported.chikn";
-    const outputPath = await save({
+    const outputPath = await pickSaveFile({
       title: "Save Converted Project As",
       defaultPath: defaultName,
     });
@@ -91,7 +101,7 @@ export function Welcome() {
             <div>
               <p>Pandoc is not installed. Needed for Scrivener import and export.</p>
               <div className="welcome-warning-actions">
-                <button onClick={() => shellOpen("https://pandoc.org/installing.html")}>
+                <button onClick={() => openExternal("https://pandoc.org/installing.html")}>
                   <ExternalLink size={12} /> Install Pandoc
                 </button>
                 <span className="welcome-warning-hint">

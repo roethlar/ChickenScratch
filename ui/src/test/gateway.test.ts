@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn(async () => ({})));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
-  isTauri: () => false,
+  isTauri: () => true,
 }));
 
 import { mutatingInvoke } from "../commands/gateway";

@@ -41,4 +41,34 @@ export default defineConfig([
       ],
     },
   },
+  {
+    // The desktop runtime is reachable from exactly two files: the command
+    // transport (IPC vs HTTP) and the platform seam (dialogs, links, close
+    // hook). Everything else must stay shell-agnostic so the same UI runs in
+    // the Tauri app and in the chikn-web browser shell (ADR-007).
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/commands/transport.ts', 'src/platform.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@tauri-apps/api/core',
+              importNames: ['invoke'],
+              message:
+                'Dispatch commands through src/commands/* (barrier-gated), not directly from components.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['@tauri-apps/*'],
+              message:
+                'Only src/commands/transport.ts and src/platform.ts may touch the Tauri runtime; go through them.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ])

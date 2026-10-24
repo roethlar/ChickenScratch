@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { invoke } from "./transport";
+import { listen, supportsAiStreaming, type UnlistenFn } from "./transport";
 
 export interface AiSettings {
   provider: string;
@@ -56,6 +56,9 @@ export async function aiTransformStream(
   } = {}
 ): Promise<void> {
   const requestId = options.requestId ?? createAiStreamId();
+  if (!supportsAiStreaming()) {
+    return aiTransformOneShot(content, operation, onChunk, options);
+  }
   const unlisteners: UnlistenFn[] = [];
 
   return new Promise<void>((resolve, reject) => {
@@ -123,4 +126,23 @@ export async function aiTransformStream(
       })
       .catch((e) => finish(typeof e === "string" ? e : (e?.message ?? String(e))));
   });
+}
+
+/**
+ * Streaming fallback for shells without an event channel (the web shell
+ * until plan slice 5): one ordinary transform, delivered as a single chunk.
+ * Same lifecycle promises as the streaming path — nothing is applied once
+ * `shouldContinue` says stop or the signal aborts.
+ */
+async function aiTransformOneShot(
+  content: string,
+  operation: AiOperation,
+  onChunk: (delta: string) => void,
+  options: { shouldContinue?: () => boolean; abortSignal?: AbortSignal }
+): Promise<void> {
+  if (options.abortSignal?.aborted) return;
+  const result = await aiTransform(content, operation);
+  if (options.abortSignal?.aborted) return;
+  if (options.shouldContinue?.() === false) return;
+  onChunk(result);
 }

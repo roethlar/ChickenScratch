@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useId, useRef } from "react";
 import { X, FolderOpen } from "lucide-react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { pickFolder, WEB_NOT_AVAILABLE } from "../../platform";
+import { isWeb } from "../../commands/transport";
 import {
   getAppSettings,
   saveAppSettings,
@@ -260,7 +261,11 @@ export function Settings({
                     <button
                       className="settings-browse-btn"
                       onClick={async () => {
-                        const dir = await openDialog({ directory: true, title: "Choose Backup Folder" });
+                        if (isWeb()) {
+                          toastError(WEB_NOT_AVAILABLE);
+                          return;
+                        }
+                        const dir = await pickFolder({ title: "Choose Backup Folder" });
                         if (dir) update("backup", "backup_directory", dir);
                       }}
                     >

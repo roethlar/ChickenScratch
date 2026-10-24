@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { mutatingInvoke } from "./gateway";
 import type { LeaseHandle } from "./barrier";
 import type { LoadedProject, Project, SessionTarget } from "../types";

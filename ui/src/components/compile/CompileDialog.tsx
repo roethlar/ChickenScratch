@@ -2,7 +2,8 @@ import { useId, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useProjectStore } from "../../stores/projectStore";
 import { compileProject } from "../../commands/io";
-import { save } from "@tauri-apps/plugin-dialog";
+import { pickSaveFile, WEB_NOT_AVAILABLE } from "../../platform";
+import { isWeb } from "../../commands/transport";
 import { toastSuccess, toastError } from "../shared/Toast";
 import { flushPendingEditorSave } from "../editor/editorRef";
 import { useModalFocusTrap } from "../shared/Dialog";
@@ -43,7 +44,11 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
   if (!open || !project) return null;
 
   const handleExport = async () => {
-    const outputPath = await save({
+    if (isWeb()) {
+      toastError(WEB_NOT_AVAILABLE);
+      return;
+    }
+    const outputPath = await pickSaveFile({
       title: "Export Manuscript",
       defaultPath: exportDefaultPath(project.path, title || project.name),
       filters: [
