@@ -15,9 +15,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   that serves the existing React UI over HTTP from a shared
   `chickenscratch-services` command layer. **Owner 2026-10-24: "follow the
   queue and get as much as you can done"** — the go for the plan's slices in
-  order, one commit each. Slices 1 (services extraction, ADR-007) and 2
-  (frontend transport + platform seams) landed 2026-10-24; progress per slice
-  is on the plan's status line.
+  order, one commit each. Slices 1 (services extraction, ADR-007), 2
+  (frontend transport + platform seams) and 3a (`chikn-web` server) landed
+  2026-10-24; progress per slice is on the plan's status line.
 - **Owner goal 2026-09-25: working app — find, plan, fix, Codex review.**
   Hands-on GUI testing found 13 issues; all fixed one commit each
   (`.agents/app-issues.md` is the tracker). Headline: Restore and draft

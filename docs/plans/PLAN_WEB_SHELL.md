@@ -5,8 +5,9 @@ direction change, just the next side quest. plan it, add it to the queue".
 The active phase (`docs/CURRENT_PHASE.md`, Engine hardening) is unchanged.
 Owner 2026-10-24: "follow the queue and get as much as you can done" —
 taken as the go for the queued slices, in order, one commit each.
-Progress: slice 1 (services extraction) and slice 2 (frontend transport and
-platform seams) landed 2026-10-24.
+Progress: slices 1 (services extraction), 2 (frontend transport and platform
+seams) and 3a (`chikn-web` server: dispatch, auth, gate, static UI) landed
+2026-10-24.
 
 **Owner request (quote):**
 > hi! I want to make a web app version of chickenscratch that I can access

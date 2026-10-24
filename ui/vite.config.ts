@@ -44,6 +44,12 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     host: host || false,
+    // Web-shell dev loop: `CHIKN_WEB_PROXY=http://127.0.0.1:7391 npx vite`
+    // forwards /api to a running chikn-web so the UI gets HMR. Unset (the
+    // Tauri dev flow), nothing changes.
+    proxy: process.env.CHIKN_WEB_PROXY
+      ? { "/api": { target: process.env.CHIKN_WEB_PROXY, changeOrigin: false } }
+      : undefined,
     hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
     watch: { ignored: ["**/src-tauri/**"] },
   },

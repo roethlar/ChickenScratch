@@ -1,0 +1,29 @@
+[package]
+name = "chickenscratch-web"
+version = "1.0.0"
+edition = "2021"
+description = "chikn-web — self-hosted web shell serving the ChickenScratch UI over HTTP"
+license = "MIT"
+
+[[bin]]
+name = "chikn-web"
+path = "src/main.rs"
+
+[dependencies]
+chickenscratch-services = { path = "../services" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+tower-http = { version = "0.6", features = ["fs", "set-header", "trace"] }
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+subtle = "2"
+dirs = "6"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+tempfile = "3.27.0"

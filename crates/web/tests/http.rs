@@ -1,0 +1,379 @@
+//! HTTP contract tests for `chikn-web` (plan slice 3a): token auth, the
+//! projects-root gate, the Tauri-identical command contract, static UI.
+
+use std::fs;
+use std::path::Path;
+use std::sync::Arc;
+
+use axum::body::Body;
+use axum::http::{header, Request, StatusCode};
+use axum::Router;
+use http_body_util::BodyExt;
+use serde_json::{json, Value};
+use tower::ServiceExt;
+
+use chickenscratch_web::{build_router, AppState};
+
+const TOKEN: &str = "test-token-123";
+
+struct Harness {
+    _tmp: tempfile::TempDir,
+    root: std::path::PathBuf,
+    outside: std::path::PathBuf,
+    app: Router,
+}
+
+fn harness() -> Harness {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path().join("root");
+    let outside = tmp.path().join("outside");
+    let ui = tmp.path().join("ui");
+    fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    fs::create_dir_all(&ui).unwrap();
+    fs::write(ui.join("index.html"), "<!doctype html><title>stub</title>").unwrap();
+    let state = AppState::new(&root, TOKEN.to_string(), ui).unwrap();
+    Harness {
+        root: state.root.clone(),
+        outside: outside.canonicalize().unwrap(),
+        app: build_router(Arc::new(state)),
+        _tmp: tmp,
+    }
+}
+
+async fn call(app: &Router, req: Request<Body>) -> (StatusCode, Value, axum::http::HeaderMap) {
+    let res = app.clone().oneshot(req).await.unwrap();
+    let status = res.status();
+    let headers = res.headers().clone();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let body = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()))
+    };
+    (status, body, headers)
+}
+
+fn cmd(name: &str, args: Value, token: Option<&str>) -> Request<Body> {
+    let mut req =
+        Request::post(format!("/api/cmd/{name}")).header(header::CONTENT_TYPE, "application/json");
+    if let Some(t) = token {
+        req = req.header(header::AUTHORIZATION, format!("Bearer {t}"));
+    }
+    req.body(Body::from(args.to_string())).unwrap()
+}
+
+async fn ok(app: &Router, name: &str, args: Value) -> Value {
+    let (status, body, _) = call(app, cmd(name, args, Some(TOKEN))).await;
+    assert_eq!(status, StatusCode::OK, "{name} failed: {body}");
+    body
+}
+
+fn path_str(p: &Path) -> String {
+    p.to_string_lossy().into_owned()
+}
+
+#[tokio::test]
+async fn api_requires_the_bearer_token() {
+    let h = harness();
+    let (status, body, _) = call(&h.app, cmd("get_app_settings", json!({}), None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body, json!("Unauthorized"));
+
+    let (status, _, _) = call(&h.app, cmd("get_app_settings", json!({}), Some("wrong"))).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (status, _, _) = call(
+        &h.app,
+        Request::get("/api/projects").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn unknown_command_is_404_with_a_plain_message() {
+    let h = harness();
+    let (status, body, _) = call(&h.app, cmd("no_such_command", json!({}), Some(TOKEN))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body, json!("Unknown command: no_such_command"));
+}
+
+#[tokio::test]
+async fn create_load_edit_round_trip_matches_the_tauri_contract() {
+    let h = harness();
+
+    // create_project(name, path) — `path` is the parent folder.
+    let project = ok(
+        &h.app,
+        "create_project",
+        json!({ "name": "Scratch", "path": path_str(&h.root) }),
+    )
+    .await;
+    let project_path = project["path"].as_str().unwrap().to_string();
+    assert!(Path::new(&project_path).join("project.yaml").is_file());
+    assert!(project_path.starts_with(&path_str(&h.root)));
+
+    let loaded = ok(&h.app, "load_project", json!({ "path": project_path })).await;
+    assert_eq!(loaded["read_only"], json!(false));
+    assert_eq!(loaded["project"]["name"], json!("Scratch"));
+
+    let with_doc = ok(
+        &h.app,
+        "create_document",
+        json!({ "projectPath": project_path, "name": "First note", "parentId": null }),
+    )
+    .await;
+    let doc_id = with_doc["documents"]
+        .as_object()
+        .unwrap()
+        .values()
+        .find(|d| d["name"] == json!("First note"))
+        .map(|d| d["id"].as_str().unwrap().to_string())
+        .expect("new document present");
+
+    // Unit command resolves to null, like Tauri.
+    let unit = ok(&h.app, "update_document_content", json!({ "projectPath": project_path, "docId": doc_id, "content": "Hello from the browser" })).await;
+    assert_eq!(unit, Value::Null);
+
+    let doc = ok(
+        &h.app,
+        "get_document",
+        json!({ "projectPath": project_path, "docId": doc_id }),
+    )
+    .await;
+    assert_eq!(doc["content"], json!("Hello from the browser"));
+
+    // Unknown document id: Option<Document> → null, not an error.
+    let missing = ok(
+        &h.app,
+        "get_document",
+        json!({ "projectPath": project_path, "docId": "nope" }),
+    )
+    .await;
+    assert_eq!(missing, Value::Null);
+
+    // A ChiknError travels as 422 + its Display string, byte for byte.
+    let (status, body, _) = call(
+        &h.app,
+        cmd(
+            "update_document_content",
+            json!({ "projectPath": project_path, "docId": "nope", "content": "x" }),
+            Some(TOKEN),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let expected =
+        chickenscratch_services::ChiknError::NotFound("Document not found: nope".to_string())
+            .to_string();
+    assert_eq!(body, json!(expected));
+
+    // Camel-case keys are mandatory; a missing required arg is a 400.
+    let (status, body, _) = call(
+        &h.app,
+        cmd(
+            "get_document",
+            json!({ "project_path": project_path }),
+            Some(TOKEN),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body.as_str().unwrap().starts_with("Invalid arguments"),
+        "{body}"
+    );
+
+    // Revisions work through the same door.
+    let rev = ok(
+        &h.app,
+        "save_revision",
+        json!({ "projectPath": project_path, "message": "First save" }),
+    )
+    .await;
+    assert_eq!(rev["message"], json!("First save"));
+    let list = ok(
+        &h.app,
+        "list_revisions",
+        json!({ "projectPath": project_path }),
+    )
+    .await;
+    assert!(list.as_array().unwrap().len() >= 2, "{list}");
+
+    // The project list sees it; a plain folder is ignored.
+    fs::create_dir_all(h.root.join("plain")).unwrap();
+    let (status, projects, _) = call(
+        &h.app,
+        Request::get("/api/projects")
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        projects,
+        json!([{ "name": "Scratch", "path": project_path }])
+    );
+}
+
+#[tokio::test]
+async fn paths_outside_the_root_are_refused_and_nothing_is_created() {
+    let h = harness();
+    let before = fs::read_dir(&h.outside).unwrap().count();
+
+    // Absolute path elsewhere.
+    let (status, body, _) = call(
+        &h.app,
+        cmd(
+            "create_project",
+            json!({ "name": "Evil", "path": path_str(&h.outside) }),
+            Some(TOKEN),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body, json!("Path is outside the projects folder"));
+
+    // `..` climbing out of the root.
+    let dotdot = h.root.join("..").join("outside");
+    let (status, _, _) = call(
+        &h.app,
+        cmd(
+            "create_project",
+            json!({ "name": "Evil", "path": path_str(&dotdot) }),
+            Some(TOKEN),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Relative path.
+    let (status, _, _) = call(
+        &h.app,
+        cmd(
+            "load_project",
+            json!({ "path": "relative/Notes.chikn" }),
+            Some(TOKEN),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // A symlink inside the root that points outside.
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&h.outside, h.root.join("escape")).unwrap();
+        let (status, _, _) = call(
+            &h.app,
+            cmd(
+                "create_project",
+                json!({ "name": "Evil", "path": path_str(&h.root.join("escape")) }),
+                Some(TOKEN),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    assert_eq!(
+        fs::read_dir(&h.outside).unwrap().count(),
+        before,
+        "nothing may be created outside the root"
+    );
+    assert!(!h.outside.join("Evil.chikn").exists());
+}
+
+#[tokio::test]
+async fn save_project_cannot_be_pointed_outside_the_root() {
+    let h = harness();
+    let project = ok(
+        &h.app,
+        "create_project",
+        json!({ "name": "Scratch", "path": path_str(&h.root) }),
+    )
+    .await;
+    let mut hijacked = project.clone();
+    hijacked["path"] = json!(path_str(&h.outside));
+    let (status, _, _) = call(
+        &h.app,
+        cmd("save_project", json!({ "project": hijacked }), Some(TOKEN)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(!h.outside.join("project.yaml").exists());
+}
+
+#[tokio::test]
+async fn desktop_only_commands_say_so() {
+    let h = harness();
+    let (status, body, _) = call(&h.app, cmd("pick_scriv_folder", json!({}), Some(TOKEN))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        body.as_str()
+            .unwrap()
+            .contains("not available in the web version"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn every_tauri_command_name_is_in_the_table() {
+    let h = harness();
+    for name in chickenscratch_web::commands::COMMAND_NAMES {
+        let (status, _, _) = call(&h.app, cmd(name, json!({}), Some(TOKEN))).await;
+        assert_ne!(
+            status,
+            StatusCode::NOT_FOUND,
+            "{name} is missing from the command table"
+        );
+    }
+    assert_eq!(chickenscratch_web::commands::COMMAND_NAMES.len(), 75);
+}
+
+#[tokio::test]
+async fn ui_is_served_with_security_headers_and_info_reports_the_root() {
+    let h = harness();
+    let (status, body, headers) =
+        call(&h.app, Request::get("/").body(Body::empty()).unwrap()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.as_str().unwrap().contains("<title>stub</title>"));
+    assert!(headers[header::CONTENT_SECURITY_POLICY]
+        .to_str()
+        .unwrap()
+        .contains("frame-ancestors 'none'"));
+    assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+    assert!(headers.get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
+
+    // Unknown non-API paths fall back to the page too.
+    let (status, _, _) = call(
+        &h.app,
+        Request::get("/some/where").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, info, _) = call(
+        &h.app,
+        Request::get("/api/info")
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(info["root"], json!(path_str(&h.root)));
+    assert_eq!(info["events"], json!(false));
+
+    let (status, _, _) = call(
+        &h.app,
+        Request::get("/api/events")
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

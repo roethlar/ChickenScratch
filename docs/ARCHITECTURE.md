@@ -38,7 +38,7 @@ REMOVED (ADR-004; history in git):
   linux/ Qt frontend
 ```
 
-The Tauri shell (and the planned `chikn-web` shell, `docs/plans/PLAN_WEB_SHELL.md`)
+The Tauri shell and the `chikn-web` shell (`docs/plans/PLAN_WEB_SHELL.md`)
 reach the engine through `crates/services` (`chickenscratch-services`), the
 shared command layer; the TUI and the converter call the engine directly.
 
@@ -51,9 +51,10 @@ shared command layer; the TUI and the converter call the engine directly.
 | `crates/tui/` | `chikn` | Terminal UI over engine |
 | `crates/services/` | `chickenscratch-services` | **App services** — the command layer every shell wraps: project, document, git, compile, import and search operations; per-project write locks and fresh permits; app settings; keyring; AI client. No UI framework dependency. |
 | `src-tauri/` | `chickenscratch` | Tauri desktop shell: one thin wrapper per service function (`State` extractors in, events out) plus the native Scrivener picker |
+| `crates/web/` | `chikn-web` (package `chickenscratch-web`) | Self-hosted web shell: serves `ui/dist` and exposes every service function as `POST /api/cmd/<name>` behind a bearer token and a projects-root path gate |
 | `ui/` | (npm package) | React frontend: TipTap editor, panels, dialogs |
 
-Cargo workspace: root `Cargo.toml` — members are `crates/core`, `crates/cli`, `crates/tui`, `crates/services`, `src-tauri`.
+Cargo workspace: root `Cargo.toml` — members are `crates/core`, `crates/cli`, `crates/tui`, `crates/services`, `crates/web`, `src-tauri`.
 
 ## What belongs in the engine vs the app
 
@@ -81,6 +82,15 @@ Cargo workspace: root `Cargo.toml` — members are `crates/core`, `crates/cli`, 
 - Wraps each service function as a Tauri command: `State` extractors in, event emitter out
 - Native Scrivener folder picker (desktop-only)
 - Nothing else — no format logic, no settings, no git. Acceptance: `src-tauri/src` references no `chickenscratch_core` reader, writer, hierarchy or git *function*
+
+### Web shell (`crates/web`, binary `chikn-web`)
+
+- One Rust process: engine in-process via `chickenscratch-services`, static `ui/dist`, JSON API
+- `POST /api/cmd/<name>` mirrors every Tauri command: same camelCase args, same result, errors as the plain `ChiknError` string (`422`)
+- Bearer token on every `/api/*` request (`auth.rs`); no cookies, no CORS
+- Projects-root gate (`gate.rs`): every path argument must resolve, through symlinks, inside `--root`; `403` otherwise
+- Web-only helpers the browser needs because it has no native dialogs: `GET /api/projects`, `GET /api/info`
+- Does **not** touch `.chikn` files itself — not even to read a project name (I2)
 
 ### React UI (`ui/`)
 

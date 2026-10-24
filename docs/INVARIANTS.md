@@ -35,7 +35,7 @@ All `.chikn` **read, write, git, compile, and Scrivener import** logic lives in 
 | UI | How it uses the engine |
 |----|-------------------------|
 | Tauri app (`src-tauri/` + `ui/`) | In-process Rust calls to `chickenscratch-core` via `chickenscratch-services` (`crates/services/`, the shared command layer) |
-| Web shell (`crates/web/` + `ui/`, planned — ADR-007) | In-process Rust calls via `chickenscratch-services` |
+| Web shell (`crates/web/` + `ui/`, ADR-007) | In-process Rust calls via `chickenscratch-services` |
 | TUI (`crates/tui/`) | In-process Rust calls |
 | Converter (`crates/cli/`) | In-process Rust calls |
 | Future native shell | FFI or sidecar into the Rust engine — **not** a rewrite |

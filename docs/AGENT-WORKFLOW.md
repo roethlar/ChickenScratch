@@ -50,8 +50,8 @@ Engine (`crates/core`) → Tauri commands → UI (`ui/`). Match existing style. 
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --locked -p chickenscratch-core -p chickenscratch-services -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
-cargo test --locked -p chickenscratch-core -p chickenscratch-services -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
+cargo clippy --locked -p chickenscratch-core -p chickenscratch-services -p chickenscratch-web -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
+cargo test --locked -p chickenscratch-core -p chickenscratch-services -p chickenscratch-web -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
 scripts/check-release-metadata.sh
 cd ui && npm run lint && npm run build && npm run test
 ```

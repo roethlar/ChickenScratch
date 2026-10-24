@@ -17,6 +17,7 @@ For usage instructions, see the [User Guide](docs/USER_GUIDE.md).
 | macOS / Linux | Tauri + Rust + React | 1.0 release target — fullest feature set |
 | Windows | Tauri (same app) | Planned — Windows bundle after the 1.0 cleanup phase |
 | TUI (any OS) | Ratatui + Rust (`chikn` binary) | Preview |
+| Web (self-hosted, any OS) | `chikn-web` serving the same React UI over HTTP | Preview — see [ADR-007](docs/adr/ADR-007-web-shell-shared-services.md) |
 
 ## Build
 
@@ -55,6 +56,22 @@ cargo build --release -p chickenscratch-tui
 ./target/release/chikn ~/Writing/MyNovel.chikn
 ```
 
+### Web shell (`chikn-web`)
+
+The same UI as the desktop app, served by a small Rust server you run on a
+machine you control (reach it over your own network or VPN; it speaks plain
+HTTP, so keep it off the open internet or put TLS in front of it).
+
+```bash
+cd ui && npm install && npm run build && cd ..
+cargo build --release -p chickenscratch-web
+./target/release/chikn-web --root ~/Notes            # localhost:7391
+./target/release/chikn-web --root ~/Notes --bind 0.0.0.0:7391
+```
+
+`--root` is the only folder the server will touch. On first run it prints an
+access token and a link that carries it; open that link once per browser.
+
 ### Converter CLI
 
 Standalone Scrivener converter, no GUI needed:
@@ -78,6 +95,7 @@ ChickenScratch/
 ├── crates/cli/         # chikn-converter binary
 ├── crates/tui/         # Terminal UI (Ratatui)
 ├── crates/services/    # Shared command layer (settings, AI, write permits) for every shell
+├── crates/web/         # chikn-web: self-hosted web shell (HTTP API + static UI)
 ├── src-tauri/          # Tauri desktop shell (thin wrappers over crates/services)
 ├── ui/                 # React + TypeScript + TipTap frontend
 └── docs/               # Format spec, design docs, user guide

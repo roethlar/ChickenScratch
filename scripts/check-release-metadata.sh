@@ -75,6 +75,7 @@ version_files=(
   src-tauri/Cargo.toml
   crates/core/Cargo.toml
   crates/services/Cargo.toml
+  crates/web/Cargo.toml
   crates/cli/Cargo.toml
   crates/tui/Cargo.toml
 )
