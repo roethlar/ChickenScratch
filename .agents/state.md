@@ -88,10 +88,14 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 2. Then re-ask whether to close hardening and move to the Tauri
    reference-app phase. The phase declaration remains the owner's call.
    Vault work remains paused.
-3. **Web shell side quest**: every slice shipped. The owner's first real
-   browser session (build, run with `--root`, open the link from another
-   device) is the next evidence to gather; CI on a push is the first check of
-   the Tauri wrappers on a machine with WebKitGTK.
+3. **Web shell side quest**: every slice shipped and the owner has run it
+   (2026-10-24: works over the VPN after the plain-HTTP random-id fix
+   `a054e9d`). CI on a push is the first check of the Tauri wrappers on a
+   machine with WebKitGTK.
+4. **Queued side quest: project profiles** (`docs/plans/PLAN_PROJECT_PROFILES.md`,
+   owner 2026-10-24 "plan it"): Fiction / Notes / Document types that show,
+   hide or rename the novelist UI parts, display-only. No slice approved;
+   propose slice 1 (profile table, no visible change) first.
 
 ## Verification
 
