@@ -1,4 +1,4 @@
-# Plan: Import anything — a new project from any document, folder or writing-app project
+# Plan: Import projects on the project screen, documents inside a project
 
 (File kept under its first name, `PLAN_SCRIVENER_UPLOAD.md`; the scope grew
 past Scrivener on the owner's direction the same day.)
@@ -10,10 +10,12 @@ past Scrivener on the owner's direction the same day.)
 > planned to support importing any kind of doc that pandoc can import.
 > scrivener as a project is obviously different from a word doc or markdown
 > file, but both need to work. project style imports from the new project
-> screen, individual docs from within a project. so a new project should
-> import a .odt, .doc, .docx, .md, .markdown, .txt, anything pandoc
-> supports. what other apps save projects like scrivener? ulysses? those
-> need support.
+> screen, individual docs from within a project. […] what other apps save
+> projects like scrivener? ulysses? those need support.
+
+> project-style documents become projects. individual documents are imported
+> INTO existing projects. automatically splitting things by chapter headings
+> can be an option but not automatic.
 
 (2026-10-25.)
 
@@ -30,84 +32,91 @@ disk); I7 untouched.
 
 ## [MODEL] Intent
 
-One **Import** button on the project screen, in the browser and on the
-desktop, takes whatever the writer has and makes a project of it: a single
-document in any format Pandoc reads (a Word manuscript becomes one chapter
-per top-level heading), a folder or zip of Markdown or text files (Obsidian,
-iA Writer, Ulysses external folders, a Notion or Bear export), a Scrivener
-project, and, in later slices, the open project formats of other writing
-apps. In the browser the file or folder comes from the device you are
-browsing on. Inside a project, **Import File** keeps adding a single document
-to the binder as it does today.
+Two doors, each doing one thing. On the **project screen**, **Import**
+takes a *project* saved by another writing app (Scrivener today; the open
+formats of other apps as later slices; a folder of Markdown counts) and
+makes a `.chikn` project of it. **Inside a project**, **Import File** adds a
+*document* in any format Pandoc reads, with an optional, off-by-default
+split into one document per top-level heading. Both work the same in the
+browser as on the desktop: in the browser, the folder or file comes from the
+device you are browsing on.
+
+**How a browser uploads a whole folder.** Every desktop browser (Chrome,
+Edge, Firefox, Safari) lets a page ask for a *folder* instead of a file (the
+`webkitdirectory` file input, also reached by dragging a folder onto the
+page). The browser then sends every file inside it with its path within the
+folder, so a `.scriv` folder uploads as is, nothing to zip. Phones are the
+exception: iPhone Safari cannot pick a folder, so there the writer zips it
+first (long-press → Compress in Files) and uploads the zip. The server
+accepts both shapes and treats them alike.
 
 ## [MODEL] Approach
 
-### Slice 1 — one upload door and one detector
+### Slice 1 — the project door on the server
 
-`POST /api/import-project-upload` (`crates/web/src/project_upload.rs`),
-replacing nothing: `/api/import-upload` (single document into an open
-project) stays.
+`POST /api/import-project-upload` (`crates/web/src/project_upload.rs`); the
+existing `/api/import-upload` (one document into an open project) stays.
 
 - Multipart: `outputPath` (gate `creatable`, as `import_scrivener` checks
-  today), then one or more `file` fields. A single file is taken as is; a
-  single `.zip` is extracted; several files are a folder pick, each
-  filename carrying its path inside the folder (how a browser folder pick
-  sends them).
+  today), then one or more `file` fields. Several files are a folder pick,
+  each filename carrying its path inside the folder; a single `.zip` is
+  extracted; a single file of any other kind is refused with 400
+  "Documents go into a project: open or create one, then use Import File".
 - Each file is streamed to a temporary folder outside the projects root.
   Paths are checked piece by piece (no `..`, no absolute or empty part, no
   control characters); zip entries go through the same check (zip-slip).
   Any bad path fails the request with 400 and the folder is removed. The
   `zip` crate (deflate only) becomes a dependency of `crates/web`.
-- **Detection** (`chikn_converter::detect_import_kind(staged_root)`, shared
+- **Detection** (`chikn_converter::detect_project_kind(staged_root)`, shared
   with the desktop): a `.scrivx` at the top or one folder down → Scrivener;
-  otherwise a tree holding `.md`/`.markdown`/`.txt` files → Markdown folder
-  (the existing `import_markdown_folder`); otherwise exactly one file with
-  a Pandoc-readable extension → single document; anything else → 400 "This
-  is not a document or project ChickenScratch can import" before Pandoc or
-  the projects folder is touched. Later slices add kinds here only.
+  otherwise a tree of `.md`/`.markdown`/`.txt` files → Markdown folder (the
+  existing `import_markdown_folder`); anything else → 400 "This is not a
+  project ChickenScratch can import" before Pandoc or the projects folder is
+  touched. Later slices add kinds here only.
 - Route body limit 512 MiB (research folders hold PDFs); over it, 413 and
   the UI points at the copy-to-server path, which stays.
 - Answers `{ project, warnings }` like `import_scrivener`.
 
-### Slice 2 — a project from one document
+### Slice 2 — the Import button, both shells
 
-`chickenscratch_services::io::import_document_as_project(file, output)`:
-create the project (profile Notes unless the document looks like a
-manuscript, see below), run the existing single-file import, then **split
-on top-level headings** when the document has two or more of them: one
-binder document per heading, named by the heading, in order, under
-Manuscript; text before the first heading becomes a "Front matter" document.
-One or no top-level heading → one document named from the file. EPUB
-chapters arrive as top-level headings from Pandoc and so split the same way.
-The desktop `import_markdown_folder`/`import_scrivener` commands gain a
-sibling `import_document_as_project`; the web route calls it on the detected
-single document.
-
-Formats: everything the current Import File list accepts (`docx`, `odt`,
-`rtf`, `epub`, `md`, `markdown`, `txt`, `html`, `latex`, `rst`, `org`,
-`textile`, `fb2`). **Legacy `.doc` is not readable by Pandoc** (today
-`io.rs` maps `doc` to the `docx` reader, which fails on a real `.doc`); the
-import answers "Save it as .docx first" unless LibreOffice is installed on
-the machine, in which case `soffice --headless --convert-to docx` runs first.
-Apple Pages: same message (export to Word).
-
-### Slice 3 — the Import button, both shells
-
-- Project screen (`Welcome.tsx`): **Import Scrivener** becomes **Import**.
-  In the browser it opens a chooser: **Choose a file** (document or zip),
-  **Choose a folder** (hidden where the browser cannot pick folders, which
-  includes iPhone Safari; a one-line hint says how to zip a folder on Mac,
-  Windows and the iPhone Files app), **It is already on the server** (the
-  existing server folder picker, now for any folder). On the desktop the
-  native open dialog accepts a file or a folder and the same detector runs
-  on the chosen path. Then the name prompt as today, then the import; the
-  chooser shows "Uploading <size>…" while a browser upload runs.
-- Store: `importProject(kind-agnostic)` sharing the settle code with
-  `importScrivener` (open the new project, surface warnings).
-- User guide: "Importing" section rewritten around the one button; the
+- Project screen (`Welcome.tsx`): **Import Scrivener** becomes **Import
+  Project**. In the browser it opens a chooser: **Choose the project
+  folder** (folder pick; hidden where the browser cannot pick folders,
+  which includes iPhone Safari, with a one-line hint on zipping), **Upload
+  a zip of it**, **It is already on the server** (the existing server
+  folder picker, now for any project folder). On the desktop the native
+  dialog picks a folder (or a `.zip`) and the same detector runs on it. Then
+  the name prompt as today, then the import; the chooser shows
+  "Uploading <size>…" while a browser upload runs.
+- Store: `importProject` replaces `importScrivener`, same settle code (open
+  the new project, surface warnings).
+- User guide: the Scrivener section becomes "Importing a project"; the
   browser section's "Import uploads" bullet and the phone subsection say
-  which way to use; troubleshooting covers "too large", "not a project" and
-  "`.doc` needs saving as `.docx`".
+  folder on a computer, zip on a phone; troubleshooting covers "too large"
+  and "not a project".
+
+### Slice 3 — Import File reads everything Pandoc reads, split optional
+
+Inside a project, both shells:
+
+- The accepted list grows from today's 14 extensions to every Pandoc
+  reader that makes sense for prose: adds `typst`, `djot`, `mediawiki`,
+  `dokuwiki`, `creole`, `t2t`, `opml`, `ipynb`, `man`, `csv`/`tsv` (as
+  tables). `crates/services/src/io.rs` maps each to its reader; the UI list
+  and the web upload accept the same set.
+- **Legacy `.doc` is not readable by Pandoc** (today `io.rs` maps `doc` to
+  the `docx` reader, which fails on a real `.doc` with a confusing error).
+  With LibreOffice on the machine, `soffice --headless --convert-to docx`
+  runs first; without it, the message is "Save it as .docx first". Apple
+  Pages gets the same message.
+- **Split, as an option.** After the file is picked, a small dialog offers
+  "Split into one document per top-level heading" (checkbox, off by
+  default, remembered in settings under Writing). On: `import_file` gains a
+  `split_headings: bool`; the converted Markdown is cut at each level-one
+  heading, one binder document per heading named by it, in order, text
+  before the first heading as "Front matter"; a file with fewer than two
+  such headings imports whole with a one-line notice. Off: today's single
+  document.
 
 ### Slice 4 — other writing apps' project formats (one slice each, open formats only)
 
@@ -131,17 +140,18 @@ are documented or open source). Ulysses' own library files (`.ulyz`) are
 undocumented and change between versions: not supported; writers export
 TextBundle or Markdown instead. Storyist, Papyrus Author, Vellum, Dabble,
 Novlr, Atticus and Campfire are closed or cloud-only: their Word or Markdown
-exports go through slices 1–3.
+exports go in through Import File.
 
 ## [MODEL] Files
 
 | File / area | Change |
 |-------------|--------|
 | `crates/web/src/project_upload.rs` (new), `app.rs`, `Cargo.toml` (+ `zip`), `Cargo.lock`, `tests/http.rs` | staging, path checks, zip, detector call, handler, own body limit |
-| `crates/cli/src/detect.rs` (new), `lib.rs` | `detect_import_kind` |
-| `crates/services/src/io.rs`, `project.rs`; `crates/web/src/commands.rs`; `src-tauri/src/commands/*.rs` | `import_document_as_project`, heading split, `.doc` message / LibreOffice step; command wrappers |
-| `ui/src/commands/web.ts`, `io.ts`, `stores/projectStore.ts` | `importProjectUpload`, `importProject` |
-| `ui/src/components/welcome/ImportDialog.tsx` (new), `Welcome.tsx`, `editor.css`, `platform.ts` | the Import button and chooser; desktop file-or-folder pick |
+| `crates/cli/src/detect.rs` (new), `lib.rs` | `detect_project_kind` |
+| `crates/services/src/project.rs`, `io.rs`; `crates/web/src/commands.rs`; `src-tauri/src/commands/*.rs` | `import_project` (kind-dispatching), wider reader map, `.doc` step, `split_headings` |
+| `ui/src/commands/web.ts`, `io.ts`, `project.ts`, `stores/projectStore.ts` | `importProjectUpload`, `importProject`, `split` flag |
+| `ui/src/components/welcome/ImportProjectDialog.tsx` (new), `Welcome.tsx`, `editor.css`, `platform.ts` | the chooser; desktop folder-or-zip pick |
+| `ui/src/components/binder/Binder.tsx`, a small `ImportFileOptions` dialog | the split checkbox, wider accept list |
 | `crates/cli/src/{textbundle,ywriter,novelwriter,manuskript}/` (slice 4, one per slice) | readers + fixtures |
 | `docs/USER_GUIDE.md`, `docs/plans/README.md`, `.agents/state.md`, `DEVLOG.md` | records |
 
@@ -151,33 +161,37 @@ exports go through slices 1–3.
       characters refused; a folder-pick filename lands under the staging
       folder; zip-slip entry refused.
 - [ ] `crates/cli` detector: Scrivener at top and one down; Markdown folder;
-      single `docx`; a folder of PDFs → not importable.
-- [ ] `crates/services`: a Markdown document with three top-level headings
-      becomes three documents in order with front matter; one heading → one
-      document; `.doc` without LibreOffice → the save-as message.
-- [ ] `crates/web/tests/http.rs`: zip-slip → 400, nothing written; no
-      recognisable content → 400, no `.chikn`; `outputPath` outside the
-      root → 403; a Markdown zip → 200 with the documents; a two-file
-      `.scriv` folder pick → 200 (Pandoc cases skip with a printed line
-      where Pandoc is absent, which is CI).
+      a lone `docx` or a folder of PDFs → not a project.
+- [ ] `crates/services`: split on: three top-level headings → three
+      documents in order plus front matter; one heading → whole file and
+      the notice; split off → one document; `.doc` without LibreOffice →
+      the save-as message; every new extension maps to a Pandoc reader.
+- [ ] `crates/web/tests/http.rs`: zip-slip → 400, nothing written; a lone
+      document → 400 with the "use Import File" message; `outputPath`
+      outside the root → 403; a Markdown zip → 200 with the documents; a
+      two-file `.scriv` folder pick → 200 (Pandoc cases skip with a printed
+      line where Pandoc is absent, which is CI).
 - [ ] UI: the chooser renders its choices and hides the folder choice when
-      unsupported; a file pick asks for a name and posts with
-      `<root>/<name>.chikn`; the server-path choice still works; cancel
-      sends nothing.
+      unsupported; a folder pick asks for a name and posts every file with
+      its relative path to `<root>/<name>.chikn`; the server-path choice
+      still works; cancel sends nothing; Import File shows the split
+      checkbox off by default and passes it through.
 - [ ] Slice 4, each: a fixture project converts to the expected tree.
 - [ ] Declared suite (`.agents/repo-guidance.md`), Tauri crate excepted on
       this box (Known drift); CI on push.
 
 ## [MODEL] Owner verification (plain English)
 
-1. Browser, computer: **Import → Choose a file**, pick a Word manuscript with
-   chapter headings. A project opens with one document per chapter.
-2. Browser, phone: zip a Scrivener project in Files (long-press → Compress),
-   **Import → Choose a file**, pick the zip. The converted project opens.
-3. **Import → Choose a folder**, pick an Obsidian vault or iA Writer folder.
-   The notes appear in the binder.
+1. Browser, computer: **Import Project → Choose the project folder**, pick a
+   `.scriv` folder. It uploads without zipping and the converted project
+   opens.
+2. Browser, phone: zip the Scrivener project in Files (long-press →
+   Compress), **Import Project → Upload a zip of it**. Same result.
+3. Inside a project, **Import File** with a Word manuscript: it comes in as
+   one document. Again with the split box ticked: one document per chapter.
 4. Pick a `.doc` from an old Word: a plain message says to save it as `.docx`.
-5. Desktop: the same **Import** button accepts a file or a folder.
+5. **Import Project** with a lone Word file: a plain message says documents
+   go in through Import File.
 
 ## [YOU] Decisions needed
 
@@ -185,11 +199,13 @@ exports go through slices 1–3.
   Ulysses, Bear, iA Writer exports), yWriter, novelWriter, Manuskript, in
   that order; drop or add names.
 - Taken unless told otherwise: upload limit 512 MiB with the copy-to-server
-  path kept; a Word manuscript splits into chapters on top-level headings;
-  Ulysses' internal library files are not read (export instead).
+  path kept; the split option is off by default and remembered; Ulysses'
+  internal library files are not read (export instead).
 
 ## Status
 
 - 2026-10-25: first draft (Scrivener upload only) superseded the same day by
-  the owner: "import restricted to scrivener pigeonholes this app". Redrafted
-  as above. Awaiting the owner's go and the slice-4 format list.
+  the owner: "import restricted to scrivener pigeonholes this app". Second
+  draft corrected the same day: projects on the project screen, documents
+  inside a project, splitting optional. Awaiting the owner's go and the
+  slice-4 format list.

@@ -30,13 +30,18 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   docs from within a project … what other apps save projects like
   scrivener? ulysses? those need support." Today the web Import Scrivener
   only accepts a `.scriv` folder already under the projects root; Import
-  File inside a project already uploads a single document. Plan redrafted
-  (`docs/plans/PLAN_SCRIVENER_UPLOAD.md`, name kept): one Import button,
-  upload door + detector, project-from-one-document with heading split,
-  then open app formats (TextBundle/TextPack, yWriter, novelWriter,
-  Manuskript recommended). Awaiting the go and the format list. No code
-  changed. Latent bug noted there: `io.rs` maps legacy `.doc` to the
-  Pandoc `docx` reader, which cannot read `.doc`. Known limits, by design: the safety copy is per browser profile
+  File inside a project already uploads a single document. Owner
+  correction the same day: "project-style documents become projects.
+  individual documents are imported INTO existing projects. automatically
+  splitting things by chapter headings can be an option but not
+  automatic." Plan redrafted accordingly
+  (`docs/plans/PLAN_SCRIVENER_UPLOAD.md`, name kept): Import Project on the
+  project screen (folder pick, zip or server folder; Scrivener and Markdown
+  folders first, open app formats later: TextBundle/TextPack, yWriter,
+  novelWriter, Manuskript recommended), Import File inside a project for
+  every Pandoc reader with an off-by-default heading split. Awaiting the go
+  and the format list. No code changed. Latent bug noted there: `io.rs`
+  maps legacy `.doc` to the Pandoc `docx` reader, which cannot read `.doc`. Known limits, by design: the safety copy is per browser profile
   (a copy made on the phone restores on the phone); a brand-new tab gets a
   new session id, so the "Take over" offer still applies there; no service
   worker, so the installed icon needs the server reachable.

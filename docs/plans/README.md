@@ -66,12 +66,13 @@ Deliberately **not** on the roadmap: name generators, deep character-psychology 
   the project back), then a one-column phone layout, Quick note from the
   project list, finger-sized controls and home-screen install. Drafted
   2026-10-25 with the go for every slice; shipped the same day.
-- **[PLAN_SCRIVENER_UPLOAD.md](PLAN_SCRIVENER_UPLOAD.md)** — one **Import**
-  button on the project screen makes a project from any Pandoc-readable
-  document (a manuscript splits into chapters on top-level headings), a
-  folder or zip of Markdown, a Scrivener project and, in later slices, the
-  open project formats of other writing apps (TextBundle, yWriter,
-  novelWriter, Manuskript); browser uploads are staged, path-checked and
-  handed to the existing services. Drafted 2026-10-25 (first as a
-  Scrivener-only upload, widened the same day on the owner's direction);
-  awaiting the go and the format list.
+- **[PLAN_SCRIVENER_UPLOAD.md](PLAN_SCRIVENER_UPLOAD.md)** — two doors:
+  **Import Project** on the project screen takes a project saved by another
+  writing app (Scrivener, a Markdown folder, later TextBundle, yWriter,
+  novelWriter, Manuskript) as a browser folder pick, a zip or a server
+  folder; **Import File** inside a project takes any Pandoc-readable
+  document, with an off-by-default split into one document per top-level
+  heading. Browser uploads are staged, path-checked and handed to the
+  existing services. Drafted 2026-10-25 (first as a Scrivener-only upload,
+  redrawn twice the same day on the owner's direction); awaiting the go
+  and the format list.
