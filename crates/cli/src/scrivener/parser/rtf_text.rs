@@ -619,13 +619,15 @@ fn paragraph_break(groups: &[Group], fields: &mut [Field], text: &mut String) {
 /// blank lines from the end of `lines`; an even run is escaped literal
 /// backslashes and stays. A break with nothing after it would read as a
 /// literal backslash (review finding s1-6, re-review).
-fn strip_trailing_breaks(lines: &mut Vec<String>) {
+fn strip_trailing_breaks(lines: &mut Vec<String>) -> usize {
+    let mut removed = 0;
     while let Some(last) = lines.last_mut() {
         let trimmed_len = last.trim_end().len();
         last.truncate(trimmed_len);
         let trailing = last.chars().rev().take_while(|c| *c == '\\').count();
         if trailing % 2 == 1 {
             last.pop();
+            removed += 1;
             if last.trim().is_empty() {
                 lines.pop();
             }
@@ -637,6 +639,7 @@ fn strip_trailing_breaks(lines: &mut Vec<String>) {
         }
         break;
     }
+    removed
 }
 
 /// `HYPERLINK "url"` + result text → a Markdown link; any other field →
@@ -652,17 +655,19 @@ fn render_field(f: &Field) -> String {
         .lines()
         .map(|l| l.trim().to_string())
         .collect();
-    let before = result_lines.join("\n").len();
-    strip_trailing_breaks(&mut result_lines);
+    let breaks = strip_trailing_breaks(&mut result_lines);
     let result = result_lines.join("\n");
-    let had_trailing_break = result.len() < before && !result.is_empty();
     let result = result.as_str();
-    let rendered = render_link(inst, result);
-    if had_trailing_break {
-        format!("{rendered}\\\n")
-    } else {
-        rendered
+    let mut rendered = render_link(inst, result);
+    // Every break that ended the link text is re-emitted after the link
+    // (third re-review of s1-6: two breaks are two breaks); the paragraph
+    // cleanup drops them when nothing follows.
+    if !result.is_empty() {
+        for _ in 0..breaks {
+            rendered.push_str("\\\n");
+        }
     }
+    rendered
 }
 
 fn render_link(inst: &str, result: &str) -> String {
@@ -831,6 +836,33 @@ Second paragraph with \\'93quotes\\'94.\\\n\
         if let Some(text) = rendered(&md) {
             assert_eq!(text, "note\nsecond");
         }
+        // Third re-review: two breaks at the end of link text are two breaks.
+        let md = plain("{\\rtf1 {\\field{\\*\\fldinst{HYPERLINK \"https://example.com\"}}{\\fldrslt note\\line\\line}}second}");
+        assert_eq!(md, "[note](https://example.com)\\\n\\\nsecond");
+        if let Some(html) = rendered_html(&md) {
+            assert_eq!(html.matches("<br").count(), 2, "{html}");
+        }
+        // The same two breaks outside a field, for comparison.
+        let md = plain("{\\rtf1 note\\line\\line second}");
+        if let Some(html) = rendered_html(&md) {
+            assert_eq!(html.matches("<br").count(), 2, "{html}");
+        }
+    }
+
+    /// Pandoc's HTML rendering of Markdown, when installed.
+    fn rendered_html(markdown: &str) -> Option<String> {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let mut child = Command::new("pandoc")
+            .args(["-f", "markdown", "-t", "html"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        child.stdin.take()?.write_all(markdown.as_bytes()).ok()?;
+        let out = child.wait_with_output().ok()?;
+        Some(String::from_utf8_lossy(&out.stdout).to_string())
     }
 
     /// Review finding s1-3: hex escapes and raw high bytes follow the
