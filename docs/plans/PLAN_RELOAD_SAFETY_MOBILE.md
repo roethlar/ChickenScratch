@@ -151,21 +151,25 @@ new note. The desktop Welcome is unchanged.
 
 ## [MODEL] Tests
 
-- [ ] `safetyCopy.test.ts`: write/clear round trip; "equal to disk" removes;
+- [x] `safetyCopy.test.ts`: write/clear round trip; "equal to disk" removes;
       "disk unchanged" restores; "disk moved" asks; storage that throws is
       tolerated.
-- [ ] `editorSafetyCopy.test.tsx`: typing writes a copy; the confirmed save
+- [x] `editorSafetyCopy.test.tsx`: typing writes a copy; the confirmed save
       clears it; a mount with a copy and unchanged disk shows the copy and
-      saves it (and fails with the restore removed — the bite proof).
-- [ ] `lastOpen.test.tsx`: the web shell reopens the remembered project and
-      note; a failed open forgets it; Projects button flushes, backs up,
-      releases, clears, shows Welcome.
-- [ ] `cargo test -p chickenscratch-web`: release by the holder frees the
-      project for another session; release by a non-holder is a no-op.
-- [ ] `welcomeWeb.test.tsx`: Quick note creates and selects a dated note.
-- [ ] `useNarrowScreen.test.tsx`: the drawer renders only under the
-      threshold and closes on document pick.
-- [ ] Declared suite (`.agents/repo-guidance.md`), Tauri crate excepted on
+      saves it; a conflict asks and honours each answer; pagehide writes at
+      once (four of five fail with the restore and the pagehide write
+      removed — the bite proof).
+- [x] `leaveProject.test.ts`: the web shell reopens the remembered project
+      and note; a failed open forgets it; Projects button flushes, backs up,
+      releases, clears, closes; stays open when the flush fails.
+- [x] `cargo test -p chickenscratch-web`: release by the holder frees the
+      project for another session; release by a non-holder is a no-op
+      (unit + HTTP).
+- [x] `quickNote.test.ts` + `welcomeWeb.test.tsx`: Quick note creates and
+      selects a dated note; the row button calls it.
+- [x] `narrowLayout.test.tsx`: the width hook follows the media query; the
+      drawer renders only while open and closes from the scrim.
+- [x] Declared suite (`.agents/repo-guidance.md`), Tauri crate excepted on
       this box (Known drift); CI on push.
 
 ## [MODEL] Owner verification (plain English)
@@ -192,3 +196,12 @@ new note. The desktop Welcome is unchanged.
 
 - 2026-10-25: drafted and all slices approved in one go (owner: "proceed
   with planning as directed in state docs, then implement all slices").
+- 2026-10-25: slice 1 landed (`26af1d5`): `safetyCopy.ts` + editor
+  write/restore/settle, `lastOpen.ts`, `leaveProject.ts`, Projects button,
+  `POST /api/lease/release`. Slice 2 landed (`e6fe793`): drawer, sheets,
+  scrolling toolbars, `dvh`, viewport meta. Slice 3 landed (`bd019a7`):
+  Quick note on the web project rows with editor focus request. Slice 4
+  landed: `pointer: coarse` targets, `manifest.webmanifest` + icons + install
+  metas, `webmanifest` MIME in the embedded server, user guide "On a phone",
+  DEVLOG. Every slice has shipped; the owner's checks (reload mid-typing,
+  phone, Quick note, Add to Home Screen) are the remaining verification.

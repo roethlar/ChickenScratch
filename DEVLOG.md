@@ -6,6 +6,54 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-10-25 — A reload never loses work; the web version fits a phone
+
+Owner, after the second-machine install: "reloading the page should not
+abandon the open project" … "a reload should not abandon any unsaved changes
+in the currently open doc"; "how do I start a new project once a project has
+been opened? there's no close"; "this needs a mobile-friendly UI for taking
+quick notes or edits on a mobile device". Plan:
+`docs/plans/PLAN_RELOAD_SAFETY_MOBILE.md`, all four slices approved in one
+go.
+
+**Safety copy** (`ui/src/components/editor/safetyCopy.ts`, `Editor.tsx`).
+Autosave is debounced and a browser does not wait for the save a reload
+interrupts, so the last words typed were lost (I6). The editor now mirrors
+its dirty buffer into `localStorage` per document — throttled while typing,
+synchronously on `pagehide` — together with the disk text it was typed over.
+The next load of that document restores the copy when the disk has not
+moved, asks when another tab or device saved since (never overwriting either
+side quietly), and drops it once a save of exactly that text lands. Flow
+mode keeps one copy per section.
+
+**Remembered place and Projects button** (`lastOpen.ts`, `leaveProject.ts`,
+`App.tsx`). The web shell remembers the open project and note and reopens
+them on load (the tab's session id already survives a reload, so the
+single-writer seat is kept). A Projects button flushes, runs the close-time
+backup, hands the lease back through the new `POST /api/lease/release`
+(`crates/web/src/lease.rs`; a non-holder's release is a no-op) and shows the
+list — the first way back that is not a reload.
+
+**Phone layout** (`editor.css`, `useNarrowScreen.ts`, `BinderDrawer.tsx`).
+Under 768px: one column, binder as a drawer from a Menu button, Inspector and
+Revisions as sheets under the toolbar, toolbars scrolling sideways, `dvh`
+heights, a viewport that lets the keyboard resize the page. **Quick note**
+(`quickNote.ts`) on each project row of the web Welcome opens the project,
+adds a dated root note and selects it. **Touch** (`pointer: coarse`) grows
+targets to 44px and shows hover-only controls. **Home-screen install**:
+`ui/public/manifest.webmanifest`, icons copied from `src-tauri/icons`, the
+install metas in `index.html`; no service worker, so the page always loads
+the server's current UI.
+
+**Verification.** UI lint/build/test (125 tests, 11 new: storage and
+decision, editor write/restore/ask/settle — failing with the restore
+removed — leave/reopen, quick note, width hook and drawer, Welcome row);
+`cargo test -p chickenscratch-web` with the lease release unit and HTTP
+tests; declared suite minus the Tauri crate on the Linux box. CI runs on the
+next push.
+
+---
+
 ## 2026-10-25 — Web server on a headless box with a NAS: three fixes
 
 Owner, after the first install on a second machine with projects on NFS:

@@ -411,7 +411,30 @@ It prints the address to open.
   may be taken by the browser; remap them in **Settings > Shortcuts**.
 - **One writer at a time.** The first tab or device to open a project holds
   it; another one that tries to write is told so and offered **Take over**.
-  A project nobody has written to for two minutes is free again.
+  A project nobody has written to for two minutes is free again. The
+  **Projects** button (first in the toolbar) saves, hands the project back
+  at once and shows the project list.
+- **A reload keeps your place.** Reloading the page, or a tab the phone
+  closed in the background, comes back to the project and note you had
+  open. The last words you typed are kept in the browser until the server
+  has saved them, so a reload inside that moment loses nothing: a one-line
+  notice says they were restored. If the same note was also changed from
+  another device in between, you are asked which version to keep.
+
+### On a phone
+
+The same address works on a phone or tablet. Under a phone's width the app
+is one column:
+
+- The **menu button** (first in the toolbar) opens the binder as a drawer;
+  picking a document closes it. The toolbars scroll sideways.
+- **Inspector** and **Revisions** open over the editor; their toolbar
+  buttons close them again.
+- On the project list, the **pen button** beside a project starts a
+  **Quick note**: a new note named by date and time, ready to type.
+- **Add it to the home screen** from the browser's share or menu ("Add to
+  Home Screen" / "Install app"). It then opens full screen like an app. It
+  always loads the live page from your server; it does not work offline.
 
 ### Keeping it safe
 

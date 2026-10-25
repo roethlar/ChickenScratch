@@ -9,26 +9,22 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 - Phase **Engine hardening — protect writers' work** remains active;
   `docs/CURRENT_PHASE.md` owns the phase and exit criteria.
-- **Owner 2026-10-25, awaiting "plan it" (no plan written yet):** two
-  directions given in words after the second-machine install.
-  (a) "reloading the page should not abandon the open project" … "more than
-  that. a reload should not abandon any unsaved changes in the currently open
-  doc." Proposed slice (owner has not yet said plan it): a per-note local
-  safety copy in browser storage, cleared when the server confirms the save
-  and restored on reload/crash with a one-line notice; remember the last open
-  project + note and reopen it with the same session seat; a **Projects**
-  button that saves, releases the project and shows the list (today
-  `closeProject` exists in `projectStore.ts` but nothing in the UI calls it;
-  the only way back is a reload). Today's gap: autosave is debounced
-  (`Editor.tsx`, min 250 ms / default 2 s) and the web `beforeunload` path
-  cannot await the final flush, so a reload inside that window loses the
-  last words — an I6 matter.
-  (b) "this needs a mobile-friendly UI for taking quick notes or edits on a
-  mobile device": one-column layout under a width threshold, binder as a
-  drawer, inspector hidden, quick-note button on the project list, touch-size
-  controls, home-screen install. Proposed as the slices after (a), in one
-  plan. Owner also asked "how do I start a new project once a project has
-  been opened? there's no close" → the Projects button above.
+- **Owner 2026-10-25: reload safety and phone layout shipped.** Directions
+  in words after the second-machine install ("reloading the page should not
+  abandon the open project" … "any unsaved changes in the currently open
+  doc"; "there's no close"; "a mobile-friendly UI for taking quick notes"),
+  then the go "proceed with planning as directed in state docs, then
+  implement all slices". Plan `docs/plans/PLAN_RELOAD_SAFETY_MOBILE.md`;
+  slices landed 2026-10-25 one commit each: `26af1d5` safety copy +
+  remembered place + Projects button + `POST /api/lease/release`;
+  `e6fe793` one-column phone layout; `bd019a7` Quick note; slice 4 touch
+  targets + home-screen manifest + records (this commit). Not pushed;
+  push follows `.agents/push-policy.md` (ask). Next evidence is the owner
+  reloading mid-typing in the browser and opening the server address on a
+  phone. Known limits, by design: the safety copy is per browser profile
+  (a copy made on the phone restores on the phone); a brand-new tab gets a
+  new session id, so the "Take over" offer still applies there; no service
+  worker, so the installed icon needs the server reachable.
 - **Owner 2026-10-25: governance remediation** (`487e775`): three stale
   path references in `.agents/break-it-validation.md` resolved on owner
   rulings; hygiene lint clean. The pending
@@ -80,10 +76,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
    backup question once; Settings → Backup then shows a Backups tab. Owner
    checks still open there: Settings save, Save Revision on the NAS lists an
    entry.
-2. **Write the plan the owner asked about in words** when they say "plan it":
-   slice 1 = local safety copy + reopen last project/note + Projects button;
-   slices 2+ = mobile layout, quick note, touch targets, home-screen install.
-   No code before the go.
+2. **Reload safety + phone layout** (`PLAN_RELOAD_SAFETY_MOBILE.md`): every
+   slice shipped 2026-10-25, unpushed. Ask for the push go; then the owner
+   tries it (reload mid-typing; phone; Quick note; Add to Home Screen).
 3. **Web installer** (`docs/plans/PLAN_WEB_INSTALLER.md`) shipped; the
    owner's first install on a second machine happened 2026-10-25 and raised
    the web server fixes (archived). Later, needs its own plan: a CI-built
@@ -103,6 +98,12 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section.
+- **2026-10-25 reload safety + phone layout (slices 1–4, unpushed)**: fmt,
+  clippy `-D warnings` and tests green for core, services, web, tui,
+  converter; release-metadata script; `bash -n` + shellcheck on the scripts;
+  UI lint/build/test (125). Tauri crate not compiled on this box (Known
+  drift). Bite proof: the editor safety-copy tests fail with the restore
+  and the pagehide write removed. CI runs on the next push.
 - **2026-10-25 as of `82ba252`**: GitHub Validation runs `40162108795`
   (`ad44c22`), `40164051106` (`487e775`) and `40164229608` (`82ba252`) all
   succeeded (all jobs, shellcheck step included).
