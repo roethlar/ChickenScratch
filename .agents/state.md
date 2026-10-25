@@ -30,8 +30,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   plan. Owner also asked "how do I start a new project once a project has
   been opened? there's no close" → the Projects button above.
 - **Owner 2026-10-25: "the install did not ask any new questions"** → fixed
-  in `e56483d` (unpushed): an upgrade asks once for a setting the settings
-  file has never seen, flags change one setting, `--yes` writes the
+  in `e56483d` (pushed 2026-10-25): an upgrade asks once for a setting the
+  settings file has never seen, flags change one setting, `--yes` writes the
   placeholder. Dry-run verified; shellcheck clean.
 - **Owner 2026-10-25: "plan" after the first install on a second machine**
   (projects on NFS at `/mnt/notes`): settings save fails there with a keyring
@@ -40,7 +40,15 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   `docs/plans/PLAN_WEB_SERVER_FIXES.md` — owner "finish all slices"; all
   three landed 2026-10-25 (`9449c4d` secrets fallback, `0f096eb` backup
   root, `a8db23d` ownership check off on the server by default, following
-  the plan's recommendation since the go named all slices). Unpushed.
+  the plan's recommendation since the go named all slices). Pushed
+  2026-10-25.
+- **Owner 2026-10-25: governance remediation** (`487e775`): three stale
+  path references in `.agents/break-it-validation.md` resolved on owner
+  rulings; hygiene lint clean. Pushed the same day to `origin` and `github`
+  on the owner's go, carrying `e56483d` and `b4f2fcb` with it. The pending
+  governance refresh left its files staged but uncommitted; its staged
+  edit to this file had cut three lines mid-sentence (every line that said
+  "unpushed") — restored here with the push claims corrected.
 - **Owner 2026-10-24: "get rid of the access token"** — done the same day
   (`docs/plans/PLAN_WEB_NO_LOGIN.md`, `.agents/decisions.md`): `chikn-web`
   has no login; the private network is the boundary. Token file, `?token=`
@@ -152,10 +160,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **Push `e56483d`** (installer asks for new settings; needs the owner's
-   push go), then the owner reruns `git pull && scripts/install-web.sh` on
-   the second machine: it asks the backup question once; Settings → Backup
-   then shows a Backups tab. Owner checks still open there: Settings save,
+1. **`e56483d` is pushed** (installer asks for new settings; went out with
+   `487e775` on 2026-10-25). Now the owner reruns
+   `git pull && scripts/install-web.sh` on the second machine: it asks the
+   backup question once; Settings → Backup then shows a Backups tab. Owner checks still open there: Settings save,
    Save Revision on the NAS lists an entry.
 2. **Write the plan the owner asked about in words** when they say "plan it":
    slice 1 = local safety copy + reopen last project/note + Projects button;
@@ -188,7 +196,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 - Declared suite: `.agents/repo-guidance.md` Verification section.
 - **2026-10-25 as of `ad44c22`, pushed by the owner to `origin` and
   `github`**: GitHub Validation run `40162108795` succeeded (all jobs,
-  shellcheck step included). `e56483d` (installer) is local only.
+  shellcheck step included). `e56483d` (installer) and `487e775`
+  (governance remediation) were pushed 2026-10-25 to `origin` and `github`;
+  the Validation run for `487e775` has not been checked yet.
 - **2026-10-25 as of `52ad932`** (web server fixes): fmt, clippy
   `-D warnings` and tests green for core (138, five full runs), services,
   web, tui, converter; release-metadata script; `bash -n` + shellcheck 0.11
@@ -205,7 +215,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   release-metadata script; UI lint/build/test (98 tests). Tauri crate not
   compiled on this box (Known drift). The Windows link line and the Darwin
   `EPERM` branch cannot fire on Linux, so CI is the only proof for both.
-- **2026-10-24 as of `c3e171d`** (web shell, 12 unpushed commits): fmt, clippy
+- **2026-10-24 as of `c3e171d`** (web shell, 12 commits not yet pushed at
+  the time): fmt, clippy
   `-D warnings` and tests green for core, services, web, tui, converter;
   release-metadata script; cross-frontend harness; UI lint/build/test (87
   tests). The Tauri crate did not compile on this box (Known drift); its
