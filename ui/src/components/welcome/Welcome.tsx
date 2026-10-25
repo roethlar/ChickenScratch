@@ -2,10 +2,9 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { FolderOpen, FilePlus, FileDown, Clock, AlertTriangle, ExternalLink } from "lucide-react";
 import { openExternal, pickFolder, pickSaveFile } from "../../platform";
 import { pickServerFolder } from "../shared/folderPickerRequest";
-import { isWeb, getWebToken, setWebEventsAvailable, AUTH_REQUIRED_EVENT } from "../../commands/transport";
+import { isWeb, setWebEventsAvailable } from "../../commands/transport";
 import { listWebProjects, getWebInfo, takeOverProject, type WebProject } from "../../commands/web";
 import { useProjectStore } from "../../stores/projectStore";
-import { useSettingsStore } from "../../stores/settingsStore";
 import { pickScrivFolder, updateProjectMetadata } from "../../commands/project";
 import { NewProjectDialog, type NewProjectChoice } from "./NewProjectDialog";
 import {
@@ -15,7 +14,6 @@ import {
 } from "../../commands/settings";
 import { dialogPrompt } from "../shared/Dialog";
 import { toastError } from "../shared/Toast";
-import { WebTokenGate } from "./WebTokenGate";
 import { isValidProjectName } from "../../utils/projectName";
 
 export function Welcome() {
@@ -31,9 +29,8 @@ export function Welcome() {
   const [pandocWarning, setPandocWarning] = useState<string | null>(null);
 
   // Browser shell (chikn-web): projects come from the server's root folder
-  // instead of a native folder picker, and the server wants a token first.
+  // instead of a native folder picker.
   const web = isWeb();
-  const [needsToken, setNeedsToken] = useState(() => web && !getWebToken());
   const [webProjects, setWebProjects] = useState<WebProject[]>([]);
   const [webRoot, setWebRoot] = useState<string | null>(null);
 
@@ -42,15 +39,13 @@ export function Welcome() {
   const fetchWeb = useCallback(
     () =>
       Promise.all([getWebInfo(), listWebProjects()]).catch((e) => {
-        // A 401 is handled by the token gate; anything else is worth a word.
-        if (getWebToken()) toastError(`Could not reach the server: ${e}`);
+        toastError(`Could not reach the server: ${e}`);
         return null;
       }),
     []
   );
 
   useEffect(() => {
-    if (web && needsToken) return;
     getRecentProjects().then(setRecent).catch(() => {});
     checkPandoc().catch(() => {
       setPandocWarning(
@@ -66,14 +61,7 @@ export function Welcome() {
         setWebEventsAvailable(info.events);
       });
     }
-  }, [web, needsToken, fetchWeb]);
-
-  useEffect(() => {
-    if (!web) return;
-    const onAuthRequired = () => setNeedsToken(true);
-    window.addEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
-    return () => window.removeEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
-  }, [web]);
+  }, [web, fetchWeb]);
 
   const handleOpen = async () => {
     const selected = await pickFolder({ title: "Open .chikn Project" });
@@ -222,12 +210,6 @@ export function Welcome() {
     setBusy(false);
   };
 
-  const onTokenEntered = () => {
-    setNeedsToken(false);
-    // Settings were requested at startup, before the token existed.
-    useSettingsStore.getState().loadSettings();
-  };
-
   /** Server projects first, then recent entries the server list does not know. */
   const webList = useMemo(() => {
     const seen = new Set(webProjects.map((p) => p.path));
@@ -303,9 +285,7 @@ export function Welcome() {
           onSubmit={handleNewProjectChoice}
           onCancel={() => setNewProject(null)}
         />
-        {web && needsToken ? (
-          <WebTokenGate onDone={onTokenEntered} />
-        ) : web ? (
+        {web ? (
           <>
             <div className="welcome-actions">
               <button className="welcome-btn" onClick={handleCreateWeb} disabled={busy}>

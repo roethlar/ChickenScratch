@@ -113,8 +113,8 @@ after `npm run build` so `ui/dist` exists, on the host OS it will run on:
 ```bash
 cargo build --release -p chickenscratch-web --features embed-ui --locked
 test -x target/release/chikn-web
-./target/release/chikn-web --root "$(mktemp -d)" --token smoke --bind 127.0.0.1:7399 &
-curl -fsS -H 'Authorization: Bearer smoke' http://127.0.0.1:7399/api/info
+./target/release/chikn-web --root "$(mktemp -d)" --bind 127.0.0.1:7399 &
+curl -fsS http://127.0.0.1:7399/api/info
 kill %1
 ```
 
@@ -171,5 +171,5 @@ Open a sample project in the released app and verify:
 - Scrivener import rejects hostile path traversal fixtures.
 - Web shell: `chikn-web --root <temp folder>` prints a link; from a browser,
   create a project, type, reload (text persists), Save Revision, History
-  lists it; the API refuses a request without the token (401).
+  lists it; a path outside the projects folder is refused (403).
   `chikn-web --show-config` names the settings file and each value's source.

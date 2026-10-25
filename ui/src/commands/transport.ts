@@ -30,15 +30,12 @@ export interface TransportEvent<T> {
   payload: T;
 }
 
-/** Fired on `window` when the web server answers 401 (token missing or stale). */
-export const AUTH_REQUIRED_EVENT = "cs-web-auth-required";
 /** Fired on `window` when the server answers 409: another tab or device holds the project. */
 export const LEASE_CONFLICT_EVENT = "cs-web-lease-conflict";
 export interface LeaseConflictDetail {
   command: string;
   args: Record<string, unknown> | undefined;
 }
-const TOKEN_KEY = "cs-web-token";
 const SESSION_KEY = "cs-web-session";
 const SESSION_HEADER = "X-CS-Session";
 
@@ -80,63 +77,9 @@ export function setWebEventsAvailable(available: boolean): void {
   webEventsAvailable = available;
 }
 
-// ── Token ────────────────────────────────────────────────────────────
-
-let urlTokenChecked = false;
-
-function readStorage(): string | null {
-  try {
-    return window.localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The access token for the web server: `?token=…` on first load (stored,
- * then stripped from the address bar so it is not bookmarked or shared by
- * accident), otherwise whatever this browser stored earlier.
- */
-export function getWebToken(): string | null {
-  if (!urlTokenChecked) {
-    urlTokenChecked = true;
-    try {
-      const url = new URL(window.location.href);
-      const fromUrl = url.searchParams.get("token");
-      if (fromUrl) {
-        setWebToken(fromUrl);
-        url.searchParams.delete("token");
-        window.history.replaceState(window.history.state, "", url.toString());
-        return fromUrl;
-      }
-    } catch {
-      /* no usable location (tests, odd embeds) */
-    }
-  }
-  return readStorage();
-}
-
-export function setWebToken(token: string): void {
-  try {
-    window.localStorage.setItem(TOKEN_KEY, token);
-  } catch {
-    /* storage unavailable: the token lives for this page only */
-  }
-}
-
-export function clearWebToken(): void {
-  try {
-    window.localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    /* ignore */
-  }
-}
-
-function authHeaders(): Record<string, string> {
-  const token = getWebToken();
-  const headers: Record<string, string> = { [SESSION_HEADER]: getSessionId() };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  return headers;
+/** Headers every web request carries: just this tab's session id (for the single-writer lease). */
+function sessionHeaders(): Record<string, string> {
+  return { [SESSION_HEADER]: getSessionId() };
 }
 
 // ── Commands ─────────────────────────────────────────────────────────
@@ -159,7 +102,7 @@ async function webInvoke<T>(
 ): Promise<T> {
   const res = await fetch(`/api/cmd/${encodeURIComponent(command)}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
+    headers: { "Content-Type": "application/json", ...sessionHeaders() },
     body: JSON.stringify(args ?? {}),
     keepalive: options?.keepalive,
   });
@@ -174,21 +117,21 @@ async function webInvoke<T>(
   throw await failure(res);
 }
 
-/** GET a web-only endpoint (`/api/projects`, `/api/info`): same token, same error contract. */
+/** GET a web-only endpoint (`/api/projects`, `/api/info`): same error contract as `invoke`. */
 export async function webGet<T>(path: string): Promise<T> {
   const res = await webFetch(path, {});
   return (await res.json()) as T;
 }
 
 /**
- * Any other web-only request (downloads, uploads): adds the token, and turns
- * a non-2xx answer into the same plain-string rejection `invoke` uses. The
- * caller reads the successful response body itself.
+ * Any other web-only request (downloads, uploads): adds the session header
+ * and turns a non-2xx answer into the same plain-string rejection `invoke`
+ * uses. The caller reads the successful response body itself.
  */
 export async function webFetch(path: string, init: RequestInit): Promise<Response> {
   const res = await fetch(path, {
     ...init,
-    headers: { ...(init.headers as Record<string, string> | undefined), ...authHeaders() },
+    headers: { ...(init.headers as Record<string, string> | undefined), ...sessionHeaders() },
   });
   if (!res.ok) throw await failure(res);
   return res;
@@ -201,10 +144,6 @@ async function failure(res: Response): Promise<string> {
     body = await res.json();
   } catch {
     /* non-JSON error body */
-  }
-  if (res.status === 401) {
-    clearWebToken();
-    window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
   }
   return typeof body === "string" ? body : res.statusText || `HTTP ${res.status}`;
 }
@@ -277,8 +216,8 @@ function ensureEventStream(): Promise<boolean> {
   void (async () => {
     try {
       // Plain fetch rather than EventSource: EventSource cannot send the
-      // Authorization header, which would force the token into the URL.
-      const res = await fetch("/api/events", { headers: authHeaders() });
+      // session header.
+      const res = await fetch("/api/events", { headers: sessionHeaders() });
       if (!res.ok || !res.body) {
         connected(false);
         return;
@@ -310,9 +249,8 @@ function ensureEventStream(): Promise<boolean> {
   return ready;
 }
 
-/** Test hook: forget the token-from-URL check and any registered listeners. */
+/** Test hook: forget the session id and any registered listeners. */
 export function resetTransportForTests(): void {
-  urlTokenChecked = false;
   sessionId = null;
   webListeners.clear();
   streamConnecting = null;

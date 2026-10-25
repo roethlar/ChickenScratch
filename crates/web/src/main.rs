@@ -10,13 +10,11 @@
 //! Settings live in `~/.config/chickenscratch/web.toml` (`config` module);
 //! flags and `CHIKN_WEB_*` environment variables override it.
 //!
-//! On first run an access token is generated, stored under the user's config
-//! directory with owner-only permissions, and printed once together with a
-//! link that carries it. The UI stores the token in the browser after that.
+//! There is no login. Anyone who can reach the address can read and edit the
+//! projects, so keep `bind` on localhost or a private network/VPN.
 
-use std::fs;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -54,11 +52,6 @@ struct Cli {
     #[arg(long)]
     show_config: bool,
 
-    /// Access token. If omitted, read from CHIKN_WEB_TOKEN, then from the
-    /// token file in the config directory, else generated and stored there.
-    #[arg(long, env = "CHIKN_WEB_TOKEN")]
-    token: Option<String>,
-
     /// Folder with the built UI (index.html + assets/). Defaults to `ui_dir`
     /// in the settings file, then to the assets embedded in this binary when
     /// it was built with `--features embed-ui`, otherwise to `ui/dist` in the
@@ -90,12 +83,6 @@ fn load_settings(cli: &Cli) -> Result<(Settings, PathBuf, bool), String> {
     Ok((settings, file_path, file.is_some()))
 }
 
-enum TokenSource {
-    Flag,
-    File,
-    Generated,
-}
-
 fn ui_dir_source(dir: PathBuf) -> Result<UiSource, String> {
     if dir.join("index.html").is_file() {
         Ok(UiSource::Dir(dir))
@@ -120,61 +107,6 @@ fn resolve_ui(flag: Option<PathBuf>) -> Result<UiSource, String> {
     {
         ui_dir_source(PathBuf::from("ui/dist"))
     }
-}
-
-fn token_file() -> Option<PathBuf> {
-    dirs::config_dir().map(|dir| dir.join("chickenscratch").join("web-token"))
-}
-
-fn generate_token() -> String {
-    // Two v4 UUIDs: 244 bits of randomness, hex, no separators.
-    format!(
-        "{}{}",
-        uuid::Uuid::new_v4().simple(),
-        uuid::Uuid::new_v4().simple()
-    )
-}
-
-fn write_token_file(path: &Path, token: &str) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    #[cfg(unix)]
-    {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)?;
-        file.write_all(token.as_bytes())?;
-        file.write_all(b"\n")?;
-        Ok(())
-    }
-    #[cfg(not(unix))]
-    {
-        fs::write(path, format!("{token}\n"))
-    }
-}
-
-fn resolve_token(flag: Option<String>) -> std::io::Result<(String, TokenSource)> {
-    if let Some(token) = flag.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()) {
-        return Ok((token, TokenSource::Flag));
-    }
-    let Some(path) = token_file() else {
-        return Ok((generate_token(), TokenSource::Generated));
-    };
-    if let Ok(existing) = fs::read_to_string(&path) {
-        let existing = existing.trim().to_string();
-        if !existing.is_empty() {
-            return Ok((existing, TokenSource::File));
-        }
-    }
-    let token = generate_token();
-    write_token_file(&path, &token)?;
-    Ok((token, TokenSource::Generated))
 }
 
 #[tokio::main]
@@ -213,15 +145,7 @@ async fn main() -> ExitCode {
         }
     };
 
-    let (token, source) = match resolve_token(cli.token) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("could not read or store the access token: {e}");
-            return ExitCode::from(2);
-        }
-    };
-
-    let state = match AppState::new(&root, token.clone(), ui) {
+    let state = match AppState::new(&root, ui) {
         Ok(s) => Arc::new(s),
         Err(e) => {
             eprintln!("projects root {}: {e}", root.display());
@@ -244,20 +168,9 @@ async fn main() -> ExitCode {
         root_source = %settings.root_source,
         settings_file = %file_path.display(),
         ui = %state.ui,
-        token_source = match source {
-            TokenSource::Flag => "flag or CHIKN_WEB_TOKEN",
-            TokenSource::File => "token file",
-            TokenSource::Generated => "generated",
-        },
         "chikn-web listening"
     );
-    if matches!(source, TokenSource::Generated) {
-        println!("Access token: {token}");
-        if let Some(path) = token_file() {
-            println!("(stored in {})", path.display());
-        }
-    }
-    println!("Open: http://{addr}/?token={token}");
+    println!("Open: http://{addr}/");
 
     let app = build_router(state);
     if let Err(e) = axum::serve(listener, app)

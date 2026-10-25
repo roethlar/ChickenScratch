@@ -762,7 +762,6 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde_json",
- "subtle",
  "tempfile",
  "tokio",
  "tokio-stream",
@@ -771,7 +770,6 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

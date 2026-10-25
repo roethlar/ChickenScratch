@@ -4,18 +4,12 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 /**
  * The Welcome screen in the browser shell (plan slice 3b): projects come
  * from the server's root folder, "New Project" asks only for a name, the
- * desktop-only Scrivener import is hidden, and a missing token shows the
- * token gate instead of the project list.
+ * desktop-only Scrivener import is hidden.
  */
 
-const tokenState = vi.hoisted(() => ({ value: "tok" as string | null }));
-const setWebTokenMock = vi.hoisted(() => vi.fn((t: string) => (tokenState.value = t)));
 vi.mock("../commands/transport", () => ({
   isWeb: () => true,
-  getWebToken: () => tokenState.value,
-  setWebToken: setWebTokenMock,
   setWebEventsAvailable: vi.fn(),
-  AUTH_REQUIRED_EVENT: "cs-web-auth-required",
 }));
 
 const listProjectsMock = vi.hoisted(() =>
@@ -91,7 +85,6 @@ import { isValidProjectName } from "../utils/projectName";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  tokenState.value = "tok";
 });
 
 describe("Welcome in the browser shell", () => {
@@ -170,27 +163,6 @@ describe("Welcome in the browser shell", () => {
     expect(createProjectMock).not.toHaveBeenCalled();
   });
 
-  it("asks for the access token when none is stored, then loads", async () => {
-    tokenState.value = null;
-    render(<Welcome />);
-    const field = screen.getByLabelText("Access token");
-    expect(screen.queryByText("New Project")).toBeNull();
-    expect(listProjectsMock).not.toHaveBeenCalled();
-
-    fireEvent.change(field, { target: { value: "  pasted-token " } });
-    fireEvent.click(screen.getByText("Continue"));
-
-    expect(setWebTokenMock).toHaveBeenCalledWith("pasted-token");
-    expect(loadSettingsMock).toHaveBeenCalledTimes(1);
-    await screen.findByText("Notes");
-  });
-
-  it("returns to the token gate when the server rejects the token", async () => {
-    render(<Welcome />);
-    await screen.findByText("Notes");
-    window.dispatchEvent(new CustomEvent("cs-web-auth-required"));
-    await screen.findByLabelText("Access token");
-  });
 });
 
 describe("Welcome lease take-over", () => {

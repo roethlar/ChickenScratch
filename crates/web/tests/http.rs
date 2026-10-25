@@ -1,4 +1,4 @@
-//! HTTP contract tests for `chikn-web` (plan slice 3a): token auth, the
+//! HTTP contract tests for `chikn-web` (plan slice 3a): the
 //! projects-root gate, the Tauri-identical command contract, static UI.
 
 use std::fs;
@@ -14,8 +14,6 @@ use tower::ServiceExt;
 
 use chickenscratch_web::static_ui::UiSource;
 use chickenscratch_web::{build_router, AppState};
-
-const TOKEN: &str = "test-token-123";
 
 struct Harness {
     _tmp: tempfile::TempDir,
@@ -33,7 +31,7 @@ fn harness() -> Harness {
     fs::create_dir_all(&outside).unwrap();
     fs::create_dir_all(&ui).unwrap();
     fs::write(ui.join("index.html"), "<!doctype html><title>stub</title>").unwrap();
-    let state = AppState::new(&root, TOKEN.to_string(), UiSource::Dir(ui)).unwrap();
+    let state = AppState::new(&root, UiSource::Dir(ui)).unwrap();
     Harness {
         root: state.root.clone(),
         outside: outside.canonicalize().unwrap(),
@@ -56,17 +54,15 @@ async fn call(app: &Router, req: Request<Body>) -> (StatusCode, Value, axum::htt
     (status, body, headers)
 }
 
-fn cmd(name: &str, args: Value, token: Option<&str>) -> Request<Body> {
-    let mut req =
-        Request::post(format!("/api/cmd/{name}")).header(header::CONTENT_TYPE, "application/json");
-    if let Some(t) = token {
-        req = req.header(header::AUTHORIZATION, format!("Bearer {t}"));
-    }
-    req.body(Body::from(args.to_string())).unwrap()
+fn cmd(name: &str, args: Value) -> Request<Body> {
+    Request::post(format!("/api/cmd/{name}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(args.to_string()))
+        .unwrap()
 }
 
 async fn ok(app: &Router, name: &str, args: Value) -> Value {
-    let (status, body, _) = call(app, cmd(name, args, Some(TOKEN))).await;
+    let (status, body, _) = call(app, cmd(name, args)).await;
     assert_eq!(status, StatusCode::OK, "{name} failed: {body}");
     body
 }
@@ -76,27 +72,9 @@ fn path_str(p: &Path) -> String {
 }
 
 #[tokio::test]
-async fn api_requires_the_bearer_token() {
-    let h = harness();
-    let (status, body, _) = call(&h.app, cmd("get_app_settings", json!({}), None)).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-    assert_eq!(body, json!("Unauthorized"));
-
-    let (status, _, _) = call(&h.app, cmd("get_app_settings", json!({}), Some("wrong"))).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-
-    let (status, _, _) = call(
-        &h.app,
-        Request::get("/api/projects").body(Body::empty()).unwrap(),
-    )
-    .await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
 async fn unknown_command_is_404_with_a_plain_message() {
     let h = harness();
-    let (status, body, _) = call(&h.app, cmd("no_such_command", json!({}), Some(TOKEN))).await;
+    let (status, body, _) = call(&h.app, cmd("no_such_command", json!({}))).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(body, json!("Unknown command: no_such_command"));
 }
@@ -161,7 +139,6 @@ async fn create_load_edit_round_trip_matches_the_tauri_contract() {
         cmd(
             "update_document_content",
             json!({ "projectPath": project_path, "docId": "nope", "content": "x" }),
-            Some(TOKEN),
         ),
     )
     .await;
@@ -174,11 +151,7 @@ async fn create_load_edit_round_trip_matches_the_tauri_contract() {
     // Camel-case keys are mandatory; a missing required arg is a 400.
     let (status, body, _) = call(
         &h.app,
-        cmd(
-            "get_document",
-            json!({ "project_path": project_path }),
-            Some(TOKEN),
-        ),
+        cmd("get_document", json!({ "project_path": project_path })),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -207,10 +180,7 @@ async fn create_load_edit_round_trip_matches_the_tauri_contract() {
     fs::create_dir_all(h.root.join("plain")).unwrap();
     let (status, projects, _) = call(
         &h.app,
-        Request::get("/api/projects")
-            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
-            .body(Body::empty())
-            .unwrap(),
+        Request::get("/api/projects").body(Body::empty()).unwrap(),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -231,7 +201,6 @@ async fn paths_outside_the_root_are_refused_and_nothing_is_created() {
         cmd(
             "create_project",
             json!({ "name": "Evil", "path": path_str(&h.outside) }),
-            Some(TOKEN),
         ),
     )
     .await;
@@ -245,7 +214,6 @@ async fn paths_outside_the_root_are_refused_and_nothing_is_created() {
         cmd(
             "create_project",
             json!({ "name": "Evil", "path": path_str(&dotdot) }),
-            Some(TOKEN),
         ),
     )
     .await;
@@ -254,11 +222,7 @@ async fn paths_outside_the_root_are_refused_and_nothing_is_created() {
     // Relative path.
     let (status, _, _) = call(
         &h.app,
-        cmd(
-            "load_project",
-            json!({ "path": "relative/Notes.chikn" }),
-            Some(TOKEN),
-        ),
+        cmd("load_project", json!({ "path": "relative/Notes.chikn" })),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -272,7 +236,6 @@ async fn paths_outside_the_root_are_refused_and_nothing_is_created() {
             cmd(
                 "create_project",
                 json!({ "name": "Evil", "path": path_str(&h.root.join("escape")) }),
-                Some(TOKEN),
             ),
         )
         .await;
@@ -298,11 +261,7 @@ async fn save_project_cannot_be_pointed_outside_the_root() {
     .await;
     let mut hijacked = project.clone();
     hijacked["path"] = json!(path_str(&h.outside));
-    let (status, _, _) = call(
-        &h.app,
-        cmd("save_project", json!({ "project": hijacked }), Some(TOKEN)),
-    )
-    .await;
+    let (status, _, _) = call(&h.app, cmd("save_project", json!({ "project": hijacked }))).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert!(!h.outside.join("project.yaml").exists());
 }
@@ -310,7 +269,7 @@ async fn save_project_cannot_be_pointed_outside_the_root() {
 #[tokio::test]
 async fn desktop_only_commands_say_so() {
     let h = harness();
-    let (status, body, _) = call(&h.app, cmd("pick_scriv_folder", json!({}), Some(TOKEN))).await;
+    let (status, body, _) = call(&h.app, cmd("pick_scriv_folder", json!({}))).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(
         body.as_str()
@@ -325,7 +284,6 @@ async fn desktop_only_commands_say_so() {
         cmd(
             "ai_transform_stream",
             json!({ "content": "x", "operation": "polish", "requestId": "r1" }),
-            Some(TOKEN),
         ),
     )
     .await;
@@ -340,7 +298,7 @@ async fn desktop_only_commands_say_so() {
 async fn every_tauri_command_name_is_in_the_table() {
     let h = harness();
     for name in chickenscratch_web::commands::COMMAND_NAMES {
-        let (status, _, _) = call(&h.app, cmd(name, json!({}), Some(TOKEN))).await;
+        let (status, _, _) = call(&h.app, cmd(name, json!({}))).await;
         assert_ne!(
             status,
             StatusCode::NOT_FOUND,
@@ -374,10 +332,7 @@ async fn ui_is_served_with_security_headers_and_info_reports_the_root() {
 
     let (status, info, _) = call(
         &h.app,
-        Request::get("/api/info")
-            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
-            .body(Body::empty())
-            .unwrap(),
+        Request::get("/api/info").body(Body::empty()).unwrap(),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -385,16 +340,11 @@ async fn ui_is_served_with_security_headers_and_info_reports_the_root() {
     assert_eq!(info["events"], json!(true));
 
     // The event channel answers as a live SSE stream (the body never ends,
-    // so only status and headers are checked) and still needs the token.
+    // so only status and headers are checked).
     let res = h
         .app
         .clone()
-        .oneshot(
-            Request::get("/api/events")
-                .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::get("/api/events").body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
@@ -402,12 +352,6 @@ async fn ui_is_served_with_security_headers_and_info_reports_the_root() {
         .to_str()
         .unwrap()
         .starts_with("text/event-stream"));
-    let (status, _, _) = call(
-        &h.app,
-        Request::get("/api/events").body(Body::empty()).unwrap(),
-    )
-    .await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -453,7 +397,6 @@ async fn export_validates_format_and_reports_a_missing_pandoc_plainly() {
         &h.app,
         Request::post("/api/export")
             .header(header::CONTENT_TYPE, "application/json")
-            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
             .body(Body::from(
                 json!({ "projectPath": project_path, "format": "exe" }).to_string(),
             ))
@@ -468,7 +411,6 @@ async fn export_validates_format_and_reports_a_missing_pandoc_plainly() {
         &h.app,
         Request::post("/api/export")
             .header(header::CONTENT_TYPE, "application/json")
-            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
             .body(Body::from(
                 json!({ "projectPath": path_str(&h.outside), "format": "html" }).to_string(),
             ))
@@ -477,7 +419,7 @@ async fn export_validates_format_and_reports_a_missing_pandoc_plainly() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
-    let res = h.app.clone().oneshot(Request::post("/api/export").header(header::CONTENT_TYPE, "application/json").header(header::AUTHORIZATION, format!("Bearer {TOKEN}")).body(Body::from(json!({ "projectPath": project_path, "format": "html", "title": "Scratch Notes" }).to_string())).unwrap()).await.unwrap();
+    let res = h.app.clone().oneshot(Request::post("/api/export").header(header::CONTENT_TYPE, "application/json").body(Body::from(json!({ "projectPath": project_path, "format": "html", "title": "Scratch Notes" }).to_string())).unwrap()).await.unwrap();
     let status = res.status();
     let headers = res.headers().clone();
     let bytes = res.into_body().collect().await.unwrap().to_bytes();
@@ -550,7 +492,6 @@ async fn import_upload_adds_the_file_as_a_document_and_leaves_no_copy_behind() {
         &h.app,
         Request::post("/api/import-upload")
             .header(header::CONTENT_TYPE, ct)
-            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
             .body(Body::from(body))
             .unwrap(),
     )
@@ -577,7 +518,6 @@ async fn import_upload_adds_the_file_as_a_document_and_leaves_no_copy_behind() {
         &h.app,
         Request::post("/api/import-upload")
             .header(header::CONTENT_TYPE, ct)
-            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
             .body(Body::from(body))
             .unwrap(),
     )
@@ -590,7 +530,6 @@ async fn import_upload_adds_the_file_as_a_document_and_leaves_no_copy_behind() {
         &h.app,
         Request::post("/api/import-upload")
             .header(header::CONTENT_TYPE, ct)
-            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
             .body(Body::from(body))
             .unwrap(),
     )
@@ -606,14 +545,10 @@ async fn folder_browser_stays_inside_the_root() {
     fs::create_dir_all(h.root.join(".git")).unwrap();
     #[cfg(unix)]
     std::os::unix::fs::symlink(&h.outside, h.root.join("escape")).unwrap();
-    let auth = format!("Bearer {TOKEN}");
 
     let (status, listing, _) = call(
         &h.app,
-        Request::get("/api/fs/dirs")
-            .header(header::AUTHORIZATION, &auth)
-            .body(Body::empty())
-            .unwrap(),
+        Request::get("/api/fs/dirs").body(Body::empty()).unwrap(),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -630,7 +565,6 @@ async fn folder_browser_stays_inside_the_root() {
             "/api/fs/dirs?path={}",
             urlencode(&path_str(&h.root.join("Research")))
         ))
-        .header(header::AUTHORIZATION, &auth)
         .body(Body::empty())
         .unwrap(),
     )
@@ -645,7 +579,6 @@ async fn folder_browser_stays_inside_the_root() {
             "/api/fs/dirs?path={}",
             urlencode(&path_str(&h.outside))
         ))
-        .header(header::AUTHORIZATION, &auth)
         .body(Body::empty())
         .unwrap(),
     )
@@ -659,7 +592,6 @@ async fn folder_browser_stays_inside_the_root() {
                 "/api/fs/dirs?path={}",
                 urlencode(&path_str(&h.root.join("escape")))
             ))
-            .header(header::AUTHORIZATION, &auth)
             .body(Body::empty())
             .unwrap(),
         )
@@ -684,7 +616,6 @@ fn urlencode(s: &str) -> String {
 fn cmd_as(name: &str, args: Value, session: &str) -> Request<Body> {
     Request::post(format!("/api/cmd/{name}"))
         .header(header::CONTENT_TYPE, "application/json")
-        .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
         .header("x-cs-session", session)
         .body(Body::from(args.to_string()))
         .unwrap()
@@ -762,11 +693,7 @@ async fn second_session_is_refused_until_it_takes_over() {
     assert_eq!(status, StatusCode::OK);
     let (status, _, _) = call(
         &h.app,
-        cmd(
-            "has_changes",
-            json!({ "projectPath": project_path }),
-            Some(TOKEN),
-        ),
+        cmd("has_changes", json!({ "projectPath": project_path })),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -790,7 +717,6 @@ async fn second_session_is_refused_until_it_takes_over() {
         &h.app,
         Request::post("/api/lease/take")
             .header(header::CONTENT_TYPE, "application/json")
-            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
             .header("x-cs-session", "tab-b")
             .body(Body::from(
                 json!({ "projectPath": project_path }).to_string(),
@@ -826,7 +752,6 @@ async fn second_session_is_refused_until_it_takes_over() {
         &h.app,
         Request::post("/api/lease/take")
             .header(header::CONTENT_TYPE, "application/json")
-            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
             .body(Body::from(
                 json!({ "projectPath": project_path }).to_string(),
             ))
@@ -838,7 +763,6 @@ async fn second_session_is_refused_until_it_takes_over() {
         &h.app,
         Request::post("/api/lease/take")
             .header(header::CONTENT_TYPE, "application/json")
-            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
             .header("x-cs-session", "tab-b")
             .body(Body::from(
                 json!({ "projectPath": path_str(&h.outside) }).to_string(),

@@ -46,8 +46,9 @@ Tauri APIs.
    [ADR-003](ADR-003-tauri-reference-ui.md) stands: Tauri is the reference
    desktop GUI.
 4. **Self-hosted, single-user, no cloud.** `chikn-web` runs on a machine the
-   owner controls, confined to one projects folder, behind an access token,
-   reached over the owner's own network. `docs/PROJECT.md`'s "not doing
+   owner controls, confined to one projects folder, reached over the owner's
+   own network. There is no login (owner decision 2026-10-24: "get rid of
+   the access token"); the private network is the boundary. `docs/PROJECT.md`'s "not doing
    cloud/SaaS hosting" is unchanged.
 
 ## Consequences

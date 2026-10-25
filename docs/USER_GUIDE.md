@@ -333,10 +333,8 @@ It asks three questions, each with a default you can accept with Enter:
    prints) for you: `sudo loginctl enable-linger <you>`.
 
 Then it builds the program, installs it to `~/.local/bin/chikn-web`, saves
-your answers, sets up a background service, starts it, and prints **one
-link with your access token**. Open that link once in each browser you use;
-the token is remembered there. If a browser ever asks for it again, the
-token is in `~/.config/chickenscratch/web-token`.
+your answers, sets up a background service, starts it, and prints the
+address to open.
 
 If your projects folder is on a network share, the service waits for the
 share to be mounted and keeps retrying instead of starting against an empty
@@ -392,8 +390,7 @@ cargo build --release -p chickenscratch-web --features embed-ui
 ./target/release/chikn-web --root ~/Notes --bind 0.0.0.0:7391   # network / VPN
 ```
 
-The first run prints the access token and the link to open. The token is
-stored next to the settings file so later runs reuse it.
+It prints the address to open.
 
 ### What is different in a browser
 
@@ -413,11 +410,12 @@ stored next to the settings file so later runs reuse it.
 
 ### Keeping it safe
 
-- The server speaks plain HTTP. Keep it on your own network or VPN, or put a
-  reverse proxy with TLS in front of it. Do not expose it to the open
-  internet.
-- Every request needs the token, and the server only ever touches files
-  under the projects folder (plus the backup folder you choose in Settings).
+- **There is no login.** Anyone who can reach the address can read and edit
+  your projects. The server speaks plain HTTP. Keep it on your own network
+  or VPN (or behind a reverse proxy that adds a login and TLS). Never expose
+  it to the open internet.
+- The server only ever touches files under the projects folder (plus the
+  backup folder you choose in Settings).
 - The installer's background service runs under your own account, so
   project files are owned by you, not by root.
 

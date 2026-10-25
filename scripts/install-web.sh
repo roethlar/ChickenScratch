@@ -42,7 +42,6 @@ repo_root=$(cd "$script_dir/.." && pwd)
 config_home=${XDG_CONFIG_HOME:-$HOME/.config}
 config_dir=$config_home/chickenscratch
 config_file=$config_dir/web.toml
-token_file=$config_dir/web-token
 bin_dir=${CHIKN_BIN_DIR:-$HOME/.local/bin}
 bin_path=$bin_dir/chikn-web
 unit_dir=$config_home/systemd/user
@@ -185,20 +184,16 @@ EOF
 }
 
 print_how_to_reach() {
-  local bind=$1 host token url
+  local bind=$1 host url
   host=${bind%:*}
   if [[ $host == 0.0.0.0 || $host == "[::]" || $host == "::" ]]; then
     host=$(hostname -I 2>/dev/null | awk '{print $1}')
     [[ -n $host ]] || host=$(hostname)
   fi
   url="http://$host:${bind##*:}/"
-  if [[ -r $token_file ]]; then
-    token=$(tr -d '[:space:]' <"$token_file")
-    say "Open this link once; the browser remembers the token afterwards:"
-    say "  ${url}?token=$token"
-  else
-    say "Open: $url  (the access token is printed in the service log on first start)"
-  fi
+  say "Open: $url"
+  say "There is no login: anyone who can reach that address can use it, so keep"
+  say "it on your own network or VPN."
 }
 
 # ── rollback ───────────────────────────────────────────────────────────────
@@ -321,7 +316,7 @@ if have_systemd_user; then
   fi
   systemctl --user start "$unit_name"
   for _ in $(seq 1 30); do
-    systemctl --user is-active --quiet "$unit_name" && [[ -r $token_file ]] && break
+    systemctl --user is-active --quiet "$unit_name" && break
     sleep 0.5
   done
   if systemctl --user is-active --quiet "$unit_name"; then

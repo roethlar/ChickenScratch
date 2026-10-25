@@ -14,12 +14,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 import {
   invoke,
   listen,
-  getWebToken,
-  setWebToken,
-  clearWebToken,
   parseSseBlock,
   resetTransportForTests,
-  AUTH_REQUIRED_EVENT,
   LEASE_CONFLICT_EVENT,
 } from "../commands/transport";
 import { aiTransformStream } from "../commands/ai";
@@ -37,7 +33,6 @@ const fetchMock = vi.fn<(...args: FetchArgs) => Promise<Response>>();
 
 beforeEach(() => {
   resetTransportForTests();
-  clearWebToken();
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   window.history.replaceState(null, "", "/");
@@ -48,8 +43,7 @@ afterEach(() => {
 });
 
 describe("web transport: commands", () => {
-  it("posts the command name and the exact args object with the bearer token", async () => {
-    setWebToken("secret-token");
+  it("posts the command name and the exact args object, with this tab's session id", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }));
 
     const result = await invoke("load_project", { path: "/root/Notes.chikn" });
@@ -59,10 +53,9 @@ describe("web transport: commands", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/cmd/load_project");
     expect(init?.method).toBe("POST");
-    expect(init?.headers).toMatchObject({
-      Authorization: "Bearer secret-token",
-      "Content-Type": "application/json",
-    });
+    expect(init?.headers).toMatchObject({ "Content-Type": "application/json" });
+    expect((init?.headers as Record<string, string>)["X-CS-Session"]).toBeTruthy();
+    expect((init?.headers as Record<string, string>).Authorization).toBeUndefined();
     expect(JSON.parse(String(init?.body))).toEqual({ path: "/root/Notes.chikn" });
   });
 
@@ -74,36 +67,12 @@ describe("web transport: commands", () => {
     );
   });
 
-  it("on 401 clears the stored token and announces that a token is needed", async () => {
-    setWebToken("stale");
-    fetchMock.mockResolvedValueOnce(jsonResponse("Unauthorized", 401));
-    const announced = vi.fn();
-    window.addEventListener(AUTH_REQUIRED_EVENT, announced);
-
-    await expect(invoke("get_app_settings")).rejects.toBe("Unauthorized");
-
-    expect(getWebToken()).toBeNull();
-    expect(announced).toHaveBeenCalledTimes(1);
-    window.removeEventListener(AUTH_REQUIRED_EVENT, announced);
-  });
-
   it("passes keepalive through for close-time backups", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(null));
 
     await invoke("backup_on_close", { projectPath: "/p" }, { keepalive: true });
 
     expect(fetchMock.mock.calls[0][1]?.keepalive).toBe(true);
-  });
-});
-
-describe("web transport: token from the address bar", () => {
-  it("stores ?token= on first use and strips it from the URL", () => {
-    window.history.replaceState(null, "", "/?token=from-link&x=1");
-
-    expect(getWebToken()).toBe("from-link");
-    expect(window.location.search).toBe("?x=1");
-    // Second read comes from storage, not the (now clean) URL.
-    expect(getWebToken()).toBe("from-link");
   });
 });
 

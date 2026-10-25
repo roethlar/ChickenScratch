@@ -11,8 +11,7 @@
 //! Precedence, highest first: flag → environment (`CHIKN_WEB_ROOT`,
 //! `CHIKN_WEB_BIND`) → settings file → built-in default. `root` has no
 //! default; without one anywhere the server refuses to start and names the
-//! file. The access token is not a setting here: it stays in the `web-token`
-//! file next to this one (or `CHIKN_WEB_TOKEN`).
+//! file.
 //!
 //! Paths in the file may start with `~/`, which means the home directory.
 //! Any other relative path is taken relative to the working directory the

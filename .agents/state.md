@@ -9,6 +9,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 - Phase **Engine hardening — protect writers' work** remains active;
   `docs/CURRENT_PHASE.md` owns the phase and exit criteria.
+- **Owner 2026-10-24: "get rid of the access token"** — done the same day
+  (`docs/plans/PLAN_WEB_NO_LOGIN.md`, `.agents/decisions.md`): `chikn-web`
+  has no login; the private network is the boundary. Token file, `?token=`
+  link, UI token gate and `--token` flag are gone.
 - **Owner 2026-10-24: web installer queued** ("this needs an installer for
   the web version. the default data dir should be set at install time, and
   here it will be on my NAS" … "a .config/ entry or similar. and a way to

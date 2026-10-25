@@ -2,7 +2,7 @@
 # Remove the ChickenScratch web version installed by scripts/install-web.sh.
 #
 #   scripts/uninstall-web.sh                 # stop service, remove program
-#   scripts/uninstall-web.sh --purge-config  # also remove settings and token
+#   scripts/uninstall-web.sh --purge-config  # also remove the settings file
 #
 # Your projects folder is never touched. Plan: docs/plans/PLAN_WEB_INSTALLER.md.
 set -euo pipefail
@@ -11,7 +11,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/uninstall-web.sh [--purge-config] [--yes]
 
-  --purge-config  Also delete ~/.config/chickenscratch/web.toml and web-token
+  --purge-config  Also delete ~/.config/chickenscratch/web.toml
   --yes           Do not ask for confirmation
 EOF
 }
@@ -22,7 +22,6 @@ die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 config_home=${XDG_CONFIG_HOME:-$HOME/.config}
 config_dir=$config_home/chickenscratch
 config_file=$config_dir/web.toml
-token_file=$config_dir/web-token
 bin_dir=${CHIKN_BIN_DIR:-$HOME/.local/bin}
 bin_path=$bin_dir/chikn-web
 unit_name=chikn-web.service
@@ -47,7 +46,7 @@ fi
 if [[ $yes -eq 0 ]]; then
   [[ -t 0 ]] || die "not running in a terminal; pass --yes"
   say "This removes the chikn-web service and program."
-  [[ $purge -eq 1 ]] && say "It also deletes the settings file and access token."
+  [[ $purge -eq 1 ]] && say "It also deletes the settings file."
   [[ -n $root ]] && say "Your projects in $root are kept."
   read -r -p "Continue? [y/N]: " answer </dev/tty
   case "$answer" in y|Y|yes|YES|Yes) ;; *) say "Nothing changed."; exit 0 ;; esac
@@ -70,9 +69,9 @@ done
 [[ $removed -eq 1 ]] && say "Program removed from $bin_dir."
 
 if [[ $purge -eq 1 ]]; then
-  rm -f "$config_file" "$token_file"
+  rm -f "$config_file"
   rmdir "$config_dir" 2>/dev/null || true
-  say "Settings and token removed."
+  say "Settings removed."
 else
   [[ -f $config_file ]] && say "Settings kept at $config_file (use --purge-config to remove)."
 fi

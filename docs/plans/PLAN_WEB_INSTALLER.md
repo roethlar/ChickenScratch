@@ -32,7 +32,7 @@ config file under `~/.config/chickenscratch/` and the installer reuses them.
 ### Config file (slice 1 — `chikn-web` reads `web.toml`)
 
 `chikn-web` learns one optional file, `~/.config/chickenscratch/web.toml`
-(`$XDG_CONFIG_HOME` honoured, next to the existing `web-token`):
+(`$XDG_CONFIG_HOME` honoured):
 
 ```toml
 root = "/mnt/stuff/Notes"   # folder that holds the .chikn projects
@@ -80,12 +80,12 @@ owner's `~/.config`. Behaviour:
    is there instead of starting against an empty folder. "Start at boot"
    runs `loginctl enable-linger $USER`, which needs sudo once; the script
    says so and prints the exact command if it cannot.
-5. **Token**: the server already creates `~/.config/chickenscratch/web-token`
-   on first run; the installer waits for the service to come up, reads the
-   file, and prints the one link to open (address with `?token=`), plus the
-   three commands that matter: status, logs, stop.
+5. **Address**: the installer waits for the service to come up and prints
+   the address to open plus the three commands that matter: status, logs,
+   stop. (The access token this step originally printed was removed on the
+   owner's 2026-10-24 instruction; see `PLAN_WEB_NO_LOGIN.md`.)
 6. `scripts/uninstall-web.sh`: stops and removes the service and binary;
-   keeps `web.toml`, the token and every project unless `--purge-config`
+   keeps `web.toml` and every project unless `--purge-config`
    is given. Never touches the projects folder.
 7. Both scripts pass `bash -n` and `shellcheck` (added to the Validation
    workflow's Linux job when `shellcheck` is available there; it is on

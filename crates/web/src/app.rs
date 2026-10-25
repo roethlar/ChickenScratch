@@ -9,13 +9,13 @@ use axum::{
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    auth, commands, events, export, fs_browse, lease, projects, state::AppState, static_ui, upload,
+    commands, events, export, fs_browse, lease, projects, state::AppState, static_ui, upload,
 };
 
 /// 50 MiB: the same cap the desktop's bounded Pandoc runs use.
 pub const MAX_BODY_BYTES: usize = 50 * 1024 * 1024;
 
-/// The whole server as one router: `/api/*` behind the token check, the UI
+/// The whole server as one router: `/api/*` for the UI's calls, the UI
 /// everywhere else.
 pub fn build_router(state: Arc<AppState>) -> Router {
     let api = Router::new()
@@ -31,10 +31,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/import-upload", post(upload::import_upload))
         .route("/fs/dirs", get(fs_browse::dirs))
         .route("/events", get(events::stream))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            auth::require_token,
-        ))
         // Whole projects travel in one body (save_project) and uploads
         // can be large documents; axum's 2 MiB default is too small.
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES));

@@ -100,3 +100,14 @@ Supersedes:
 ## Open Decisions (deferred - not yet adopted)
 
 None recorded.
+
+## 2026-10-24 — Web shell has no login
+
+Owner: "get rid of the access token. I didn't ask for that." The bearer
+token the web shell carried since `PLAN_WEB_SHELL.md` slice 3a is removed:
+no `auth.rs`, no token file, no `?token=` link, no token gate in the UI.
+The server is reachable by anyone who can reach its address; the owner's
+private network / VPN is the boundary (as stated in the original request:
+"vpn, connection out of scope"). Guidance updated: ADR-007 §4,
+`docs/ARCHITECTURE.md`, `docs/USER_GUIDE.md` "Keeping it safe". A future
+login, if ever wanted, is a new owner request.

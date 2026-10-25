@@ -13,8 +13,6 @@ use crate::static_ui::UiSource;
 pub struct AppState {
     /// Canonical projects root: the only folder project paths may resolve into.
     pub root: PathBuf,
-    /// The bearer token every `/api/*` request must carry.
-    pub token: String,
     /// Where the built UI comes from (a folder, or assets embedded in the binary).
     pub ui: UiSource,
     pub gate: Gate,
@@ -29,7 +27,7 @@ pub struct AppState {
 
 impl AppState {
     /// `root` must exist; it is canonicalized so symlinked roots still work.
-    pub fn new(root: &Path, token: String, ui: UiSource) -> std::io::Result<Self> {
+    pub fn new(root: &Path, ui: UiSource) -> std::io::Result<Self> {
         let root = root.canonicalize()?;
         if !root.is_dir() {
             return Err(std::io::Error::new(
@@ -40,7 +38,6 @@ impl AppState {
         Ok(Self {
             gate: Gate::new(vec![root.clone()]),
             root,
-            token,
             ui,
             locks: ProjectWriteLocks::default(),
             tokens: ProjectTokens::default(),

@@ -76,8 +76,8 @@ cargo build --release -p chickenscratch-web --features embed-ui   # UI baked in:
 ./target/release/chikn-web --root ~/Notes --bind 0.0.0.0:7391
 ```
 
-The projects folder (`--root` or `root` in the settings file) is the only folder the server will touch. On first run it prints an
-access token and a link that carries it; open that link once per browser.
+The projects folder (`--root` or `root` in the settings file) is the only folder the server will touch.
+There is no login: whoever can reach the address can use it, so keep it on your own network or VPN.
 
 ### Converter CLI
 

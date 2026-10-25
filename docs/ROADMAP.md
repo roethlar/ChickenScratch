@@ -99,7 +99,7 @@ Feature sections named "(Tauri)" are desktop-app features; "(TUI)" sections desc
 
 **Web shell (`chikn-web`) — shipped 2026-10-24 ([ADR-007](adr/ADR-007-web-shell-shared-services.md))**
 - The same React UI served over HTTP by a small Rust server; engine in-process through the shared `chickenscratch-services` command layer
-- Self-hosted and single-user: bearer token, one projects root the server never leaves, same-origin CSP
+- Self-hosted and single-user: no login (the private network is the boundary), one projects root the server never leaves, same-origin CSP
 - Browser replacements for desktop dialogs: server project list, export as download, import by upload, server folder picker
 - `--features embed-ui` builds one file with the UI inside
 

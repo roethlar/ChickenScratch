@@ -8,13 +8,12 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
 import { importUpload } from "../commands/web";
-import { setWebToken, resetTransportForTests } from "../commands/transport";
+import { resetTransportForTests } from "../commands/transport";
 
 const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 
 beforeEach(() => {
   resetTransportForTests();
-  setWebToken("tok");
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -24,7 +23,7 @@ afterEach(() => {
 });
 
 describe("import by upload", () => {
-  it("posts the file, project path and parent as multipart with the token", async () => {
+  it("posts the file, project path and parent as multipart", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ id: "p", documents: {} }), {
         status: 200,
@@ -39,7 +38,7 @@ describe("import by upload", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/import-upload");
     expect(init?.method).toBe("POST");
-    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+    expect((init?.headers as Record<string, string>)["X-CS-Session"]).toBeTruthy();
     const body = init?.body as FormData;
     expect(body).toBeInstanceOf(FormData);
     expect(body.get("projectPath")).toBe("/srv/root/Notes.chikn");
