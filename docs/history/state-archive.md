@@ -3,6 +3,100 @@
 Landed or superseded entries rotated verbatim out of `.agents/state.md` by
 the `handoff` operator, newest batch first. History only — never load-bearing.
 
+## Rotated 2026-10-25 (drift sweep as of `82ba252`)
+
+Entries preserved verbatim, including their push claims; current verified
+evidence is in `.agents/state.md`.
+
+- **Owner 2026-10-25: "the install did not ask any new questions"** → fixed
+  in `e56483d` (pushed 2026-10-25): an upgrade asks once for a setting the
+  settings file has never seen, flags change one setting, `--yes` writes the
+  placeholder. Dry-run verified; shellcheck clean.
+- **Owner 2026-10-25: "plan" after the first install on a second machine**
+  (projects on NFS at `/mnt/notes`): settings save fails there with a keyring
+  D-Bus error; the backup folder can only be picked inside the root; git's
+  ownership check fires because the share maps uids. Plan:
+  `docs/plans/PLAN_WEB_SERVER_FIXES.md` — owner "finish all slices"; all
+  three landed 2026-10-25 (`9449c4d` secrets fallback, `0f096eb` backup
+  root, `a8db23d` ownership check off on the server by default, following
+  the plan's recommendation since the go named all slices). Pushed
+  2026-10-25.
+- **Owner 2026-10-24: "get rid of the access token"** — done the same day
+  (`docs/plans/PLAN_WEB_NO_LOGIN.md`, `.agents/decisions.md`): `chikn-web`
+  has no login; the private network is the boundary. Token file, `?token=`
+  link, UI token gate and `--token` flag are gone. Pushed as `aec8f18` on the
+  owner's `/git push all`; Validation run `40157115663` failed only in the
+  new Shell scripts step (macOS runner has no shellcheck) — fixed by
+  installing it in the step (`8d587a2`, pushed on the owner's "push";
+  Validation run `40157357274` green).
+- **Owner 2026-10-24: web installer queued** ("this needs an installer for
+  the web version. the default data dir should be set at install time, and
+  here it will be on my NAS" … "a .config/ entry or similar. and a way to
+  upgrade without re-specifying everything"). Plan:
+  `docs/plans/PLAN_WEB_INSTALLER.md` — `web.toml` config read by
+  `chikn-web`, `scripts/install-web.sh` with a user systemd service that
+  waits for the NFS mount, rerun = upgrade. Owner "go" then "do all the
+  slices": all three slices landed 2026-10-24 (`ff8ad9b` settings file,
+  `1c214ec` installer + shellcheck gate, docs commit). Next evidence is the
+  owner running `scripts/install-web.sh` on the server with the NAS path.
+- **Owner 2026-10-24: project profiles shipped** (`docs/plans/PLAN_PROJECT_PROFILES.md`,
+  go: "complete all slices and push when done"): Fiction / Notes / Document
+  types show, hide or rename the novelist UI parts, display-only; New Project
+  asks for the type. UI-only plus four backend templates. Pushed with the
+  web-shell commits on the owner's instruction.
+- **Owner 2026-10-23: web shell queued as a side quest, no phase change**
+  ("no direction change, just the next side quest. plan it, add it to the
+  queue"). Plan: `docs/plans/PLAN_WEB_SHELL.md` — a `chikn-web` server
+  that serves the existing React UI over HTTP from a shared
+  `chickenscratch-services` command layer. **Owner 2026-10-24: "follow the
+  queue and get as much as you can done"** — the go for the plan's slices in
+  order, one commit each. Slices 1 (services extraction, ADR-007), 2
+  (frontend transport + platform seams), 3a (`chikn-web` server) and 3b (web
+  Welcome) and 4a–4d (export download, upload import, server folder picker,
+  Scrivener import) and 6 (embed-ui single binary, user guide, release
+  runbook, records) landed 2026-10-24 — the browser now covers everything the
+  desktop does, including live AI streaming (slice 5, SSE) and a single-
+  writer lease for two devices on one project (slice 7). Every slice of the
+  plan has shipped; DEVLOG has the entry.
+- **Owner goal 2026-09-25: working app — find, plan, fix, Codex review.**
+  Hands-on GUI testing found 13 issues; all fixed one commit each
+  (`.agents/app-issues.md` is the tracker). Headline: Restore and draft
+  switching were silently undone on disk (fixed, GUI re-verified); a
+  project inside another broke all revision saves (fixed + now refused);
+  the red close button never closed the window (fixed). Codex
+  defect review over `a4d39f1..e2b3d1b` raised ar-1..ar-4; all fixed and
+  verified accepted (`.agents/review/index.md`).
+- **Break-it steps 7–10 rechecked on the current build (2026-09-25)**:
+  deleted history rebuilds on reopen and on save; damaged sidecars open
+  read-only with the real reason shown. `PLAN_HISTORY_SELF_HEAL.md` is
+  superseded.
+
+Rotated from "Known drift" in the same sweep (both fixed, kept there one
+cycle as the record of cause):
+
+- **CI red under rustc 1.99.1 — fixed and proven green** (Validation run
+  `40105127486` at `150bfcf` succeeded on all three runners, 2026-10-24;
+  the red run was `40071873531` at `3a8db4e`). Owner go "fix ci", then
+  "push"; plan `docs/plans/PLAN_CI_RUST_199.md`. Kept here one cycle as the
+  record of cause. (1) Windows: `libgit2-sys 0.17` relied
+  on std linking `advapi32.lib`; std 1.99 binds that DLL via raw-dylib, so
+  the core test runner failed to link. Fix `3f9024b`: `crates/core/build.rs`
+  emits `rustc-link-lib=advapi32` on Windows. Alternative left open:
+  upgrade `git2` 0.19 → 0.21. (2) macOS: XNU `killpg` returns `EPERM` for a
+  group with no live member and marks the leader exited before it is
+  reapable; `kill_tree` accepted `EPERM` only when `try_wait` already saw the
+  exit, losing the race in `process_helper_caps_combined_stdout_and_stderr`.
+  Fix `818eb2a`: on `EPERM`, poll `try_wait` up to 500 ms before believing
+  the error. Neither fix is exercisable on the Linux box (both branches are
+  inert here); the GitHub runners were the proof.
+- **Flaky core tests — fixed 2026-10-25 (`52ad932`, test-only).**
+  `failed_restore_after_tree_mutation…` (seen 2026-10-24) and
+  `failed_complete_merge_after_staging…` (2 of 3 full runs on 2026-10-25)
+  armed process-wide `AtomicBool` failpoints that any parallel test could
+  consume; the flags are thread-local now. 5 of 5 full core runs green. Done
+  without a separate go because it blocked verifying the web server fixes;
+  no production code changed.
+
 ## Rotated 2026-09-17 (catchup hygiene sweep)
 
 These entries are preserved verbatim, including superseded release claims;

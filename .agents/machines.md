@@ -16,3 +16,12 @@ Dated notes per machine. Prune stale entries during catchup hygiene sweeps.
   purposes by the successful desktop-driven run recorded in
   `.agents/break-it-validation.md`; that run did not record the app's
   source revision.
+
+## magneto (Linux dev box, Arch)
+
+- 2026-10-24, rechecked 2026-10-25 (`pkg-config --exists`): `webkit2gtk-4.1`
+  and `javascriptcoregtk-4.1` are not installed, so the Tauri crate
+  (`cargo check -p chickenscratch`) fails in the `javascriptcore-rs-sys`
+  build script. Installing the WebKitGTK dev package is an owner call
+  (system change); CI's macOS runner is the real check
+  (`.agents/state.md`, Known drift).

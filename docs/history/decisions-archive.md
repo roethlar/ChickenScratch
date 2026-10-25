@@ -35,3 +35,21 @@ never hand-composed — that this repo's bespoke `AGENTS.md` did not meet; this
 decision's rationale (keep working guidance rather than replace it) no longer
 matches the toolkit's current design, so it was revisited rather than
 silently overridden.
+
+### 2026-10-24 - Web shell has no login
+
+Status: Adopted 2026-10-24; archived 2026-10-25 (drift sweep). The operative
+rule lives in `docs/adr/ADR-007-*.md` §4, `docs/ARCHITECTURE.md` and
+`docs/USER_GUIDE.md`. Original record below, verbatim (it had been filed
+under Open Decisions in `.agents/decisions.md`).
+
+## 2026-10-24 — Web shell has no login
+
+Owner: "get rid of the access token. I didn't ask for that." The bearer
+token the web shell carried since `PLAN_WEB_SHELL.md` slice 3a is removed:
+no `auth.rs`, no token file, no `?token=` link, no token gate in the UI.
+The server is reachable by anyone who can reach its address; the owner's
+private network / VPN is the boundary (as stated in the original request:
+"vpn, connection out of scope"). Guidance updated: ADR-007 §4,
+`docs/ARCHITECTURE.md`, `docs/USER_GUIDE.md` "Keeping it safe". A future
+login, if ever wanted, is a new owner request.
