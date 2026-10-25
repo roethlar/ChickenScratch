@@ -63,13 +63,20 @@ machine you control (reach it over your own network or VPN; it speaks plain
 HTTP, so keep it off the open internet or put TLS in front of it).
 
 ```bash
+scripts/install-web.sh        # Linux: asks where projects live, installs a user service
+scripts/install-web.sh        # later: upgrades in place, keeps the settings
+```
+
+Settings live in `~/.config/chickenscratch/web.toml`. By hand, on any OS:
+
+```bash
 cd ui && npm install && npm run build && cd ..
 cargo build --release -p chickenscratch-web --features embed-ui   # UI baked in: one file to copy
 ./target/release/chikn-web --root ~/Notes            # localhost:7391
 ./target/release/chikn-web --root ~/Notes --bind 0.0.0.0:7391
 ```
 
-`--root` is the only folder the server will touch. On first run it prints an
+The projects folder (`--root` or `root` in the settings file) is the only folder the server will touch. On first run it prints an
 access token and a link that carries it; open that link once per browser.
 
 ### Converter CLI

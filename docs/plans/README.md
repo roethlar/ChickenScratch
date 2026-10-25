@@ -52,4 +52,4 @@ Deliberately **not** on the roadmap: name generators, deep character-psychology 
   installer for `chikn-web`: `~/.config/chickenscratch/web.toml` holds the
   projects folder (the owner's NAS) and listen address, a user systemd
   service that waits for the mount, and reruns that upgrade without asking
-  again. Queued 2026-10-24; no slice approved.
+  again. Queued 2026-10-24; all three slices shipped the same day.

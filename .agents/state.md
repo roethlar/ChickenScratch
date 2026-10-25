@@ -15,8 +15,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   upgrade without re-specifying everything"). Plan:
   `docs/plans/PLAN_WEB_INSTALLER.md` — `web.toml` config read by
   `chikn-web`, `scripts/install-web.sh` with a user systemd service that
-  waits for the NFS mount, rerun = upgrade. No slice approved; slice 1
-  (config file) proposed first.
+  waits for the NFS mount, rerun = upgrade. Owner "go" then "do all the
+  slices": all three slices landed 2026-10-24 (`ff8ad9b` settings file,
+  `1c214ec` installer + shellcheck gate, docs commit). Next evidence is the
+  owner running `scripts/install-web.sh` on the server with the NAS path.
 - **Owner 2026-10-24: project profiles shipped** (`docs/plans/PLAN_PROJECT_PROFILES.md`,
   go: "complete all slices and push when done"): Fiction / Notes / Document
   types show, hide or rename the novelist UI parts, display-only; New Project
@@ -111,10 +113,11 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **Queued side quest: web installer** (`docs/plans/PLAN_WEB_INSTALLER.md`).
-   Propose slice 1: `chikn-web` reads `~/.config/chickenscratch/web.toml`
-   (root, bind), flags and env still win, `--show-config`. Then slice 2 the
-   installer script, slice 3 docs. CI is green at `150bfcf`. Candidate
+1. **Web installer shipped, unpushed** (`docs/plans/PLAN_WEB_INSTALLER.md`):
+   ask for the push go, then the owner's first real install on the server
+   (`scripts/install-web.sh`, NAS folder when asked) is the verification.
+   Later, needs its own plan: a CI-built Linux tarball with the installer
+   inside. CI is green at `150bfcf`. Candidate
    hardening slices, each needing its own go: the flaky restore-token test
    (Known drift), the `git2` 0.19 → 0.21 upgrade that would retire
    `crates/core/build.rs`. Remaining known gaps, unapproved: Tauri

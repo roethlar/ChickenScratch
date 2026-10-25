@@ -119,7 +119,17 @@ kill %1
 ```
 
 There is no CI job or signed artifact for the web shell yet; it is distributed as a
-built binary the owner copies to their own machine (ADR-005 posture).
+built binary the owner copies to their own machine (ADR-005 posture), or
+installed from a checkout with `scripts/install-web.sh` (settings in
+`~/.config/chickenscratch/web.toml`; rerun = upgrade). Before a release, run
+the installer twice into a throwaway home to prove the upgrade path still asks
+nothing:
+
+```bash
+H=$(mktemp -d); HOME=$H XDG_CONFIG_HOME=$H/.config scripts/install-web.sh --no-systemd --root "$H/Notes" --yes
+HOME=$H XDG_CONFIG_HOME=$H/.config scripts/install-web.sh --no-systemd --yes   # must say "upgrading, keeping them"
+HOME=$H XDG_CONFIG_HOME=$H/.config scripts/uninstall-web.sh --yes --purge-config
+```
 
 ## 4. Cut The Tag
 
@@ -162,3 +172,4 @@ Open a sample project in the released app and verify:
 - Web shell: `chikn-web --root <temp folder>` prints a link; from a browser,
   create a project, type, reload (text persists), Save Revision, History
   lists it; the API refuses a request without the token (401).
+  `chikn-web --show-config` names the settings file and each value's source.

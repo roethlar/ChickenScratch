@@ -313,34 +313,87 @@ app as the desktop version — same editor, binder, history, drafts, search,
 statistics and settings — serving your projects from one folder on that
 computer. Nothing is sent to a cloud service.
 
-### Starting it
+### Installing it (Linux server)
 
-Build once (needs Rust and Node):
+On the computer that will run it, logged in as yourself (not root), from a
+checkout of ChickenScratch (needs Rust and Node to build):
+
+```bash
+scripts/install-web.sh
+```
+
+It asks three questions, each with a default you can accept with Enter:
+
+1. **Folder that will hold your projects.** Any folder, including one on a
+   NAS mount such as `/mnt/nas/Notes`. It is created if missing.
+2. **Address to listen on.** The default `0.0.0.0:7391` lets other devices
+   on your network or VPN reach it; `127.0.0.1:7391` keeps it to this
+   machine only.
+3. **Start at boot?** Yes needs one admin command the installer runs (or
+   prints) for you: `sudo loginctl enable-linger <you>`.
+
+Then it builds the program, installs it to `~/.local/bin/chikn-web`, saves
+your answers, sets up a background service, starts it, and prints **one
+link with your access token**. Open that link once in each browser you use;
+the token is remembered there. If a browser ever asks for it again, the
+token is in `~/.config/chickenscratch/web-token`.
+
+If your projects folder is on a network share, the service waits for the
+share to be mounted and keeps retrying instead of starting against an empty
+folder.
+
+### Upgrading
+
+Pull the new code and run the same command again:
+
+```bash
+scripts/install-web.sh
+```
+
+It finds your settings, asks nothing, swaps in the new version and restarts
+the service. The previous version is kept; if the new one misbehaves:
+
+```bash
+scripts/install-web.sh --rollback
+```
+
+### Where the settings live
+
+`~/.config/chickenscratch/web.toml`:
+
+```toml
+root = "/mnt/nas/Notes"   # folder that holds your .chikn projects
+bind = "0.0.0.0:7391"     # address:port to listen on
+```
+
+Change them with `scripts/install-web.sh --reconfigure` (asks the questions
+again, pre-filled), or edit the file and run
+`systemctl --user restart chikn-web`. `chikn-web --show-config` prints what
+the server would use and where each value came from. Command-line flags
+(`--root`, `--bind`) and the environment (`CHIKN_WEB_ROOT`,
+`CHIKN_WEB_BIND`) override the file for a one-off run.
+
+Handy commands:
+
+```bash
+systemctl --user status chikn-web     # is it running?
+journalctl --user -u chikn-web -f     # live log
+scripts/uninstall-web.sh              # remove service and program; projects stay
+```
+
+### Running it by hand (any OS)
+
+Without the installer, build and start it yourself:
 
 ```bash
 cd ui && npm install && npm run build && cd ..
 cargo build --release -p chickenscratch-web --features embed-ui
+./target/release/chikn-web --root ~/Notes                 # this machine only
+./target/release/chikn-web --root ~/Notes --bind 0.0.0.0:7391   # network / VPN
 ```
 
-Then run it, pointing at the folder that holds (or will hold) your `.chikn`
-projects:
-
-```bash
-./target/release/chikn-web --root ~/Notes
-```
-
-The first run prints an **access token** and a link like
-`http://127.0.0.1:7391/?token=…`. Open that link once in each browser you
-use; the token is remembered there. The token is also stored in your config
-folder (`~/.config/chickenscratch/web-token` on Linux) so later runs reuse it.
-If a browser ever asks for it again, paste the token from that file.
-
-To reach it from other devices, listen on all interfaces and open the same
-link with your computer's VPN address instead of `127.0.0.1`:
-
-```bash
-./target/release/chikn-web --root ~/Notes --bind 0.0.0.0:7391
-```
+The first run prints the access token and the link to open. The token is
+stored next to the settings file so later runs reuse it.
 
 ### What is different in a browser
 
@@ -364,25 +417,9 @@ link with your computer's VPN address instead of `127.0.0.1`:
   reverse proxy with TLS in front of it. Do not expose it to the open
   internet.
 - Every request needs the token, and the server only ever touches files
-  under `--root` (plus the backup folder you choose in Settings).
-- To run it in the background on Linux, a user service works well:
-
-```ini
-# ~/.config/systemd/user/chikn-web.service
-[Unit]
-Description=ChickenScratch web shell
-
-[Service]
-ExecStart=%h/.local/bin/chikn-web --root %h/Notes --bind 0.0.0.0:7391
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
-```
-
-```bash
-systemctl --user enable --now chikn-web
-```
+  under the projects folder (plus the backup folder you choose in Settings).
+- The installer's background service runs under your own account, so
+  project files are owned by you, not by root.
 
 ---
 

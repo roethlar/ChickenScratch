@@ -170,6 +170,12 @@ open items that lived here are in this file's git history.
 - [x] New Project asks for the type (Notes default in the browser, Fiction on the desktop)
 - [x] Meeting notes, Decision record, How-to and Daily log templates
 
+### Web installer — shipped 2026-10-24 ([plan](docs/plans/PLAN_WEB_INSTALLER.md))
+- [x] `chikn-web` reads `~/.config/chickenscratch/web.toml` (root, bind); flags and `CHIKN_WEB_*` win; `--show-config`
+- [x] `scripts/install-web.sh`: three questions once, rerun = upgrade, `--rollback`, `--reconfigure`, user systemd service that waits for an NFS/CIFS mount
+- [x] `scripts/uninstall-web.sh`; shellcheck in the Validation workflow
+- [ ] Later: CI-built Linux tarball with the installer inside, so upgrades need no Rust or Node on the server
+
 ### Web shell (`chikn-web`) — shipped 2026-10-24 ([plan](docs/plans/PLAN_WEB_SHELL.md), [ADR-007](docs/adr/ADR-007-web-shell-shared-services.md))
 - [x] Command layer extracted to `chickenscratch-services`; Tauri wrappers are transport only
 - [x] UI reaches the backend through one transport (Tauri IPC or same-origin JSON) and one platform seam

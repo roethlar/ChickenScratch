@@ -6,6 +6,41 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-10-24 — Web installer: settings file, user service, rerun = upgrade
+
+Owner, after running `chikn-web` by hand on the server: "this needs an
+installer for the web version. the default data dir should be set at install
+time, and here it will be on my NAS" — then "a .config/ entry or similar. and
+a way to upgrade without re-specifying everything", "go", "do all the
+slices". Plan: `docs/plans/PLAN_WEB_INSTALLER.md`.
+
+**Settings file.** `crates/web/src/config.rs`: `chikn-web` reads
+`~/.config/chickenscratch/web.toml` (`root`, `bind`, `ui_dir`), precedence
+flag → `CHIKN_WEB_ROOT`/`CHIKN_WEB_BIND` → file → default; `--config`,
+`--show-config`; refuses to start in one sentence when no root is set
+anywhere. Unknown keys and bad values are errors that name the line or the
+source. `--root` is no longer required on the command line.
+
+**Installer.** `scripts/install-web.sh` runs as the owner's user: three
+questions once (projects folder, listen address, start at boot), writes
+`web.toml`, builds with `--features embed-ui` (or takes `--binary`),
+installs to `~/.local/bin`, writes a user systemd unit (`Restart=on-failure`,
+no start-rate limit, `ExecStartPre=mountpoint -q` when the folder is on
+NFS/CIFS so it waits for the NAS), enables lingering for boot start, and
+prints the tokenised link. Rerun with settings present = upgrade, no
+questions; `--rollback` restores the kept previous binary. The dry run on
+the dev box found the NAS is an autofs automount, so `findmnt` reports two
+filesystems for one target — the mount check scans every line.
+`scripts/uninstall-web.sh` never touches the projects folder. `shellcheck`
+joined the Validation workflow and the declared suite.
+
+**Verification.** 12 config unit tests; web crate clippy/tests; shellcheck
+0.11 clean; installer exercised into a throwaway `$HOME` with
+`--no-systemd` (install, upgrade, print-unit for a NAS path, rollback,
+uninstall, purge). The real service start is the owner's first install.
+
+---
+
 ## 2026-10-24 — Project profiles: fiction vocabulary becomes one option
 
 Owner, after the first real web-shell run: "Characters and Locations is

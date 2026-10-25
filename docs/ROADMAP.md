@@ -92,6 +92,11 @@ Feature sections named "(Tauri)" are desktop-app features; "(TUI)" sections desc
 - Display-only: folders on disk keep their names; the type is changeable any time and nothing is lost
 - New Project asks for the type; notes/document templates (meeting, decision, how-to, daily log)
 
+**Web installer — shipped 2026-10-24 ([plan](plans/PLAN_WEB_INSTALLER.md))**
+- One command installs the web version for one Linux user: projects folder (a NAS path is fine), listen address, start at boot
+- Settings in `~/.config/chickenscratch/web.toml`; running the installer again upgrades without asking; `--rollback` keeps the previous version one step away
+- Background service under the user's own account that waits for a network mount
+
 **Web shell (`chikn-web`) — shipped 2026-10-24 ([ADR-007](adr/ADR-007-web-shell-shared-services.md))**
 - The same React UI served over HTTP by a small Rust server; engine in-process through the shared `chickenscratch-services` command layer
 - Self-hosted and single-user: bearer token, one projects root the server never leaves, same-origin CSP

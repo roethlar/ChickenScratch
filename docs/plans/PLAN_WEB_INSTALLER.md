@@ -128,7 +128,8 @@ owner's `~/.config`. Behaviour:
       rendering for a NAS path (`ExecStartPre=mountpoint -q /mnt/stuff`) —
       all with `--no-systemd`, so the real service start is the owner's
       first install
-- [ ] Declared suite (`.agents/repo-guidance.md` Verification)
+- [x] Declared suite (`.agents/repo-guidance.md` Verification) minus the
+      Tauri crate on the Linux box
 
 ## [MODEL] Owner verification (plain English)
 
@@ -159,3 +160,6 @@ version with the same projects."
   workflow and the declared suite. Found during the dry run: on this box
   the NAS is an autofs automount, so `findmnt` lists `autofs` first and
   `nfs` second — the mount check now scans every line.
+- 2026-10-24: slice 3 landed (user guide, README, RELEASE, TODO, ROADMAP,
+  DEVLOG, state). Every slice has shipped; the owner's first install on the
+  server is the remaining verification.
