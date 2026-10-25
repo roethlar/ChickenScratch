@@ -7,6 +7,17 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <title>ChickenScratch</title>
+    <!-- Home-screen install for the web version (PLAN_RELOAD_SAFETY_MOBILE
+         slice 4). No service worker: the page always loads the server's
+         current UI. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#f8f8f7" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="ChickenScratch" />
+    <link rel="apple-touch-icon" href="/icon-256.png" />
+    <link rel="icon" type="image/png" sizes="256x256" href="/icon-256.png" />
   </head>
   <body>
     <div id="root"></div>

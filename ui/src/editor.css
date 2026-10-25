@@ -4071,3 +4071,48 @@
     padding: 0.8rem 0.75rem;
   }
 }
+
+/* ── Touch screens (PLAN_RELOAD_SAFETY_MOBILE slice 4) ───────────
+   Finger-sized targets (44px) where the pointer is a finger, and no
+   hover-only reveals: a touch screen has no hover. */
+@media (pointer: coarse) {
+  .view-btn,
+  .toolbar-btn,
+  .binder-action-btn,
+  .welcome-quick-note {
+    width: 44px;
+    height: 44px;
+  }
+  .view-toolbar-sep,
+  .toolbar-sep {
+    height: 24px;
+    margin-top: 10px;
+  }
+  .binder-item {
+    min-height: 44px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .welcome-recent-item {
+    min-height: 48px;
+  }
+  .welcome-btn {
+    min-height: 48px;
+  }
+  .dialog-btn {
+    min-height: 44px;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+  .dialog-input {
+    min-height: 44px;
+    font-size: 1rem;
+  }
+  .thread-card-delete {
+    opacity: 0.7;
+  }
+  .editor-status {
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+  }
+}

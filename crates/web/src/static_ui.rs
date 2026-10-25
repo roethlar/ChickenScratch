@@ -93,6 +93,7 @@ mod embedded {
             Some("js") => "text/javascript; charset=utf-8",
             Some("css") => "text/css; charset=utf-8",
             Some("json") | Some("map") => "application/json",
+            Some("webmanifest") => "application/manifest+json",
             Some("svg") => "image/svg+xml",
             Some("png") => "image/png",
             Some("ico") => "image/x-icon",

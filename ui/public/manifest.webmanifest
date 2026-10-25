@@ -1,0 +1,15 @@
+{
+  "name": "ChickenScratch",
+  "short_name": "ChickenScratch",
+  "description": "Where messy drafts become masterpieces",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#f8f8f7",
+  "icons": [
+    { "src": "/icon-256.png", "sizes": "256x256", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
