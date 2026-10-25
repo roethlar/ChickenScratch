@@ -392,5 +392,9 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
   box). Slice 4 landed (comments and footnotes from `content.comments`
   and the inline forms; core compile emits reference footnotes). Codex
   reviews of slices 2–4 and of the s1-3/s1-4/s1-6 second repairs pending.
-  Remaining: records (user guide, DEVLOG, `samples/Corn.chikn`
-  regeneration); slice 5 (Scrivener 2) optional.
+- 2026-10-25: slice 2 review returned one finding (s2-1, links resolving
+  against predicted paths), fixed in `8c3f05e`. Records landed: user guide,
+  DEVLOG, `samples/Corn.chikn` regenerated with the finished converter (the
+  write-guard test still finds it Full). Codex reviews still pending: the
+  second repairs of s1-3/s1-4/s1-6, slice 3, slice 4, the s2-1 fix. Slice 5
+  (Scrivener 2) optional and not started.

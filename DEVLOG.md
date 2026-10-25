@@ -6,7 +6,50 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
-## 2026-10-25 — A reload never loses work; the web version fits a phone
+## 2026-10-25 — The Scrivener import keeps the whole project
+
+Owner: "have we even perfected scrivener imports?" The check (the three
+`samples/*.scriv`, Pandoc 3.11) said no: one sample died on a hex escape
+followed by an apostrophe, every paragraph of a document collapsed into one,
+apostrophes were stored as `\'`, Scrivener's Trash and every non-Draft
+folder were misfiled, and synopses, labels, status, keywords, notes,
+comments and footnotes were never read. Plan
+`docs/plans/PLAN_SCRIVENER_FIDELITY.md`, five Codex review rounds to
+consensus, then four slices, each Codex-reviewed with the findings fixed one
+commit at a time (`.agents/review/index.md` s1-1..s1-6, s2-1).
+
+**RTF before Pandoc** (`parser/rtf_prepare.rs`, `rtf_text.rs`, `rtf.rs`).
+Cocoa RTF is prepared first: backslash-newline becomes `\par`, hex escapes
+become `\uN ?` in the font's or document's code page (`encoding_rs`),
+Unicode fallbacks collapse to one `?` with `\ucN` tracked per group. Pandoc
+writes `markdown-smart`. A document Pandoc still rejects falls back to a
+built-in extractor (destination-aware, links kept, every ASCII punctuation
+character escaped so the plain text stays literal) and is named in the
+warnings; the import never dies on one file. The re-reviews taught the
+parsers the RTF rules in full: every control word is a fallback item,
+`\binN` carries its payload, `\deffN` and `\plain` select fonts, decoded
+text is written back as RTF text.
+
+**Binder** (`converter/mod.rs`). The Draft folder is the manuscript by type,
+whatever it is called; other roots go under Research with `research/`
+paths; Trash is kept; a text item with children becomes a folder with its
+text first; `IncludeInCompile` is applied; internal links resolve against
+the paths the import actually chose.
+
+**Metadata** (`parser/scrivx.rs`). Scrivener 3's label/status/keyword tables
+resolve the per-item IDs (the `-1` sentinel is none); `synopsis.txt`,
+`notes.rtf` (→ `fields.notes`, shown in a new Inspector **Notes** box) and
+custom metadata (`custom.<title>`, or `custom.<id>` plus a titles map when
+titles collide) arrive; a folder with side values gets a companion document.
+
+**Comments and footnotes** (`parser/comments.rs`). `content.comments` bodies
+attach to their `scrivcmt://` anchors as the editor's comment spans or
+footnote elements; Scrivener's inline forms are lifted out of the RTF
+before Pandoc. Core compile now emits reference footnotes for the editor's
+footnote element — before this, every footnote vanished on compile.
+
+Open: the owner's ruling on the I2 wording (the invariant says Scrivener
+import lives in core; the converter crate is where it has always lived).
 
 Owner, after the second-machine install: "reloading the page should not
 abandon the open project" … "a reload should not abandon any unsaved changes

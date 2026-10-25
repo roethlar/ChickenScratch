@@ -1,107 +1,135 @@
 format_version: '1.2'
-id: 67315492-5fb3-4d3c-8f54-787b94d914df
+id: 0f454d17-b115-44ae-9b10-f9d6e1e819d8
 name: Corn
 hierarchy:
 - type: Folder
-  id: 30e32a52-15e6-4ffa-9518-132228148851
+  id: e106d9b6-e7cb-4a3b-99ab-2cbb88b0f6ab
   name: Manuscript
   children:
   - type: Document
-    id: cdf11353-7574-47d7-92cd-4c6dd54328ed
-    name: Short Story Format
-    path: manuscript/short-story-format.md
-  - type: Document
-    id: 153fd091-fba2-4de8-a527-1300ab18ff79
+    id: 3275c8bb-8684-4bb0-97c7-3066e66433b8
     name: Opening
     path: manuscript/opening.md
   - type: Document
-    id: 9986d1d1-1b60-4fe1-b0ed-c2359582fb1f
+    id: cc639c98-c712-4274-99b1-71532ef7236c
     name: Shelly & Marcus setup
     path: manuscript/shelly-marcus-setup.md
   - type: Document
-    id: de777628-41a1-4fa6-bfc2-b56212bbc60d
+    id: 4ba35571-71d8-43c0-aca6-df5fbb6f2efa
     name: Shelly & Corn meet
     path: manuscript/shelly-corn-meet.md
   - type: Document
-    id: 9cf2426c-1d00-4de1-9083-e922633dddd1
+    id: 7dd72bda-7ac7-4c66-8976-909ba9a34ed5
     name: S&C Falling
     path: manuscript/s-c-falling.md
   - type: Document
-    id: 271e259c-3805-4d2b-b5a9-9596bf065a55
+    id: 4f377ccc-85d5-4bdd-a6ba-8a978b893c69
     name: S&C Getting intimate
     path: manuscript/s-c-getting-intimate.md
   - type: Document
-    id: 1b4191df-8178-469f-b2b4-170d14d47038
+    id: 6dfba923-9185-4f2f-b1cc-b1903a5dc123
     name: Daddy's letter arrives
     path: manuscript/daddy-s-letter-arrives.md
   - type: Document
-    id: d95b90d7-98ef-44fa-9bb6-c5978a3254e9
+    id: 911a35d8-2fba-4f83-8556-ee3ef5e5e1c9
     name: Shelly's house, Corn vs Kelly
     path: manuscript/shelly-s-house-corn-vs-kelly.md
   - type: Document
-    id: 5d499dda-9d9a-4ae8-a8e7-7141e06a6fb0
+    id: 4e4871cc-47f6-4c51-9830-8734dcb96edb
     name: Motel confrontation
     path: manuscript/motel-confrontation.md
   - type: Document
-    id: 9a56cb72-188a-442d-92ab-1cd28542511f
+    id: c9783a67-3511-462f-96a2-da5c4aee5f7f
     name: Closing
     path: manuscript/closing.md
-  - type: Folder
-    id: 64c98aad-e5de-4ae2-adb4-2ae8f6727441
-    name: Characters
-    children: []
-  - type: Folder
-    id: 5ff8a43c-d1e7-4568-a0aa-db4616b92258
-    name: Places
-    children: []
-  - type: Folder
-    id: 076eb445-5e89-4af6-840f-2b913053839d
-    name: Front Matter
-    children:
-    - type: Document
-      id: 1c96610d-b576-4276-b210-1d77b19ff945
-      name: First Page Header
-      path: manuscript/first-page-header.md
-  - type: Folder
-    id: 3822b3c0-0b0a-4bcf-96cd-71d89f8c27a8
-    name: Notes
-    children:
-    - type: Document
-      id: 3cf79249-63ce-455d-b916-99b4b61c9284
-      name: Corn's POV
-      path: manuscript/corn-s-pov.md
-    - type: Document
-      id: ff40ca11-3640-41fd-9bae-a09505bb4bb9
-      name: Bits
-      path: manuscript/bits.md
-    - type: Document
-      id: 876f13d8-c69a-40d3-ba7d-3b0cbc88dedc
-      name: Old Corn
-      path: manuscript/old-corn.md
-  - type: Folder
-    id: 679362f0-edaa-4704-bb43-399a7e866008
-    name: Template Sheets
-    children:
-    - type: Document
-      id: 15a97385-5397-4301-9f95-16ba92963684
-      name: Character Sketch
-      path: manuscript/character-sketch.md
-    - type: Document
-      id: 8461f893-e74a-49bc-9c8d-37aee57b5601
-      name: Setting Sketch
-      path: manuscript/setting-sketch.md
 - type: Folder
-  id: 0051c9b8-5d00-42e3-b537-c8c60f4ff667
+  id: b238bbab-c02c-4e51-8ee3-811d3f2f58c3
   name: Research
   children:
   - type: Document
-    id: 87e60926-ae62-4036-8808-47a4742690ed
+    id: b0297ea1-fd79-4750-9a29-bdc5c4e96565
+    name: Short Story Format
+    path: research/short-story-format.md
+  - type: Folder
+    id: 8cca25ec-b061-4cb3-927c-6254c9d16b0a
+    name: Characters
+    children: []
+  - type: Folder
+    id: 08fd66e1-d624-47bb-8706-d40f7fbef7c0
+    name: Places
+    children: []
+  - type: Folder
+    id: 4cac2d02-794b-4c61-b1f9-e45fe752c5af
+    name: Front Matter
+    children:
+    - type: Document
+      id: e7f31507-1803-4d98-8601-1503a735f1c0
+      name: First Page Header
+      path: research/first-page-header.md
+  - type: Folder
+    id: 4b547308-acb8-4222-881c-6cc24bbd4903
+    name: Notes
+    children:
+    - type: Document
+      id: 4c9caad8-7b46-4da4-a16e-56c18128753b
+      name: Corn's POV
+      path: research/corn-s-pov.md
+    - type: Document
+      id: 7f7d8d82-422d-4288-b75f-9c482c9aa6bf
+      name: Bits
+      path: research/bits.md
+    - type: Document
+      id: 833ff13c-cbb3-4fbf-bab3-c4e957c94fa8
+      name: Old Corn
+      path: research/old-corn.md
+  - type: Document
+    id: 4d2f7769-c8c4-49f2-83a0-56dc4f791e43
     name: Sample Story MS
     path: research/sample-story-ms.pdf
+  - type: Folder
+    id: 1dc29ee3-5781-4fac-9570-a07bdd23fada
+    name: Template Sheets
+    children:
+    - type: Document
+      id: 29578e56-954e-4ab7-bd28-189afcf0c414
+      name: Character Sketch
+      path: research/character-sketch.md
+    - type: Document
+      id: 62f1dce5-f054-4579-b163-544b66b2dee7
+      name: Setting Sketch
+      path: research/setting-sketch.md
 - type: Folder
-  id: bb35be3b-d579-4a98-9b54-5799436dd4c6
+  id: a41d2efe-6baf-4e66-8e65-d261826aa1ef
   name: Trash
-  children: []
-created: 2026-07-11T08:35:53.242818+00:00
-modified: 2026-07-11T08:35:54.212873+00:00
+  children:
+  - type: Document
+    id: 63c66a7c-a127-4f6b-a3d8-c82cbb60d136
+    name: Untitled
+    path: research/untitled.md
+  - type: Document
+    id: 569782d3-5482-43cc-89ed-b9c0bd9dea2a
+    name: Title
+    path: research/title.md
+  - type: Folder
+    id: 74b33fd9-bfb2-4a58-8944-703ebe2f5a7f
+    name: Opening
+    children: []
+  - type: Folder
+    id: 1254a7e3-d970-4801-84f0-f5c84d8921ee
+    name: Relationship
+    children: []
+  - type: Folder
+    id: 8964bf8a-60d5-47bb-9dfb-e7300a83e6b7
+    name: Trouble
+    children: []
+  - type: Document
+    id: 7a658e25-b926-4e11-b559-b6787272751b
+    name: Shelly background
+    path: research/shelly-background.md
+  - type: Document
+    id: 88ac0f0c-9a87-4dda-9684-82d08538b680
+    name: Untitled
+    path: research/untitled-1.md
+created: 2026-10-25T23:27:40.885867448+00:00
+modified: 2026-10-25T23:27:52.661121944+00:00
 metadata: {}

@@ -37,7 +37,15 @@ Click **Open Project** and select a `.chikn` folder. Recent projects appear on t
 1. Click **Import Scrivener**
 2. Select your `.scriv` project (on macOS, click the .scriv file; on Linux, select the folder)
 3. Choose where to save the converted `.chikn` project
-4. Your project opens with all documents, formatting, and metadata preserved
+4. Your project opens with everything Scrivener kept: the Draft becomes
+   Manuscript, every other folder (Characters, Places, Notes, Template
+   Sheets) lands under Research, and the Trash keeps what you had binned.
+   Each document brings its synopsis, label, status, keywords, custom
+   metadata and document notes (the **Notes** box in the Inspector), and
+   Scrivener's inline comments and footnotes become the editor's own.
+   Paragraphs stay separate paragraphs; a document Scrivener saved in a way
+   Pandoc cannot read comes in as plain text and is named in a notice
+   instead of stopping the import.
 
 **Note:** Pandoc must be installed for Scrivener import to work. ChickenScratch will show a warning with install instructions if it's missing.
 
@@ -506,8 +514,17 @@ ChickenScratch auto-detects Pandoc from standard installation paths. If you inst
 - For Anthropic/OpenAI: check your API key in Settings
 
 ### Imported Scrivener project looks wrong
-- Some Scrivener compile template documents may appear in the Manuscript folder. You can move or delete them.
-- Formatting is preserved as accurately as possible, but some Scrivener-specific features (compile placeholders, custom styles) don't have equivalents.
+- Characters, Places, Notes, Front Matter and Template Sheets are under
+  **Research**, not Manuscript; only Scrivener's Draft folder is the
+  manuscript. Move anything you want compiled into Manuscript.
+- A notice after the import names anything that needed attention: a
+  document whose formatting Pandoc could not read (its text was imported
+  plain), a comment marker with no comment text, or a comment with no place
+  in the text (kept on the document as an unanchored comment).
+- Formatting is preserved as accurately as possible, but some
+  Scrivener-specific features (compile placeholders, custom styles) have no
+  equivalent. Projects saved by Scrivener 2 are not supported yet; open and
+  save them in Scrivener 3 first.
 
 ### App crashes or shows blank screen
 The error recovery screen should appear — click "Try Again" or "Reload App". If the problem persists, your project data is safe (it's on disk, not in the app).

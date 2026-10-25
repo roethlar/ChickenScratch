@@ -86,9 +86,12 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   footnotes from `content.comments` and the inline forms become the
   editor's spans and footnote elements; core compile emits reference
   footnotes, fixing a pre-existing loss of every footnote on compile).
-  Codex reviews pending: slices 2–4, second repairs of s1-3 (`a883e00`),
-  s1-4 (`fa802f8`), s1-6 (`3a1c80f`). Then records (user guide, DEVLOG,
-  `samples/Corn.chikn`); slice 5 (Scrivener 2) optional. Known limits, by design: the safety copy is per browser profile
+  Slice 2 review: one finding s2-1 (links vs predicted paths), fixed
+  `8c3f05e`. Records landed (user guide, DEVLOG, `samples/Corn.chikn`
+  regenerated). Codex reviews pending: second repairs of s1-3 (`a883e00`),
+  s1-4 (`fa802f8`), s1-6 (`3a1c80f`); slice 3 (`c46f8b5`); slice 4
+  (`19f1c89`); s2-1 (`8c3f05e`). Slice 5 (Scrivener 2) optional, not
+  started. Nothing pushed since `fe0ffbf`. Known limits, by design: the safety copy is per browser profile
   (a copy made on the phone restores on the phone); a brand-new tab gets a
   new session id, so the "Take over" offer still applies there; no service
   worker, so the installed icon needs the server reachable.
