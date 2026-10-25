@@ -320,13 +320,12 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                             }
                         } else {
                             match word {
-                                b"par" | b"line" => {
-                                    if word == b"par" {
-                                        paragraph_break(&groups, &mut fields, &mut text);
-                                    } else {
-                                        push('\n', &groups, &mut fields, &mut text);
-                                    }
-                                }
+                                b"par" => paragraph_break(&groups, &mut fields, &mut text),
+                                // A Markdown hard line break (backslash at
+                                // the end of the line), not a bare newline,
+                                // which renders as a space (review finding
+                                // s1-6).
+                                b"line" => push_str("\\\n", &groups, &mut fields, &mut text),
                                 b"tab" => push('\t', &groups, &mut fields, &mut text),
                                 b"emdash" => push('\u{2014}', &groups, &mut fields, &mut text),
                                 b"endash" => push('\u{2013}', &groups, &mut fields, &mut text),
@@ -523,14 +522,24 @@ fn markdown_destination(url: &str) -> String {
 }
 
 /// Collapse runs of blank lines, trim paragraph edges, drop empty output.
+/// A hard line break at the very end of a paragraph has nothing to break
+/// before and would read as a literal backslash, so it is dropped.
 fn finish(text: String) -> String {
     let mut paragraphs: Vec<String> = Vec::new();
     for para in text.split("\n\n") {
-        let lines: Vec<String> = para
+        let mut lines: Vec<String> = para
             .lines()
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty())
             .collect();
+        if let Some(last) = lines.last_mut() {
+            // An odd run of trailing backslashes ends in the hard-break
+            // marker; an even run is escaped backslashes only.
+            let trailing = last.chars().rev().take_while(|c| *c == '\\').count();
+            if trailing % 2 == 1 {
+                last.pop();
+            }
+        }
         if !lines.is_empty() {
             paragraphs.push(lines.join("\n"));
         }
@@ -605,9 +614,37 @@ Second paragraph with \\'93quotes\\'94.\\\n\
         );
     }
 
+    /// Pandoc's rendering of Markdown as plain text, when installed.
+    fn rendered(markdown: &str) -> Option<String> {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let mut child = Command::new("pandoc")
+            .args(["-f", "markdown", "-t", "plain"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        child.stdin.take()?.write_all(markdown.as_bytes()).ok()?;
+        let out = child.wait_with_output().ok()?;
+        Some(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+    }
+
+    /// Review finding s1-6: `\line` is a hard line break, which must still be
+    /// a line break once the Markdown is rendered.
     #[test]
     fn par_and_line_are_distinguished() {
-        assert_eq!(plain("{\\rtf1 a\\line b\\par c}"), "a\nb\n\nc");
+        let md = plain("{\\rtf1 a\\line b\\par c}");
+        assert_eq!(md, "a\\\nb\n\nc");
+        if let Some(text) = rendered(&md) {
+            assert_eq!(text, "a\nb\n\nc");
+        } else {
+            eprintln!("Skipping Pandoc check: pandoc not installed");
+        }
+        // A trailing break before a paragraph end is dropped, an escaped
+        // backslash at a paragraph end is kept.
+        assert_eq!(plain("{\\rtf1 a\\line\\par b}"), "a\n\nb");
+        assert_eq!(plain("{\\rtf1 a\\\\\\par b}"), "a\\\\\n\nb");
     }
 
     /// Review finding s1-3: hex escapes and raw high bytes follow the
