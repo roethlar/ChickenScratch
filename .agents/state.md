@@ -82,8 +82,13 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   folders, IncludeInCompile applied). **Slice 3 landed** (Scrivener 3
   label/status/keyword tables, `synopsis.txt`, custom metadata by title or
   ID, `notes.rtf` → `fields.notes`, companion documents for folders with
-  side values, Inspector Notes box). Codex reviews of slices 2 and 3
-  pending; slice 4 (comments, footnotes, compile footnotes) next. Known limits, by design: the safety copy is per browser profile
+  side values, Inspector Notes box). **Slice 4 landed** (comments and
+  footnotes from `content.comments` and the inline forms become the
+  editor's spans and footnote elements; core compile emits reference
+  footnotes, fixing a pre-existing loss of every footnote on compile).
+  Codex reviews pending: slices 2–4, second repairs of s1-3 (`a883e00`),
+  s1-4 (`fa802f8`), s1-6 (`3a1c80f`). Then records (user guide, DEVLOG,
+  `samples/Corn.chikn`); slice 5 (Scrivener 2) optional. Known limits, by design: the safety copy is per browser profile
   (a copy made on the phone restores on the phone); a brand-new tab gets a
   new session id, so the "Take over" offer still applies there; no service
   worker, so the installed icon needs the server reachable.

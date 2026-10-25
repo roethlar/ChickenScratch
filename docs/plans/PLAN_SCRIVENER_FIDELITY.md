@@ -389,4 +389,8 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
 - 2026-10-25: slice 2 landed (`0d813f9`, binder placement, Trash kept, text
   containers, IncludeInCompile); slice 3 landed (synopsis, label, status,
   keywords, custom metadata, notes, companion documents, Inspector Notes
-  box). Codex reviews of both pending.
+  box). Slice 4 landed (comments and footnotes from `content.comments`
+  and the inline forms; core compile emits reference footnotes). Codex
+  reviews of slices 2–4 and of the s1-3/s1-4/s1-6 second repairs pending.
+  Remaining: records (user guide, DEVLOG, `samples/Corn.chikn`
+  regeneration); slice 5 (Scrivener 2) optional.

@@ -23,6 +23,7 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 | s1-4 | code | Surrogate pairs disappear in the fallback (range b5f958b..caf8a5e, codex) | `[~]`  | — (default-branch mode) |
 | s1-5 | code | Unescaped `)` in a hyperlink target truncates the link (range b5f958b..caf8a5e, codex) | `[x]`  | — (default-branch mode) |
 | s1-6 | code | `\line` breaks render as spaces (range b5f958b..caf8a5e, codex) | `[~]`  | — (default-branch mode) |
+| s2-1 | code | Internal links resolve against predicted paths; duplicate titles redirect them (slice 2 review, codex) | `[~]`  | — (default-branch mode) |
 | s4-1 | code | Force not bound to the confirmed merge (slice 4, codex) | `[x]`  | n/a (pre-commit fix in slice-4 working tree) |
 | s4-2 | code | Recovery fingerprint omits index contents (slice 4, codex) | `[x]`  | n/a (pre-commit fix in slice-4 working tree) |
 | s4-3 | code | No re-attestation at the last safe point (slice 4, codex) | `[x]`  | n/a (pre-commit fix in slice-4 working tree) |
