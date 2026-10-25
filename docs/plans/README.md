@@ -48,6 +48,10 @@ Deliberately **not** on the roadmap: name generators, deep character-psychology 
   rustc 1.99: Windows `advapi32` link for `libgit2-sys`, macOS `killpg`
   EPERM race in the process helper. Owner go "fix ci" 2026-10-24; pushed
   the same day, Validation green on all runners.
+- **[PLAN_WEB_SERVER_FIXES.md](PLAN_WEB_SERVER_FIXES.md)** — headless server
+  with a NAS: settings save without an OS keyring (file fallback), backup
+  folder outside the projects root, libgit2 ownership check on mapped-uid
+  mounts. Drafted 2026-10-25; no slice approved.
 - **[PLAN_WEB_NO_LOGIN.md](PLAN_WEB_NO_LOGIN.md)** — remove the web shell's
   access token on the owner's instruction; the private network is the
   boundary. Done 2026-10-24.

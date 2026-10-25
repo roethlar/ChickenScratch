@@ -9,13 +9,21 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 - Phase **Engine hardening — protect writers' work** remains active;
   `docs/CURRENT_PHASE.md` owns the phase and exit criteria.
+- **Owner 2026-10-25: "plan" after the first install on a second machine**
+  (projects on NFS at `/mnt/notes`): settings save fails there with a keyring
+  D-Bus error; the backup folder can only be picked inside the root; git's
+  ownership check fires because the share maps uids. Plan:
+  `docs/plans/PLAN_WEB_SERVER_FIXES.md` — no slice approved; slice 1
+  (settings save without an OS keyring) proposed first. One owner decision
+  open: skip libgit2's ownership check by default in `chikn-web`?
 - **Owner 2026-10-24: "get rid of the access token"** — done the same day
   (`docs/plans/PLAN_WEB_NO_LOGIN.md`, `.agents/decisions.md`): `chikn-web`
   has no login; the private network is the boundary. Token file, `?token=`
   link, UI token gate and `--token` flag are gone. Pushed as `aec8f18` on the
   owner's `/git push all`; Validation run `40157115663` failed only in the
   new Shell scripts step (macOS runner has no shellcheck) — fixed by
-  installing it in the step; the fix awaits its push.
+  installing it in the step (`8d587a2`, pushed on the owner's "push";
+  Validation run `40157357274` green).
 - **Owner 2026-10-24: web installer queued** ("this needs an installer for
   the web version. the default data dir should be set at install time, and
   here it will be on my NAS" … "a .config/ entry or similar. and a way to
@@ -120,7 +128,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **Web installer shipped, unpushed** (`docs/plans/PLAN_WEB_INSTALLER.md`):
+1. **Web server fixes** (`docs/plans/PLAN_WEB_SERVER_FIXES.md`): propose
+   slice 1, settings save with a file-backed secret store when the OS
+   keyring is unavailable; it blocks every other setting on the server.
+2. **Web installer shipped and pushed** (`docs/plans/PLAN_WEB_INSTALLER.md`):
    ask for the push go, then the owner's first real install on the server
    (`scripts/install-web.sh`, NAS folder when asked) is the verification.
    Later, needs its own plan: a CI-built Linux tarball with the installer
