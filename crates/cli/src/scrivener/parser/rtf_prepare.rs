@@ -23,56 +23,37 @@
 //! words so a fallback that is itself an escaped brace, or a `\uN` inside a
 //! hyperlink field, is handled like any other.
 
-/// Windows-1252 code points for bytes 0x80..=0x9F (the rest of the page is
-/// Latin-1 and maps to the same code point as the byte). `None` marks the
-/// five undefined slots; those bytes are left as `\'xx` for Pandoc.
-const CP1252_HIGH: [Option<u32>; 32] = [
-    Some(0x20AC),
-    None,
-    Some(0x201A),
-    Some(0x0192),
-    Some(0x201E),
-    Some(0x2026),
-    Some(0x2020),
-    Some(0x2021),
-    Some(0x02C6),
-    Some(0x2030),
-    Some(0x0160),
-    Some(0x2039),
-    Some(0x0152),
-    None,
-    Some(0x017D),
-    None,
-    None,
-    Some(0x2018),
-    Some(0x2019),
-    Some(0x201C),
-    Some(0x201D),
-    Some(0x2022),
-    Some(0x2013),
-    Some(0x2014),
-    Some(0x02DC),
-    Some(0x2122),
-    Some(0x0161),
-    Some(0x203A),
-    Some(0x0153),
-    None,
-    Some(0x017E),
-    Some(0x0178),
-];
+/// The encoding behind an RTF `\ansicpgN` number, for the pages
+/// `encoding_rs` knows (review finding s1-3: a Cyrillic document declared
+/// `\ansicpg1251` was decoded as Windows-1252 into mojibake).
+pub(crate) fn encoding_for_code_page(code_page: u32) -> Option<&'static encoding_rs::Encoding> {
+    let label: String = match code_page {
+        1250..=1258 => format!("windows-{code_page}"),
+        874 => "windows-874".to_string(),
+        932 => "shift_jis".to_string(),
+        936 => "gbk".to_string(),
+        949 => "euc-kr".to_string(),
+        950 => "big5".to_string(),
+        10000 => "macintosh".to_string(),
+        10007 => "x-mac-cyrillic".to_string(),
+        20866 => "koi8-r".to_string(),
+        21866 => "koi8-u".to_string(),
+        28591..=28606 => format!("iso-8859-{}", code_page - 28590),
+        65001 => "utf-8".to_string(),
+        _ => return None,
+    };
+    encoding_rs::Encoding::for_label(label.as_bytes())
+}
 
-fn cp1252(byte: u8) -> Option<u32> {
-    if byte < 0x80 {
-        Some(byte as u32)
-    } else if byte < 0xA0 {
-        CP1252_HIGH[(byte - 0x80) as usize]
-    } else {
-        Some(byte as u32)
-    }
+/// The declared code page's encoding, Windows-1252 when absent or unknown.
+pub(crate) fn document_encoding(input: &[u8]) -> &'static encoding_rs::Encoding {
+    declared_code_page(input)
+        .and_then(encoding_for_code_page)
+        .unwrap_or(encoding_rs::WINDOWS_1252)
 }
 
 /// The `\ansicpgN` declared at the top of the file, if any.
-fn declared_code_page(input: &[u8]) -> Option<u32> {
+pub(crate) fn declared_code_page(input: &[u8]) -> Option<u32> {
     let head = &input[..input.len().min(512)];
     let needle = b"\\ansicpg";
     let pos = head.windows(needle.len()).position(|w| w == needle)?;
@@ -126,6 +107,17 @@ pub(crate) fn is_character_control_word(word: &[u8]) -> bool {
 /// (measured: `caf\u233? fin` → `caféfin`, `caf\u233 ? fin` → `café fin`).
 /// A spec-following reader treats both forms the same.
 fn rtf_unicode_escape(code_point: u32) -> String {
+    if code_point > 0xFFFF {
+        // RTF carries anything above the BMP as a UTF-16 surrogate pair.
+        let mut buf = [0u16; 2];
+        let units = char::from_u32(code_point)
+            .map(|c| c.encode_utf16(&mut buf).to_vec())
+            .unwrap_or_default();
+        return units
+            .iter()
+            .map(|&u| rtf_unicode_escape(u as u32))
+            .collect::<String>();
+    }
     let n = if code_point > 32767 {
         code_point as i64 - 65536
     } else {
@@ -137,8 +129,11 @@ fn rtf_unicode_escape(code_point: u32) -> String {
 /// Rewrites the input as described in the module documentation. Never
 /// fails: anything it does not understand is copied through unchanged.
 pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
-    let code_page = declared_code_page(input).unwrap_or(1252);
-    let decode_hex = code_page == 1252;
+    // Hex escapes are rewritten for every code page `encoding_rs` knows;
+    // an unknown page leaves them for Pandoc.
+    let encoding = declared_code_page(input).map_or(Some(encoding_rs::WINDOWS_1252), |cp| {
+        encoding_for_code_page(cp)
+    });
 
     let mut out: Vec<u8> = Vec::with_capacity(input.len() + input.len() / 16);
     // `\ucN` per group; the document default is 1.
@@ -177,35 +172,52 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                             i += 1;
                         }
                     }
-                    // Hex escape.
+                    // Hex escapes: the whole run of consecutive escapes is
+                    // one byte string in the declared code page, so a
+                    // two-byte character (Shift JIS, GBK) decodes whole.
                     Some(b'\'') => {
-                        let hi = input.get(i + 2).copied().and_then(hex_val);
-                        let lo = input.get(i + 3).copied().and_then(hex_val);
-                        match (hi, lo) {
-                            (Some(hi), Some(lo)) => {
-                                let byte = (hi << 4) | lo;
-                                if skip_fallback > 0 {
-                                    skip_fallback -= 1;
-                                } else if decode_hex {
-                                    match cp1252(byte) {
-                                        Some(cp) => {
-                                            out.extend_from_slice(
-                                                rtf_unicode_escape(cp).as_bytes(),
-                                            );
-                                        }
-                                        None => out.extend_from_slice(&input[i..i + 4]),
-                                    }
-                                } else {
-                                    out.extend_from_slice(&input[i..i + 4]);
+                        let mut bytes: Vec<u8> = Vec::new();
+                        let mut j = i;
+                        while j + 3 < n && input[j] == b'\\' && input[j + 1] == b'\'' {
+                            match (hex_val(input[j + 2]), hex_val(input[j + 3])) {
+                                (Some(hi), Some(lo)) => {
+                                    bytes.push((hi << 4) | lo);
+                                    j += 4;
                                 }
-                                i += 4;
-                            }
-                            _ => {
-                                // Malformed; copy the two bytes and move on.
-                                out.extend_from_slice(&input[i..(i + 2).min(n)]);
-                                i += 2;
+                                _ => break,
                             }
                         }
+                        if bytes.is_empty() {
+                            // Malformed; copy the two bytes and move on.
+                            out.extend_from_slice(&input[i..(i + 2).min(n)]);
+                            i += 2;
+                            continue;
+                        }
+                        // Fallback bytes after `\uN` are swallowed one by one
+                        // (`\ucN` counts bytes, two for a double-byte page).
+                        let mut first = 0;
+                        while skip_fallback > 0 && first < bytes.len() {
+                            skip_fallback -= 1;
+                            first += 1;
+                        }
+                        let rest = &bytes[first..];
+                        let rest_start = j - 4 * rest.len();
+                        match encoding {
+                            Some(enc) if !rest.is_empty() => {
+                                let (decoded, had_errors) = enc.decode_without_bom_handling(rest);
+                                if had_errors {
+                                    out.extend_from_slice(&input[rest_start..j]);
+                                } else {
+                                    for c in decoded.chars() {
+                                        out.extend_from_slice(
+                                            rtf_unicode_escape(c as u32).as_bytes(),
+                                        );
+                                    }
+                                }
+                            }
+                            _ => out.extend_from_slice(&input[rest_start..j]),
+                        }
+                        i = j;
                     }
                     // Escaped literal characters count as fallback items.
                     Some(b'\\') | Some(b'{') | Some(b'}') => {
@@ -374,11 +386,34 @@ mod tests {
         assert_reads(&prepared, "it\u{2019}s");
     }
 
+    /// Review finding s1-3: the declared code page decides what a hex
+    /// escape means; Pandoc itself cannot read 1251, so the rewrite is what
+    /// makes Cyrillic documents import at all.
+    #[test]
+    fn hex_escapes_follow_the_declared_code_page() {
+        let prepared = prep("{\\rtf1\\ansi\\ansicpg1251 \\'cf\\'f0\\'e8\\'e2\\'e5\\'f2}");
+        assert_eq!(
+            prepared,
+            "{\\rtf1\\ansi\\ansicpg1251 \\u1055 ?\\u1088 ?\\u1080 ?\\u1074 ?\\u1077 ?\\u1090 ?}"
+        );
+        assert_reads(&prepared, "Привет");
+        // Mac Roman: 0x8E is é.
+        assert_eq!(
+            prep("{\\rtf1\\mac\\ansicpg10000 caf\\'8e}"),
+            "{\\rtf1\\mac\\ansicpg10000 caf\\u233 ?}"
+        );
+        // Shift JIS: one character, two escapes.
+        assert_eq!(
+            prep("{\\rtf1\\ansi\\ansicpg932 \\'82\\'a0}"),
+            "{\\rtf1\\ansi\\ansicpg932 \\u12354 ?}"
+        );
+    }
+
     #[test]
     fn unknown_code_page_leaves_hex_escapes_alone() {
         assert_eq!(
-            prep("{\\rtf1\\ansi\\ansicpg1251 \\'e0\\'e1}"),
-            "{\\rtf1\\ansi\\ansicpg1251 \\'e0\\'e1}"
+            prep("{\\rtf1\\ansi\\ansicpg4242 \\'e0\\'e1}"),
+            "{\\rtf1\\ansi\\ansicpg4242 \\'e0\\'e1}"
         );
     }
 

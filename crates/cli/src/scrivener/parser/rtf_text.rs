@@ -7,7 +7,7 @@
 //! Hyperlink fields survive as Markdown links so the `scrivcmt://` anchors
 //! slice 4 relies on are kept (review finding plan-3 R1-5).
 
-use super::rtf_prepare::is_character_control_word;
+use super::rtf_prepare::{document_encoding, is_character_control_word};
 
 /// Groups whose content is never document text.
 const SKIPPED_DESTINATIONS: &[&[u8]] = &[
@@ -34,21 +34,6 @@ const SKIPPED_DESTINATIONS: &[&[u8]] = &[
     b"datastore",
     b"latentstyles",
 ];
-
-fn cp1252(byte: u8) -> Option<char> {
-    const HIGH: [u32; 32] = [
-        0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160,
-        0x2039, 0x0152, 0x008D, 0x017D, 0x008F, 0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022,
-        0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
-    ];
-    if byte < 0x80 {
-        Some(byte as char)
-    } else if byte < 0xA0 {
-        char::from_u32(HIGH[(byte - 0x80) as usize])
-    } else {
-        char::from_u32(byte as u32)
-    }
-}
 
 fn hex_val(b: u8) -> Option<u8> {
     match b {
@@ -100,6 +85,28 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
     }];
     let mut fields: Vec<Field> = Vec::new();
     let mut skip_fallback: u32 = 0;
+    // Code-page bytes (hex escapes and raw high bytes) are gathered and
+    // decoded as one run in the declared encoding, so a two-byte character
+    // decodes whole and Cyrillic is Cyrillic (review finding s1-3).
+    let encoding = document_encoding(input);
+    let mut pending: Vec<u8> = Vec::new();
+
+    fn flush_pending(
+        pending: &mut Vec<u8>,
+        encoding: &'static encoding_rs::Encoding,
+        groups: &[Group],
+        fields: &mut [Field],
+        text: &mut String,
+    ) {
+        if pending.is_empty() {
+            return;
+        }
+        let (decoded, _had_errors) = encoding.decode_without_bom_handling(pending);
+        for c in decoded.chars() {
+            push(c, groups, fields, text);
+        }
+        pending.clear();
+    }
 
     // Where a character goes, given the current group. Body and link text
     // are escaped for Markdown as they are pushed (review finding plan-3
@@ -126,6 +133,11 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
     let mut i = 0;
     while i < n {
         let b = input[i];
+        // Anything but another code-page byte ends the pending run.
+        let continues_run = b >= 0x80 || (b == b'\\' && input.get(i + 1) == Some(&b'\''));
+        if !continues_run {
+            flush_pending(&mut pending, encoding, &groups, &mut fields, &mut text);
+        }
         match b {
             b'{' => {
                 let parent = groups.last().unwrap();
@@ -167,8 +179,8 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                         if let (Some(hi), Some(lo)) = (hi, lo) {
                             if skip_fallback > 0 {
                                 skip_fallback -= 1;
-                            } else if let Some(c) = cp1252((hi << 4) | lo) {
-                                push(c, &groups, &mut fields, &mut text);
+                            } else {
+                                pending.push((hi << 4) | lo);
                             }
                             i += 4;
                         } else {
@@ -347,16 +359,17 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
             _ => {
                 if skip_fallback > 0 {
                     skip_fallback -= 1;
-                } else {
+                } else if b >= 0x80 {
                     // Bytes above 0x7F outside an escape are code-page text.
-                    if let Some(c) = cp1252(b) {
-                        push(c, &groups, &mut fields, &mut text);
-                    }
+                    pending.push(b);
+                } else {
+                    push(b as char, &groups, &mut fields, &mut text);
                 }
                 i += 1;
             }
         }
     }
+    flush_pending(&mut pending, encoding, &groups, &mut fields, &mut text);
 
     // A truncated document ends inside open groups. Treat the end of input
     // as closing every brace so a field cut off mid-way still yields its
@@ -493,6 +506,25 @@ Second paragraph with \\'93quotes\\'94.\\\n\
     #[test]
     fn par_and_line_are_distinguished() {
         assert_eq!(plain("{\\rtf1 a\\line b\\par c}"), "a\nb\n\nc");
+    }
+
+    /// Review finding s1-3: hex escapes and raw high bytes follow the
+    /// declared code page.
+    #[test]
+    fn hex_escapes_follow_the_declared_code_page() {
+        assert_eq!(
+            plain("{\\rtf1\\ansi\\ansicpg1251 \\'cf\\'f0\\'e8\\'e2\\'e5\\'f2}"),
+            "Привет"
+        );
+        assert_eq!(plain("{\\rtf1\\ansi\\ansicpg932 \\'82\\'a0}"), "\u{3042}");
+        assert_eq!(plain("{\\rtf1\\mac\\ansicpg10000 caf\\'8e}"), "café");
+        // No declaration: Windows-1252, as before.
+        assert_eq!(plain("{\\rtf1 it\\'92s}"), "it\u{2019}s");
+        // A raw high byte outside an escape is code-page text too.
+        assert_eq!(
+            rtf_to_plain_markdown(b"{\\rtf1\\ansi\\ansicpg1251 \xcf\xf0}"),
+            "Пр"
+        );
     }
 
     #[test]
