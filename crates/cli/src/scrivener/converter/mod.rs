@@ -360,6 +360,31 @@ fn build_uuid_map(
     Ok(())
 }
 
+/// A folder without text of its own links to its first text descendant. The
+/// pre-pass predicted that descendant's path; after the descendant has been
+/// converted its actual path is known, so the alias is refreshed from it
+/// (review finding s2-1: a prediction could name a same-titled document
+/// elsewhere).
+fn alias_folder_to_first_text(item: &BinderItem, uuid_to_path: &mut HashMap<String, String>) {
+    if let Some(path) =
+        first_text_uuid(&item.children.items).and_then(|uuid| uuid_to_path.get(uuid).cloned())
+    {
+        uuid_to_path.insert(item.uuid.clone(), path);
+    }
+}
+
+fn first_text_uuid(items: &[BinderItem]) -> Option<&str> {
+    for item in items {
+        if item.item_type == "Text" {
+            return Some(item.uuid.as_str());
+        }
+        if let Some(uuid) = first_text_uuid(&item.children.items) {
+            return Some(uuid);
+        }
+    }
+    None
+}
+
 /// Finds the .md path of the first Text item in a binder subtree.
 fn find_first_text_path(items: &[BinderItem], target_folder: &str) -> Option<String> {
     for item in items {
@@ -433,6 +458,7 @@ fn convert_binder_items_inner(
                     "research",
                     pandoc_path,
                 )?;
+                alias_folder_to_first_text(item, uuid_to_path);
 
                 hierarchy.push(TreeNode::Folder {
                     id: folder_id,
@@ -525,6 +551,7 @@ fn convert_binder_items_inner(
                     continue;
                 }
 
+                alias_folder_to_first_text(item, uuid_to_path);
                 hierarchy.push(TreeNode::Folder {
                     id: folder_id,
                     name: folder_name,
@@ -696,6 +723,10 @@ fn convert_binder_items_inner(
                             format!("__media__{}", item.uuid),
                             format!("{}|{}", media_src.display(), dest_rel),
                         );
+                        // Links resolve against the destination actually
+                        // chosen, not the pre-pass prediction (review finding
+                        // s2-1: two attachments titled alike collided).
+                        uuid_to_path.insert(item.uuid.clone(), dest_rel.clone());
                     } else {
                         // Reported to the writer via ImportReport (ar-2):
                         // the attachment is not in the Scrivener package.
@@ -1898,6 +1929,131 @@ mod tests {
             !compiled.contains("data-body"),
             "the raw element is gone: {compiled}"
         );
+    }
+
+    /// Review finding s2-1: internal links resolve against the paths the
+    /// conversion actually chose, so same-titled attachments and a folder
+    /// whose first document shares a title with another document link to
+    /// the right place.
+    #[test]
+    fn links_resolve_to_actual_paths_despite_duplicate_titles() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Links.scriv");
+        let output_path = temp_dir.path().join("Links.chikn");
+        let linker = "F1B2C3D4-0000-4000-8000-000000000001";
+        let scan_root = "F1B2C3D4-0000-4000-8000-000000000002";
+        let scan_research = "F1B2C3D4-0000-4000-8000-000000000003";
+        let hero_char = "F1B2C3D4-0000-4000-8000-000000000004";
+        let notes_folder = "F1B2C3D4-0000-4000-8000-000000000005";
+        let hero_notes = "F1B2C3D4-0000-4000-8000-000000000006";
+        let link = |uuid: &str, text: &str| {
+            format!("{{\\field{{\\*\\fldinst{{HYPERLINK \"scrivlnk://{uuid}\"}}}}{{\\fldrslt {text}}}}}")
+        };
+        let body = format!(
+            "{{\\rtf1\\ansi See {} and {} and {}.\\\n}}",
+            link(scan_root, "root scan"),
+            link(scan_research, "research scan"),
+            link(notes_folder, "the notes")
+        );
+        write_scriv_files(&scriv_path, linker, &[("content.rtf", body.as_str())]);
+        for uuid in [scan_root, scan_research] {
+            let dir = scriv_path.join("Files").join("Data").join(uuid);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("content.pdf"), b"%PDF sample").unwrap();
+        }
+        write_scriv_files(
+            &scriv_path,
+            hero_char,
+            &[("content.rtf", "{\\rtf1\\ansi Hero sketch.}")],
+        );
+        write_scriv_files(
+            &scriv_path,
+            hero_notes,
+            &[("content.rtf", "{\\rtf1\\ansi Hero notes.}")],
+        );
+        fs::write(
+            scriv_path.join("Links.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="2.0">
+    <Binder>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000D" Type="DraftFolder">
+            <Title>Draft</Title>
+            <Children>
+                <BinderItem UUID="{linker}" Type="Text"><Title>Linker</Title></BinderItem>
+            </Children>
+        </BinderItem>
+        <BinderItem UUID="{scan_root}" Type="PDF">
+            <Title>Scan</Title>
+            <MetaData><FileExtension>pdf</FileExtension></MetaData>
+        </BinderItem>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000C" Type="Folder">
+            <Title>Characters</Title>
+            <Children>
+                <BinderItem UUID="{hero_char}" Type="Text"><Title>Hero</Title></BinderItem>
+            </Children>
+        </BinderItem>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000E" Type="ResearchFolder">
+            <Title>Research</Title>
+            <Children>
+                <BinderItem UUID="{scan_research}" Type="PDF">
+                    <Title>Scan</Title>
+                    <MetaData><FileExtension>pdf</FileExtension></MetaData>
+                </BinderItem>
+                <BinderItem UUID="{notes_folder}" Type="Folder">
+                    <Title>Notes</Title>
+                    <Children>
+                        <BinderItem UUID="{hero_notes}" Type="Text"><Title>Hero</Title></BinderItem>
+                    </Children>
+                </BinderItem>
+            </Children>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#
+            ),
+        )
+        .unwrap();
+
+        let report = import_scriv_with_report(&scriv_path, &output_path, None).expect("imports");
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        let docs = &report.project.documents;
+        let path_of = |name: &str, ext: &str| -> Vec<String> {
+            let mut v: Vec<String> = docs
+                .values()
+                .filter(|d| d.name == name && d.path.ends_with(ext))
+                .map(|d| d.path.clone())
+                .collect();
+            v.sort();
+            v
+        };
+        let scans = path_of("Scan", ".pdf");
+        assert_eq!(scans.len(), 2, "{scans:?}");
+        let heroes = path_of("Hero", ".md");
+        assert_eq!(heroes.len(), 2, "{heroes:?}");
+        let hero_notes_doc = docs
+            .values()
+            .find(|d| d.name == "Hero" && d.content.contains("Hero notes"))
+            .unwrap();
+        let linker_doc = docs.values().find(|d| d.name == "Linker").unwrap();
+        let c = &linker_doc.content;
+        // Each link names a distinct, existing file.
+        for scan in &scans {
+            assert!(
+                c.contains(&format!("]({scan})")),
+                "link to {scan} missing: {c}"
+            );
+        }
+        assert!(
+            c.contains(&format!("[the notes]({})", hero_notes_doc.path)),
+            "the folder link must reach its own first document: {c}"
+        );
+        for path in scans.iter().chain(std::iter::once(&hero_notes_doc.path)) {
+            assert!(output_path.join(path).exists(), "{path} exists on disk");
+        }
     }
 
     /// Two custom fields sharing a title switch the project to ID keys plus a
