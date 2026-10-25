@@ -48,3 +48,8 @@ Deliberately **not** on the roadmap: name generators, deep character-psychology 
   rustc 1.99: Windows `advapi32` link for `libgit2-sys`, macOS `killpg`
   EPERM race in the process helper. Owner go "fix ci" 2026-10-24; pushed
   the same day, Validation green on all runners.
+- **[PLAN_WEB_INSTALLER.md](PLAN_WEB_INSTALLER.md)** — one-command Linux
+  installer for `chikn-web`: `~/.config/chickenscratch/web.toml` holds the
+  projects folder (the owner's NAS) and listen address, a user systemd
+  service that waits for the mount, and reruns that upgrade without asking
+  again. Queued 2026-10-24; no slice approved.
