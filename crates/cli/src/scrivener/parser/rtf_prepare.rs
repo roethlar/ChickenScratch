@@ -84,14 +84,15 @@ fn charset_code_page(charset: u32) -> Option<u32> {
 /// `caf\'e9` in Windows-1252).
 pub(crate) fn font_encodings(input: &[u8]) -> HashMap<i64, &'static encoding_rs::Encoding> {
     let mut map = HashMap::new();
-    let needle = b"\\fonttbl";
-    let Some(pos) = input.windows(needle.len()).position(|w| w == needle) else {
+    // The font table is the group whose first control word is `\fonttbl`;
+    // found by tokenizing, so literal text never passes for it.
+    let Some(pos) = find_control_word(input, b"fonttbl", None).map(|t| t.end) else {
         return map;
     };
     let n = input.len();
     let mut depth = 0i32;
     let mut font: Option<i64> = None;
-    let mut i = pos + needle.len();
+    let mut i = pos;
     while i < n {
         match input[i] {
             b'{' => {
@@ -162,30 +163,84 @@ pub(crate) fn document_encoding(input: &[u8]) -> &'static encoding_rs::Encoding 
 /// before any `\fN`, and text after `\plain`, is set in it (review finding
 /// s1-3, second re-review).
 pub(crate) fn declared_default_font(input: &[u8]) -> Option<i64> {
-    let head = &input[..input.len().min(512)];
-    let needle = b"\\deff";
-    let pos = head.windows(needle.len()).position(|w| w == needle)?;
-    let mut digits = String::new();
-    for &b in &head[pos + needle.len()..] {
-        if b.is_ascii_digit() && digits.len() < 6 {
-            digits.push(b as char);
-        } else {
-            break;
+    find_control_word(&input[..input.len().min(1024)], b"deff", Some(1)).and_then(|t| t.param)
+}
+
+/// A control word found by tokenizing (never by substring search, which
+/// mistook the literal text `\\deff1` for a declaration: review finding
+/// s1-3, third re-review).
+struct ControlWordHit {
+    /// Byte position just after the word and its parameter.
+    end: usize,
+    param: Option<i64>,
+}
+
+/// Finds the first control word `name` by walking tokens: escapes (`\\`,
+/// `\{`, `\}`, `\'xx`) are skipped as units and group depth is tracked.
+/// `depth` restricts the match to that group depth (1 is the root group).
+fn find_control_word(input: &[u8], name: &[u8], depth: Option<i32>) -> Option<ControlWordHit> {
+    let n = input.len();
+    let mut i = 0;
+    let mut current_depth = 0i32;
+    while i < n {
+        match input[i] {
+            b'{' => {
+                current_depth += 1;
+                i += 1;
+            }
+            b'}' => {
+                current_depth -= 1;
+                i += 1;
+            }
+            b'\\' => {
+                let next = input.get(i + 1).copied();
+                match next {
+                    Some(b'\'') => i += 4,
+                    Some(c) if c.is_ascii_alphabetic() => {
+                        let start = i + 1;
+                        let mut j = start;
+                        while j < n && input[j].is_ascii_alphabetic() {
+                            j += 1;
+                        }
+                        let word = &input[start..j];
+                        let mut k = j;
+                        if k < n && input[k] == b'-' {
+                            k += 1;
+                        }
+                        while k < n && input[k].is_ascii_digit() {
+                            k += 1;
+                        }
+                        if word == name && depth.is_none_or(|d| d == current_depth) {
+                            let param = std::str::from_utf8(&input[j..k])
+                                .ok()
+                                .and_then(|s| s.parse().ok());
+                            return Some(ControlWordHit { end: k, param });
+                        }
+                        i = k;
+                    }
+                    // Any control symbol or escaped character: two bytes.
+                    Some(_) => i += 2,
+                    None => i += 1,
+                }
+            }
+            _ => i += 1,
         }
     }
-    digits.parse().ok()
+    None
 }
 
 /// Appends decoded run text to `out` as RTF text: a backslash or brace is
 /// re-escaped, a non-ASCII character becomes `\uN ?`, and a space delimiter
-/// goes first when `out` ends inside a control word, so `\b` followed by a
-/// decoded `a` stays `\b a` and never `\ba` (review finding s1-3, second
+/// goes first when the last thing written was an undelimited control word,
+/// so `\b` followed by a decoded `a` stays `\b a` and never `\ba` (review
+/// finding s1-3, second re-review). The caller knows whether a control word
+/// is open; a backward scan over the output mistook prose for one (third
 /// re-review).
-fn emit_run_text(out: &mut Vec<u8>, decoded: &str) {
+fn emit_run_text(out: &mut Vec<u8>, decoded: &str, after_open_control_word: bool) {
     let mut first = true;
     for c in decoded.chars() {
         if c.is_ascii() {
-            if first && ends_in_control_word(out) {
+            if first && after_open_control_word {
                 out.push(b' ');
             }
             match c as u8 {
@@ -201,47 +256,11 @@ fn emit_run_text(out: &mut Vec<u8>, decoded: &str) {
     }
 }
 
-/// True when `out` ends with an undelimited control word (`\b`, `\fs24`,
-/// `\u-123`): letters, digits or `-` back to a backslash that is itself not
-/// escaped.
-fn ends_in_control_word(out: &[u8]) -> bool {
-    let mut i = out.len();
-    let mut saw_body = false;
-    while i > 0 {
-        let b = out[i - 1];
-        if b.is_ascii_alphanumeric() || b == b'-' {
-            saw_body = true;
-            i -= 1;
-            continue;
-        }
-        if b == b'\\' && saw_body {
-            let mut preceding = 0;
-            let mut k = i - 1;
-            while k > 0 && out[k - 1] == b'\\' {
-                preceding += 1;
-                k -= 1;
-            }
-            return preceding % 2 == 0;
-        }
-        return false;
-    }
-    false
-}
-
 /// The `\ansicpgN` declared at the top of the file, if any.
 pub(crate) fn declared_code_page(input: &[u8]) -> Option<u32> {
-    let head = &input[..input.len().min(512)];
-    let needle = b"\\ansicpg";
-    let pos = head.windows(needle.len()).position(|w| w == needle)?;
-    let mut digits = String::new();
-    for &b in &head[pos + needle.len()..] {
-        if b.is_ascii_digit() && digits.len() < 6 {
-            digits.push(b as char);
-        } else {
-            break;
-        }
-    }
-    digits.parse().ok()
+    find_control_word(&input[..input.len().min(1024)], b"ansicpg", Some(1))
+        .and_then(|t| t.param)
+        .and_then(|p| u32::try_from(p).ok())
 }
 
 fn hex_val(b: u8) -> Option<u8> {
@@ -452,6 +471,9 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
     }];
     // Fallback items still to swallow after a `\uN`.
     let mut skip_fallback: u32 = 0;
+    // Output length right after an undelimited control word was written;
+    // decoded text appended at exactly that length needs a space first.
+    let mut open_control_word_end: Option<usize> = None;
 
     let mut i = 0;
     let n = input.len();
@@ -557,7 +579,8 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                                 if had_errors {
                                     out.extend_from_slice(&input[slice_start..j]);
                                 } else {
-                                    emit_run_text(&mut out, &decoded);
+                                    let after_open = open_control_word_end == Some(out.len());
+                                    emit_run_text(&mut out, &decoded, after_open);
                                 }
                             }
                             None => out.extend_from_slice(&input[slice_start..j]),
@@ -650,6 +673,12 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                                 out.extend_from_slice(&input[i..end]);
                             }
                             _ => out.extend_from_slice(&input[i..end]),
+                        }
+                        // A control word copied without its delimiter space
+                        // (and not `\binN`, whose payload follows) is open:
+                        // decoded text written right after it needs a space.
+                        if end == k && word != b"bin" && word != b"uc" && word != b"u" {
+                            open_control_word_end = Some(out.len());
                         }
                         i = end;
                     }
@@ -824,6 +853,47 @@ mod tests {
         );
         // An escaped backslash before the run is not a control word.
         assert_eq!(prep("{\\rtf1\\ansi \\\\\\'61}"), "{\\rtf1\\ansi \\\\a}");
+        // Third re-review: prose after a control word is not the control
+        // word, so no space is inserted inside words.
+        assert_eq!(
+            prep("{\\rtf1\\ansi \\b0text\\'61}"),
+            "{\\rtf1\\ansi \\b0texta}"
+        );
+        assert_eq!(
+            prep("{\\rtf1\\ansi co\\-operat\\'65}"),
+            "{\\rtf1\\ansi co\\-operate}"
+        );
+        assert_eq!(prep("{\\rtf1\\ansi \\b\\'61}"), "{\\rtf1\\ansi \\b a}");
+    }
+
+    /// Third re-review of s1-3: header declarations are control words, found
+    /// by tokenizing; literal text that looks like one is text.
+    #[test]
+    fn header_declarations_are_tokens_not_substrings() {
+        let src = "{\\rtf1\\ansi\\ansicpg1252{\\fonttbl{\\f0\\fcharset0 Arial;}{\\f1\\fcharset204 Times;}} \\\\deff1 caf\\'e9}";
+        let prepared = prep(src);
+        assert_eq!(
+            prepared,
+            "{\\rtf1\\ansi\\ansicpg1252{\\fonttbl{\\f0\\fcharset0 Arial;}{\\f1\\fcharset204 Times;}} \\\\deff1 caf\\u233 ?}"
+        );
+        assert_reads(&prepared, "\\deff1 café");
+        assert_eq!(declared_default_font(src.as_bytes()), None);
+        assert_eq!(declared_code_page(src.as_bytes()), Some(1252));
+        // Literal `\\ansicpg1251` in text does not change the page either.
+        assert_eq!(
+            declared_code_page("{\\rtf1\\ansi \\\\ansicpg1251 x}".as_bytes()),
+            None
+        );
+        // A real declaration in a nested group is not the document's.
+        assert_eq!(
+            declared_default_font("{\\rtf1\\ansi {\\deff1 x}}".as_bytes()),
+            None
+        );
+        // The font table is found as a group, not as text.
+        let fonts = font_encodings(
+            "{\\rtf1\\ansi \\\\fonttbl text {\\fonttbl{\\f0\\fcharset204 A;}}}".as_bytes(),
+        );
+        assert_eq!(fonts.get(&0).map(|e| e.name()), Some("windows-1251"));
         // A bare line end inside the run is ignored, as readers ignore it.
         assert_eq!(
             prep("{\\rtf1\\ansi\\ansicpg932 \\'83\nA}"),
