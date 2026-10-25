@@ -232,6 +232,9 @@ export function Inspector() {
 
   const [title, setTitle] = useState("");
   const [synopsis, setSynopsis] = useState("");
+  // Free-form notes about the document (generic `fields.notes`; Scrivener
+  // import puts the document notes here, PLAN_SCRIVENER_FIDELITY slice 3).
+  const [notes, setNotes] = useState("");
   const [label, setLabel] = useState("");
   const [status, setStatus] = useState("");
   const [keywords, setKeywords] = useState("");
@@ -298,6 +301,7 @@ export function Inspector() {
     setStatus(activeDoc.status || "");
     setKeywords((activeDoc.keywords || []).join(", "));
     const f = activeDoc.fields;
+    setNotes(readString(f, "notes"));
     setPovCharacter(readString(f, NOVELIST_KEYS.pov));
     setLocation(readString(f, NOVELIST_KEYS.location));
     setStoryTime(readString(f, NOVELIST_KEYS.storyTime));
@@ -328,6 +332,7 @@ export function Inspector() {
       s.split(",").map((t) => t.trim()).filter(Boolean);
     const dur = parseInt(durationMinutes, 10);
     return {
+      notes: notes || null,
       [NOVELIST_KEYS.pov]: povCharacter || null,
       [NOVELIST_KEYS.location]: location || null,
       [NOVELIST_KEYS.storyTime]: storyTime || null,
@@ -335,7 +340,7 @@ export function Inspector() {
       [NOVELIST_KEYS.threads]: csv(threads),
       [NOVELIST_KEYS.otherChars]: csv(charactersInScene),
     };
-  }, [povCharacter, location, storyTime, durationMinutes, threads, charactersInScene]);
+  }, [notes, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene]);
 
   const save = useCallback(async () => {
     if (!project || !activeDoc) return;
@@ -386,7 +391,7 @@ export function Inspector() {
     // which would restart the debounce on every keystroke instead of every
     // 1.5s idle window.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [synopsis, label, status, keywords, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene]);
+  }, [synopsis, notes, label, status, keywords, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene]);
 
   if (!activeDoc) {
     return (
@@ -447,6 +452,17 @@ export function Inspector() {
             value={synopsis}
             onChange={(e) => setSynopsis(e.target.value)}
             placeholder="What happens in this scene..."
+            rows={4}
+          />
+        </div>
+
+        <div className="inspector-field">
+          <label htmlFor="inspector-notes">Notes</label>
+          <textarea
+            id="inspector-notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Notes to yourself about this document..."
             rows={4}
           />
         </div>

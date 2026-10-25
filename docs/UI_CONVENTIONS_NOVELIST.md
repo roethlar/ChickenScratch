@@ -18,6 +18,19 @@ Key names that novelist-mode UIs agree to store in a document's `fields` map. **
 
 All entries live under the document's `fields` map in its `.meta` sidecar.
 
+### `notes` (any profile)
+
+Type: string (Markdown or plain text). Free-form notes about the document,
+shown and edited in the Inspector's **Notes** box in every profile; not part
+of the manuscript and never compiled. The Scrivener importer puts a
+document's Scrivener notes here. (Not novelist-specific; listed here because
+this file is where the agreed `fields` keys live.)
+
+```yaml
+fields:
+  notes: Remember the egg.
+```
+
 ### `pov_character`
 
 Type: string. Slug/id of the character whose point of view the scene is written from.

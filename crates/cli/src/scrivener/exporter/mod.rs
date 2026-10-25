@@ -138,7 +138,10 @@ fn convert_to_binder_items(
                     metadata: Some(BinderMetadata {
                         label: None,
                         status: None,
+                        label_id: None,
+                        status_id: None,
                         keywords: None,
+                        custom: None,
                         synopsis: None,
                         section_type: None,
                         include_in_compile: Some("Yes".to_string()),
@@ -217,6 +220,10 @@ fn write_scrivx(
         name: project_name.to_string(),
         version: "3.0".to_string(),
         binder: binder_items.to_vec(),
+        labels: Default::default(),
+        statuses: Default::default(),
+        keywords: Default::default(),
+        custom_fields: Vec::new(),
     };
 
     // Generate XML (simplified - real .scrivx has more fields)

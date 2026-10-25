@@ -37,11 +37,14 @@ use std::fs;
 use std::path::Path;
 use uuid::Uuid;
 
-use super::parser::scrivx::sanitize_file_extension;
-use super::parser::{get_media_path, get_rtf_path, parse_scrivx, rtf_file_to_markdown, BinderItem};
+use super::parser::scrivx::{get_data_file_path, sanitize_file_extension};
+use super::parser::{
+    get_media_path, get_rtf_path, parse_scrivx, rtf_file_to_markdown, BinderItem, ScrivenerProject,
+};
 use chickenscratch_core::core::project::{fidelity, writer};
 use chickenscratch_core::models::{Document, Project, TreeNode};
 use chickenscratch_core::utils::error::ChiknError;
+use std::collections::BTreeMap;
 
 /// Converts a Scrivener .scriv project to .chikn format.
 ///
@@ -113,6 +116,7 @@ pub fn import_scriv_with_report(
     // Convert binder items to documents and hierarchy
     let mut documents = HashMap::new();
     let roots = convert_binder_items(
+        &scriv_project,
         &scriv_project.binder,
         scriv_path,
         &mut documents,
@@ -372,6 +376,7 @@ fn find_first_text_path(items: &[BinderItem], target_folder: &str) -> Option<Str
 /// Converts the Scrivener root items to .chikn nodes, each tagged with the
 /// top-level folder it belongs to; `ensure_project_structure` shapes them.
 fn convert_binder_items(
+    project: &ScrivenerProject,
     items: &[BinderItem],
     scriv_path: &Path,
     documents: &mut HashMap<String, Document>,
@@ -381,6 +386,7 @@ fn convert_binder_items(
     let mut roots = Vec::new();
     for item in items {
         let nodes = convert_binder_items_inner(
+            project,
             std::slice::from_ref(item),
             scriv_path,
             documents,
@@ -395,7 +401,9 @@ fn convert_binder_items(
 }
 
 /// Converts Scrivener binder items with parent and target folder tracking
+#[allow(clippy::too_many_arguments)]
 fn convert_binder_items_inner(
+    project: &ScrivenerProject,
     items: &[BinderItem],
     scriv_path: &Path,
     documents: &mut HashMap<String, Document>,
@@ -414,6 +422,7 @@ fn convert_binder_items_inner(
                 let folder_name = item.title.clone().unwrap_or_else(|| "Research".to_string());
 
                 let children = convert_binder_items_inner(
+                    project,
                     &item.children.items,
                     scriv_path,
                     documents,
@@ -438,6 +447,7 @@ fn convert_binder_items_inner(
                 let folder_name = item.title.clone().unwrap_or_else(|| "Folder".to_string());
 
                 let children = convert_binder_items_inner(
+                    project,
                     &item.children.items,
                     scriv_path,
                     documents,
@@ -447,56 +457,69 @@ fn convert_binder_items_inner(
                     pandoc_path,
                 )?;
 
-                // Folders in Scrivener can also have their own text content
+                // Folders in Scrivener can also have their own text, and
+                // carry a synopsis, label, status, keywords, custom
+                // metadata or notes. A `.chikn` folder node holds none of
+                // that, so a folder with any of it gets a companion
+                // document of its own name, first in the folder, even when
+                // the text is empty (review finding plan-3 R2-2).
                 let rtf_path = get_rtf_path(scriv_path, &item.uuid)?;
-                if rtf_path.exists() {
-                    let content = read_document_text(&rtf_path, item, uuid_to_path, pandoc_path)?;
-                    if !content.trim().is_empty() {
-                        let doc_id = Uuid::new_v4().to_string();
-                        let slug = chickenscratch_core::utils::slug::unique_slug(
-                            &folder_name,
-                            &format!("{}/", target_folder),
-                            documents,
-                        );
-                        let doc_path = format!("{}/{}.md", target_folder, slug);
-                        let created = item
-                            .created
-                            .clone()
-                            .unwrap_or_else(|| Utc::now().to_rfc3339());
-                        let modified = item
-                            .modified
-                            .clone()
-                            .unwrap_or_else(|| Utc::now().to_rfc3339());
+                let content = if rtf_path.exists() {
+                    read_document_text(&rtf_path, item, uuid_to_path, pandoc_path)?
+                } else {
+                    String::new()
+                };
+                let side = side_values(project, scriv_path, item, uuid_to_path, pandoc_path)?;
+                if !content.trim().is_empty() || !side.is_empty() {
+                    let doc_id = Uuid::new_v4().to_string();
+                    let slug = chickenscratch_core::utils::slug::unique_slug(
+                        &folder_name,
+                        &format!("{}/", target_folder),
+                        documents,
+                    );
+                    let doc_path = format!("{}/{}.md", target_folder, slug);
+                    let created = item
+                        .created
+                        .clone()
+                        .unwrap_or_else(|| Utc::now().to_rfc3339());
+                    let modified = item
+                        .modified
+                        .clone()
+                        .unwrap_or_else(|| Utc::now().to_rfc3339());
 
-                        uuid_to_path.insert(item.uuid.clone(), doc_path.clone());
+                    uuid_to_path.insert(item.uuid.clone(), doc_path.clone());
 
-                        let document = Document {
-                            id: doc_id.clone(),
-                            name: folder_name.clone(),
-                            path: doc_path.clone(),
-                            content,
-                            parent_id: Some(folder_id.clone()),
-                            created,
-                            modified,
-                            include_in_compile: include_in_compile(item),
-                            ..Document::default()
-                        };
-                        documents.insert(doc_id.clone(), document);
+                    let document = Document {
+                        id: doc_id.clone(),
+                        name: folder_name.clone(),
+                        path: doc_path.clone(),
+                        content,
+                        parent_id: Some(folder_id.clone()),
+                        created,
+                        modified,
+                        synopsis: side.synopsis,
+                        label: side.label,
+                        status: side.status,
+                        keywords: side.keywords,
+                        include_in_compile: include_in_compile(item),
+                        fields: side.fields,
+                        ..Document::default()
+                    };
+                    documents.insert(doc_id.clone(), document);
 
-                        let mut all_children = vec![TreeNode::Document {
-                            id: doc_id,
-                            name: folder_name.clone(),
-                            path: doc_path,
-                        }];
-                        all_children.extend(children);
+                    let mut all_children = vec![TreeNode::Document {
+                        id: doc_id,
+                        name: folder_name.clone(),
+                        path: doc_path,
+                    }];
+                    all_children.extend(children);
 
-                        hierarchy.push(TreeNode::Folder {
-                            id: folder_id,
-                            name: folder_name,
-                            children: all_children,
-                        });
-                        continue;
-                    }
+                    hierarchy.push(TreeNode::Folder {
+                        id: folder_id,
+                        name: folder_name,
+                        children: all_children,
+                    });
+                    continue;
                 }
 
                 hierarchy.push(TreeNode::Folder {
@@ -547,7 +570,7 @@ fn convert_binder_items_inner(
 
                 uuid_to_path.insert(item.uuid.clone(), doc_path.clone());
 
-                let meta = item.metadata.as_ref();
+                let side = side_values(project, scriv_path, item, uuid_to_path, pandoc_path)?;
                 let document = Document {
                     id: doc_id.clone(),
                     name: doc_name.clone(),
@@ -556,11 +579,12 @@ fn convert_binder_items_inner(
                     parent_id: doc_parent,
                     created,
                     modified,
-                    synopsis: meta.and_then(|m| m.synopsis.clone()),
-                    label: meta.and_then(|m| m.label.clone()),
-                    status: meta.and_then(|m| m.status.clone()),
-                    keywords: meta.and_then(|m| m.keywords.clone()),
+                    synopsis: side.synopsis,
+                    label: side.label,
+                    status: side.status,
+                    keywords: side.keywords,
                     include_in_compile: include_in_compile(item),
+                    fields: side.fields,
                     ..Document::default()
                 };
 
@@ -575,6 +599,7 @@ fn convert_binder_items_inner(
                     Some(folder_id) => {
                         let mut children = vec![doc_node];
                         children.extend(convert_binder_items_inner(
+                            project,
                             &item.children.items,
                             scriv_path,
                             documents,
@@ -686,6 +711,130 @@ fn convert_binder_items_inner(
     }
 
     Ok(hierarchy)
+}
+
+/// The side values Scrivener keeps for an item (PLAN_SCRIVENER_FIDELITY
+/// slice 3): synopsis, label, status, keywords, custom metadata and notes.
+#[derive(Default)]
+struct SideValues {
+    synopsis: Option<String>,
+    label: Option<String>,
+    status: Option<String>,
+    keywords: Option<Vec<String>>,
+    fields: BTreeMap<String, serde_yaml::Value>,
+}
+
+impl SideValues {
+    fn is_empty(&self) -> bool {
+        self.synopsis.is_none()
+            && self.label.is_none()
+            && self.status.is_none()
+            && self.keywords.is_none()
+            && self.fields.is_empty()
+    }
+}
+
+/// Custom metadata keys are `custom.<title>` while every field title in the
+/// project is unique; two fields sharing a title switch the whole project
+/// to `custom.<id>` plus one `custom_field_titles` map, so no key can
+/// collide (review finding plan-3 R1-7).
+fn custom_keys_by_title(project: &ScrivenerProject) -> bool {
+    let mut seen = HashSet::new();
+    project
+        .custom_fields
+        .iter()
+        .all(|(_, title)| !title.trim().is_empty() && seen.insert(title.trim().to_string()))
+}
+
+/// Gathers an item's side values: `synopsis.txt` (else the `<Synopsis>`
+/// element), label, status and keywords resolved through the project
+/// tables, custom metadata, and `notes.rtf` as Markdown under `notes`.
+fn side_values(
+    project: &ScrivenerProject,
+    scriv_path: &Path,
+    item: &BinderItem,
+    uuid_to_path: &mut HashMap<String, String>,
+    pandoc_path: Option<&Path>,
+) -> Result<SideValues, ChiknError> {
+    let meta = item.metadata.as_ref();
+    let mut side = SideValues {
+        label: project.label_name(meta),
+        status: project.status_name(meta),
+        ..SideValues::default()
+    };
+
+    let clean = |s: String| {
+        let t = s.trim().to_string();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
+    };
+    let synopsis_path = get_data_file_path(scriv_path, &item.uuid, "synopsis.txt")?;
+    side.synopsis = fs::read_to_string(&synopsis_path)
+        .ok()
+        .and_then(clean)
+        .or_else(|| meta.and_then(|m| m.synopsis.clone()).and_then(clean));
+
+    let keywords = project.keyword_names(meta);
+    if !keywords.is_empty() {
+        side.keywords = Some(keywords);
+    }
+
+    if let Some(custom) = meta.and_then(|m| m.custom.as_ref()) {
+        let by_title = custom_keys_by_title(project);
+        let titles: HashMap<&str, &str> = project
+            .custom_fields
+            .iter()
+            .map(|(id, title)| (id.as_str(), title.as_str()))
+            .collect();
+        let mut used_ids = false;
+        for entry in &custom.items {
+            let Some(value) = entry.value.clone().and_then(clean) else {
+                continue;
+            };
+            let key = match (by_title, titles.get(entry.field_id.as_str())) {
+                (true, Some(title)) => format!("custom.{}", title.trim()),
+                _ => {
+                    used_ids = true;
+                    format!("custom.{}", entry.field_id)
+                }
+            };
+            side.fields.insert(key, serde_yaml::Value::String(value));
+        }
+        if used_ids {
+            let mut map = serde_yaml::Mapping::new();
+            for (id, title) in &project.custom_fields {
+                map.insert(
+                    serde_yaml::Value::String(id.clone()),
+                    serde_yaml::Value::String(title.clone()),
+                );
+            }
+            side.fields.insert(
+                "custom_field_titles".to_string(),
+                serde_yaml::Value::Mapping(map),
+            );
+        }
+    }
+
+    let notes_path = get_data_file_path(scriv_path, &item.uuid, "notes.rtf")?;
+    if notes_path.exists() {
+        let converted = rtf_file_to_markdown(&notes_path, pandoc_path)?;
+        if converted.fell_back {
+            let title = item.title.as_deref().unwrap_or("Untitled");
+            uuid_to_path.insert(
+                format!("__skipped__notes-{}", item.uuid),
+                format!("'{title}': the formatting of its notes could not be read, so they were imported plain."),
+            );
+        }
+        if let Some(notes) = clean(converted.markdown) {
+            side.fields
+                .insert("notes".to_string(), serde_yaml::Value::String(notes));
+        }
+    }
+
+    Ok(side)
 }
 
 /// One document's RTF as Markdown. When Pandoc refuses the file, the text
@@ -1133,6 +1282,268 @@ mod tests {
             !compiled.contains("Hero sketch"),
             "research must not compile"
         );
+    }
+
+    fn write_scriv_files(scriv_path: &Path, uuid: &str, files: &[(&str, &str)]) {
+        let dir = scriv_path.join("Files").join("Data").join(uuid);
+        fs::create_dir_all(&dir).unwrap();
+        for (name, body) in files {
+            fs::write(dir.join(name), body).unwrap();
+        }
+    }
+
+    /// PLAN_SCRIVENER_FIDELITY slice 3: label, status and keywords resolve
+    /// through the Scrivener 3 tables (the `-1` sentinel is none, a real
+    /// default label is kept), the synopsis comes from `synopsis.txt`, custom
+    /// metadata lands under `custom.<title>`, notes under `notes`, and a
+    /// folder with only side values gets a companion document; all of it
+    /// survives reopening.
+    #[test]
+    fn metadata_and_notes_arrive_on_the_document() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Meta.scriv");
+        let output_path = temp_dir.path().join("Meta.chikn");
+        let a = "C1B2C3D4-0000-4000-8000-000000000001";
+        let b = "C1B2C3D4-0000-4000-8000-000000000002";
+        let part = "C1B2C3D4-0000-4000-8000-000000000003";
+        let c = "C1B2C3D4-0000-4000-8000-000000000004";
+        write_scriv_files(
+            &scriv_path,
+            a,
+            &[
+                ("content.rtf", "{\\rtf1\\ansi Scene text.\\\n}"),
+                ("synopsis.txt", "Alice meets the dragon.\n"),
+                (
+                    "notes.rtf",
+                    "{\\rtf1\\ansi Remember the egg.\\\nSecond note.\\\n}",
+                ),
+            ],
+        );
+        write_scriv_files(
+            &scriv_path,
+            b,
+            &[("content.rtf", "{\\rtf1\\ansi Plain scene.}")],
+        );
+        // The folder has notes but no text of its own.
+        write_scriv_files(
+            &scriv_path,
+            part,
+            &[("notes.rtf", "{\\rtf1\\ansi Part notes.}")],
+        );
+        write_scriv_files(
+            &scriv_path,
+            c,
+            &[("content.rtf", "{\\rtf1\\ansi Bare scene.}")],
+        );
+        fs::write(
+            scriv_path.join("Meta.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="2.0">
+    <Binder>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000D" Type="DraftFolder">
+            <Title>Draft</Title>
+            <Children>
+                <BinderItem UUID="{a}" Type="Text">
+                    <Title>Alice</Title>
+                    <MetaData>
+                        <LabelID>7</LabelID>
+                        <StatusID>2</StatusID>
+                        <Keywords><KeywordID>1</KeywordID><KeywordID>2</KeywordID></Keywords>
+                        <CustomMetaData>
+                            <MetaDataItem><FieldID>pov</FieldID><Value>Alice</Value></MetaDataItem>
+                            <MetaDataItem><FieldID>mood</FieldID><Value>Dark</Value></MetaDataItem>
+                        </CustomMetaData>
+                    </MetaData>
+                </BinderItem>
+                <BinderItem UUID="{b}" Type="Text">
+                    <Title>Bob</Title>
+                    <MetaData><LabelID>-1</LabelID><StatusID>-1</StatusID></MetaData>
+                </BinderItem>
+                <BinderItem UUID="{part}" Type="Folder">
+                    <Title>Part</Title>
+                    <MetaData><LabelID>7</LabelID></MetaData>
+                    <Children>
+                        <BinderItem UUID="{c}" Type="Text"><Title>Carol</Title></BinderItem>
+                    </Children>
+                </BinderItem>
+            </Children>
+        </BinderItem>
+    </Binder>
+    <LabelSettings>
+        <Title>Label</Title>
+        <DefaultLabelID>7</DefaultLabelID>
+        <Labels>
+            <Label ID="-1">No Label</Label>
+            <Label ID="7" Color="0.99 0.70 0.73">Red</Label>
+        </Labels>
+    </LabelSettings>
+    <StatusSettings>
+        <Title>Status</Title>
+        <DefaultStatusID>-1</DefaultStatusID>
+        <StatusItems>
+            <Status ID="-1">No Status</Status>
+            <Status ID="2">First Draft</Status>
+        </StatusItems>
+    </StatusSettings>
+    <Keywords>
+        <Keyword ID="1" Color="0.1 0.2 0.3">
+            <Title>Fantasy</Title>
+            <Children>
+                <Keyword ID="2"><Title>Dragons</Title></Keyword>
+            </Children>
+        </Keyword>
+    </Keywords>
+    <CustomMetaDataSettings>
+        <MetaDataField ID="pov" Type="Text"><Title>POV</Title></MetaDataField>
+        <MetaDataField ID="mood" Type="Text"><Title>Mood</Title></MetaDataField>
+    </CustomMetaDataSettings>
+</ScrivenerProject>"#
+            ),
+        )
+        .unwrap();
+
+        let report = import_scriv_with_report(&scriv_path, &output_path, None).expect("imports");
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        let project = chickenscratch_core::core::project::reader::read_project(&output_path)
+            .expect("reopens");
+        let doc = |name: &str| -> &Document {
+            project
+                .documents
+                .values()
+                .find(|d| d.name == name)
+                .unwrap_or_else(|| panic!("document {name} missing"))
+        };
+        let text = |v: Option<&serde_yaml::Value>| v.and_then(|v| v.as_str()).map(str::to_string);
+
+        let alice = doc("Alice");
+        assert_eq!(
+            alice.label.as_deref(),
+            Some("Red"),
+            "a real default label is kept"
+        );
+        assert_eq!(alice.status.as_deref(), Some("First Draft"));
+        assert_eq!(
+            alice.keywords.as_deref(),
+            Some(&["Fantasy".to_string(), "Dragons".to_string()][..])
+        );
+        assert_eq!(alice.synopsis.as_deref(), Some("Alice meets the dragon."));
+        assert_eq!(
+            text(alice.fields.get("custom.POV")).as_deref(),
+            Some("Alice")
+        );
+        assert_eq!(
+            text(alice.fields.get("custom.Mood")).as_deref(),
+            Some("Dark")
+        );
+        let notes = text(alice.fields.get("notes")).expect("notes imported");
+        assert!(notes.contains("Remember the egg."), "{notes}");
+        assert!(notes.contains("Second note."), "{notes}");
+
+        let bob = doc("Bob");
+        assert_eq!(bob.label, None, "the -1 sentinel is no label");
+        assert_eq!(bob.status, None);
+        assert!(bob.fields.is_empty());
+
+        // The folder's companion document carries its notes and label.
+        let part = doc("Part");
+        assert_eq!(part.content.trim(), "");
+        assert_eq!(part.label.as_deref(), Some("Red"));
+        assert_eq!(
+            text(part.fields.get("notes")).as_deref(),
+            Some("Part notes.")
+        );
+        let part_folder = project
+            .hierarchy
+            .iter()
+            .find_map(|n| match n {
+                TreeNode::Folder { children, name, .. } if name == "Manuscript" => {
+                    children.iter().find(|c| c.name() == "Part")
+                }
+                _ => None,
+            })
+            .expect("Part folder under Manuscript");
+        match part_folder {
+            TreeNode::Folder { children, .. } => {
+                assert_eq!(
+                    children.iter().map(|c| c.name()).collect::<Vec<_>>(),
+                    ["Part", "Carol"]
+                );
+            }
+            other => panic!("Part should be a folder: {other:?}"),
+        }
+        assert!(doc("Carol").fields.is_empty());
+    }
+
+    /// Two custom fields sharing a title switch the project to ID keys plus a
+    /// titles map, so neither value overwrites the other (plan-3 R1-7).
+    #[test]
+    fn same_titled_custom_fields_keep_both_values() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Dup.scriv");
+        let output_path = temp_dir.path().join("Dup.chikn");
+        let a = "D1B2C3D4-0000-4000-8000-000000000001";
+        write_scriv_files(&scriv_path, a, &[("content.rtf", "{\\rtf1\\ansi Text.}")]);
+        fs::write(
+            scriv_path.join("Dup.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="2.0">
+    <Binder>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000D" Type="DraftFolder">
+            <Title>Draft</Title>
+            <Children>
+                <BinderItem UUID="{a}" Type="Text">
+                    <Title>Scene</Title>
+                    <MetaData>
+                        <CustomMetaData>
+                            <MetaDataItem><FieldID>f1</FieldID><Value>one</Value></MetaDataItem>
+                            <MetaDataItem><FieldID>f2</FieldID><Value>two</Value></MetaDataItem>
+                        </CustomMetaData>
+                    </MetaData>
+                </BinderItem>
+            </Children>
+        </BinderItem>
+    </Binder>
+    <CustomMetaDataSettings>
+        <MetaDataField ID="f1" Type="Text"><Title>Scene</Title></MetaDataField>
+        <MetaDataField ID="f2" Type="Text"><Title>Scene</Title></MetaDataField>
+    </CustomMetaDataSettings>
+</ScrivenerProject>"#
+            ),
+        )
+        .unwrap();
+        let report = import_scriv_with_report(&scriv_path, &output_path, None).expect("imports");
+        let scene = report
+            .project
+            .documents
+            .values()
+            .find(|d| d.name == "Scene")
+            .unwrap();
+        assert_eq!(
+            scene.fields.get("custom.f1").and_then(|v| v.as_str()),
+            Some("one")
+        );
+        assert_eq!(
+            scene.fields.get("custom.f2").and_then(|v| v.as_str()),
+            Some("two")
+        );
+        assert!(!scene.fields.contains_key("custom.Scene"));
+        let titles = scene
+            .fields
+            .get("custom_field_titles")
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        assert_eq!(titles.get("f1").and_then(|v| v.as_str()), Some("Scene"));
+        assert_eq!(titles.get("f2").and_then(|v| v.as_str()), Some("Scene"));
     }
 
     /// The Zoe 2 sample used to abort the whole import on one hex escape

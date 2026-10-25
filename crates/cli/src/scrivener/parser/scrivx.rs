@@ -26,6 +26,7 @@
 use chickenscratch_core::utils::error::ChiknError;
 use quick_xml::de::from_str;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -40,6 +41,87 @@ pub struct ScrivenerProject {
 
     /// Root binder items (document hierarchy)
     pub binder: Vec<BinderItem>,
+
+    /// Label names by ID from `LabelSettings` (Scrivener 3 stores an item's
+    /// label as `<LabelID>`; `-1` is the "No Label" sentinel).
+    #[serde(default)]
+    pub labels: HashMap<i64, String>,
+
+    /// Status names by ID from `StatusSettings` (`-1` is "No Status").
+    #[serde(default)]
+    pub statuses: HashMap<i64, String>,
+
+    /// Keyword titles by ID from the project `Keywords` tree, flattened.
+    #[serde(default)]
+    pub keywords: HashMap<i64, String>,
+
+    /// Custom metadata fields from `CustomMetaDataSettings`, in order:
+    /// (field ID, title).
+    #[serde(default)]
+    pub custom_fields: Vec<(String, String)>,
+}
+
+impl ScrivenerProject {
+    /// The label an item carries, by name. The `-1` sentinel and the
+    /// literal "No Label" are none; the configurable default is a real
+    /// label and resolves like any other (review finding plan-3 R1-6).
+    pub fn label_name(&self, meta: Option<&BinderMetadata>) -> Option<String> {
+        let meta = meta?;
+        if let Some(id) = meta.label_id {
+            return self.named(&self.labels, id, "No Label");
+        }
+        meta.label
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && *s != "No Label")
+            .map(str::to_string)
+    }
+
+    /// The status an item carries, by name (see [`Self::label_name`]).
+    pub fn status_name(&self, meta: Option<&BinderMetadata>) -> Option<String> {
+        let meta = meta?;
+        if let Some(id) = meta.status_id {
+            return self.named(&self.statuses, id, "No Status");
+        }
+        meta.status
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && *s != "No Status")
+            .map(str::to_string)
+    }
+
+    /// The keyword titles an item carries: ID references resolved against
+    /// the project table, plus any name-form text.
+    pub fn keyword_names(&self, meta: Option<&BinderMetadata>) -> Vec<String> {
+        let Some(refs) = meta.and_then(|m| m.keywords.as_ref()) else {
+            return Vec::new();
+        };
+        let mut names: Vec<String> = refs
+            .ids
+            .iter()
+            .filter_map(|id| self.keywords.get(id).cloned())
+            .collect();
+        if let Some(text) = refs.text.as_deref() {
+            names.extend(
+                text.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string),
+            );
+        }
+        names
+    }
+
+    fn named(&self, table: &HashMap<i64, String>, id: i64, sentinel: &str) -> Option<String> {
+        if id < 0 {
+            return None;
+        }
+        table
+            .get(&id)
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty() && *s != sentinel)
+            .map(str::to_string)
+    }
 }
 
 /// Binder item (document or folder in Scrivener hierarchy)
@@ -93,9 +175,22 @@ pub struct BinderMetadata {
     #[serde(rename = "Status")]
     pub status: Option<String>,
 
-    /// Keywords/tags
-    #[serde(rename = "Keywords")]
-    pub keywords: Option<Vec<String>>,
+    /// Scrivener 3: the label as an ID into `LabelSettings`.
+    #[serde(rename = "LabelID", default)]
+    pub label_id: Option<i64>,
+
+    /// Scrivener 3: the status as an ID into `StatusSettings`.
+    #[serde(rename = "StatusID", default)]
+    pub status_id: Option<i64>,
+
+    /// Keywords: Scrivener 3 writes `<KeywordID>` references; older files
+    /// wrote names as text.
+    #[serde(rename = "Keywords", default)]
+    pub keywords: Option<KeywordRefs>,
+
+    /// Custom metadata values, keyed by field ID.
+    #[serde(rename = "CustomMetaData", default)]
+    pub custom: Option<CustomMetaData>,
 
     /// Synopsis/summary
     #[serde(rename = "Synopsis")]
@@ -116,6 +211,32 @@ pub struct BinderMetadata {
     /// File extension for non-text items (e.g., "pdf", "png", "jpg")
     #[serde(rename = "FileExtension")]
     pub file_extension: Option<String>,
+}
+
+/// `<Keywords>` on a binder item: `<KeywordID>` children (Scrivener 3) or
+/// name text (older files).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct KeywordRefs {
+    #[serde(rename = "KeywordID", default)]
+    pub ids: Vec<i64>,
+    #[serde(rename = "$text", default)]
+    pub text: Option<String>,
+}
+
+/// `<CustomMetaData>` on a binder item.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CustomMetaData {
+    #[serde(rename = "MetaDataItem", default)]
+    pub items: Vec<MetaDataItem>,
+}
+
+/// One custom metadata value: the field's ID and the item's value.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MetaDataItem {
+    #[serde(rename = "FieldID", default)]
+    pub field_id: String,
+    #[serde(rename = "Value", default)]
+    pub value: Option<String>,
 }
 
 /// Parses a .scrivx XML file into ScrivenerProject
@@ -150,11 +271,48 @@ pub fn parse_scrivx(scrivx_path: &Path) -> Result<ScrivenerProject, ChiknError> 
         .unwrap_or("Untitled")
         .to_string();
 
+    let labels = project
+        .label_settings
+        .map(|s| s.labels.items.into_iter().map(|l| (l.id, l.name)).collect())
+        .unwrap_or_default();
+    let statuses = project
+        .status_settings
+        .map(|s| s.items.items.into_iter().map(|l| (l.id, l.name)).collect())
+        .unwrap_or_default();
+    let mut keywords = HashMap::new();
+    if let Some(tree) = project.keywords {
+        flatten_keywords(tree.items, &mut keywords);
+    }
+    let custom_fields = project
+        .custom_settings
+        .map(|s| {
+            s.fields
+                .into_iter()
+                .map(|f| (f.id, f.title.unwrap_or_default()))
+                .collect()
+        })
+        .unwrap_or_default();
+
     Ok(ScrivenerProject {
         name,
         version: project.version.unwrap_or_else(|| "3.0".to_string()),
         binder: project.binder.items,
+        labels,
+        statuses,
+        keywords,
+        custom_fields,
     })
+}
+
+fn flatten_keywords(items: Vec<KeywordXml>, out: &mut HashMap<i64, String>) {
+    for item in items {
+        if let Some(title) = item.title {
+            out.insert(item.id, title);
+        }
+        if let Some(children) = item.children {
+            flatten_keywords(children.items, out);
+        }
+    }
 }
 
 /// XML structure for deserialization
@@ -169,12 +327,94 @@ struct ScrivenerProjectXml {
 
     #[serde(rename = "Binder")]
     binder: BinderContainer,
+
+    #[serde(rename = "LabelSettings", default)]
+    label_settings: Option<LabelSettingsXml>,
+
+    #[serde(rename = "StatusSettings", default)]
+    status_settings: Option<StatusSettingsXml>,
+
+    #[serde(rename = "Keywords", default)]
+    keywords: Option<KeywordsXml>,
+
+    #[serde(rename = "CustomMetaDataSettings", default)]
+    custom_settings: Option<CustomMetaDataSettingsXml>,
 }
 
 #[derive(Debug, Deserialize)]
 struct BinderContainer {
     #[serde(rename = "BinderItem", default)]
     items: Vec<BinderItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LabelSettingsXml {
+    #[serde(rename = "Labels", default)]
+    labels: LabelsXml,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct LabelsXml {
+    #[serde(rename = "Label", default)]
+    items: Vec<LabelXml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StatusSettingsXml {
+    #[serde(rename = "StatusItems", default)]
+    items: StatusItemsXml,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct StatusItemsXml {
+    #[serde(rename = "Status", default)]
+    items: Vec<StatusXml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LabelXml {
+    #[serde(rename = "@ID")]
+    id: i64,
+    #[serde(rename = "$text", default)]
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct StatusXml {
+    #[serde(rename = "@ID")]
+    id: i64,
+    #[serde(rename = "$text", default)]
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct KeywordsXml {
+    #[serde(rename = "Keyword", default)]
+    items: Vec<KeywordXml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct KeywordXml {
+    #[serde(rename = "@ID")]
+    id: i64,
+    #[serde(rename = "Title", default)]
+    title: Option<String>,
+    #[serde(rename = "Children", default)]
+    children: Option<KeywordsXml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CustomMetaDataSettingsXml {
+    #[serde(rename = "MetaDataField", default)]
+    fields: Vec<MetaDataFieldXml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MetaDataFieldXml {
+    #[serde(rename = "@ID")]
+    id: String,
+    #[serde(rename = "Title", default)]
+    title: Option<String>,
 }
 
 /// Validates a Scrivener BinderItem UUID before using it as a path component.
@@ -216,6 +456,21 @@ pub fn get_rtf_path(scriv_path: &Path, uuid: &str) -> Result<PathBuf, ChiknError
         .join("Data")
         .join(uuid)
         .join("content.rtf"))
+}
+
+/// A named side file of an item (`synopsis.txt`, `notes.rtf`,
+/// `content.comments`) under `Files/Data/<UUID>/`.
+pub fn get_data_file_path(
+    scriv_path: &Path,
+    uuid: &str,
+    file_name: &str,
+) -> Result<PathBuf, ChiknError> {
+    validate_scrivener_uuid(uuid)?;
+    Ok(scriv_path
+        .join("Files")
+        .join("Data")
+        .join(uuid)
+        .join(file_name))
 }
 
 /// Gets the content file path for a given UUID and file extension (e.g., "pdf", "png")
