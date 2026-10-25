@@ -47,19 +47,36 @@ const SIMPLE_WORD_DIFF_LCS_CELL_CAP: usize = 1_500 * 1_500;
 /// no runtime cost and no reachable injection surface outside `--lib` tests.
 #[cfg(test)]
 pub(crate) mod failpoints {
-    use std::sync::atomic::AtomicBool;
+    use std::cell::Cell;
 
-    /// Fires after the first working-tree mutation of `restore_revision`.
-    pub static AFTER_TREE_MUTATION: AtomicBool = AtomicBool::new(false);
-    /// Fires between `set_target` and `set_head` in `merge_draft`'s
-    /// fast-forward branch (simulates a `set_head` failure after the
-    /// branch ref — which HEAD resolves through — has already advanced).
-    pub static AFTER_REF_MOVE: AtomicBool = AtomicBool::new(false);
+    // Thread-local on purpose: the test harness runs tests in parallel and
+    // every operation under test runs synchronously on the test's own
+    // thread. A process-wide flag let any other test that happened to
+    // restore or merge at the same moment consume the injected failure,
+    // which made these tests flaky (`.agents/state.md`, 2026-10-24).
+    thread_local! {
+        /// Fires after the first working-tree mutation of `restore_revision`
+        /// and after staging in `complete_merge`.
+        pub static AFTER_TREE_MUTATION: Cell<bool> = const { Cell::new(false) };
+        /// Fires between `set_target` and `set_head` in `merge_draft`'s
+        /// fast-forward branch (simulates a `set_head` failure after the
+        /// branch ref — which HEAD resolves through — has already advanced).
+        pub static AFTER_REF_MOVE: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Arm a failpoint for the current thread: the next operation that
+    /// reaches it fails once.
+    pub fn arm(point: &'static std::thread::LocalKey<Cell<bool>>) {
+        point.with(|cell| cell.set(true));
+    }
 }
 
 #[cfg(test)]
-fn injected_failure(point: &std::sync::atomic::AtomicBool, site: &str) -> Result<(), ChiknError> {
-    if point.swap(false, std::sync::atomic::Ordering::SeqCst) {
+fn injected_failure(
+    point: &'static std::thread::LocalKey<std::cell::Cell<bool>>,
+    site: &str,
+) -> Result<(), ChiknError> {
+    if point.with(|cell| cell.replace(false)) {
         return Err(ChiknError::Unknown(format!("injected failure: {site}")));
     }
     Ok(())
@@ -2095,7 +2112,7 @@ mod tests {
         // breaks partway: the tree has already been replaced, so this
         // token must come back stale even though the operation errored.
         let session_token = token_for_test_project(&project_path);
-        failpoints::AFTER_TREE_MUTATION.store(true, std::sync::atomic::Ordering::SeqCst);
+        failpoints::arm(&failpoints::AFTER_TREE_MUTATION);
         let result = session_token.with_write_permit(&project_path, |permit| {
             restore_revision(&project_path, &baseline.id, permit)
         });
@@ -2158,7 +2175,7 @@ mod tests {
         // after. The session token must come back stale even though the
         // working tree was never touched — HEAD has effectively moved.
         let session_token = token_for_test_project(&project_path);
-        failpoints::AFTER_REF_MOVE.store(true, std::sync::atomic::Ordering::SeqCst);
+        failpoints::arm(&failpoints::AFTER_REF_MOVE);
         let result = session_token.with_write_permit(&project_path, |permit| {
             merge_draft(&project_path, "draft", permit)
         });
@@ -2226,7 +2243,7 @@ mod tests {
         let session_token = token_for_test_project(&project_path);
         let recovery =
             crate::core::project::fidelity::acquire_recovery_permit(&project_path).unwrap();
-        failpoints::AFTER_TREE_MUTATION.store(true, std::sync::atomic::Ordering::SeqCst);
+        failpoints::arm(&failpoints::AFTER_TREE_MUTATION);
         let result = complete_merge(&project_path, "boom", &recovery);
 
         assert!(
