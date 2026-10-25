@@ -65,4 +65,10 @@ Deliberately **not** on the roadmap: name generators, deep character-psychology 
   typing (local safety copy, remembered place, a Projects button that hands
   the project back), then a one-column phone layout, Quick note from the
   project list, finger-sized controls and home-screen install. Drafted
-  2026-10-25 with the go for every slice.
+  2026-10-25 with the go for every slice; shipped the same day.
+- **[PLAN_SCRIVENER_UPLOAD.md](PLAN_SCRIVENER_UPLOAD.md)** — the web
+  version's Import Scrivener takes the `.scriv` folder or a `.zip` of it
+  from the device you are browsing on (streamed to a temporary folder,
+  path-checked, converted by the existing service), with the
+  copy-to-server path kept as a third choice. Drafted 2026-10-25; awaiting
+  the owner's go.

@@ -18,10 +18,18 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   slices landed 2026-10-25 one commit each: `26af1d5` safety copy +
   remembered place + Projects button + `POST /api/lease/release`;
   `e6fe793` one-column phone layout; `bd019a7` Quick note; `e6b88b6` touch
-  targets + home-screen manifest; records `ab29eb7`. Not pushed;
-  push follows `.agents/push-policy.md` (ask). Next evidence is the owner
+  targets + home-screen manifest; records `ab29eb7`. The owner pushed
+  `fe0ffbf` to both remotes 2026-10-25. Next evidence is the owner
   reloading mid-typing in the browser and opening the server address on a
-  phone. Known limits, by design: the safety copy is per browser profile
+  phone.
+- **Owner 2026-10-25: "import scrivener needs to support uploads of
+  scrivener files."** Today the web Import Scrivener only accepts a
+  `.scriv` folder already copied under the projects root (server folder
+  picker). Plan drafted, not yet approved:
+  `docs/plans/PLAN_SCRIVENER_UPLOAD.md` (slice 1 server endpoint taking a
+  folder pick or a `.zip`, streamed to a temp folder, path-checked, then the
+  existing import service; slice 2 the three-way chooser in Welcome, user
+  guide). No code changed. Known limits, by design: the safety copy is per browser profile
   (a copy made on the phone restores on the phone); a brand-new tab gets a
   new session id, so the "Take over" offer still applies there; no service
   worker, so the installed icon needs the server reachable.
@@ -76,10 +84,14 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
    backup question once; Settings → Backup then shows a Backups tab. Owner
    checks still open there: Settings save, Save Revision on the NAS lists an
    entry.
-2. **Reload safety + phone layout** (`PLAN_RELOAD_SAFETY_MOBILE.md`): every
-   slice shipped 2026-10-25, unpushed. Ask for the push go; then the owner
-   tries it (reload mid-typing; phone; Quick note; Add to Home Screen).
-3. **Web installer** (`docs/plans/PLAN_WEB_INSTALLER.md`) shipped; the
+2. **Scrivener upload in the browser** (`PLAN_SCRIVENER_UPLOAD.md`): drafted
+   2026-10-25, awaiting the owner's go; then slice 1 (server endpoint), slice
+   2 (chooser + guide), one commit each.
+3. **Reload safety + phone layout** (`PLAN_RELOAD_SAFETY_MOBILE.md`): every
+   slice shipped and pushed 2026-10-25 (`fe0ffbf`). The owner tries it
+   (reload mid-typing; phone; Quick note; Add to Home Screen) after
+   `git pull && scripts/install-web.sh` on the server.
+4. **Web installer** (`docs/plans/PLAN_WEB_INSTALLER.md`) shipped; the
    owner's first install on a second machine happened 2026-10-25 and raised
    the web server fixes (archived). Later, needs its own plan: a CI-built
    Linux tarball with the installer inside. Candidate hardening slice,
@@ -88,10 +100,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
    `import_scrivener` still ignores a failed post-import token acquisition
    (not reachable after ar-1); welcome-screen errors keep a
    developer-ish "Invalid project:" prefix.
-4. Then re-ask whether to close hardening and move to the Tauri
+5. Then re-ask whether to close hardening and move to the Tauri
    reference-app phase. The phase declaration remains the owner's call.
    Vault work remains paused.
-5. **Project profiles**: all four slices shipped 2026-10-24 (owner: "complete
+6. **Project profiles**: all four slices shipped 2026-10-24 (owner: "complete
    all slices and push when done"); next evidence is the owner creating a
    Notes project in the browser and seeing no fiction tools.
 
