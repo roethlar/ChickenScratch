@@ -41,7 +41,10 @@ All three samples are Scrivener 3 layout (`Files/Data/<UUID>/content.rtf`,
    Research or Trash (Characters, Places, Notes, Front Matter, Template
    Sheets) is filed under Manuscript. Scrivener's Trash is dropped entirely
    (Corn: 4 of 20 text items were in the Trash; nothing live was lost, the
-   earlier "empty documents vanish" reading was wrong).
+   earlier "empty documents vanish" reading was wrong). Two more defects
+   the Codex review found in the code (no sample exercises them): a `Text`
+   item's children are never converted, and `IncludeInCompile` is parsed
+   but never applied.
 5. **Not read at all** (by code; no sample exercises them): document notes
    (`notes.rtf`), inline comments and footnotes (`content.comments` plus
    `scrivcmt://` anchors in the RTF; inline `{\Scrv_annot}` / `{\Scrv_fn}`
@@ -72,20 +75,33 @@ read becomes plain text with a named warning instead of killing the import.
 
 `crates/cli/src/scrivener/parser/rtf.rs` (+ new `rtf_prepare.rs`):
 
-- **Prepare before Pandoc**: rewrite `\` + newline to `\par `; rewrite each
-  `\'xx` hex escape to `\uN?` using the file's `\ansicpg` (default 1252), so
-  the sequence Pandoc trips on never reaches it; leave everything else.
-  Pure function, unit-tested on the three failure shapes.
+- **Prepare before Pandoc** (`rtf_prepare.rs`, a small RTF tokenizer that
+  walks groups and control words, not a regex): rewrite `\` + newline to
+  `\par `; rewrite each stand-alone `\'xx` hex escape to `\uN?` using the
+  file's `\ansicpg` (default 1252); for every `\uN` keep the code point and
+  replace its fallback sequence (the next `\ucN` items of the current
+  group, default 1, each a plain character, a `\'xx` escape or a `\\`, `\{`,
+  `\}` escape) with one `?`, so `\uc1 caf\u233\'e9 fin` stays `café fin` and
+  a document with `\uc2` loses nothing; `\ucN` is tracked per group like the
+  spec says. Hyperlink fields and every other group pass through untouched.
+  Pure function, unit-tested with exact expected output on: the `\'eb's`
+  shape, `\uc1` plus hex fallback, `\uc2` plus two fallbacks, `\uc0`, a
+  fallback that is itself an escaped brace, and a hyperlink field.
 - **Writer flags**: `-t markdown-smart --wrap=none` (plain apostrophes and
   quotes; curly quotes in the RTF stay curly as Unicode).
-- **Per-document fallback**: if Pandoc still fails, a small built-in RTF text
-  extractor (skip `{\*…}` destinations, drop control words, honour `\par`,
-  `\line`, `\tab`, `\'xx`, `\uN`, `\{ \} \\`) yields plain paragraphs, the
-  document is imported as that text, and a warning names the document:
-  "<title>: formatting could not be read; text imported plain". The import
-  as a whole succeeds. Pandoc missing entirely still fails up front as today.
+- **Per-document fallback** (`rtf_text.rs`): if Pandoc still fails, a
+  built-in RTF text extractor yields plain paragraphs: skip `{\*…}`
+  destinations except `\fldinst`, drop control words, honour `\par`,
+  `\line`, `\tab`, `\'xx`, `\uN` with its fallback skip, `\{ \} \\`; a
+  `\field` group becomes the Markdown link `[result text](target)` so the
+  `scrivcmt://` anchors slice 4 needs survive this path too. The document
+  is imported as that text and a warning names it: "<title>: formatting
+  could not be read; text imported plain". The import as a whole succeeds.
+  Pandoc missing entirely still fails up front as today.
 - `samples/Zoe 2.scriv` imports (test, skipped when Pandoc is absent, which
-  is CI); the Corn opening document has four Markdown paragraphs and no `\'`.
+  is CI); the Corn opening document has four Markdown paragraphs and no `\'`;
+  a fixture whose RTF forces the fallback and carries a hyperlink field
+  keeps the link.
 
 ### Slice 2 — the binder lands where Scrivener had it
 
@@ -93,14 +109,24 @@ read becomes plain text with a named warning instead of killing the import.
 
 - Only the Draft folder's contents become Manuscript. Every other top-level
   item outside Research and Trash goes under Research with its folder name
-  kept (Characters, Places, Notes, Front Matter, Template Sheets). The
-  Scrivener `IncludeInCompile` flag is already honoured, so compile output
-  does not change for the Draft.
+  kept (Characters, Places, Notes, Front Matter, Template Sheets).
+- **`IncludeInCompile` is parsed today but never applied**: every imported
+  document inherits the model default `true`
+  (`converter/mod.rs` builds each `Document` with `..Document::default()`).
+  Map `<IncludeInCompile>No</IncludeInCompile>` to `include_in_compile:
+  false` on text documents and on folder-owned text; test that the flag is
+  persisted and that compile output leaves the excluded document out.
+- **Text items with children lose their children today**: the UUID-map
+  pre-pass recurses into them but the conversion branch for `Text` does
+  not, so a Scrivener text container's whole subtree is silently absent.
+  Convert a text item with children the way a folder with text is already
+  converted: a folder named by the item, the item's own text as that
+  folder's first document, then the children in order. Test a text parent
+  with both a text child and a folder descendant: content, order and
+  presence after reopening.
 - Trash items are converted like any other and placed in the project's
   Trash folder (nothing a writer parked is dropped). Media in Trash is
   copied the same way as research media.
-- Text items with children keep their children (already handled) and the
-  parent text becomes the folder's first document, as today.
 
 ### Slice 3 — synopsis, label, status, keywords, custom metadata, notes
 
@@ -110,13 +136,19 @@ read becomes plain text with a named warning instead of killing the import.
   `StatusSettings/StatusItems/Status[@ID]`, `Keywords/Keyword[@ID]/Title`.
   Per item, resolve `MetaData/LabelID`, `StatusID` and
   `Keywords/KeywordID` to names; keep accepting the old name-form elements.
-  Scrivener's default label/status ("No Label", "No Status", or
-  `DefaultLabelID`) imports as none.
+  Only Scrivener's empty sentinel (label or status ID `-1`, titled "No
+  Label" / "No Status") imports as none. `DefaultLabelID` /
+  `DefaultStatusID` is the writer's choice for new documents, often a real
+  label; an item carrying that ID keeps it. Test both: the sentinel → none,
+  a non-empty default → its name.
 - Synopsis: `Files/Data/<UUID>/synopsis.txt` (plain text), falling back to
   the `<Synopsis>` element if present.
 - Custom metadata: `MetaData/CustomMetaData/MetaDataItem` (`FieldID`,
   `Value`) with the field titles from the project's `CustomMetaDataSettings`
-  table → `Document.fields["custom.<title>"]`.
+  table → `Document.fields["custom.<title>"]`. Two fields may share a title
+  with different IDs; when titles collide, every colliding field is keyed
+  `custom.<title>.<id>` instead, deterministically, so no value overwrites
+  another. Test two same-titled fields with different values.
 - Document notes: `Files/Data/<UUID>/notes.rtf` through the same RTF path →
   Markdown in `Document.fields["notes"]`. The Inspector gains a **Notes**
   box bound to `fields.notes` (plain multi-line text, saved like the
@@ -136,9 +168,25 @@ read becomes plain text with a named warning instead of killing the import.
   footnote element `<sup class="footnote" data-body="…">●</sup>` placed after
   the text for footnotes. An anchor with no matching comment is unwrapped
   and named in the warnings.
-- Inline groups from older documents, `{\Scrv_annot …}` and `{\Scrv_fn …}`,
-  are rewritten by the prepare step into the same hyperlink form with a
-  synthesised comment, so both styles land identically.
+- Anchors are gathered before any lossy step: the prepare step records each
+  `scrivcmt://<ID>` field it passes, and after conversion (Pandoc or the
+  fallback) every sidecar body is reconciled against the anchors found in
+  the text. A body with no anchor is appended to the document's comments
+  unanchored (text "Comment with no place in the text: …") and named in the
+  warnings; an anchor with no body is unwrapped and named. Nothing in
+  `content.comments` is dropped.
+- Inline annotations and footnotes exist in two encodings and both are
+  handled. Scrivener writes them as *literal text* inside the RTF (escaped
+  braces, so other RTF apps show them): `{\Scrv_annot \color={\R=…\G=…\B=…}
+  \text=…\end_Scrv_annot}` and `{\Scrv_fn=…\end_Scrv_fn}`. After
+  conversion they are therefore plain text in the Markdown, where a pass
+  turns each into a comment span or footnote element at that position.
+  The raw-group form (unescaped braces, produced by other tools) is
+  rewritten by the prepare step into the hyperlink form plus a synthesised
+  body. Fixtures: a hand-written RTF for each encoding, with exact expected
+  Markdown; a Scrivener-generated document carrying one of each is the
+  owner's verification item, and if one is provided before the slice
+  lands it joins the fixtures.
 
 ### Slice 5 — Scrivener 2 layout (optional, last)
 
@@ -170,22 +218,34 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
 
 ## [MODEL] Tests
 
-- [ ] prepare: `\`+newline → `\par`; `\'eb` → `\u235?` under cpg 1252;
-      `\'xx` under another `\ansicpg` maps by that page; braces and `\\`
-      untouched.
+- [ ] prepare (exact output): `\`+newline → `\par`; `\'eb's` → `\u235?'s`
+      under cpg 1252; `\'xx` under another `\ansicpg` maps by that page;
+      `\uc1 caf\u233\'e9 fin` → `\uc1 caf\u233? fin`; `\uc2` with two
+      fallbacks → one `?`; `\uc0` → no fallback consumed; a fallback that
+      is `\{`; a hyperlink field passes through byte-for-byte.
 - [ ] fallback extractor: a Cocoa RTF with two paragraphs, a tab, a hex
-      escape and a `{\*\expandedcolortbl}` group → two plain paragraphs.
+      escape, a `\uN` with fallback and a `{\*\expandedcolortbl}` group →
+      two plain paragraphs with the right characters; a `\field` hyperlink
+      → `[text](url)`.
 - [ ] import of a fixture whose one document is unreadable RTF → project
-      with the plain text and one warning naming the document; `Zoe 2`
-      imports (Pandoc present).
+      with the plain text, its hyperlink kept, and one warning naming the
+      document; `Zoe 2` imports (Pandoc present).
 - [ ] Corn opening document: four paragraphs, no `\'`, no trailing `\`.
 - [ ] binder: Characters/Places under Research; Draft under Manuscript;
-      Trash items in Trash with their text.
+      Trash items in Trash with their text; a text item with a text child
+      and a folder descendant keeps all three in order after reopening;
+      `IncludeInCompile` No → `include_in_compile: false` persisted and the
+      document absent from compiled output.
 - [ ] metadata fixture: label, status, two keywords, synopsis.txt, a custom
-      field and notes.rtf arrive on the document; default label → none.
-- [ ] comments fixture: one comment and one footnote anchored in the RTF →
-      span + `Comment` and the footnote element; an orphan anchor is
-      unwrapped and warned.
+      field and notes.rtf arrive on the document; sentinel label `-1` →
+      none; a non-empty `DefaultLabelID` → its name; two same-titled custom
+      fields keep both values.
+- [ ] comments fixture: one comment and one footnote anchored by hyperlink
+      → span + `Comment` and the footnote element; the same document through
+      the forced fallback path gives the same anchors; a body with no anchor
+      is kept unanchored and warned; an anchor with no body is unwrapped and
+      warned; literal-text `Scrv_annot`/`Scrv_fn` → comment span and
+      footnote element; raw-group form → the same.
 - [ ] Inspector shows and saves the Notes box (UI test).
 - [ ] Declared suite (`.agents/repo-guidance.md`), Tauri crate excepted on
       this box (Known drift); CI on push.
@@ -204,11 +264,27 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
 
 ## [YOU] Decisions needed
 
-- None blocking. Taken: non-Draft folders go under Research (not Manuscript);
-  Trash is kept; document notes are stored as a generic `notes` field and
-  shown in the Inspector; Scrivener 2 support is the optional last slice.
+- **Where the Scrivener importer lives, in writing.** `docs/INVARIANTS.md`
+  I2 and `docs/adr/ADR-001` say Scrivener import logic lives in
+  `chickenscratch-core`; I2's own table, `docs/ARCHITECTURE.md` and the code
+  put the converter in `crates/cli` (`chikn-converter`) calling the engine,
+  and every accepted Scrivener fix so far (PLAN_IMPORT_MEDIA_SAFETY, review
+  findings ar-1..ar-4) landed there. This plan follows the code and
+  ARCHITECTURE: the converter crate, writing through core. The wording in
+  INVARIANTS.md and ADR-001 needs the owner's ruling and a one-line fix;
+  nothing in this plan moves code between crates.
+- Taken: non-Draft folders go under Research (not Manuscript); Trash is
+  kept; document notes are stored as a generic `notes` field and shown in
+  the Inspector; Scrivener 2 support is the optional last slice.
 
 ## Status
 
-- 2026-10-25: drafted. Review with Codex (gpt-6-astra, xhigh) pending; the
-  owner's go covers implementation once that review reaches consensus.
+- 2026-10-25: drafted. Owner go covers implementation once the Codex review
+  (gpt-6-astra, xhigh) reaches consensus.
+- 2026-10-25 round 1 (`604791d`): reopened, eight findings, all admitted
+  after checking the code (`.agents/review/findings/plan-3.md`): Unicode
+  fallback corruption in the hex rewrite; text-item children not converted;
+  `IncludeInCompile` never applied; inline annotations are literal text;
+  the fallback dropped hyperlink anchors; the default label is not the empty
+  label; same-titled custom fields collide; I2 wording contradiction. Plan
+  revised as above; round 2 pending.
