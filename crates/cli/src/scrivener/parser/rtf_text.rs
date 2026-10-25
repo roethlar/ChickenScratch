@@ -145,6 +145,22 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
         }
     }
 
+    // A high surrogate still waiting when text is about to be produced, or
+    // when the group holding it closes, is a lone half: show U+FFFD in that
+    // place rather than drop it silently. Formatting controls and bare line
+    // ends between the halves leave it waiting (review finding s1-4,
+    // re-review), and it never escapes its own destination.
+    fn resolve_lone_high(
+        pending_high: &mut Option<u16>,
+        groups: &[Group],
+        fields: &mut [Field],
+        text: &mut String,
+    ) {
+        if pending_high.take().is_some() {
+            push('\u{FFFD}', groups, fields, text);
+        }
+    }
+
     let n = input.len();
     let mut i = 0;
     while i < n {
@@ -167,20 +183,6 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                 &mut text,
             );
         }
-        // A high surrogate not followed by its low half (fallback items in
-        // between are skipped, not read) is a lone half: show U+FFFD rather
-        // than drop it silently.
-        if pending_high.is_some() && skip_fallback == 0 {
-            let is_unicode_escape = b == b'\\'
-                && input.get(i + 1) == Some(&b'u')
-                && input
-                    .get(i + 2)
-                    .is_some_and(|c| c.is_ascii_digit() || *c == b'-');
-            if !is_unicode_escape {
-                pending_high = None;
-                push('\u{FFFD}', &groups, &mut fields, &mut text);
-            }
-        }
         match b {
             b'{' => {
                 let parent = groups.last().unwrap();
@@ -196,6 +198,7 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
             }
             b'}' => {
                 skip_fallback = 0;
+                resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
                 if groups.len() > 1 {
                     let g = groups.pop().unwrap();
                     if g.opens_field {
@@ -224,6 +227,12 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                             if skip_fallback > 0 {
                                 skip_fallback -= 1;
                             } else {
+                                resolve_lone_high(
+                                    &mut pending_high,
+                                    &groups,
+                                    &mut fields,
+                                    &mut text,
+                                );
                                 pending.push((hi << 4) | lo);
                             }
                             i += 4;
@@ -235,6 +244,7 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                         if skip_fallback > 0 {
                             skip_fallback -= 1;
                         } else {
+                            resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
                             push(c as char, &groups, &mut fields, &mut text);
                         }
                         i += 2;
@@ -245,6 +255,7 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                         if skip_fallback > 0 {
                             skip_fallback -= 1;
                         } else {
+                            resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
                             match c {
                                 b'~' => push('\u{A0}', &groups, &mut fields, &mut text),
                                 // Optional hyphen: invisible unless the line breaks.
@@ -353,6 +364,28 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                                 g.sink = Sink::FieldResult;
                             }
                         } else {
+                            // Words that produce text resolve a waiting
+                            // surrogate half first; formatting words do not.
+                            if matches!(
+                                word,
+                                b"par"
+                                    | b"line"
+                                    | b"tab"
+                                    | b"emdash"
+                                    | b"endash"
+                                    | b"lquote"
+                                    | b"rquote"
+                                    | b"ldblquote"
+                                    | b"rdblquote"
+                                    | b"bullet"
+                            ) {
+                                resolve_lone_high(
+                                    &mut pending_high,
+                                    &groups,
+                                    &mut fields,
+                                    &mut text,
+                                );
+                            }
                             match word {
                                 b"par" => paragraph_break(&groups, &mut fields, &mut text),
                                 // A Markdown hard line break (backslash at
@@ -450,6 +483,7 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                     // Literal text joins the pending run so a multi-byte
                     // character split between an escape and a literal byte
                     // decodes whole.
+                    resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
                     pending.push(b);
                 }
                 i += 1;
@@ -739,6 +773,28 @@ Second paragraph with \\'93quotes\\'94.\\\n\
         assert_eq!(plain(&lone), "x\u{FFFD}y");
         let trailing = format!("{{\\rtf1\\ansi\\uc1 x\\u{} ?}}", -10179);
         assert_eq!(plain(&trailing), "x\u{FFFD}");
+
+        // Re-review: ignored syntax between the halves (a bare line end, a
+        // formatting word) does not break the pair.
+        let split = format!(
+            "{{\\rtf1\\ansi\\uc1 before \\u{} ?\r\n\\u{} ? after}}",
+            -10179, -8704
+        );
+        assert_eq!(plain(&split), "before \u{1F600} after");
+        let split = format!(
+            "{{\\rtf1\\ansi\\uc1 before \\u{} ?\\b \\u{} ? after}}",
+            -10179, -8704
+        );
+        assert_eq!(plain(&split), "before \u{1F600} after");
+        // A lone half stays in its own destination: skipped there, kept
+        // in a field result, never leaked into the body.
+        let skipped = format!("{{\\rtf1\\uc1 {{\\*\\unknown \\u{} ?}}body}}", -10179);
+        assert_eq!(plain(&skipped), "body");
+        let in_field = format!(
+            "{{\\rtf1\\uc1 {{\\field{{\\*\\fldinst{{HYPERLINK \"u\"}}}}{{\\fldrslt \\u{} ?}}}}}}",
+            -10179
+        );
+        assert_eq!(plain(&in_field), "[\u{FFFD}](u)");
     }
 
     #[test]
