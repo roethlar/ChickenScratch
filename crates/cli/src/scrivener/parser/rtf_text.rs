@@ -597,8 +597,10 @@ fn strip_trailing_breaks(lines: &mut Vec<String>) {
 }
 
 /// `HYPERLINK "url"` + result text → a Markdown link; any other field →
-/// its result text. A break at the very end of the result is dropped so
-/// the link syntax stays intact.
+/// its result text. A break at the very end of the result is moved after
+/// the link so the link syntax stays intact and the break still happens
+/// when text follows (review finding s1-6, second re-review); the
+/// paragraph-end cleanup removes it when nothing follows.
 fn render_field(f: &Field) -> String {
     let inst = f.instruction.trim();
     let mut result_lines: Vec<String> = f
@@ -607,9 +609,20 @@ fn render_field(f: &Field) -> String {
         .lines()
         .map(|l| l.trim().to_string())
         .collect();
+    let before = result_lines.join("\n").len();
     strip_trailing_breaks(&mut result_lines);
     let result = result_lines.join("\n");
+    let had_trailing_break = result.len() < before && !result.is_empty();
     let result = result.as_str();
+    let rendered = render_link(inst, result);
+    if had_trailing_break {
+        format!("{rendered}\\\n")
+    } else {
+        rendered
+    }
+}
+
+fn render_link(inst: &str, result: &str) -> String {
     let url = inst
         .strip_prefix("HYPERLINK")
         .map(|rest| rest.trim().trim_matches('"').trim())
@@ -768,6 +781,13 @@ Second paragraph with \\'93quotes\\'94.\\\n\
             plain("{\\rtf1 {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://ABC-123\"}}{\\fldrslt note\\line}}}"),
             "[note](scrivcmt://ABC-123)"
         );
+        // Second re-review: when text follows the field, the break at the
+        // end of the link text still breaks the line, outside the link.
+        let md = plain("{\\rtf1 {\\field{\\*\\fldinst{HYPERLINK \"https://example.com\"}}{\\fldrslt note\\line}}second}");
+        assert_eq!(md, "[note](https://example.com)\\\nsecond");
+        if let Some(text) = rendered(&md) {
+            assert_eq!(text, "note\nsecond");
+        }
     }
 
     /// Review finding s1-3: hex escapes and raw high bytes follow the
