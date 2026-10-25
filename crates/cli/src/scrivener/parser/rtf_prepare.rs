@@ -501,13 +501,19 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
             b'\\' => {
                 let next = input.get(i + 1).copied();
                 match next {
-                    // `\` + newline is `\par`.
+                    // `\` + newline is `\par`; while a `\uN` fallback is
+                    // pending it is one fallback item instead (the spec
+                    // counts control symbols; s1-4 third re-review).
                     Some(b'\n') | Some(b'\r') => {
-                        out.extend_from_slice(b"\\par ");
                         i += 2;
                         if input.get(i) == Some(&b'\n') && next == Some(b'\r') {
                             i += 1;
                         }
+                        if skip_fallback > 0 {
+                            skip_fallback -= 1;
+                            continue;
+                        }
+                        out.extend_from_slice(b"\\par ");
                     }
                     // Hex escapes start a text run: the escapes and the plain
                     // bytes that follow them (up to the next brace or

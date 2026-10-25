@@ -188,11 +188,9 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
         }
         match b {
             b'{' => {
-                // A waiting half belongs to the group it appeared in: resolve
-                // it there before a new destination opens, so it can neither
-                // leak into a field nor vanish into a skipped group (review
-                // finding s1-4, second re-review).
-                resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
+                // An ordinary group shares its parent's destination, so a
+                // waiting half stays pending across it (third re-review of
+                // s1-4); it is resolved where the destination changes.
                 let parent = groups.last().unwrap();
                 groups.push(Group {
                     sink: parent.sink,
@@ -206,7 +204,14 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
             }
             b'}' => {
                 skip_fallback = 0;
-                resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
+                // Closing a destination (a group whose sink differs from its
+                // parent's) resolves a waiting half inside it, so it never
+                // leaks out; closing an ordinary group keeps it pending.
+                let closes_destination = groups.len() > 1
+                    && groups[groups.len() - 1].sink != groups[groups.len() - 2].sink;
+                if closes_destination {
+                    resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
+                }
                 if groups.len() > 1 {
                     let g = groups.pop().unwrap();
                     if g.opens_field {
@@ -222,14 +227,20 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                 let next = input.get(i + 1).copied();
                 match next {
                     Some(b'\n') | Some(b'\r') => {
-                        // A paragraph break produces text: a waiting half is
-                        // resolved before it, as `\par` does.
-                        resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
-                        paragraph_break(&groups, &mut fields, &mut text);
                         i += 2;
                         if next == Some(b'\r') && input.get(i) == Some(&b'\n') {
                             i += 1;
                         }
+                        // A control symbol is one fallback item while a
+                        // fallback is pending (third re-review of s1-4).
+                        if skip_fallback > 0 {
+                            skip_fallback -= 1;
+                            continue;
+                        }
+                        // A paragraph break produces text: a waiting half is
+                        // resolved before it, as `\par` does.
+                        resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
+                        paragraph_break(&groups, &mut fields, &mut text);
                     }
                     Some(b'\'') => {
                         let hi = input.get(i + 2).copied().and_then(hex_val);
@@ -289,6 +300,9 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                                 j += 1;
                             }
                             let word = &input[ws..j];
+                            // Entering a destination: a waiting half is
+                            // resolved in the enclosing one first.
+                            resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
                             if let Some(g) = groups.last_mut() {
                                 g.fresh = false;
                                 if word == b"fldinst" && fields.last().is_some() {
@@ -359,10 +373,12 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                         }
 
                         if fresh && SKIPPED_DESTINATIONS.contains(&word) {
+                            resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
                             if let Some(g) = groups.last_mut() {
                                 g.sink = Sink::Skip;
                             }
                         } else if fresh && word == b"field" {
+                            resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
                             fields.push(Field::default());
                             if let Some(g) = groups.last_mut() {
                                 g.opens_field = true;
@@ -371,6 +387,7 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                                 g.sink = Sink::Skip;
                             }
                         } else if fresh && word == b"fldrslt" && fields.last().is_some() {
+                            resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
                             if let Some(g) = groups.last_mut() {
                                 g.sink = Sink::FieldResult;
                             }
@@ -912,6 +929,21 @@ Second paragraph with \\'93quotes\\'94.\\\n\
         assert_eq!(plain(&before_par), "x\u{FFFD}\n\ny");
         let across_par = format!("{{\\rtf1\\uc1 x\\u{} ?\\\n\\u{} ?y}}", -10179, -8704);
         assert_eq!(plain(&across_par), "x\u{FFFD}\n\n\u{FFFD}y");
+
+        // Third re-review: an ordinary group shares the destination, so a
+        // pair split by it still combines; a backslash-newline in the
+        // fallback slot is a fallback item, not a paragraph break.
+        let in_group = format!("{{\\rtf1\\uc1 x\\u{} ?{{\\u{} ?}}y}}", -10179, -8704);
+        assert_eq!(plain(&in_group), "x\u{1F600}y");
+        let in_bold_group = format!("{{\\rtf1\\uc1 x\\u{} ?{{\\b \\u{} ?}}y}}", -10179, -8704);
+        assert_eq!(plain(&in_bold_group), "x\u{1F600}y");
+        let in_field_group = format!(
+            "{{\\rtf1\\uc1 {{\\field{{\\*\\fldinst{{HYPERLINK \"u\"}}}}{{\\fldrslt \\u{} ?{{\\u{} ?}}}}}}}}",
+            -10179, -8704
+        );
+        assert_eq!(plain(&in_field_group), "[\u{1F600}](u)");
+        let newline_fallback = format!("{{\\rtf1\\uc1 x\\u{}\\\n\\u{} ?y}}", -10179, -8704);
+        assert_eq!(plain(&newline_fallback), "x\u{1F600}y");
     }
 
     #[test]
