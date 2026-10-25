@@ -70,7 +70,12 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   import lives in core; I2's own table, `docs/ARCHITECTURE.md` and the code
   put the converter in `crates/cli`. Asked as A (fix the wording, converter
   stays; recommended) / B (move the importer into core first). Slices
-  proceed under A; each slice gets a Codex defect review before the next. Known limits, by design: the safety copy is per browser profile
+  proceed under A; each slice gets a Codex defect review before the next.
+  **Slice 1 landed** `caf8a5e` (RTF prepare step, `markdown-smart`,
+  plain-text fallback with a named warning; Zoe 2 imports; Corn keeps
+  paragraphs and plain apostrophes). Its Codex review returned six
+  findings, all admitted: `.agents/review/index.md` rows s1-1..s1-6, one
+  fix commit each, each re-reviewed before slice 2 starts. Known limits, by design: the safety copy is per browser profile
   (a copy made on the phone restores on the phone); a brand-new tab gets a
   new session id, so the "Take over" offer still applies there; no service
   worker, so the installed icon needs the server reachable.
