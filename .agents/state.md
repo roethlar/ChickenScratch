@@ -17,8 +17,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   implement all slices". Plan `docs/plans/PLAN_RELOAD_SAFETY_MOBILE.md`;
   slices landed 2026-10-25 one commit each: `26af1d5` safety copy +
   remembered place + Projects button + `POST /api/lease/release`;
-  `e6fe793` one-column phone layout; `bd019a7` Quick note; slice 4 touch
-  targets + home-screen manifest + records (this commit). Not pushed;
+  `e6fe793` one-column phone layout; `bd019a7` Quick note; `e6b88b6` touch
+  targets + home-screen manifest; records `ab29eb7`. Not pushed;
   push follows `.agents/push-policy.md` (ask). Next evidence is the owner
   reloading mid-typing in the browser and opening the server address on a
   phone. Known limits, by design: the safety copy is per browser profile
@@ -100,10 +100,12 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 - Declared suite: `.agents/repo-guidance.md` Verification section.
 - **2026-10-25 reload safety + phone layout (slices 1–4, unpushed)**: fmt,
   clippy `-D warnings` and tests green for core, services, web, tui,
-  converter; release-metadata script; `bash -n` + shellcheck on the scripts;
-  UI lint/build/test (125). Tauri crate not compiled on this box (Known
-  drift). Bite proof: the editor safety-copy tests fail with the restore
-  and the pagehide write removed. CI runs on the next push.
+  converter; release-metadata script; `bash -n` on the scripts (shellcheck
+  is not installed on this box; no script changed); UI lint/build/test
+  (125); `cargo check -p chickenscratch-web --features embed-ui` with the
+  built `ui/dist`. Tauri crate not compiled on this box (Known drift). Bite
+  proof: the editor safety-copy tests fail with the restore and the
+  pagehide write removed. CI runs on the next push.
 - **2026-10-25 as of `82ba252`**: GitHub Validation runs `40162108795`
   (`ad44c22`), `40164051106` (`487e775`) and `40164229608` (`82ba252`) all
   succeeded (all jobs, shellcheck step included).
