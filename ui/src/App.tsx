@@ -14,8 +14,11 @@ import { effectiveViewFor, useProfile } from "./profiles";
 import * as gitCmd from "./commands/git";
 import { leaveProject, reopenLastProject } from "./leaveProject";
 import { getLastProject, rememberDocument, rememberProject } from "./lastOpen";
+import { useNarrowScreen } from "./hooks/useNarrowScreen";
+import { BinderDrawer } from "./components/shared/BinderDrawer";
 import {
   FolderOpen,
+  Menu,
   PenLine,
   LayoutGrid,
   PanelRight,
@@ -152,6 +155,17 @@ export default function App() {
   const [showBinder, setShowBinder] = useState(
     () => localStorage.getItem("cs-binder") !== "false"
   );
+
+  // Phone width (PLAN_RELOAD_SAFETY_MOBILE slice 2): the binder lives in a
+  // drawer that closes once a document (or a flow set) is picked.
+  const narrow = useNarrowScreen();
+  const flowDocs = useProjectStore((s) => s.flowDocs);
+  // The drawer is open for one "pick" (the active document or flow set);
+  // picking anything else changes the key and closes it with no effect.
+  const pickKey = `${activeDocId ?? ""}|${flowDocs ? flowDocs.map((d) => d.docId).join(",") : ""}`;
+  const [drawerOpenFor, setDrawerOpenFor] = useState<string | null>(null);
+  const drawerOpen = drawerOpenFor === pickKey;
+  const setDrawerOpen = (open: boolean) => setDrawerOpenFor(open ? pickKey : null);
 
   // Persist UI state
   useEffect(() => { localStorage.setItem("cs-view", view); }, [view]);
@@ -345,9 +359,14 @@ export default function App() {
   const ThemeIcon = themeIcons[theme];
 
   return (
-    <div className={`app ${focusMode ? "focus-mode" : ""}`}>
-      {focusMode && <div className="binder-reveal" />}
-      {showBinder && (
+    <div className={`app ${focusMode ? "focus-mode" : ""} ${narrow ? "app-narrow" : ""}`}>
+      {focusMode && !narrow && <div className="binder-reveal" />}
+      {narrow && (
+        <BinderDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+          <Binder />
+        </BinderDrawer>
+      )}
+      {showBinder && !narrow && (
         <>
           <div style={{ width: binderWidth, minWidth: binderWidth, flexShrink: 0 }}>
             <Binder />
@@ -384,6 +403,17 @@ export default function App() {
           <ReadOnlyBanner reasons={readOnlyReasons} />
         )}
         <div className="view-toolbar">
+          {narrow && (
+            <button
+              className={`view-btn ${drawerOpen ? "active" : ""}`}
+              onClick={() => setDrawerOpen(!drawerOpen)}
+              title="Binder"
+              aria-label="Binder"
+              aria-expanded={drawerOpen}
+            >
+              <Menu size={16} />
+            </button>
+          )}
           <button
             className="view-btn"
             onClick={() => { leaveProject().catch(() => {}); }}
@@ -498,13 +528,19 @@ export default function App() {
             <HelpCircle size={16} />
           </button>
         </div>
-        <Suspense fallback={null}>
-          {effectiveView === "editor" ? <Editor /> : effectiveView === "corkboard" ? <Corkboard /> : effectiveView === "preview" ? <Preview /> : <TimelineView />}
-        </Suspense>
+        <div className="view-body">
+          <Suspense fallback={null}>
+            {effectiveView === "editor" ? <Editor /> : effectiveView === "corkboard" ? <Corkboard /> : effectiveView === "preview" ? <Preview /> : <TimelineView />}
+            {/* Phone width: side panels sit over the view, under the
+                toolbar, so their toolbar toggles still close them. */}
+            {narrow && showRevisions && <Revisions />}
+            {narrow && showInspector && <Inspector />}
+          </Suspense>
+        </div>
       </div>
       <Suspense fallback={null}>
-        {showRevisions && <Revisions />}
-        {showInspector && <Inspector />}
+        {!narrow && showRevisions && <Revisions />}
+        {!narrow && showInspector && <Inspector />}
         {showPalette && <CommandPalette open={showPalette} onClose={() => setShowPalette(false)} />}
         {showSearch && <ProjectSearch open={showSearch} onClose={() => setShowSearch(false)} />}
         {showSettings && <Settings open={showSettings} onClose={() => setShowSettings(false)} />}
