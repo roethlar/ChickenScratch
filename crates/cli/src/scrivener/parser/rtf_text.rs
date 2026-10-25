@@ -7,6 +7,8 @@
 //! Hyperlink fields survive as Markdown links so the `scrivcmt://` anchors
 //! slice 4 relies on are kept (review finding plan-3 R1-5).
 
+use super::rtf_prepare::is_character_control_word;
+
 /// Groups whose content is never document text.
 const SKIPPED_DESTINATIONS: &[&[u8]] = &[
     b"fonttbl",
@@ -181,21 +183,25 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                         }
                         i += 2;
                     }
-                    Some(b'~') => {
-                        push('\u{A0}', &groups, &mut fields, &mut text);
-                        i += 2;
-                    }
-                    Some(b'-') => {
-                        // Optional hyphen: invisible unless the line breaks.
-                        i += 2;
-                    }
-                    Some(b'_') => {
-                        push('\u{2011}', &groups, &mut fields, &mut text);
+                    // Control symbols that stand for a character are
+                    // fallback items too (review finding s1-1).
+                    Some(c @ (b'~' | b'-' | b'_')) => {
+                        if skip_fallback > 0 {
+                            skip_fallback -= 1;
+                        } else {
+                            match c {
+                                b'~' => push('\u{A0}', &groups, &mut fields, &mut text),
+                                // Optional hyphen: invisible unless the line breaks.
+                                b'-' => {}
+                                _ => push('\u{2011}', &groups, &mut fields, &mut text),
+                            }
+                        }
                         i += 2;
                     }
                     Some(b'*') => {
                         // `{\*\word …}`: a destination readers may ignore.
                         // Keep `\fldinst` (hyperlink targets); skip the rest.
+                        skip_fallback = 0;
                         let start = i + 2;
                         let mut j = start;
                         if j < n && input[j] == b'\\' {
@@ -249,6 +255,18 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                         let mut end = k;
                         if end < n && input[end] == b' ' {
                             end += 1;
+                        }
+
+                        // Pending `\uN` fallback (review finding s1-1): a
+                        // character control word is one fallback item and
+                        // is swallowed; any other control word ends the run.
+                        if skip_fallback > 0 {
+                            if is_character_control_word(word) {
+                                skip_fallback -= 1;
+                                i = end;
+                                continue;
+                            }
+                            skip_fallback = 0;
                         }
 
                         let fresh = groups.last().map(|g| g.fresh).unwrap_or(false);
@@ -314,6 +332,8 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                         i = end;
                     }
                     Some(_) => {
+                        // Other control symbols end a fallback run.
+                        skip_fallback = 0;
                         i += 2;
                     }
                     None => {
@@ -447,6 +467,18 @@ Second paragraph with \\'93quotes\\'94.\\\n\
     fn unicode_fallbacks_are_skipped() {
         assert_eq!(plain("{\\rtf1\\uc2 x\\u8217\\'92\\'92y}"), "x\u{2019}y");
         assert_eq!(plain("{\\rtf1\\uc0 x\\u8217 y}"), "x\u{2019}y");
+    }
+
+    /// Review finding s1-1: a character control word after `\uN` is the
+    /// fallback and is swallowed; a formatting word ends the run so the
+    /// letter after it survives.
+    #[test]
+    fn character_control_word_is_the_fallback_and_letters_survive() {
+        let src = format!("{{\\rtf1\\ansi\\uc1 a\\u{}\\endash word}}", 8211);
+        assert_eq!(plain(&src), "a\u{2013}word");
+        assert_eq!(plain("{\\rtf1\\ansi\\uc1 a\\u233\\b b}"), "aéb");
+        assert_eq!(plain("{\\rtf1\\ansi\\uc1 a\\u233\\~b}"), "aéb");
+        assert_eq!(plain("{\\rtf1\\ansi\\uc1 a\\u233\\tab b}"), "aéb");
     }
 
     #[test]

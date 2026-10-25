@@ -96,6 +96,29 @@ fn hex_val(b: u8) -> Option<u8> {
     }
 }
 
+/// Control words that stand for one character. After `\uN`, one of these
+/// is the fallback (RTF writers may emit `舑\endash`) and is swallowed;
+/// the fallback count is in characters, and these are characters.
+pub(crate) fn is_character_control_word(word: &[u8]) -> bool {
+    matches!(
+        word,
+        b"endash"
+            | b"emdash"
+            | b"lquote"
+            | b"rquote"
+            | b"ldblquote"
+            | b"rdblquote"
+            | b"bullet"
+            | b"tab"
+            | b"emspace"
+            | b"enspace"
+            | b"qmspace"
+            | b"zwj"
+            | b"zwnj"
+            | b"lbr"
+    )
+}
+
 /// `\uN` wants a signed 16-bit decimal. The emitted form is `\uN ?`: an
 /// explicit space delimiter, then the one-character fallback. Pandoc 3.11
 /// takes whatever character follows the number as the delimiter, so the
@@ -220,6 +243,19 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                         if end < n && input[end] == b' ' {
                             end += 1;
                         }
+                        // A pending `\uN` fallback (review finding s1-1):
+                        // a control word that stands for a character is one
+                        // fallback item and is swallowed; any other control
+                        // word ends the fallback run so no later letter can
+                        // be eaten.
+                        if skip_fallback > 0 {
+                            if is_character_control_word(word) {
+                                skip_fallback -= 1;
+                                i = end;
+                                continue;
+                            }
+                            skip_fallback = 0;
+                        }
                         match word {
                             b"uc" => {
                                 let uc = param.unwrap_or(1).max(0) as u32;
@@ -240,9 +276,20 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                         }
                         i = end;
                     }
-                    // Control symbol (`\*`, `\~`, `\-`, `\_`, `\:` …) or a
-                    // lone backslash at the end: copy.
+                    // Control symbols that stand for a character (`\~`,
+                    // `\-`, `\_`) are fallback items like any character.
+                    Some(b'~') | Some(b'-') | Some(b'_') => {
+                        if skip_fallback > 0 {
+                            skip_fallback -= 1;
+                        } else {
+                            out.extend_from_slice(&input[i..i + 2]);
+                        }
+                        i += 2;
+                    }
+                    // Any other control symbol (`\*`, `\:` …) or a lone
+                    // backslash at the end: copy; it ends a fallback run.
                     Some(_) => {
+                        skip_fallback = 0;
                         out.extend_from_slice(&input[i..i + 2]);
                         i += 2;
                     }
@@ -379,6 +426,27 @@ mod tests {
         let prepared = prep("{\\rtf1 {\\uc2 a\\u233\\'e9\\'e9}b\\u235\\'ebc}");
         assert_eq!(prepared, "{\\rtf1 {\\uc1 a\\u233 ?}b\\u235 ?c}");
         assert_reads(&prepared, "aébëc");
+    }
+
+    /// Review finding s1-1: `舑\endash word` must keep the `w`. The
+    /// character control word is the fallback and is swallowed; a
+    /// formatting control word ends the fallback run instead.
+    #[test]
+    fn character_control_word_after_unicode_is_the_fallback() {
+        let src = format!("{{\\rtf1\\ansi\\uc1 a\\u{}\\endash word}}", 8211);
+        let prepared = prep(&src);
+        assert_eq!(
+            prepared,
+            format!("{{\\rtf1\\ansi\\uc1 a\\u{} ?word}}", 8211)
+        );
+        assert_reads(&prepared, "a\u{2013}word");
+
+        let prepared = prep("{\\rtf1\\ansi\\uc1 a\\u233\\b b}");
+        assert_eq!(prepared, "{\\rtf1\\ansi\\uc1 a\\u233 ?\\b b}");
+        assert_reads(&prepared, "aéb");
+
+        let prepared = prep("{\\rtf1\\ansi\\uc1 a\\u233\\~b}");
+        assert_eq!(prepared, "{\\rtf1\\ansi\\uc1 a\\u233 ?b}");
     }
 
     #[test]
