@@ -22,14 +22,21 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   `fe0ffbf` to both remotes 2026-10-25. Next evidence is the owner
   reloading mid-typing in the browser and opening the server address on a
   phone.
-- **Owner 2026-10-25: "import scrivener needs to support uploads of
-  scrivener files."** Today the web Import Scrivener only accepts a
-  `.scriv` folder already copied under the projects root (server folder
-  picker). Plan drafted, not yet approved:
-  `docs/plans/PLAN_SCRIVENER_UPLOAD.md` (slice 1 server endpoint taking a
-  folder pick or a `.zip`, streamed to a temp folder, path-checked, then the
-  existing import service; slice 2 the three-way chooser in Welcome, user
-  guide). No code changed. Known limits, by design: the safety copy is per browser profile
+- **Owner 2026-10-25: import anything, not just Scrivener.** First words:
+  "import scrivener needs to support uploads of scrivener files"; then
+  "import restricted to scrivener pigeonholes this app … a new project
+  should import a .odt, .doc, .docx, .md, .markdown, .txt, anything pandoc
+  supports … project style imports from the new project screen, individual
+  docs from within a project … what other apps save projects like
+  scrivener? ulysses? those need support." Today the web Import Scrivener
+  only accepts a `.scriv` folder already under the projects root; Import
+  File inside a project already uploads a single document. Plan redrafted
+  (`docs/plans/PLAN_SCRIVENER_UPLOAD.md`, name kept): one Import button,
+  upload door + detector, project-from-one-document with heading split,
+  then open app formats (TextBundle/TextPack, yWriter, novelWriter,
+  Manuskript recommended). Awaiting the go and the format list. No code
+  changed. Latent bug noted there: `io.rs` maps legacy `.doc` to the
+  Pandoc `docx` reader, which cannot read `.doc`. Known limits, by design: the safety copy is per browser profile
   (a copy made on the phone restores on the phone); a brand-new tab gets a
   new session id, so the "Take over" offer still applies there; no service
   worker, so the installed icon needs the server reachable.
@@ -84,9 +91,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
    backup question once; Settings → Backup then shows a Backups tab. Owner
    checks still open there: Settings save, Save Revision on the NAS lists an
    entry.
-2. **Scrivener upload in the browser** (`PLAN_SCRIVENER_UPLOAD.md`): drafted
-   2026-10-25, awaiting the owner's go; then slice 1 (server endpoint), slice
-   2 (chooser + guide), one commit each.
+2. **Import anything** (`PLAN_SCRIVENER_UPLOAD.md`): redrafted 2026-10-25,
+   awaiting the owner's go and the slice-4 format list; then slices 1–3
+   (upload door + detector, project from one document, Import button in
+   both shells), then one slice per app format, one commit each.
 3. **Reload safety + phone layout** (`PLAN_RELOAD_SAFETY_MOBILE.md`): every
    slice shipped and pushed 2026-10-25 (`fe0ffbf`). The owner tries it
    (reload mid-typing; phone; Quick note; Add to Home Screen) after
