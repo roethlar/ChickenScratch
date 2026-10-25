@@ -7,7 +7,7 @@
 //! Hyperlink fields survive as Markdown links so the `scrivcmt://` anchors
 //! slice 4 relies on are kept (review finding plan-3 R1-5).
 
-use super::rtf_prepare::{document_encoding, is_character_control_word};
+use super::rtf_prepare::document_encoding;
 
 /// Groups whose content is never document text.
 const SKIPPED_DESTINATIONS: &[&[u8]] = &[
@@ -286,16 +286,15 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                             end += 1;
                         }
 
-                        // Pending `\uN` fallback (review finding s1-1): a
-                        // character control word is one fallback item and
-                        // is swallowed; any other control word ends the run.
-                        if skip_fallback > 0 {
-                            if is_character_control_word(word) {
-                                skip_fallback -= 1;
-                                i = end;
-                                continue;
-                            }
-                            skip_fallback = 0;
+                        // Pending `\uN` fallback (review finding s1-1,
+                        // repaired after re-review): every control word is
+                        // one fallback item, swallowed and not applied, and
+                        // the count carries on. `\u` and `\uc` start a new
+                        // Unicode sequence and are never fallback.
+                        if skip_fallback > 0 && word != b"u" && word != b"uc" {
+                            skip_fallback -= 1;
+                            i = end;
+                            continue;
                         }
 
                         let fresh = groups.last().map(|g| g.fresh).unwrap_or(false);
@@ -398,8 +397,11 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                         i = end;
                     }
                     Some(_) => {
-                        // Other control symbols end a fallback run.
-                        skip_fallback = 0;
+                        // Any other control symbol is one fallback item when
+                        // a fallback is pending; otherwise it has no text.
+                        if skip_fallback > 0 {
+                            skip_fallback -= 1;
+                        }
                         i += 2;
                     }
                     None => {
@@ -615,6 +617,14 @@ Second paragraph with \\'93quotes\\'94.\\\n\
         assert_eq!(plain("{\\rtf1\\ansi\\uc1 a\\u233\\b b}"), "aéb");
         assert_eq!(plain("{\\rtf1\\ansi\\uc1 a\\u233\\~b}"), "aéb");
         assert_eq!(plain("{\\rtf1\\ansi\\uc1 a\\u233\\tab b}"), "aéb");
+        // Re-review case: `\uc2` skips the formatting word and the letter.
+        assert_eq!(
+            plain("{\\rtf1\\ansi {\\uc2 caf\\u233\\b e} noir}"),
+            "café noir"
+        );
+        // `\u` after `\u` starts a new character, never a fallback (the
+        // `b` after the second one is its fallback and goes).
+        assert_eq!(plain("{\\rtf1\\ansi\\uc1 a\\u233\\u235 b}"), "aéë");
     }
 
     #[test]

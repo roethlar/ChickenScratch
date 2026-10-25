@@ -77,29 +77,6 @@ fn hex_val(b: u8) -> Option<u8> {
     }
 }
 
-/// Control words that stand for one character. After `\uN`, one of these
-/// is the fallback (RTF writers may emit `舑\endash`) and is swallowed;
-/// the fallback count is in characters, and these are characters.
-pub(crate) fn is_character_control_word(word: &[u8]) -> bool {
-    matches!(
-        word,
-        b"endash"
-            | b"emdash"
-            | b"lquote"
-            | b"rquote"
-            | b"ldblquote"
-            | b"rdblquote"
-            | b"bullet"
-            | b"tab"
-            | b"emspace"
-            | b"enspace"
-            | b"qmspace"
-            | b"zwj"
-            | b"zwnj"
-            | b"lbr"
-    )
-}
-
 /// `\uN` wants a signed 16-bit decimal. The emitted form is `\uN ?`: an
 /// explicit space delimiter, then the one-character fallback. Pandoc 3.11
 /// takes whatever character follows the number as the delimiter, so the
@@ -255,18 +232,16 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                         if end < n && input[end] == b' ' {
                             end += 1;
                         }
-                        // A pending `\uN` fallback (review finding s1-1):
-                        // a control word that stands for a character is one
-                        // fallback item and is swallowed; any other control
-                        // word ends the fallback run so no later letter can
-                        // be eaten.
-                        if skip_fallback > 0 {
-                            if is_character_control_word(word) {
-                                skip_fallback -= 1;
-                                i = end;
-                                continue;
-                            }
-                            skip_fallback = 0;
+                        // A pending `\uN` fallback (review finding s1-1,
+                        // repaired after re-review): the spec counts every
+                        // control word as one fallback item, so it is
+                        // swallowed, not applied, and the remaining count is
+                        // kept. `\u` and `\uc` start a new Unicode sequence
+                        // and are never fallback.
+                        if skip_fallback > 0 && word != b"u" && word != b"uc" {
+                            skip_fallback -= 1;
+                            i = end;
+                            continue;
                         }
                         match word {
                             b"uc" => {
@@ -288,21 +263,22 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                         }
                         i = end;
                     }
-                    // Control symbols that stand for a character (`\~`,
-                    // `\-`, `\_`) are fallback items like any character.
-                    Some(b'~') | Some(b'-') | Some(b'_') => {
+                    // `\*` opens a destination: structural, so it is kept and
+                    // ends any fallback run rather than being swallowed.
+                    Some(b'*') => {
+                        skip_fallback = 0;
+                        out.extend_from_slice(&input[i..i + 2]);
+                        i += 2;
+                    }
+                    // Any other control symbol (`\~`, `\-`, `\_`, `\:` …) is
+                    // one fallback item when a fallback is pending; copied
+                    // otherwise.
+                    Some(_) => {
                         if skip_fallback > 0 {
                             skip_fallback -= 1;
                         } else {
                             out.extend_from_slice(&input[i..i + 2]);
                         }
-                        i += 2;
-                    }
-                    // Any other control symbol (`\*`, `\:` …) or a lone
-                    // backslash at the end: copy; it ends a fallback run.
-                    Some(_) => {
-                        skip_fallback = 0;
-                        out.extend_from_slice(&input[i..i + 2]);
                         i += 2;
                     }
                     None => {
@@ -464,8 +440,9 @@ mod tests {
     }
 
     /// Review finding s1-1: `舑\endash word` must keep the `w`. The
-    /// character control word is the fallback and is swallowed; a
-    /// formatting control word ends the fallback run instead.
+    /// spec counts every control word or symbol after `\uN` as one fallback
+    /// item: swallowed, not applied, and the count carries on, so
+    /// `\uc2 caf\u233\b e` skips `\b` and `e`. `\u` itself is never fallback.
     #[test]
     fn character_control_word_after_unicode_is_the_fallback() {
         let src = format!("{{\\rtf1\\ansi\\uc1 a\\u{}\\endash word}}", 8211);
@@ -477,11 +454,22 @@ mod tests {
         assert_reads(&prepared, "a\u{2013}word");
 
         let prepared = prep("{\\rtf1\\ansi\\uc1 a\\u233\\b b}");
-        assert_eq!(prepared, "{\\rtf1\\ansi\\uc1 a\\u233 ?\\b b}");
+        assert_eq!(prepared, "{\\rtf1\\ansi\\uc1 a\\u233 ?b}");
         assert_reads(&prepared, "aéb");
 
         let prepared = prep("{\\rtf1\\ansi\\uc1 a\\u233\\~b}");
         assert_eq!(prepared, "{\\rtf1\\ansi\\uc1 a\\u233 ?b}");
+
+        // Re-review case: two fallback items, a formatting word and a letter.
+        let prepared = prep("{\\rtf1\\ansi {\\uc2 caf\\u233\\b e} noir}");
+        assert_eq!(prepared, "{\\rtf1\\ansi {\\uc1 caf\\u233 ?} noir}");
+        assert_reads(&prepared, "café noir");
+
+        // `\u` after `\u` starts a new character, never a fallback; the
+        // `b` after the second one is its fallback and goes.
+        let prepared = prep("{\\rtf1\\ansi\\uc1 a\\u233\\u235 b}");
+        assert_eq!(prepared, "{\\rtf1\\ansi\\uc1 a\\u233 ?\\u235 ?}");
+        assert_reads(&prepared, "aéë");
     }
 
     #[test]
