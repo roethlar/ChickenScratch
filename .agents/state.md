@@ -50,15 +50,22 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   partial result; converted text keeps `\'` for every apostrophe (Pandoc
   `markdown` writer with smart quotes; `markdown-smart` writes plain
   apostrophes) and line-end backslashes, visible in the committed
-  `samples/Corn.chikn` too; empty documents are dropped (Corn: 20 text items
-  → 16 documents, outline-only scenes "Relationship", "Trouble" vanish);
-  Characters, Places, Notes, Front Matter and Template Sheets are filed
-  under Manuscript, not Research. By code inspection, unexercised by any
+  `samples/Corn.chikn` too; Scrivener paragraphs (backslash-newline, the
+  RTF `\par` synonym) arrive as hard line breaks inside one paragraph;
+  Scrivener's Trash is dropped (Corn: 4 of 20 text items were in the Trash,
+  nothing live lost; an earlier "empty documents vanish" reading was
+  wrong); Characters, Places, Notes, Front Matter and Template Sheets are
+  filed under Manuscript, not Research. By code inspection, unexercised by any
   sample: document notes, Scrivener 3 inline comments/footnotes
   (`content.comments`), synopses (`synopsis.txt`; the parser reads a
   `<Synopsis>` element Scrivener 3 does not write), labels/status/keywords
   as ID references, snapshots, custom metadata, collections are not read;
-  Scrivener 2 layout (`Files/Docs/N.rtf`) unsupported. Not yet planned. Known limits, by design: the safety copy is per browser profile
+  Scrivener 2 layout (`Files/Docs/N.rtf`) unsupported. Plan:
+  `docs/plans/PLAN_SCRIVENER_FIDELITY.md`. Owner go 2026-10-25: "plan,
+  review the plan with gpt-6-astra xhigh, then begin once you have
+  consensus. review code slices with the same codex model" — the Codex
+  review of the plan is the gate before code; each slice gets a Codex
+  defect review before the next starts. Known limits, by design: the safety copy is per browser profile
   (a copy made on the phone restores on the phone); a brand-new tab gets a
   new session id, so the "Take over" offer still applies there; no service
   worker, so the installed icon needs the server reachable.
@@ -113,7 +120,11 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
    backup question once; Settings → Backup then shows a Backups tab. Owner
    checks still open there: Settings save, Save Revision on the NAS lists an
    entry.
-2. **Import anything** (`PLAN_SCRIVENER_UPLOAD.md`): redrafted 2026-10-25,
+2. **Scrivener import fidelity** (`PLAN_SCRIVENER_FIDELITY.md`): Codex plan
+   review (gpt-6-astra, xhigh) to consensus, then slices 1–4 (RTF prepare +
+   fallback, binder placement, metadata + notes, comments + footnotes), each
+   Codex-reviewed before the next; slice 5 (Scrivener 2) optional.
+3. **Import anything** (`PLAN_SCRIVENER_UPLOAD.md`): redrafted 2026-10-25,
    awaiting the owner's go and the slice-4 format list; then slices 1–3
    (upload door + detector, project from one document, Import button in
    both shells), then one slice per app format, one commit each.

@@ -76,3 +76,12 @@ Deliberately **not** on the roadmap: name generators, deep character-psychology 
   existing services. Drafted 2026-10-25 (first as a Scrivener-only upload,
   redrawn twice the same day on the owner's direction); awaiting the go
   and the format list.
+- **[PLAN_SCRIVENER_FIDELITY.md](PLAN_SCRIVENER_FIDELITY.md)** — the
+  Scrivener import keeps the whole project: survives RTF Pandoc cannot
+  read (prepare step, plain-text fallback with a named warning), keeps
+  paragraphs and plain apostrophes, files non-Draft folders under Research
+  and keeps the Trash, reads synopsis, label, status, keywords, custom
+  metadata and notes from Scrivener 3's side files and tables, and turns
+  inline comments and footnotes into the editor's own. Drafted 2026-10-25
+  with the go "plan, review the plan with gpt-6-astra xhigh, then begin
+  once you have consensus".
