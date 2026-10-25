@@ -89,7 +89,9 @@ Cargo workspace: root `Cargo.toml` — members are `crates/core`, `crates/cli`, 
 - `POST /api/cmd/<name>` mirrors every Tauri command: same camelCase args, same result, errors as the plain `ChiknError` string (`422`)
 - No login (owner decision 2026-10-24); no cookies, no CORS — the network the server listens on is the boundary
 - Projects-root gate (`gate.rs`): every path argument must resolve, through symlinks, inside `--root`; `403` otherwise
-- Web-only helpers the browser needs because it has no native dialogs: `GET /api/projects`, `GET /api/info`, `GET /api/fs/dirs`, `POST /api/export`, `POST /api/import-upload`
+- Web-only helpers the browser needs because it has no native dialogs: `GET /api/projects`, `GET /api/info` (reports the browsable roots: Projects, and Backups when `backup` is set), `GET /api/fs/dirs` (lists inside either root), `POST /api/export`, `POST /api/import-upload`
+- Settings file `~/.config/chickenscratch/web.toml` (`config.rs`): `root`, `bind`, `backup`, `verify_repo_owner`; flags and `CHIKN_WEB_*` override it
+- At startup the server calls `chickenscratch_core::core::git::trust_repository_ownership()` unless `verify_repo_owner = true`, so projects on a share that maps file ownership still open; the desktop app keeps libgit2's default
 - Live AI output over `GET /api/events` (SSE); a single-writer lease per project (`lease.rs`): the first browser session to write holds it, others get `409` and `POST /api/lease/take`
 - Does **not** touch `.chikn` files itself — not even to read a project name (I2)
 

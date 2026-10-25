@@ -427,6 +427,12 @@ It prints the address to open.
   `~/.config/chickenscratch/secrets.json`, readable only by your user.
 - The installer's background service runs under your own account, so
   project files are owned by you, not by root.
+- **Projects on a NAS.** Some network shares report every file as owned by
+  another user. Git refuses such folders by default; the web server turns
+  that check off for its own projects, so revision history works there.
+  (The desktop app keeps the check. To keep it on the server too, put
+  `verify_repo_owner = true` in the settings file.) A new project has no
+  history entries until you first **Save Revision**; that is normal.
 
 ---
 

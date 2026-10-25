@@ -126,8 +126,9 @@ web version cannot save a revision there.
       back when the server has none
 - [x] Installer dry run with `--backup` into a throwaway `$HOME` (install,
       upgrade keeps it, unit renders one mount check for both folders)
-- [ ] `cargo test -p chickenscratch-core` — ownership wrapper
-- [ ] Declared suite; CI on push
+- [x] `cargo test -p chickenscratch-core` — ownership wrapper (positive path)
+- [x] Declared suite minus the Tauri crate on the Linux box; CI on push
+      pending the owner's push go
 
 ## [MODEL] Owner verification (plain English)
 
@@ -156,3 +157,12 @@ web version cannot save a revision there.
   `CHIKN_WEB_BACKUP`; `/api/info` and `/api/fs/dirs` report browsable roots;
   the picker shows Projects / Backups tabs and opens in Backups for the
   backup setting; installer asks for the folder (`none` to skip).
+- 2026-10-25: slice 3 landed: `trust_repository_ownership()` in core,
+  re-exported by services, called by `chikn-web` at startup unless
+  `verify_repo_owner = true` / `--verify-repo-owner`; one log line. Live
+  smoke shows the line and the server answering. On the way, the two
+  flaky epoch-guard tests (process-wide failpoints) were made per-thread
+  (`52ad932`, test-only) because they failed 2 of 3 full runs and blocked
+  verification. Every slice has shipped; the owner's checks on the server
+  (Settings save, backup picker, Save Revision on the NAS) are the
+  remaining verification.

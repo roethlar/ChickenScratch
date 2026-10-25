@@ -6,6 +6,51 @@ Agents: append after significant work per `AGENTS.md` Rule 3.6 — not every ses
 
 ---
 
+## 2026-10-25 — Web server on a headless box with a NAS: three fixes
+
+Owner, after the first install on a second machine with projects on NFS:
+"Failed to save settings: Keyring error: … DBus error: The name is not
+activatable"; "the Backup Directory … cannot be configured unless it's
+pre-existing within the root folder"; "what's up with the git backend?"
+(git reported "dubious ownership" on the share). Then "plan" and "finish
+all slices". Plan: `docs/plans/PLAN_WEB_SERVER_FIXES.md`.
+
+**Secrets without a keyring** (`crates/services/src/settings.rs`). Saving
+settings asked the OS keyring to read or delete the AI key and git token
+even when there were none, so every save failed on a server with no Secret
+Service. `FallbackSecretStore` tries the OS keyring, and on a platform
+failure marks it unavailable for the process (one warning line) and uses an
+owner-only `secrets.json` beside `settings.json`; a missing keyring entry
+also consults that file. Five tests with a headless and an in-memory
+backend.
+
+**Backup folder outside the root** (`crates/web`, `ui`, installer).
+`web.toml` gains `backup`; the server creates it, reports it with the root
+as browsable roots in `/api/info`, and `/api/fs/dirs` lists inside either
+root while project commands still resolve only against the projects root.
+The browser's picker shows Projects / Backups tabs and opens in Backups for
+the backup setting. The installer asks for the folder and keeps it on
+upgrade.
+
+**Ownership check on a NAS** (`crates/core/src/core/git.rs`). libgit2
+refuses repositories owned by another uid, like the git CLI's
+`safe.directory`; a share that maps ownership makes every project look
+foreign and Save Revision fails. `trust_repository_ownership()` wraps the
+process-wide libgit2 option; `chikn-web` calls it at startup unless
+`verify_repo_owner = true`, with one log line. The desktop app is
+unchanged. "No commits yet" in a fresh project is by design: history starts
+at the first Save Revision.
+
+**Also.** The three epoch-guard error-path tests armed process-wide
+failpoints and failed at random under parallel tests (seen 2026-10-24 and
+2 of 3 runs today); the flags are now thread-local (`52ad932`, test-only).
+
+**Verification.** Declared suite minus the Tauri crate on the Linux box;
+installer dry runs with `--backup`; live `chikn-web` start showing the
+ownership line and answering `/api/info`. CI runs on the next push.
+
+---
+
 ## 2026-10-24 — Web installer: settings file, user service, rerun = upgrade
 
 Owner, after running `chikn-web` by hand on the server: "this needs an

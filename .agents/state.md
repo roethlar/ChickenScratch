@@ -13,9 +13,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   (projects on NFS at `/mnt/notes`): settings save fails there with a keyring
   D-Bus error; the backup folder can only be picked inside the root; git's
   ownership check fires because the share maps uids. Plan:
-  `docs/plans/PLAN_WEB_SERVER_FIXES.md` — no slice approved; slice 1
-  (settings save without an OS keyring) proposed first. One owner decision
-  open: skip libgit2's ownership check by default in `chikn-web`?
+  `docs/plans/PLAN_WEB_SERVER_FIXES.md` — owner "finish all slices"; all
+  three landed 2026-10-25 (`9449c4d` secrets fallback, `0f096eb` backup
+  root, `a8db23d` ownership check off on the server by default, following
+  the plan's recommendation since the go named all slices). Unpushed.
 - **Owner 2026-10-24: "get rid of the access token"** — done the same day
   (`docs/plans/PLAN_WEB_NO_LOGIN.md`, `.agents/decisions.md`): `chikn-web`
   has no login; the private network is the boundary. Token file, `?token=`
@@ -117,20 +118,21 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   `AppHandle`, `Emitter`, no-op `#[command]`) instead; CI's macOS runner is
   the real check. Installing the WebKitGTK dev package is an owner call
   (system change).
-- **Flaky core test (observed once, 2026-10-24):**
-  `core::git::tests::failed_restore_after_tree_mutation_invalidates_outstanding_tokens`
-  failed at `crates/core/src/core/git.rs:2069` in one full-suite run and
-  passed on an immediate rerun and in four other runs the same day. The
-  engine was not touched by the web-shell work. Assumption (unverified): the
-  test flips the process-wide `failpoints::AFTER_TREE_MUTATION` flag, which
-  another restore test running in parallel can observe. Hardening-phase item;
-  needs its own go.
+- **Flaky core tests — fixed 2026-10-25 (`52ad932`, test-only).**
+  `failed_restore_after_tree_mutation…` (seen 2026-10-24) and
+  `failed_complete_merge_after_staging…` (2 of 3 full runs on 2026-10-25)
+  armed process-wide `AtomicBool` failpoints that any parallel test could
+  consume; the flags are thread-local now. 5 of 5 full core runs green. Done
+  without a separate go because it blocked verifying the web server fixes;
+  no production code changed.
 
 ## Next
 
-1. **Web server fixes** (`docs/plans/PLAN_WEB_SERVER_FIXES.md`): propose
-   slice 1, settings save with a file-backed secret store when the OS
-   keyring is unavailable; it blocks every other setting on the server.
+1. **Push the web server fixes** (five commits since `8d587a2`; push needs
+   the owner's go) and watch Validation. Then the owner's checks on the
+   second machine after `git pull && scripts/install-web.sh`: Settings
+   save, backup picker shows Backups, Save Revision on the NAS lists an
+   entry.
 2. **Web installer shipped and pushed** (`docs/plans/PLAN_WEB_INSTALLER.md`):
    ask for the push go, then the owner's first real install on the server
    (`scripts/install-web.sh`, NAS folder when asked) is the verification.
@@ -156,6 +158,12 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section.
+- **2026-10-25 as of `52ad932`** (web server fixes, unpushed): fmt, clippy
+  `-D warnings` and tests green for core (138, five full runs), services,
+  web, tui, converter; release-metadata script; `bash -n` + shellcheck 0.11
+  on the scripts; UI lint/build/test (97). Tauri crate not compiled on this
+  box (Known drift). Installer dry runs with `--backup`; live `chikn-web`
+  start shows the ownership line and answers `/api/info`.
 - **2026-10-24 as of `150bfcf`, pushed to `origin` and `github`**: GitHub
   Validation run `40105127486` succeeded (Linux harness, Windows process
   helper, macOS); Tauri Bundles run `40105127518` was still in progress
