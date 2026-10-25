@@ -19,9 +19,11 @@
 //! ```
 
 pub mod rtf;
+pub mod rtf_prepare;
+pub mod rtf_text;
 pub mod scrivx;
 
-pub use rtf::{html_string_to_rtf, html_to_rtf, rtf_to_html};
+pub use rtf::{html_string_to_rtf, html_to_rtf, rtf_file_to_markdown, rtf_to_html, RtfConversion};
 pub use scrivx::{
     get_media_path, get_rtf_path, parse_scrivx, BinderItem, BinderMetadata, ScrivenerProject,
 };

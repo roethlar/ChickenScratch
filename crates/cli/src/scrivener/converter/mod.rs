@@ -38,7 +38,7 @@ use std::path::Path;
 use uuid::Uuid;
 
 use super::parser::scrivx::sanitize_file_extension;
-use super::parser::{get_media_path, get_rtf_path, parse_scrivx, rtf_to_html, BinderItem};
+use super::parser::{get_media_path, get_rtf_path, parse_scrivx, rtf_file_to_markdown, BinderItem};
 use chickenscratch_core::core::project::{fidelity, writer};
 use chickenscratch_core::models::{Document, Project, TreeNode};
 use chickenscratch_core::utils::error::ChiknError;
@@ -393,7 +393,7 @@ fn convert_binder_items_inner(
                 // Folders in Scrivener can also have their own text content
                 let rtf_path = get_rtf_path(scriv_path, &item.uuid)?;
                 if rtf_path.exists() {
-                    let content = rtf_to_html(&rtf_path, pandoc_path)?;
+                    let content = read_document_text(&rtf_path, item, uuid_to_path, pandoc_path)?;
                     if !content.trim().is_empty() {
                         let doc_id = Uuid::new_v4().to_string();
                         let slug = chickenscratch_core::utils::slug::unique_slug(
@@ -455,7 +455,7 @@ fn convert_binder_items_inner(
 
                 let rtf_path = get_rtf_path(scriv_path, &item.uuid)?;
                 let content = if rtf_path.exists() {
-                    rtf_to_html(&rtf_path, pandoc_path)?
+                    read_document_text(&rtf_path, item, uuid_to_path, pandoc_path)?
                 } else {
                     String::new()
                 };
@@ -596,6 +596,27 @@ fn convert_binder_items_inner(
     }
 
     Ok(hierarchy)
+}
+
+/// One document's RTF as Markdown. When Pandoc refuses the file, the text
+/// comes in plain and the document is named in the import warnings
+/// (PLAN_SCRIVENER_FIDELITY slice 1): the import goes on instead of dying
+/// on one bad file.
+fn read_document_text(
+    rtf_path: &Path,
+    item: &BinderItem,
+    uuid_to_path: &mut HashMap<String, String>,
+    pandoc_path: Option<&Path>,
+) -> Result<String, ChiknError> {
+    let converted = rtf_file_to_markdown(rtf_path, pandoc_path)?;
+    if converted.fell_back {
+        let title = item.title.as_deref().unwrap_or("Untitled");
+        uuid_to_path.insert(
+            format!("__skipped__plain-{}", item.uuid),
+            format!("'{title}': its formatting could not be read, so the text was imported plain."),
+        );
+    }
+    Ok(converted.markdown)
 }
 
 fn validate_media_file_extensions(items: &[BinderItem]) -> Result<(), ChiknError> {
@@ -768,12 +789,172 @@ mod tests {
         assert_eq!(result.unwrap(), scrivx_file);
     }
 
+    fn pandoc_present() -> bool {
+        std::process::Command::new("pandoc")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    /// PLAN_SCRIVENER_FIDELITY slice 1: a document Pandoc refuses comes in
+    /// as plain text with a warning naming it; the import does not die.
+    #[test]
+    fn unreadable_rtf_imports_plain_with_a_warning() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Broken.scriv");
+        let output_path = temp_dir.path().join("Broken.chikn");
+        let good = "A1B2C3D4-0000-4000-8000-000000000001";
+        let bad = "A1B2C3D4-0000-4000-8000-000000000002";
+        for (uuid, rtf) in [
+            (good, "{\\rtf1\\ansi Fine text.\\\n}"),
+            // Truncated file: Pandoc stops with "unexpected end of input".
+            (bad, "{\\rtf1\\ansi Rescued *text* with {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://X-1\"}}{\\fldrslt a link}}"),
+        ] {
+            let dir = scriv_path.join("Files").join("Data").join(uuid);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("content.rtf"), rtf).unwrap();
+        }
+        fs::write(
+            scriv_path.join("Broken.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="2.0">
+    <Binder>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000D" Type="DraftFolder">
+            <Title>Draft</Title>
+            <Children>
+                <BinderItem UUID="{good}" Type="Text"><Title>Fine</Title></BinderItem>
+                <BinderItem UUID="{bad}" Type="Text"><Title>Damaged</Title></BinderItem>
+            </Children>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#
+            ),
+        )
+        .unwrap();
+
+        let report = import_scriv_with_report(&scriv_path, &output_path, None)
+            .expect("one unreadable document must not fail the import");
+        let damaged = report
+            .project
+            .documents
+            .values()
+            .find(|d| d.name == "Damaged")
+            .expect("the damaged document is imported");
+        assert_eq!(
+            damaged.content, "Rescued \\*text\\* with [a link](scrivcmt://X-1)",
+            "plain text, Markdown-escaped, hyperlink kept"
+        );
+        let fine = report
+            .project
+            .documents
+            .values()
+            .find(|d| d.name == "Fine")
+            .unwrap();
+        assert_eq!(fine.content.trim(), "Fine text.");
+        assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
+        assert!(
+            report.warnings[0].starts_with("'Damaged':"),
+            "the warning names the document: {}",
+            report.warnings[0]
+        );
+    }
+
+    /// The Zoe 2 sample used to abort the whole import on one hex escape
+    /// followed by an apostrophe (`Zo\'eb's`).
+    #[test]
+    fn zoe_sample_imports() {
+        let sample_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("samples/Zoe 2.scriv");
+        if !sample_path.exists() || !pandoc_present() {
+            eprintln!("Skipping test: Zoe 2 sample or Pandoc not available");
+            return;
+        }
+        let temp_dir = TempDir::new().unwrap();
+        let report =
+            import_scriv_with_report(&sample_path, &temp_dir.path().join("Zoe.chikn"), None)
+                .expect("Zoe 2 imports");
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        assert!(
+            report
+                .project
+                .documents
+                .values()
+                .any(|d| d.content.contains("Zoë's first")),
+            "the accented name with its apostrophe survives"
+        );
+    }
+
+    /// Scrivener paragraphs (backslash-newline) stay separate paragraphs and
+    /// apostrophes are written plain, not as `\'`.
+    #[test]
+    fn corn_opening_keeps_paragraphs_and_plain_apostrophes() {
+        let sample_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("samples/Corn.scriv");
+        if !sample_path.exists() || !pandoc_present() {
+            eprintln!("Skipping test: Corn sample or Pandoc not available");
+            return;
+        }
+        let temp_dir = TempDir::new().unwrap();
+        let report =
+            import_scriv_with_report(&sample_path, &temp_dir.path().join("Corn.chikn"), None)
+                .expect("Corn imports");
+        let opening = report
+            .project
+            .documents
+            .values()
+            .find(|d| d.name == "Opening")
+            .expect("Opening document");
+        let paragraphs = opening
+            .content
+            .split("\n\n")
+            .filter(|p| !p.trim().is_empty())
+            .count();
+        assert!(
+            paragraphs >= 4,
+            "expected separate paragraphs, got {paragraphs}:\n{}",
+            opening.content
+        );
+        assert!(
+            !opening.content.contains("\\'"),
+            "no escaped apostrophes:\n{}",
+            opening.content
+        );
+        assert!(
+            opening.content.contains("Corn Henks' daddy"),
+            "{}",
+            opening.content
+        );
+        assert!(
+            !opening.content.lines().any(|l| l.ends_with('\\')),
+            "no hard-break backslashes at line ends:\n{}",
+            opening.content
+        );
+    }
+
     #[test]
     fn test_import_corn_scriv_sample() {
         use tempfile::TempDir;
 
-        // Check if sample file exists
+        // Check if sample file exists (two levels up: crates/cli → crates →
+        // repo root; one level used to point at a folder that does not
+        // exist, so this test always skipped).
         let sample_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
             .parent()
             .unwrap()
             .join("samples/Corn.scriv");
