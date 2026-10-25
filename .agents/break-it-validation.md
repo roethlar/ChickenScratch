@@ -44,7 +44,7 @@ Ground rules for whoever drives it (agent or owner):
 - 2026-07-17: script prepared; Claude Cowork could not drive it; owner went
   to bed before an alternative driver ran. Not yet executed.
 - 2026-08-29: executed steps 1–9 (Claude Code driving the **signed release
-  bundle** `target/release/bundle/macos/ChickenScratch.app`, not dev mode —
+  bundle** `target/release/bundle/macos/ChickenScratch.app`, not dev mode — <!-- lint: allow (build-output path under gitignored target/, not a repo file) -->
   both were running; the release app took focus and all interaction hit it).
   Stopped at step 9 per ground rules (step failed; step 10 needs history).
   Results below. The test project was left in its post-step-9 state
@@ -75,7 +75,7 @@ Claude Code drove a freshly built release bundle (`cargo tauri build
 | 10 | Edit + save "validation edit 3", restore "after rebuild" | text reverts, restore is a NEW entry | On screen: text reverted, new entry "Restored to: after rebuild". **On disk: the pre-restore text was written back over the restored file in the same second** (git status dirty vs the restore commit). Quit and reopen shows the pre-restore text. Reproduced on a clean retest ("validation edit 4") | **LOST DATA** (restore silently undone) |
 | 7a | `bits.meta` → invalid-UTF-8 garbage; reopen | read-only open, plain-English warning naming file | Unchanged from August: refuses to open, banner "IO error: stream did not contain valid UTF-8", no filename. File byte-identical | DEGRADED SAFELY (dev-speak, no filename) |
 | 7b | `bits.meta` → valid-UTF-8 bad YAML; reopen | same | Opens **read-only**, no quarantine, file byte-identical. Banner wrongly says "This project was made by an older version…"; the real reason ("the notes file 'manuscript/bits.meta' is damaged") appears only as a hover tooltip | DEGRADED SAFELY (misleading banner) |
-| 8 | Stray `manuscript/stray.md`; reopen | read-only warning or safe adoption | Opens read-only; "stray" listed in the binder; same misleading banner, real reason only in the tooltip; nothing on disk changed | DEGRADED SAFELY (misleading banner) |
+| 8 | Stray `manuscript/stray.md`; reopen | read-only warning or safe adoption | Opens read-only; "stray" listed in the binder; same misleading banner, real reason only in the tooltip; nothing on disk changed | DEGRADED SAFELY (misleading banner) | <!-- lint: allow (hypothetical path in manual validation script) -->
 
 Extra check, same session: create draft "alt", add "ALTONLY" to Opening,
 save a revision, switch to master. Screen shows master's text, but
@@ -105,8 +105,10 @@ nothing committed) drove the real `load_project_inner` path:
 - **Delete `.git` while the project stays open (no reopen):**
   `save_revision` returns `Err(Unknown("Not a git repo: …"))` — an error,
   not a silent no-op. Nothing rebuilds history until the next open.
-- The open path (`reader.rs`, `fidelity.rs`, `commands/project.rs`) is
-  unchanged since before the 2026-08-29 run; self-heal landed 2026-07-16
+- The open path (`reader.rs`, `fidelity.rs`,
+  `src-tauri/src/commands/project.rs` — the loading logic moved to
+  `crates/services/src/project.rs` on 2026-10-24, `ef262d9`) was unchanged
+  since before the 2026-08-29 run; self-heal landed 2026-07-16
   (`0d3c027`). The release bundle used on 2026-08-29 no longer exists, so
   its build date cannot be checked.
 - UI: with no drafts listed, `Revisions.tsx` falls back to the badge
@@ -134,7 +136,7 @@ note whether an error appears.
 | 6 | kill -9 ×3 (after save; between autosave and commit) | clean reopen, nothing before last save missing, no junk | Clean reopen every time; no lock/tmp junk; autosaved-but-uncommitted text survived and was committable after relaunch. Minor: session killed right after import lost its Recent Projects entry | SURVIVED |
 | 7a | `opening.meta` → invalid-UTF-8 garbage | read-only open, plain-English warning naming file | Project **refuses to open**: banner "IO error: stream did not contain valid UTF-8" — dev-speak, no filename, back to welcome screen. Garbage byte-identical after | DEGRADED SAFELY (message fails I-level "plain English, name the file") |
 | 7b | `opening.meta` → valid-UTF-8 garbage (bad YAML) | same | Opens **normally, zero warning**; corrupt file silently renamed to `opening.meta.corrupt-<uuid>` (byte-identical), metadata reset to defaults. Writer never told | DEGRADED SAFELY but **silent** — warning missing |
-| 8 | Stranded `manuscript/stray.md` | read-only warning or safe adoption | Neither: file silently ignored — not in binder, no warning; file itself untouched | DEGRADED SAFELY but **silent** |
+| 8 | Stranded `manuscript/stray.md` | read-only warning or safe adoption | Neither: file silently ignored — not in binder, no warning; file itself untouched | DEGRADED SAFELY but **silent** | <!-- lint: allow (hypothetical path in manual validation script) -->
 | 9 | Delete `.git`; reopen | repo quietly rebuilt, Save Revision works | Opens fine, panel says "No revisions yet" (branch badge flips master→main), but **no repo is created — Save Revision silently no-ops**: no commit, no draft, no error; describe text just sits there. Text autosave to disk still works | **LOST DATA** (requested revision silently discarded) — hardening bug, becomes next fix |
 | 10 | Restore previous revision | revert + new history entry | Not runnable — no history exists after step 9 | BLOCKED by 9 |
 
