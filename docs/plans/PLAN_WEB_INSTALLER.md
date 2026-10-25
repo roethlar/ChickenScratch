@@ -118,7 +118,7 @@ owner's `~/.config`. Behaviour:
 
 ## [MODEL] Tests
 
-- [ ] `cargo test --locked -p chickenscratch-web` — config precedence, no
+- [x] `cargo test --locked -p chickenscratch-web` — config precedence, no
       file, malformed file, `--show-config` output
 - [ ] `bash -n` and `shellcheck` on both scripts
 - [ ] Installer dry run on the Linux box into a throwaway `$HOME`
@@ -144,3 +144,7 @@ version with the same projects."
 
 - 2026-10-24: planned and queued on the owner's "yeah" to the words-first
   proposal. No slice approved yet; propose slice 1 (config file) first.
+- 2026-10-24: owner "go" → slice 1 landed: `chikn-web` reads `web.toml`,
+  flags and `CHIKN_WEB_*` win, `--config`, `--show-config`, plain refusal
+  when no root is set anywhere. 12 unit tests; live smoke of every source.
+  Slices 2–3 await their go.
