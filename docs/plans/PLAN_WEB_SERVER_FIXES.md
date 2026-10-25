@@ -118,7 +118,7 @@ web version cannot save a revision there.
 
 ## [MODEL] Tests
 
-- [ ] `cargo test -p chickenscratch-services` — fallback store cases
+- [x] `cargo test -p chickenscratch-services` — fallback store cases (5 new)
 - [ ] `cargo test -p chickenscratch-web` — `backup` precedence, `/api/info`
       roots, `/api/fs/dirs` inside the backup root and refused outside both
 - [ ] UI tests — picker switches roots; Settings uses the Backups root
@@ -144,3 +144,8 @@ web version cannot save a revision there.
 
 - 2026-10-25: drafted on the owner's "plan". No slice approved; slice 1
   (settings save) proposed first.
+- 2026-10-25: owner "finish all slices" → slice 1 landed: `FallbackSecretStore`
+  (OS keyring, else owner-only `secrets.json`; one probe per process, one
+  warning line). Slice 3 default follows the recommendation (skip the check
+  in `chikn-web`, `verify_repo_owner = true` opts back in) since the go
+  covered all slices without a different answer.

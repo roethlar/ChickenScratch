@@ -3,9 +3,11 @@ use chickenscratch_core::utils::process::{
 };
 use chickenscratch_core::ChiknError;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::ai::openai_chat_completions_url;
 
@@ -261,6 +263,12 @@ fn recent_path() -> PathBuf {
     config_dir().join("recent-projects.json")
 }
 
+/// Owner-only secrets file, used only on machines without an OS keyring
+/// (a headless server, `docs/plans/PLAN_WEB_SERVER_FIXES.md` slice 1).
+fn secrets_path() -> PathBuf {
+    config_dir().join("secrets.json")
+}
+
 // ── Secret Storage ────────────────────────────────────
 
 const KEYRING_ACCOUNT: &str = "default";
@@ -272,39 +280,203 @@ trait SecretStore {
     fn delete_secret(&self, service: &str, account: &str) -> Result<(), ChiknError>;
 }
 
+/// Raw keyring operations, kept separate from `SecretStore` so the fallback
+/// below can tell "no such entry" from "this machine has no keyring".
+trait KeyringBackend {
+    fn get(&self, service: &str, account: &str) -> Result<String, keyring::Error>;
+    fn set(&self, service: &str, account: &str, secret: &str) -> Result<(), keyring::Error>;
+    fn delete(&self, service: &str, account: &str) -> Result<(), keyring::Error>;
+}
+
 struct OsKeyring;
 
-impl OsKeyring {
-    fn entry(service: &str, account: &str) -> Result<keyring::Entry, ChiknError> {
-        keyring::Entry::new(service, account).map_err(keyring_error)
+impl KeyringBackend for OsKeyring {
+    fn get(&self, service: &str, account: &str) -> Result<String, keyring::Error> {
+        keyring::Entry::new(service, account)?.get_password()
+    }
+
+    fn set(&self, service: &str, account: &str, secret: &str) -> Result<(), keyring::Error> {
+        keyring::Entry::new(service, account)?.set_password(secret)
+    }
+
+    fn delete(&self, service: &str, account: &str) -> Result<(), keyring::Error> {
+        keyring::Entry::new(service, account)?.delete_credential()
     }
 }
 
-impl SecretStore for OsKeyring {
-    fn get_secret(&self, service: &str, account: &str) -> Result<Option<String>, ChiknError> {
-        match Self::entry(service, account)?.get_password() {
-            Ok(secret) => Ok(Some(secret)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(err) => Err(keyring_error(err)),
-        }
-    }
-
-    fn set_secret(&self, service: &str, account: &str, secret: &str) -> Result<(), ChiknError> {
-        Self::entry(service, account)?
-            .set_password(secret)
-            .map_err(keyring_error)
-    }
-
-    fn delete_secret(&self, service: &str, account: &str) -> Result<(), ChiknError> {
-        match Self::entry(service, account)?.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(err) => Err(keyring_error(err)),
-        }
-    }
+/// Errors that mean the machine has no usable keyring at all — a headless
+/// Linux box with no Secret Service on D-Bus ("The name is not activatable"),
+/// a locked or missing collection — as opposed to a missing entry.
+fn keyring_unavailable(err: &keyring::Error) -> bool {
+    matches!(
+        err,
+        keyring::Error::PlatformFailure(_) | keyring::Error::NoStorageAccess(_)
+    )
 }
 
 fn keyring_error(err: keyring::Error) -> ChiknError {
     ChiknError::Unknown(format!("Keyring error: {}", err))
+}
+
+/// `secrets.json` next to `settings.json`: `{ service: { account: secret } }`,
+/// written owner-only. Only reached when the OS keyring is unavailable.
+struct FileSecretStore {
+    path: PathBuf,
+}
+
+type SecretMap = BTreeMap<String, BTreeMap<String, String>>;
+
+impl FileSecretStore {
+    fn read(&self) -> Result<SecretMap, ChiknError> {
+        match fs::read_to_string(&self.path) {
+            Ok(text) => serde_json::from_str(&text).map_err(|e| {
+                ChiknError::Unknown(format!(
+                    "Secrets file {} is not readable JSON: {e}",
+                    self.path.display()
+                ))
+            }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SecretMap::new()),
+            Err(e) => Err(ChiknError::Unknown(format!(
+                "Cannot read secrets file {}: {e}",
+                self.path.display()
+            ))),
+        }
+    }
+
+    fn write(&self, map: &SecretMap) -> Result<(), ChiknError> {
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let json = serde_json::to_string_pretty(map)
+            .map_err(|e| ChiknError::Unknown(format!("Failed to serialize secrets: {e}")))?;
+        let tmp = self.path.with_extension("json.tmp");
+        {
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create(true).truncate(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options.open(&tmp)?;
+            use std::io::Write;
+            file.write_all(json.as_bytes())?;
+            file.sync_all()?;
+        }
+        fs::rename(&tmp, &self.path)?;
+        Ok(())
+    }
+}
+
+impl SecretStore for FileSecretStore {
+    fn get_secret(&self, service: &str, account: &str) -> Result<Option<String>, ChiknError> {
+        Ok(self
+            .read()?
+            .get(service)
+            .and_then(|accounts| accounts.get(account))
+            .cloned())
+    }
+
+    fn set_secret(&self, service: &str, account: &str, secret: &str) -> Result<(), ChiknError> {
+        let mut map = self.read()?;
+        map.entry(service.to_string())
+            .or_default()
+            .insert(account.to_string(), secret.to_string());
+        self.write(&map)
+    }
+
+    fn delete_secret(&self, service: &str, account: &str) -> Result<(), ChiknError> {
+        let mut map = self.read()?;
+        let Some(accounts) = map.get_mut(service) else {
+            return Ok(());
+        };
+        if accounts.remove(account).is_none() {
+            return Ok(());
+        }
+        if accounts.is_empty() {
+            map.remove(service);
+        }
+        self.write(&map)
+    }
+}
+
+/// The OS keyring when the machine has one, the owner-only file when it does
+/// not. The first platform failure marks the keyring unavailable for the
+/// rest of the process (one probe, one warning), so saving settings on a
+/// headless server stays quick and never fails for lack of a keyring.
+struct FallbackSecretStore<K: KeyringBackend> {
+    os: K,
+    file: FileSecretStore,
+    os_unavailable: &'static AtomicBool,
+}
+
+impl<K: KeyringBackend> FallbackSecretStore<K> {
+    fn os_down(&self) -> bool {
+        self.os_unavailable.load(Ordering::Relaxed)
+    }
+
+    fn mark_os_down(&self, err: &keyring::Error) {
+        if !self.os_unavailable.swap(true, Ordering::Relaxed) {
+            eprintln!(
+                "chickenscratch: the system keyring is unavailable ({err}); \
+secrets are kept owner-only in {}",
+                self.file.path.display()
+            );
+        }
+    }
+}
+
+impl<K: KeyringBackend> SecretStore for FallbackSecretStore<K> {
+    fn get_secret(&self, service: &str, account: &str) -> Result<Option<String>, ChiknError> {
+        if !self.os_down() {
+            match self.os.get(service, account) {
+                Ok(secret) => return Ok(Some(secret)),
+                Err(keyring::Error::NoEntry) => {}
+                Err(err) if keyring_unavailable(&err) => self.mark_os_down(&err),
+                Err(err) => return Err(keyring_error(err)),
+            }
+        }
+        self.file.get_secret(service, account)
+    }
+
+    fn set_secret(&self, service: &str, account: &str, secret: &str) -> Result<(), ChiknError> {
+        if !self.os_down() {
+            match self.os.set(service, account, secret) {
+                Ok(()) => {
+                    // The keyring now holds it; a stale copy in the file
+                    // must not shadow a later change.
+                    let _ = self.file.delete_secret(service, account);
+                    return Ok(());
+                }
+                Err(err) if keyring_unavailable(&err) => self.mark_os_down(&err),
+                Err(err) => return Err(keyring_error(err)),
+            }
+        }
+        self.file.set_secret(service, account, secret)
+    }
+
+    fn delete_secret(&self, service: &str, account: &str) -> Result<(), ChiknError> {
+        if !self.os_down() {
+            match self.os.delete(service, account) {
+                Ok(()) | Err(keyring::Error::NoEntry) => {}
+                Err(err) if keyring_unavailable(&err) => self.mark_os_down(&err),
+                Err(err) => return Err(keyring_error(err)),
+            }
+        }
+        self.file.delete_secret(service, account)
+    }
+}
+
+static OS_KEYRING_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
+
+fn secret_store() -> FallbackSecretStore<OsKeyring> {
+    FallbackSecretStore {
+        os: OsKeyring,
+        file: FileSecretStore {
+            path: secrets_path(),
+        },
+        os_unavailable: &OS_KEYRING_UNAVAILABLE,
+    }
 }
 
 fn non_empty_secret(secret: &Option<String>) -> Option<&str> {
@@ -481,16 +653,16 @@ fn save_app_settings_to_path(
     write_settings_to_path(path, &settings)
 }
 pub fn get_app_settings() -> AppSettings {
-    let mut settings = load_app_settings_from_path(&settings_path(), &OsKeyring, true);
+    let mut settings = load_app_settings_from_path(&settings_path(), &secret_store(), true);
     redact_secrets(&mut settings);
     settings
 }
 
 pub(super) fn get_app_settings_hydrated() -> AppSettings {
-    load_app_settings_from_path(&settings_path(), &OsKeyring, true)
+    load_app_settings_from_path(&settings_path(), &secret_store(), true)
 }
 pub fn save_app_settings(settings: AppSettings) -> Result<(), ChiknError> {
-    save_app_settings_to_path(&settings_path(), settings, &OsKeyring)
+    save_app_settings_to_path(&settings_path(), settings, &secret_store())
 }
 
 fn validate_app_settings(settings: &AppSettings) -> Result<(), ChiknError> {
@@ -1084,5 +1256,180 @@ mod tests {
         let persisted = read_json_settings(&path);
         assert_eq!(persisted.ai.api_key, Some("sk-plaintext".to_string()));
         assert!(!persisted.ai.api_key_in_keyring);
+    }
+}
+
+#[cfg(test)]
+mod fallback_store_tests {
+    //! The machine without a keyring (`PLAN_WEB_SERVER_FIXES.md` slice 1).
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    /// Every call fails the way a headless Linux box does.
+    struct HeadlessBackend;
+
+    fn platform_failure() -> keyring::Error {
+        keyring::Error::PlatformFailure(Box::new(std::io::Error::other(
+            "DBus error: The name is not activatable",
+        )))
+    }
+
+    impl KeyringBackend for HeadlessBackend {
+        fn get(&self, _s: &str, _a: &str) -> Result<String, keyring::Error> {
+            Err(platform_failure())
+        }
+        fn set(&self, _s: &str, _a: &str, _v: &str) -> Result<(), keyring::Error> {
+            Err(platform_failure())
+        }
+        fn delete(&self, _s: &str, _a: &str) -> Result<(), keyring::Error> {
+            Err(platform_failure())
+        }
+    }
+
+    /// A keyring that works, in memory.
+    #[derive(Default)]
+    struct MemoryBackend {
+        entries: Mutex<HashMap<(String, String), String>>,
+    }
+
+    impl KeyringBackend for MemoryBackend {
+        fn get(&self, s: &str, a: &str) -> Result<String, keyring::Error> {
+            self.entries
+                .lock()
+                .unwrap()
+                .get(&(s.to_string(), a.to_string()))
+                .cloned()
+                .ok_or(keyring::Error::NoEntry)
+        }
+        fn set(&self, s: &str, a: &str, v: &str) -> Result<(), keyring::Error> {
+            self.entries
+                .lock()
+                .unwrap()
+                .insert((s.to_string(), a.to_string()), v.to_string());
+            Ok(())
+        }
+        fn delete(&self, s: &str, a: &str) -> Result<(), keyring::Error> {
+            self.entries
+                .lock()
+                .unwrap()
+                .remove(&(s.to_string(), a.to_string()));
+            Ok(())
+        }
+    }
+
+    fn store<K: KeyringBackend>(os: K, dir: &Path) -> FallbackSecretStore<K> {
+        FallbackSecretStore {
+            os,
+            file: FileSecretStore {
+                path: dir.join("secrets.json"),
+            },
+            os_unavailable: Box::leak(Box::new(AtomicBool::new(false))),
+        }
+    }
+
+    fn settings_with_api_key(key: Option<&str>) -> AppSettings {
+        AppSettings {
+            ai: AiSettings {
+                provider: "anthropic".to_string(),
+                api_key: key.map(str::to_string),
+                ..AiSettings::default()
+            },
+            ..AppSettings::default()
+        }
+    }
+
+    #[test]
+    fn saving_settings_without_secrets_needs_no_keyring_and_writes_no_secrets_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings_file = dir.path().join("settings.json");
+        let store = store(HeadlessBackend, dir.path());
+
+        save_app_settings_to_path(&settings_file, AppSettings::default(), &store)
+            .expect("a headless box can still save settings");
+
+        assert!(settings_file.exists());
+        assert!(!dir.path().join("secrets.json").exists());
+        assert!(store.os_unavailable.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn secrets_fall_back_to_an_owner_only_file_and_load_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings_file = dir.path().join("settings.json");
+        let store = store(HeadlessBackend, dir.path());
+
+        save_app_settings_to_path(&settings_file, settings_with_api_key(Some("sk-1")), &store)
+            .unwrap();
+
+        let secrets = dir.path().join("secrets.json");
+        assert!(secrets.exists());
+        let on_disk: AppSettings =
+            serde_json::from_str(&fs::read_to_string(&settings_file).unwrap()).unwrap();
+        assert_eq!(
+            on_disk.ai.api_key, None,
+            "settings.json never holds the key"
+        );
+        assert!(on_disk.ai.api_key_in_keyring);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&secrets).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "secrets file must be owner-only");
+        }
+
+        let loaded = load_app_settings_from_path(&settings_file, &store, true);
+        assert_eq!(loaded.ai.api_key.as_deref(), Some("sk-1"));
+
+        // Clearing the key removes it from the file too.
+        let mut cleared = settings_with_api_key(None);
+        cleared.ai.api_key_in_keyring = false;
+        save_app_settings_to_path(&settings_file, cleared, &store).unwrap();
+        assert_eq!(
+            store
+                .get_secret(&ai_api_key_service("anthropic"), KEYRING_ACCOUNT)
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_working_keyring_is_used_and_the_file_stays_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings_file = dir.path().join("settings.json");
+        let store = store(MemoryBackend::default(), dir.path());
+
+        save_app_settings_to_path(&settings_file, settings_with_api_key(Some("sk-2")), &store)
+            .unwrap();
+
+        assert!(!dir.path().join("secrets.json").exists());
+        assert!(!store.os_unavailable.load(Ordering::Relaxed));
+        assert_eq!(
+            store
+                .os
+                .get(&ai_api_key_service("anthropic"), KEYRING_ACCOUNT)
+                .unwrap(),
+            "sk-2"
+        );
+    }
+
+    #[test]
+    fn a_missing_keyring_entry_still_consults_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store(MemoryBackend::default(), dir.path());
+        store
+            .file
+            .set_secret("svc", KEYRING_ACCOUNT, "from-file")
+            .unwrap();
+        assert_eq!(
+            store.get_secret("svc", KEYRING_ACCOUNT).unwrap().as_deref(),
+            Some("from-file")
+        );
+    }
+
+    #[test]
+    fn unavailable_is_distinguished_from_other_keyring_errors() {
+        assert!(keyring_unavailable(&platform_failure()));
+        assert!(!keyring_unavailable(&keyring::Error::NoEntry));
     }
 }

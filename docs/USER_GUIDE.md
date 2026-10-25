@@ -416,6 +416,10 @@ It prints the address to open.
   it to the open internet.
 - The server only ever touches files under the projects folder (plus the
   backup folder you choose in Settings).
+- Settings are saved in `~/.config/chickenscratch/settings.json`. An AI key
+  or git token goes into the system's password store when the machine has
+  one; a server without a desktop has none, so those secrets are kept in
+  `~/.config/chickenscratch/secrets.json`, readable only by your user.
 - The installer's background service runs under your own account, so
   project files are owned by you, not by root.
 

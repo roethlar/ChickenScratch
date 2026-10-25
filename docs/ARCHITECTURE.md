@@ -71,7 +71,7 @@ Cargo workspace: root `Cargo.toml` — members are `crates/core`, `crates/cli`, 
 
 - One plain function per user-facing operation (the former Tauri command bodies)
 - App-global settings (`~/.config/chickenscratch/settings.json`)
-- Keyring for secrets (AI keys, remote tokens)
+- Keyring for secrets (AI keys, remote tokens); on a machine with no usable keyring (headless Linux) they fall back to an owner-only `secrets.json` beside `settings.json` (`services/settings.rs` `FallbackSecretStore`)
 - AI HTTP calls (not format); streamed output goes through the `AiStreamSink` trait
 - Per-project write locks and the fresh-permit boundary for every mutation
 - Does **not** duplicate reader/writer logic — imports `chickenscratch_core::...`
