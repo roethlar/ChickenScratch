@@ -109,10 +109,16 @@ read becomes plain text with a named warning instead of killing the import.
   named characters (`\emdash`, `\rquote`, …) and `\{ \} \\`. A `\field`
   group becomes the Markdown link `[result text](target)` so the
   `scrivcmt://` anchors slice 4 needs survive this path too. **The
-  extracted text is escaped for Markdown** (backslash, `*`, `_`, `` ` ``,
-  `[`, `]`, `<`, `>`, `#`, `|`, `~`, and a leading `+`, `-`, `>`, `#` or
-  `N.` on a line) before the generated links are inserted, so literal stars
-  or angle brackets in the prose stay visible after reopening and export.
+  extracted text is escaped for Pandoc Markdown**, the dialect compile uses
+  (`-f markdown`, all extensions on): every ASCII punctuation character
+  that opens a construct there is backslash-escaped — backslash, `*`, `_`,
+  `` ` ``, `[`, `]`, `<`, `>`, `#`, `|`, `~`, `&` (entities such as
+  `&copy;`), `$` (TeX math), `^` (superscript, inline notes), `@`
+  (citations) — plus a leading `+`, `-`, `>`, `#` or `N.` on a line, before
+  the generated links are inserted, so literal stars, angle brackets,
+  entities or dollar signs in the prose stay visible after reopening and
+  export. Pandoc accepts a backslash before any ASCII punctuation, so the
+  escapes are safe wherever they land.
   The document is imported as that text and a warning names it: "<title>:
   formatting could not be read; text imported plain". The import as a whole
   succeeds. Pandoc missing entirely still fails up front as today.
@@ -204,11 +210,21 @@ read becomes plain text with a named warning instead of killing the import.
   `crates/core/src/core/compile.rs` has no such step: today every footnote,
   imported or typed, is lost from compiled output (its body is an attribute
   Pandoc never reads). This slice adds the step in core compile: before
-  Pandoc runs, each `<sup class="footnote" data-body="…">…</sup>` becomes
-  the Pandoc inline footnote `^[body]` (attribute-unescaped). Test: a
-  document with one footnote compiled to Markdown and to DOCX shows the
-  body as a footnote; a document without footnotes compiles byte-identical
-  to before.
+  Pandoc runs, each `<sup class="footnote" data-body="…">…</sup>` becomes a
+  **reference footnote** `[^cs-fnN]` with N unique across the whole compiled
+  document, and its definition `[^cs-fnN]: …` is appended after the last
+  section. The body (plain text, attribute-unescaped) is serialised as
+  literal text: every ASCII punctuation character is backslash-escaped, and
+  a body with blank lines becomes several paragraphs in the definition
+  (continuation paragraphs indented four spaces, as Pandoc requires), so a
+  `]`, a `<redacted>` or a two-paragraph note survive intact. Pandoc's
+  inline form `^[…]` is not used: it is single-paragraph only and a `]` in
+  the body ends it early. Tests: footnote bodies `A] B`, `<redacted> *x*`
+  and a two-paragraph body each compile to Markdown with one reference note
+  whose rendered text equals the body, and, where Pandoc is present, to
+  DOCX whose `word/footnotes.xml` holds the body text and whose
+  `word/document.xml` holds none of it; two footnotes get distinct ids; a
+  document without footnotes compiles byte-identical to before.
 - Anchors are gathered before any lossy step: the prepare step records each
   `scrivcmt://<ID>` field it passes, and after conversion (Pandoc or the
   fallback) every sidecar body is reconciled against the anchors found in
@@ -272,9 +288,10 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
       destination, two paragraphs, a tab, a hex escape and a `\uN` with
       fallback → two plain paragraphs with the right characters and no font
       names, colour tables or hex; a `\field` hyperlink → `[text](url)`;
-      text containing `*these stars*`, `<redacted>`, `[brackets]` and a
-      backslash reads back literally after a round trip through the
-      Markdown renderer used by compile.
+      text containing `*these stars*`, `<redacted>`, `[brackets]`,
+      `&copy;`, `$x$`, `^up^`, `@key` and a backslash reads back literally
+      after a round trip through Pandoc Markdown as compile uses it (exact
+      rendered text, Pandoc present).
 - [ ] import of a fixture whose one document is unreadable RTF → project
       with the plain text, its hyperlink kept, and one warning naming the
       document; `Zoe 2` imports (Pandoc present).
@@ -343,5 +360,9 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
   new findings, all admitted: footnotes never survive compile (core compile
   step added to slice 4); notes-only folders had no persistence target
   (companion document rule in slice 3); fallback text must be escaped for
-  Markdown; the fallback must skip unstarred non-body destinations. Round 3
-  pending.
+  Markdown; the fallback must skip unstarred non-body destinations.
+- 2026-10-25 round 3 (`027aa63`): reopened on two items, both admitted: the
+  escape list lacked `&` and `$` (Pandoc renders entities and TeX math);
+  the inline footnote form `^[…]` breaks on a `]` or a second paragraph, so
+  compile now emits reference footnotes with escaped, multi-paragraph
+  bodies. Everything else resolved; R1-8 awaits the owner. Round 4 pending.

@@ -122,4 +122,27 @@ Each checked against the working tree before acceptance.
   plan now names the destination set (`fonttbl`, `colortbl`, `pict`, …)
   and `\binN` skipping; test with a real sample header and a picture.
 
-**Plan revision**: committed for round 3 (see the plan's Status).
+**Plan revision**: committed for round 3 (`027aa63`).
+
+## Round 3 dispatch
+
+- **Reviewer**: same incantation; header `model: gpt-6-astra`, `reasoning
+  effort: xhigh`, `sandbox: read-only`, session
+  `01a174db-e1aa-72d1-ad8f-fc0c335417d6`. Reviewed SHA `027aa63fe005…`,
+  base `a9b76dd…`. Finished 21:03 UTC; exit 0; 95,784 tokens. Capability
+  proof: plan read, `git rev-parse HEAD` → `027aa63…`.
+- **Verdict**: `reopened`. R1-1..R1-7, R2-1, R2-2, R2-4 resolved; R1-8
+  owner ruling pending; R2-3 not resolved; one new finding.
+
+## Round 3 dispositions
+
+- **R2-3 — ADMITTED again.** The escape set lacked `&` (entities) and `$`
+  (TeX math); `^` and `@` added as well. Test extended to exact rendered
+  text through Pandoc Markdown.
+- **R3-1 Inline footnote form corrupts bodies — HIGH — ADMITTED.** Pandoc's
+  `^[…]` is single-paragraph and ends at the first `]`. Compile now emits
+  reference footnotes `[^cs-fnN]` with escaped, multi-paragraph
+  definitions; tests cover `]`, literal markup, two paragraphs, distinct
+  ids, and DOCX footnotes.xml contents.
+
+**Plan revision**: committed for round 4 (see the plan's Status).
