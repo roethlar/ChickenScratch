@@ -14,7 +14,12 @@ import { Toolbar } from "./Toolbar";
 import { FindReplace } from "./FindReplace";
 import { CommentMark } from "../comments/CommentMark";
 import { FootnoteNode } from "./FootnoteNode";
-import { setCurrentEditor, setPendingFlush, getEditorMarkdown } from "./editorRef";
+import {
+  setCurrentEditor,
+  setPendingFlush,
+  getEditorMarkdown,
+  takeEditorFocusRequest,
+} from "./editorRef";
 import { getReloadGeneration, isBarrierActive, type LeaseHandle } from "../../commands/barrier";
 import { useBarrierActive } from "../../hooks/useBarrier";
 import { Markdown } from "tiptap-markdown";
@@ -557,6 +562,7 @@ export function Editor() {
         // 3 emits update on setContent by default).
         editor.commands.setContent(md, { emitUpdate: false });
         setDirtyTracked(false);
+        if (takeEditorFocusRequest()) editor.commands.focus("end");
         await restoreSafetyCopy(activeDoc.id, activeDoc.name, md, () => cancelled);
       }
     };

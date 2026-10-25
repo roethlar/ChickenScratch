@@ -35,6 +35,20 @@ export function flushPendingEditorSave(lease?: LeaseHandle): Promise<void> {
   return pendingFlush ? pendingFlush(lease) : Promise.resolve();
 }
 
+/** One-shot request to put the cursor in the editor when the next document
+ * loads (Quick note, PLAN_RELOAD_SAFETY_MOBILE slice 3). The editor takes
+ * the request as it builds the buffer; on a phone the browser may still
+ * keep the keyboard closed until the writer taps, which is its call. */
+let focusRequested = false;
+export function requestEditorFocus(): void {
+  focusRequested = true;
+}
+export function takeEditorFocusRequest(): boolean {
+  const requested = focusRequested;
+  focusRequested = false;
+  return requested;
+}
+
 /** Registry of in-flight AI transform streams. The barrier lifecycle
  * cancels them at barrier entry (plan slice 3, round 4): a stream that
  * kept inserting deltas during or after a tree operation would mutate a

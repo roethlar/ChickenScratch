@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { FolderOpen, FilePlus, FileDown, Clock, AlertTriangle, ExternalLink } from "lucide-react";
+import { FolderOpen, FilePlus, FileDown, Clock, AlertTriangle, ExternalLink, PenLine } from "lucide-react";
 import { openExternal, pickFolder, pickSaveFile } from "../../platform";
 import { pickServerFolder } from "../shared/folderPickerRequest";
 import { isWeb, setWebEventsAvailable } from "../../commands/transport";
@@ -15,6 +15,7 @@ import {
 import { dialogPrompt } from "../shared/Dialog";
 import { toastError } from "../shared/Toast";
 import { isValidProjectName } from "../../utils/projectName";
+import { quickNote } from "../../quickNote";
 
 export function Welcome() {
   const openProject = useProjectStore((s) => s.openProject);
@@ -228,17 +229,37 @@ export function Welcome() {
     return normalized.replace(/^(?:[A-Za-z]:)?\/Users\/[^/]+\//, "~/");
   };
 
+  /** Quick note (web): open the project and start a dated note in one tap. */
+  const handleQuickNote = async (path: string) => {
+    setLastOpenAttempt(path);
+    setBusy(true);
+    await quickNote(path);
+    setBusy(false);
+  };
+
   const renderProjectRow = (item: { name: string; path: string }) => (
-    <button
-      key={item.path}
-      className="welcome-recent-item"
-      onClick={() => handleOpenRecent(item.path)}
-      disabled={busy}
-      title={item.path}
-    >
-      <span className="welcome-recent-name">{item.name}</span>
-      <span className="welcome-recent-path">{displayPath(item.path)}</span>
-    </button>
+    <div key={item.path} className="welcome-recent-row">
+      <button
+        className="welcome-recent-item"
+        onClick={() => handleOpenRecent(item.path)}
+        disabled={busy}
+        title={item.path}
+      >
+        <span className="welcome-recent-name">{item.name}</span>
+        <span className="welcome-recent-path">{displayPath(item.path)}</span>
+      </button>
+      {web && (
+        <button
+          className="welcome-quick-note"
+          onClick={() => handleQuickNote(item.path)}
+          disabled={busy}
+          title={`Quick note in ${item.name}`}
+          aria-label={`Quick note in ${item.name}`}
+        >
+          <PenLine size={16} />
+        </button>
+      )}
+    </div>
   );
 
   return (

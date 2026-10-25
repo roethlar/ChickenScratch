@@ -84,6 +84,8 @@ vi.mock("../components/shared/Dialog", () => ({
 }));
 const toastErrorMock = vi.hoisted(() => vi.fn());
 vi.mock("../components/shared/Toast", () => ({ toastError: toastErrorMock }));
+const quickNoteMock = vi.hoisted(() => vi.fn(async () => true));
+vi.mock("../quickNote", () => ({ quickNote: quickNoteMock }));
 
 import { Welcome } from "../components/welcome/Welcome";
 import { isValidProjectName } from "../utils/projectName";
@@ -156,6 +158,15 @@ describe("Welcome in the browser shell", () => {
       expect(updateMetaMock).toHaveBeenCalledWith(expect.objectContaining({ projectType: "Novel" }))
     );
     storeState.project = null;
+  });
+
+  it("starts a quick note in a project from its row (slice 3)", async () => {
+    render(<Welcome />);
+    await screen.findByText("Notes");
+    fireEvent.click(screen.getByRole("button", { name: "Quick note in Notes" }));
+    await waitFor(() => expect(quickNoteMock).toHaveBeenCalledWith("/srv/root/Notes.chikn"));
+    // The row itself still opens the project without a note.
+    expect(openProjectMock).not.toHaveBeenCalled();
   });
 
   it("refuses a name that is a path and says why", async () => {
