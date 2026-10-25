@@ -232,13 +232,21 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                         if end < n && input[end] == b' ' {
                             end += 1;
                         }
+                        // `\binN` is followed by N raw bytes that belong to
+                        // it; they are never text (and never fallback items
+                        // of their own).
+                        if word == b"bin" {
+                            let len = param.unwrap_or(0).max(0) as usize;
+                            end = (end + len).min(n);
+                        }
                         // A pending `\uN` fallback (review finding s1-1,
-                        // repaired after re-review): the spec counts every
-                        // control word as one fallback item, so it is
+                        // repaired twice after re-review): the spec counts
+                        // every control word, `\binN` with its payload and
+                        // `\ucN` included, as one fallback item, so it is
                         // swallowed, not applied, and the remaining count is
-                        // kept. `\u` and `\uc` start a new Unicode sequence
-                        // and are never fallback.
-                        if skip_fallback > 0 && word != b"u" && word != b"uc" {
+                        // kept. Only `\u` itself is exempt: it starts a new
+                        // Unicode sequence.
+                        if skip_fallback > 0 && word != b"u" {
                             skip_fallback -= 1;
                             i = end;
                             continue;
@@ -470,6 +478,23 @@ mod tests {
         let prepared = prep("{\\rtf1\\ansi\\uc1 a\\u233\\u235 b}");
         assert_eq!(prepared, "{\\rtf1\\ansi\\uc1 a\\u233 ?\\u235 ?}");
         assert_reads(&prepared, "aéë");
+
+        // Second re-review: `\ucN` and `\binN` with its payload are each one
+        // fallback item too; the text after them survives.
+        let prepared = prep("{\\rtf1\\ansi\\uc1 a\\u233\\uc0 word}");
+        assert_eq!(prepared, "{\\rtf1\\ansi\\uc1 a\\u233 ?word}");
+        assert_reads(&prepared, "aéword");
+        let prepared = prep("{\\rtf1\\ansi\\uc1 a\\u233\\bin3 XYZword}");
+        assert_eq!(prepared, "{\\rtf1\\ansi\\uc1 a\\u233 ?word}");
+        assert_reads(&prepared, "aéword");
+    }
+
+    #[test]
+    fn binary_payloads_pass_through_untouched() {
+        // Outside a fallback, `\binN` and its N bytes are copied as they are,
+        // even when the payload looks like RTF syntax.
+        let src = "{\\rtf1 a\\bin5 {\\'ebb}";
+        assert_eq!(prep(src), src);
     }
 
     #[test]

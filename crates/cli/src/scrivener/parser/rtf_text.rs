@@ -286,12 +286,19 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                             end += 1;
                         }
 
+                        // `\binN` is followed by N raw bytes that belong to
+                        // it; skip them with the control word.
+                        if word == b"bin" {
+                            let len = param.unwrap_or(0).max(0) as usize;
+                            end = (end + len).min(n);
+                        }
                         // Pending `\uN` fallback (review finding s1-1,
-                        // repaired after re-review): every control word is
-                        // one fallback item, swallowed and not applied, and
-                        // the count carries on. `\u` and `\uc` start a new
-                        // Unicode sequence and are never fallback.
-                        if skip_fallback > 0 && word != b"u" && word != b"uc" {
+                        // repaired twice after re-review): every control
+                        // word, `\binN` with its payload and `\ucN`
+                        // included, is one fallback item, swallowed and not
+                        // applied, and the count carries on. Only `\u` is
+                        // exempt: it starts a new Unicode sequence.
+                        if skip_fallback > 0 && word != b"u" {
                             skip_fallback -= 1;
                             i = end;
                             continue;
@@ -385,11 +392,6 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                                         skip_fallback = groups.last().map(|g| g.uc).unwrap_or(1);
                                     }
                                 }
-                                b"bin" => {
-                                    // Binary data follows; skip it wholesale.
-                                    let len = param.unwrap_or(0).max(0) as usize;
-                                    end = (end + len).min(n);
-                                }
                                 _ => {}
                             }
                         }
@@ -398,9 +400,7 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                     Some(_) => {
                         // Any other control symbol is one fallback item when
                         // a fallback is pending; otherwise it has no text.
-                        if skip_fallback > 0 {
-                            skip_fallback -= 1;
-                        }
+                        skip_fallback = skip_fallback.saturating_sub(1);
                         i += 2;
                     }
                     None => {
@@ -705,6 +705,16 @@ Second paragraph with \\'93quotes\\'94.\\\n\
         // `\u` after `\u` starts a new character, never a fallback (the
         // `b` after the second one is its fallback and goes).
         assert_eq!(plain("{\\rtf1\\ansi\\uc1 a\\u233\\u235 b}"), "aéë");
+        // Second re-review: `\ucN` and `\binN` with its payload are each
+        // one fallback item; the text after them survives.
+        assert_eq!(plain("{\\rtf1\\ansi\\uc1 a\\u233\\uc0 word}"), "aéword");
+        assert_eq!(plain("{\\rtf1\\ansi\\uc1 a\\u233\\bin3 XYZword}"), "aéword");
+        assert_eq!(
+            plain("{\\rtf1\\ansi\\uc1 a\\u233\\bin8 {\\*\\foo word}"),
+            "aéword"
+        );
+        // Outside a fallback the payload is skipped and nothing else is.
+        assert_eq!(plain("{\\rtf1 a\\bin3 XYZb}"), "ab");
     }
 
     #[test]
