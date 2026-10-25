@@ -538,6 +538,32 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
     finish(text)
 }
 
+/// The document text as plain text, not Markdown: the same extraction with
+/// the Markdown escapes and hard-break markers taken back out. Used for
+/// comment and footnote bodies, which the model stores as plain text.
+pub fn rtf_to_plain_text(input: &[u8]) -> String {
+    let markdown = rtf_to_plain_markdown(input);
+    let mut out = String::with_capacity(markdown.len());
+    let mut chars = markdown.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.peek() {
+                Some(&next) if next.is_ascii_punctuation() => {
+                    out.push(next);
+                    chars.next();
+                }
+                Some('\n') => {
+                    // A hard-break marker: the newline itself stays.
+                }
+                _ => out.push(c),
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// Literal-text serialisation for Pandoc Markdown: every ASCII punctuation
 /// character is backslash-escaped. No allow-list (review finding plan-3
 /// R2-3, four rounds): Pandoc reads a backslash before any ASCII

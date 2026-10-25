@@ -18,6 +18,7 @@
 //! └── Settings/*.plist
 //! ```
 
+pub mod comments;
 pub mod rtf;
 pub mod rtf_prepare;
 pub mod rtf_text;

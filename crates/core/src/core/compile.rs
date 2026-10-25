@@ -109,14 +109,27 @@ pub fn compile(
         md.push_str("\\newpage\n\n");
     }
 
-    // Join sections with markdown separator
+    // Join sections with markdown separator. The editor's footnote element
+    // becomes a Pandoc reference footnote on the way (definitions collected
+    // here, appended after the last section).
+    let mut footnote_definitions: Vec<String> = Vec::new();
+    let mut footnote_counter = 0usize;
     for (i, section) in sections.iter().enumerate() {
-        md.push_str(section);
+        let section =
+            footnotes_to_references(section, &mut footnote_counter, &mut footnote_definitions);
+        md.push_str(&section);
         if !section.ends_with('\n') {
             md.push('\n');
         }
         if i < sections.len() - 1 {
             md.push_str(&format!("\n\n{}\n\n", separator));
+        }
+    }
+    if !footnote_definitions.is_empty() {
+        md.push('\n');
+        for definition in &footnote_definitions {
+            md.push_str(definition);
+            md.push_str("\n\n");
         }
     }
 
@@ -189,6 +202,118 @@ pub fn compile(
 }
 
 /// Collect sections with compile_order for sorting.
+/// The editor stores a footnote as `<sup class="footnote" data-body="…">●</sup>`
+/// (`ui/src/components/editor/FootnoteNode.ts`). Pandoc never reads that
+/// attribute, so until now every footnote vanished from compiled output
+/// (PLAN_SCRIVENER_FIDELITY slice 4, review finding plan-3 R2-1). Each one
+/// becomes a reference footnote `[^cs-fnN]`, N unique across the compiled
+/// document, with its definition collected for the end. The body is plain
+/// text and is written as literal text: every ASCII punctuation character
+/// escaped, blank lines kept as separate (indented) paragraphs, so a `]`,
+/// literal markup or a second paragraph survive. Pandoc's inline `^[…]`
+/// form is not used: it is single-paragraph and a `]` ends it early
+/// (plan-3 R3-1).
+fn footnotes_to_references(
+    section: &str,
+    counter: &mut usize,
+    definitions: &mut Vec<String>,
+) -> String {
+    let mut out = String::with_capacity(section.len());
+    let mut rest = section;
+    loop {
+        let Some(start) = rest.find("<sup") else {
+            out.push_str(rest);
+            break;
+        };
+        let Some(tag_end_rel) = rest[start..].find('>') else {
+            out.push_str(rest);
+            break;
+        };
+        let tag = &rest[start..start + tag_end_rel + 1];
+        let is_footnote = tag.contains("class=\"footnote\"") || tag.contains("class='footnote'");
+        let body = is_footnote.then(|| footnote_body_attribute(tag)).flatten();
+        let Some(body) = body else {
+            // Not a footnote element: copy the tag through and go on.
+            out.push_str(&rest[..start + tag_end_rel + 1]);
+            rest = &rest[start + tag_end_rel + 1..];
+            continue;
+        };
+        let after_tag = &rest[start + tag_end_rel + 1..];
+        let Some(close) = after_tag.find("</sup>") else {
+            out.push_str(rest);
+            break;
+        };
+        *counter += 1;
+        let label = format!("cs-fn{}", *counter);
+        out.push_str(&rest[..start]);
+        out.push_str(&format!("[^{label}]"));
+        definitions.push(footnote_definition(&label, &body));
+        rest = &after_tag[close + "</sup>".len()..];
+    }
+    out
+}
+
+/// The `data-body` attribute of a footnote tag, HTML-unescaped.
+fn footnote_body_attribute(tag: &str) -> Option<String> {
+    let idx = tag.find("data-body=")?;
+    let after = &tag[idx + "data-body=".len()..];
+    let quote = after.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let inner = &after[1..];
+    let end = inner.find(quote)?;
+    let raw = &inner[..end];
+    Some(
+        raw.replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&#10;", "\n")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&"),
+    )
+}
+
+/// `[^label]: body` with the body as literal Markdown text; a blank line in
+/// the body starts a new paragraph, indented so Pandoc keeps it in the note.
+fn footnote_definition(label: &str, body: &str) -> String {
+    let paragraphs: Vec<String> = body
+        .split("\n\n")
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            p.lines()
+                .map(|l| escape_markdown_literal(l.trim()))
+                .collect::<Vec<_>>()
+                .join("\n    ")
+        })
+        .collect();
+    let mut def = format!("[^{label}]: ");
+    if paragraphs.is_empty() {
+        def.push_str("\\ ");
+        return def;
+    }
+    def.push_str(&paragraphs[0]);
+    for p in &paragraphs[1..] {
+        def.push_str("\n\n    ");
+        def.push_str(p);
+    }
+    def
+}
+
+/// Backslash-escapes every ASCII punctuation character, which Pandoc
+/// Markdown reads back as that character.
+fn escape_markdown_literal(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() * 2);
+    for c in text.chars() {
+        if c.is_ascii_punctuation() {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
 fn collect_ordered_sections(
     nodes: &[TreeNode],
     project: &Project,
@@ -222,5 +347,66 @@ fn pandoc_format(format: &str) -> &str {
         "html" => "html",
         "odt" => "odt",
         _ => "docx",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn convert(section: &str) -> (String, Vec<String>) {
+        let mut counter = 0;
+        let mut defs = Vec::new();
+        let out = footnotes_to_references(section, &mut counter, &mut defs);
+        (out, defs)
+    }
+
+    #[test]
+    fn footnote_elements_become_reference_footnotes() {
+        let (out, defs) = convert(
+            "Text<sup class=\"footnote\" data-body=\"A] B\">●</sup> more<sup class=\"footnote\" data-body=\"&lt;redacted&gt; *x*\">●</sup>.",
+        );
+        assert_eq!(out, "Text[^cs-fn1] more[^cs-fn2].");
+        assert_eq!(defs[0], "[^cs-fn1]: A\\] B");
+        assert_eq!(defs[1], "[^cs-fn2]: \\<redacted\\> \\*x\\*");
+    }
+
+    #[test]
+    fn two_paragraph_bodies_stay_two_paragraphs() {
+        let (out, defs) = convert(
+            "T<sup class=\"footnote\" data-body=\"First para.&#10;&#10;Second, with a ] bracket.\">●</sup>",
+        );
+        assert_eq!(out, "T[^cs-fn1]");
+        assert_eq!(
+            defs[0],
+            "[^cs-fn1]: First para\\.\n\n    Second\\, with a \\] bracket\\."
+        );
+    }
+
+    #[test]
+    fn numbering_continues_across_sections_and_other_sup_tags_pass() {
+        let mut counter = 0;
+        let mut defs = Vec::new();
+        let a = footnotes_to_references(
+            "a<sup class=\"footnote\" data-body=\"one\">●</sup>",
+            &mut counter,
+            &mut defs,
+        );
+        let b = footnotes_to_references(
+            "b<sup>2</sup> c<sup class=\"footnote\" data-body=\"two\">●</sup>",
+            &mut counter,
+            &mut defs,
+        );
+        assert_eq!(a, "a[^cs-fn1]");
+        assert_eq!(b, "b<sup>2</sup> c[^cs-fn2]");
+        assert_eq!(defs.len(), 2);
+    }
+
+    #[test]
+    fn sections_without_footnotes_are_unchanged() {
+        let src = "Plain *text* with <span class=\"comment\" data-comment-id=\"x\">a note</span>.";
+        let (out, defs) = convert(src);
+        assert_eq!(out, src);
+        assert!(defs.is_empty());
     }
 }

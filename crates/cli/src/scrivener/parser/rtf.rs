@@ -18,7 +18,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use super::rtf_prepare::prepare_rtf;
+use super::rtf_prepare::{prepare_rtf, prepare_rtf_with_notes, InlineNote};
 use super::rtf_text::rtf_to_plain_markdown;
 
 fn pandoc_cmd(pandoc_path: Option<&Path>) -> &OsStr {
@@ -35,6 +35,9 @@ pub struct RtfConversion {
     /// extractor produced `markdown` instead. Formatting is lost; the
     /// caller names the document in the import warnings.
     pub fell_back: bool,
+    /// Inline annotations and footnotes lifted out of the RTF; their
+    /// positions are `scrivannot://` and `scrivfn://` links in `markdown`.
+    pub inline_notes: Vec<InlineNote>,
 }
 
 /// Why Pandoc did not return Markdown for a prepared RTF file.
@@ -81,7 +84,7 @@ fn run_pandoc_rtf(prepared: &Path, pandoc_path: Option<&Path>) -> Result<String,
 pub fn rtf_to_html(rtf_path: &Path, pandoc_path: Option<&Path>) -> Result<String, ChiknError> {
     check_pandoc_available(pandoc_path)?;
     let raw = fs::read(rtf_path)?;
-    match convert_prepared(&raw, pandoc_path)? {
+    match run_prepared(&prepare_rtf(&raw), pandoc_path)? {
         Ok(markdown) => Ok(markdown),
         Err(stderr) => Err(ChiknError::InvalidFormat(format!(
             "Pandoc conversion failed: {}",
@@ -92,35 +95,40 @@ pub fn rtf_to_html(rtf_path: &Path, pandoc_path: Option<&Path>) -> Result<String
 
 /// Converts one Scrivener RTF file to Markdown, falling back to plain text
 /// when Pandoc rejects it. Pandoc being absent or unrunnable is still an
-/// error: that is an installation problem, not a bad document.
+/// error: that is an installation problem, not a bad document. Inline
+/// annotations and footnotes are lifted out first (slice 4) so both paths
+/// see the same marker links.
 pub fn rtf_file_to_markdown(
     rtf_path: &Path,
     pandoc_path: Option<&Path>,
 ) -> Result<RtfConversion, ChiknError> {
     check_pandoc_available(pandoc_path)?;
     let raw = fs::read(rtf_path)?;
-    match convert_prepared(&raw, pandoc_path)? {
+    let (lifted, inline_notes) = super::rtf_prepare::lift_inline_notes(&raw);
+    let (prepared, _) = prepare_rtf_with_notes(&lifted);
+    match run_prepared(&prepared, pandoc_path)? {
         Ok(markdown) => Ok(RtfConversion {
             markdown,
             fell_back: false,
+            inline_notes,
         }),
         Err(_rejected) => Ok(RtfConversion {
-            markdown: rtf_to_plain_markdown(&raw),
+            markdown: rtf_to_plain_markdown(&lifted),
             fell_back: true,
+            inline_notes,
         }),
     }
 }
 
-/// Prepare, write to a temporary file, run Pandoc, clean up. The outer
-/// `Result` is an environment failure; the inner `Err` carries Pandoc's
-/// rejection text for a document it would not read.
-fn convert_prepared(
-    raw: &[u8],
+/// Write the prepared bytes to a temporary file, run Pandoc, clean up. The
+/// outer `Result` is an environment failure; the inner `Err` carries
+/// Pandoc's rejection text for a document it would not read.
+fn run_prepared(
+    prepared: &[u8],
     pandoc_path: Option<&Path>,
 ) -> Result<Result<String, String>, ChiknError> {
-    let prepared = prepare_rtf(raw);
     let temp_file = std::env::temp_dir().join(format!("chikn_rtf_{}.rtf", uuid::Uuid::new_v4()));
-    fs::write(&temp_file, &prepared)?;
+    fs::write(&temp_file, prepared)?;
     let result = run_pandoc_rtf(&temp_file, pandoc_path);
     let _ = fs::remove_file(&temp_file);
     match result {

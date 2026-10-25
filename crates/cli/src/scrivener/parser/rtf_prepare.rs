@@ -279,6 +279,158 @@ fn rtf_unicode_escape(code_point: u32) -> String {
     format!("\\u{n} ?")
 }
 
+/// An inline annotation or inline footnote lifted out of the RTF before
+/// Pandoc sees it (PLAN_SCRIVENER_FIDELITY slice 4). Scrivener writes them
+/// as literal text with escaped braces, `{\Scrv_annot \color={…} \text=…
+/// \end_Scrv_annot}` and `{\Scrv_fn=…\end_Scrv_fn}`; other tools write the
+/// same as raw RTF groups. Both forms are replaced by a hyperlink field to
+/// `scrivannot://<id>` or `scrivfn://<id>` whose text is a zero-width
+/// space, so the body never reaches Pandoc and the position survives
+/// conversion as a Markdown link the importer resolves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InlineNote {
+    pub id: String,
+    /// Plain-text body.
+    pub body: String,
+    pub footnote: bool,
+}
+
+/// [`prepare_rtf`] plus the inline notes lifted out first.
+pub fn prepare_rtf_with_notes(input: &[u8]) -> (Vec<u8>, Vec<InlineNote>) {
+    let (lifted, notes) = lift_inline_notes(input);
+    (prepare_rtf(&lifted), notes)
+}
+
+/// Replaces every inline annotation/footnote with its marker field and
+/// returns the bodies. Never fails: an unterminated marker is left alone.
+pub fn lift_inline_notes(input: &[u8]) -> (Vec<u8>, Vec<InlineNote>) {
+    struct InlineForm {
+        start: &'static [u8],
+        end: &'static [u8],
+        footnote: bool,
+        /// Text before the body inside the marker (`\text=` for annotations).
+        body_prefix: &'static [u8],
+    }
+    const FORMS: [InlineForm; 4] = [
+        InlineForm {
+            start: b"\\{\\\\Scrv_annot",
+            end: b"\\\\end_Scrv_annot\\}",
+            footnote: false,
+            body_prefix: b"\\\\text=",
+        },
+        InlineForm {
+            start: b"{\\Scrv_annot",
+            end: b"\\end_Scrv_annot}",
+            footnote: false,
+            body_prefix: b"\\text=",
+        },
+        InlineForm {
+            start: b"\\{\\\\Scrv_fn=",
+            end: b"\\\\end_Scrv_fn\\}",
+            footnote: true,
+            body_prefix: b"",
+        },
+        InlineForm {
+            start: b"{\\Scrv_fn=",
+            end: b"\\end_Scrv_fn}",
+            footnote: true,
+            body_prefix: b"",
+        },
+    ];
+    let mut out: Vec<u8> = Vec::with_capacity(input.len());
+    let mut notes = Vec::new();
+    let mut i = 0;
+    let n = input.len();
+    while i < n {
+        // Earliest start marker from here.
+        let mut best: Option<(usize, usize)> = None; // (position, form index)
+        for (k, form) in FORMS.iter().enumerate() {
+            if let Some(pos) = find(&input[i..], form.start) {
+                let pos = i + pos;
+                if best.is_none_or(|(p, _)| pos < p) {
+                    best = Some((pos, k));
+                }
+            }
+        }
+        let Some((start, k)) = best else {
+            out.extend_from_slice(&input[i..]);
+            break;
+        };
+        let InlineForm {
+            start: start_marker,
+            end: end_marker,
+            footnote,
+            body_prefix,
+        } = FORMS[k];
+        let body_from = start + start_marker.len();
+        let Some(end_rel) = find(&input[body_from..], end_marker) else {
+            // Unterminated: leave the rest untouched.
+            out.extend_from_slice(&input[i..]);
+            break;
+        };
+        let end = body_from + end_rel;
+        let mut body = &input[body_from..end];
+        if !body_prefix.is_empty() {
+            if let Some(p) = find(body, body_prefix) {
+                body = &body[p + body_prefix.len()..];
+            }
+        }
+        let id = format!("inline-{}", notes.len() + 1);
+        // The literal-text form carries RTF escapes for its own backslashes
+        // and braces; undo those first so the body reads as Scrivener wrote
+        // it, then reduce it to plain text like any RTF.
+        let literal_form = k == 0 || k == 2;
+        let body_bytes: Vec<u8> = if literal_form {
+            unescape_literal_rtf(body)
+        } else {
+            body.to_vec()
+        };
+        let mut wrapped = b"{\\rtf1\\ansi ".to_vec();
+        wrapped.extend_from_slice(&body_bytes);
+        wrapped.push(b'}');
+        let text = super::rtf_text::rtf_to_plain_text(&wrapped);
+        out.extend_from_slice(&input[i..start]);
+        let scheme = if footnote { "scrivfn" } else { "scrivannot" };
+        out.extend_from_slice(
+            format!(
+                "{{\\field{{\\*\\fldinst{{HYPERLINK \"{scheme}://{id}\"}}}}{{\\fldrslt \\u{} ?}}}}",
+                8203
+            )
+            .as_bytes(),
+        );
+        notes.push(InlineNote {
+            id,
+            body: text,
+            footnote,
+        });
+        i = end + end_marker.len();
+    }
+    (out, notes)
+}
+
+/// `\\` → `\`, `\{` → `{`, `\}` → `}`; everything else untouched.
+fn unescape_literal_rtf(body: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(body.len());
+    let mut i = 0;
+    while i < body.len() {
+        if body[i] == b'\\' && i + 1 < body.len() && matches!(body[i + 1], b'\\' | b'{' | b'}') {
+            out.push(body[i + 1]);
+            i += 2;
+        } else {
+            out.push(body[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
+
 /// Rewrites the input as described in the module documentation. Never
 /// fails: anything it does not understand is copied through unchanged.
 pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
@@ -677,6 +829,74 @@ mod tests {
             prep("{\\rtf1\\ansi\\ansicpg932 \\'83\nA}"),
             "{\\rtf1\\ansi\\ansicpg932 \\u12450 ?}"
         );
+    }
+
+    /// Slice 4: inline annotations and footnotes, in Scrivener's literal-text
+    /// form and in the raw-group form, become marker fields with their
+    /// bodies lifted out.
+    #[test]
+    fn inline_notes_are_lifted_into_marker_fields() {
+        let src = "{\\rtf1\\ansi plain \\{\\\\Scrv_annot \\\\color=\\{\\\\R=0.0\\\\G=0.0\\\\B=1.0\\} \\\\text=note \\\\b here\\\\b0\\\\end_Scrv_annot\\} after \\{\\\\Scrv_fn=foot \\\\i note\\\\i0\\\\end_Scrv_fn\\} end}";
+        let (lifted, notes) = lift_inline_notes(src.as_bytes());
+        let lifted = String::from_utf8(lifted).unwrap();
+        let marker = |scheme: &str, id: &str| {
+            format!(
+                "{{\\field{{\\*\\fldinst{{HYPERLINK \"{scheme}://{id}\"}}}}{{\\fldrslt \\u{} ?}}}}",
+                8203
+            )
+        };
+        assert_eq!(
+            lifted,
+            format!(
+                "{{\\rtf1\\ansi plain {} after {} end}}",
+                marker("scrivannot", "inline-1"),
+                marker("scrivfn", "inline-2")
+            )
+        );
+        assert_eq!(
+            notes,
+            vec![
+                InlineNote {
+                    id: "inline-1".into(),
+                    body: "note here".into(),
+                    footnote: false
+                },
+                InlineNote {
+                    id: "inline-2".into(),
+                    body: "foot note".into(),
+                    footnote: true
+                },
+            ]
+        );
+
+        // Raw-group form.
+        let src = "{\\rtf1\\ansi a {\\Scrv_annot \\color={\\R=0\\G=0\\B=1} \\text=raw body\\end_Scrv_annot} b {\\Scrv_fn=raw foot\\end_Scrv_fn} c}";
+        let (lifted, notes) = lift_inline_notes(src.as_bytes());
+        assert_eq!(
+            String::from_utf8(lifted).unwrap(),
+            format!(
+                "{{\\rtf1\\ansi a {} b {} c}}",
+                marker("scrivannot", "inline-1"),
+                marker("scrivfn", "inline-2")
+            )
+        );
+        assert_eq!(notes[0].body, "raw body");
+        assert_eq!(notes[1].body, "raw foot");
+        assert!(notes[1].footnote);
+
+        // Unterminated marker: left alone, nothing lifted.
+        let src = "{\\rtf1\\ansi a {\\Scrv_fn=never closed}";
+        let (lifted, notes) = lift_inline_notes(src.as_bytes());
+        assert_eq!(String::from_utf8(lifted).unwrap(), src);
+        assert!(notes.is_empty());
+
+        // Pandoc turns the marker field into a link with a zero-width-space
+        // text, which the importer resolves.
+        let (prepared, _) =
+            prepare_rtf_with_notes("{\\rtf1\\ansi w {\\Scrv_fn=f\\end_Scrv_fn} x}".as_bytes());
+        if let Some(read) = pandoc_plain(&String::from_utf8(prepared).unwrap()) {
+            assert_eq!(read, "w \u{200B} x");
+        }
     }
 
     #[test]

@@ -37,12 +37,14 @@ use std::fs;
 use std::path::Path;
 use uuid::Uuid;
 
+use super::parser::comments::{read_comments, ScrivComment};
+use super::parser::rtf_prepare::InlineNote;
 use super::parser::scrivx::{get_data_file_path, sanitize_file_extension};
 use super::parser::{
     get_media_path, get_rtf_path, parse_scrivx, rtf_file_to_markdown, BinderItem, ScrivenerProject,
 };
 use chickenscratch_core::core::project::{fidelity, writer};
-use chickenscratch_core::models::{Document, Project, TreeNode};
+use chickenscratch_core::models::{Comment, Document, Project, TreeNode};
 use chickenscratch_core::utils::error::ChiknError;
 use std::collections::BTreeMap;
 
@@ -464,10 +466,10 @@ fn convert_binder_items_inner(
                 // document of its own name, first in the folder, even when
                 // the text is empty (review finding plan-3 R2-2).
                 let rtf_path = get_rtf_path(scriv_path, &item.uuid)?;
-                let content = if rtf_path.exists() {
-                    read_document_text(&rtf_path, item, uuid_to_path, pandoc_path)?
+                let DocumentText { content, comments } = if rtf_path.exists() {
+                    read_document_text(scriv_path, &rtf_path, item, uuid_to_path, pandoc_path)?
                 } else {
-                    String::new()
+                    DocumentText::default()
                 };
                 let side = side_values(project, scriv_path, item, uuid_to_path, pandoc_path)?;
                 if !content.trim().is_empty() || !side.is_empty() {
@@ -494,6 +496,7 @@ fn convert_binder_items_inner(
                         name: folder_name.clone(),
                         path: doc_path.clone(),
                         content,
+                        comments,
                         parent_id: Some(folder_id.clone()),
                         created,
                         modified,
@@ -546,10 +549,10 @@ fn convert_binder_items_inner(
                 let doc_parent = container_id.clone().or_else(|| parent_id.clone());
 
                 let rtf_path = get_rtf_path(scriv_path, &item.uuid)?;
-                let content = if rtf_path.exists() {
-                    read_document_text(&rtf_path, item, uuid_to_path, pandoc_path)?
+                let DocumentText { content, comments } = if rtf_path.exists() {
+                    read_document_text(scriv_path, &rtf_path, item, uuid_to_path, pandoc_path)?
                 } else {
-                    String::new()
+                    DocumentText::default()
                 };
 
                 let slug = chickenscratch_core::utils::slug::unique_slug(
@@ -576,6 +579,7 @@ fn convert_binder_items_inner(
                     name: doc_name.clone(),
                     path: doc_path.clone(),
                     content,
+                    comments,
                     parent_id: doc_parent,
                     created,
                     modified,
@@ -837,16 +841,24 @@ fn side_values(
     Ok(side)
 }
 
-/// One document's RTF as Markdown. When Pandoc refuses the file, the text
-/// comes in plain and the document is named in the import warnings
-/// (PLAN_SCRIVENER_FIDELITY slice 1): the import goes on instead of dying
-/// on one bad file.
+/// A document's converted text and the comments attached to it.
+#[derive(Default)]
+struct DocumentText {
+    content: String,
+    comments: Vec<Comment>,
+}
+
+/// One document's RTF as Markdown with its comments and footnotes attached.
+/// When Pandoc refuses the file, the text comes in plain and the document
+/// is named in the import warnings (PLAN_SCRIVENER_FIDELITY slice 1): the
+/// import goes on instead of dying on one bad file.
 fn read_document_text(
+    scriv_path: &Path,
     rtf_path: &Path,
     item: &BinderItem,
     uuid_to_path: &mut HashMap<String, String>,
     pandoc_path: Option<&Path>,
-) -> Result<String, ChiknError> {
+) -> Result<DocumentText, ChiknError> {
     let converted = rtf_file_to_markdown(rtf_path, pandoc_path)?;
     if converted.fell_back {
         let title = item.title.as_deref().unwrap_or("Untitled");
@@ -855,7 +867,214 @@ fn read_document_text(
             format!("'{title}': its formatting could not be read, so the text was imported plain."),
         );
     }
-    Ok(converted.markdown)
+    let scriv_comments = read_comments(scriv_path, &item.uuid)?;
+    Ok(attach_annotations(
+        &converted.markdown,
+        scriv_comments,
+        converted.inline_notes,
+        item,
+        uuid_to_path,
+    ))
+}
+
+static ANCHOR_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\[([^\]]*)\]\((scrivcmt|scrivfn|scrivannot)://([^)\s]+)\)").unwrap()
+});
+
+/// Turns the anchors Pandoc (or the fallback) left in the Markdown into the
+/// editor's own comments and footnotes (PLAN_SCRIVENER_FIDELITY slice 4):
+///
+/// - `[text](scrivcmt://ID)` with a comment body → `<span class="comment"
+///   data-comment-id="ID">text</span>` plus a `Comment`; with a footnote
+///   body → `text` followed by the footnote element; with no body → the
+///   text alone, and a warning.
+/// - `[​](scrivfn://ID)` (a lifted inline footnote) → the footnote element.
+/// - `[​](scrivannot://ID)` (a lifted inline annotation) → a comment span
+///   around the word before it (or after it when the line starts there).
+/// - A comment body with no anchor in the text is kept as an unanchored
+///   comment, marked as such, and named in the warnings. Nothing in
+///   `content.comments` is dropped.
+fn attach_annotations(
+    markdown: &str,
+    mut scriv_comments: Vec<ScrivComment>,
+    inline_notes: Vec<InlineNote>,
+    item: &BinderItem,
+    uuid_to_path: &mut HashMap<String, String>,
+) -> DocumentText {
+    let title = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
+    let created = item
+        .created
+        .clone()
+        .unwrap_or_else(|| Utc::now().to_rfc3339());
+    let modified = item.modified.clone().unwrap_or_else(|| created.clone());
+    let mut comments: Vec<Comment> = Vec::new();
+    let mut inline: Vec<InlineNote> = inline_notes;
+    let mut out = String::with_capacity(markdown.len());
+    let mut last = 0;
+    let mut warn = |key: &str, message: String| {
+        uuid_to_path.insert(format!("__skipped__{key}-{}", item.uuid), message);
+    };
+    let mut orphan_anchors = 0;
+
+    for caps in ANCHOR_RE.captures_iter(markdown) {
+        let whole = caps.get(0).unwrap();
+        let text = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        let scheme = &caps[2];
+        let id = &caps[3];
+        out.push_str(&markdown[last..whole.start()]);
+        last = whole.end();
+        match scheme {
+            "scrivcmt" => {
+                if let Some(pos) = scriv_comments.iter().position(|c| c.id == id) {
+                    let c = scriv_comments.remove(pos);
+                    if c.footnote {
+                        out.push_str(text);
+                        out.push_str(&footnote_element(&c.body));
+                    } else {
+                        out.push_str(&comment_span(&c.id, text));
+                        comments.push(Comment {
+                            id: c.id,
+                            body: c.body,
+                            resolved: false,
+                            created: created.clone(),
+                            modified: modified.clone(),
+                        });
+                    }
+                } else {
+                    orphan_anchors += 1;
+                    out.push_str(text);
+                }
+            }
+            "scrivfn" => {
+                if let Some(pos) = inline.iter().position(|n| n.id == id) {
+                    let n = inline.remove(pos);
+                    out.push_str(&footnote_element(&n.body));
+                }
+            }
+            _ => {
+                // An inline annotation: attach it to the word before it.
+                if let Some(pos) = inline.iter().position(|n| n.id == id) {
+                    let n = inline.remove(pos);
+                    let anchored = wrap_previous_word(&mut out, &n.id);
+                    if !anchored {
+                        // Nothing before it on this line: take the next word.
+                        let rest = &markdown[last..];
+                        let trimmed = rest.trim_start();
+                        let lead = rest.len() - trimmed.len();
+                        let word_len = trimmed
+                            .find(|ch: char| ch.is_whitespace())
+                            .unwrap_or(trimmed.len());
+                        if word_len > 0 {
+                            out.push_str(&rest[..lead]);
+                            out.push_str(&comment_span(&n.id, &trimmed[..word_len]));
+                            last += lead + word_len;
+                        } else {
+                            out.push_str(&comment_span(&n.id, "•"));
+                        }
+                    }
+                    comments.push(Comment {
+                        id: n.id,
+                        body: n.body,
+                        resolved: false,
+                        created: created.clone(),
+                        modified: modified.clone(),
+                    });
+                }
+            }
+        }
+    }
+    out.push_str(&markdown[last..]);
+
+    if orphan_anchors > 0 {
+        warn(
+            "orphan-anchor",
+            format!("'{title}': {orphan_anchors} comment marker(s) had no comment text in the Scrivener project; the marked text was kept."),
+        );
+    }
+    let leftovers: Vec<ScrivComment> = scriv_comments;
+    if !leftovers.is_empty() {
+        warn(
+            "unanchored-comment",
+            format!("'{title}': {} comment(s) had no place in the text; they are kept on the document as unanchored comments.", leftovers.len()),
+        );
+        for c in leftovers {
+            let kind = if c.footnote { "Footnote" } else { "Comment" };
+            comments.push(Comment {
+                id: c.id,
+                body: format!("{kind} with no place in the text: {}", c.body),
+                resolved: false,
+                created: created.clone(),
+                modified: modified.clone(),
+            });
+        }
+    }
+    for n in inline {
+        comments.push(Comment {
+            id: n.id,
+            body: format!("Note with no place in the text: {}", n.body),
+            resolved: false,
+            created: created.clone(),
+            modified: modified.clone(),
+        });
+    }
+
+    DocumentText {
+        content: out,
+        comments,
+    }
+}
+
+/// Wraps the last word of `out` (on its current line) in a comment span;
+/// false when the line has no word yet.
+fn wrap_previous_word(out: &mut String, id: &str) -> bool {
+    let line_start = out.rfind('\n').map(|p| p + 1).unwrap_or(0);
+    let line = &out[line_start..];
+    let trimmed_end = line.trim_end();
+    if trimmed_end.is_empty() {
+        return false;
+    }
+    let trailing = line.len() - trimmed_end.len();
+    let word_start_rel = trimmed_end
+        .rfind(|ch: char| ch.is_whitespace())
+        .map(|p| p + 1)
+        .unwrap_or(0);
+    let word = &trimmed_end[word_start_rel..];
+    if word.contains('<') || word.contains('>') {
+        // Already markup (another span or element): do not nest into it.
+        return false;
+    }
+    let span = comment_span(id, word);
+    let tail = line[trimmed_end.len()..].to_string();
+    let abs_start = line_start + word_start_rel;
+    let _ = trailing;
+    out.truncate(abs_start);
+    out.push_str(&span);
+    out.push_str(&tail);
+    true
+}
+
+fn comment_span(id: &str, text: &str) -> String {
+    format!(
+        "<span class=\"comment\" data-comment-id=\"{}\">{text}</span>",
+        html_attr(id)
+    )
+}
+
+/// The editor's footnote element (`ui/src/components/editor/FootnoteNode.ts`).
+fn footnote_element(body: &str) -> String {
+    format!(
+        "<sup class=\"footnote\" data-body=\"{}\">●</sup>",
+        html_attr(body)
+    )
+}
+
+fn html_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('\n', "&#10;")
 }
 
 fn validate_media_file_extensions(items: &[BinderItem]) -> Result<(), ChiknError> {
@@ -1081,9 +1300,11 @@ mod tests {
             .values()
             .find(|d| d.name == "Damaged")
             .expect("the damaged document is imported");
+        // The comment anchor survived the fallback (slice 1) and, having no
+        // comment body in the project, was unwrapped and warned (slice 4).
         assert_eq!(
-            damaged.content, "Rescued \\*text\\* with [a link](scrivcmt://X-1)",
-            "plain text, Markdown-escaped, hyperlink kept"
+            damaged.content, "Rescued \\*text\\* with a link",
+            "plain text, Markdown-escaped, anchor text kept"
         );
         let fine = report
             .project
@@ -1092,11 +1313,21 @@ mod tests {
             .find(|d| d.name == "Fine")
             .unwrap();
         assert_eq!(fine.content.trim(), "Fine text.");
-        assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
+        assert_eq!(report.warnings.len(), 2, "{:?}", report.warnings);
         assert!(
-            report.warnings[0].starts_with("'Damaged':"),
-            "the warning names the document: {}",
-            report.warnings[0]
+            report.warnings.iter().all(|w| w.starts_with("'Damaged':")),
+            "the warnings name the document: {:?}",
+            report.warnings
+        );
+        assert!(
+            report.warnings.iter().any(|w| w.contains("imported plain")),
+            "{:?}",
+            report.warnings
+        );
+        assert!(
+            report.warnings.iter().any(|w| w.contains("comment marker")),
+            "{:?}",
+            report.warnings
         );
     }
 
@@ -1477,6 +1708,196 @@ mod tests {
             other => panic!("Part should be a folder: {other:?}"),
         }
         assert!(doc("Carol").fields.is_empty());
+    }
+
+    /// PLAN_SCRIVENER_FIDELITY slice 4: Scrivener 3 comments and footnotes
+    /// (a `content.comments` side file plus `scrivcmt://` anchors in the text)
+    /// and the inline annotation/footnote forms become the editor's own
+    /// comment spans and footnote elements; bodies with no anchor are kept
+    /// and warned; an anchor with no body is unwrapped and warned; the
+    /// fallback path gives the same anchors; compile carries the footnotes.
+    #[test]
+    fn comments_and_footnotes_become_the_editors_own() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Notes.scriv");
+        let output_path = temp_dir.path().join("Notes.chikn");
+        let a = "E1B2C3D4-0000-4000-8000-000000000001";
+        let b = "E1B2C3D4-0000-4000-8000-000000000002";
+        let field = |id: &str, text: &str| {
+            format!(
+                "{{\\field{{\\*\\fldinst{{HYPERLINK \"scrivcmt://{id}\"}}}}{{\\fldrslt {text}}}}}"
+            )
+        };
+        let body_a = format!(
+            "{{\\rtf1\\ansi Alpha {} {} delta {} word \\{{\\\\Scrv_annot \\\\color=\\{{\\\\R=0\\\\G=0\\\\B=1\\}} \\\\text=inline note\\\\end_Scrv_annot\\}} tail\\{{\\\\Scrv_fn=inline foot\\\\end_Scrv_fn\\}} end.\\\n}}",
+            field("CMT-1", "beta"),
+            field("FN-1", "gamma"),
+            field("MISSING-9", "orphan")
+        );
+        // The same anchors in a truncated file, so the fallback path runs.
+        let body_b = format!(
+            "{{\\rtf1\\ansi Bravo {} {} rest",
+            field("CMT-1", "beta"),
+            field("FN-1", "gamma")
+        );
+        let comments_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Comments>
+    <Comment ID="CMT-1" Color="0.99 0.99 0.70"><![CDATA[{\rtf1\ansi Tighten this.}]]></Comment>
+    <Comment ID="FN-1" Footnote="Yes"><![CDATA[{\rtf1\ansi See p. 12] and on.}]]></Comment>
+    <Comment ID="EXTRA-5">Never anchored.</Comment>
+</Comments>"#;
+        write_scriv_files(
+            &scriv_path,
+            a,
+            &[
+                ("content.rtf", body_a.as_str()),
+                ("content.comments", comments_xml),
+            ],
+        );
+        write_scriv_files(
+            &scriv_path,
+            b,
+            &[
+                ("content.rtf", body_b.as_str()),
+                ("content.comments", comments_xml),
+            ],
+        );
+        fs::write(
+            scriv_path.join("Notes.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="2.0">
+    <Binder>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000D" Type="DraftFolder">
+            <Title>Draft</Title>
+            <Children>
+                <BinderItem UUID="{a}" Type="Text"><Title>Alpha</Title></BinderItem>
+                <BinderItem UUID="{b}" Type="Text"><Title>Bravo</Title></BinderItem>
+            </Children>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#
+            ),
+        )
+        .unwrap();
+
+        let report = import_scriv_with_report(&scriv_path, &output_path, None).expect("imports");
+        let project = chickenscratch_core::core::project::reader::read_project(&output_path)
+            .expect("reopens");
+        let doc = |name: &str| -> &Document {
+            project
+                .documents
+                .values()
+                .find(|d| d.name == name)
+                .unwrap_or_else(|| panic!("document {name} missing"))
+        };
+
+        let alpha = doc("Alpha");
+        let c = &alpha.content;
+        assert!(
+            c.contains("<span class=\"comment\" data-comment-id=\"CMT-1\">beta</span>"),
+            "{c}"
+        );
+        assert!(
+            c.contains("gamma<sup class=\"footnote\" data-body=\"See p. 12] and on.\">●</sup>"),
+            "{c}"
+        );
+        assert!(
+            c.contains("delta orphan <span"),
+            "orphan anchor unwrapped: {c}"
+        );
+        assert!(
+            c.contains("<span class=\"comment\" data-comment-id=\"inline-1\">word</span>"),
+            "inline annotation anchored on the word before it: {c}"
+        );
+        assert!(
+            c.contains("tail<sup class=\"footnote\" data-body=\"inline foot\">●</sup>"),
+            "inline footnote: {c}"
+        );
+        assert!(
+            !c.contains("scrivcmt://") && !c.contains("scrivfn://") && !c.contains("scrivannot://"),
+            "{c}"
+        );
+        let body_of = |id: &str| {
+            alpha
+                .comments
+                .iter()
+                .find(|cm| cm.id == id)
+                .map(|cm| cm.body.clone())
+                .unwrap_or_else(|| panic!("comment {id} missing: {:?}", alpha.comments))
+        };
+        assert_eq!(body_of("CMT-1"), "Tighten this.");
+        assert_eq!(body_of("inline-1"), "inline note");
+        assert_eq!(
+            body_of("EXTRA-5"),
+            "Comment with no place in the text: Never anchored."
+        );
+        assert_eq!(alpha.comments.len(), 3, "{:?}", alpha.comments);
+
+        // The fallback path (truncated file) yields the same anchors.
+        let bravo = doc("Bravo");
+        assert!(
+            bravo
+                .content
+                .contains("<span class=\"comment\" data-comment-id=\"CMT-1\">beta</span>"),
+            "{}",
+            bravo.content
+        );
+        assert!(
+            bravo.content.contains("<sup class=\"footnote\""),
+            "{}",
+            bravo.content
+        );
+
+        // Warnings name the document for the orphan anchor, the unanchored
+        // body (both documents) and the plain-text fallback (Bravo).
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.starts_with("'Alpha':") && w.contains("comment marker")),
+            "{:?}",
+            report.warnings
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.starts_with("'Alpha':") && w.contains("no place in the text")),
+            "{:?}",
+            report.warnings
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.starts_with("'Bravo':") && w.contains("imported plain")),
+            "{:?}",
+            report.warnings
+        );
+
+        // Compile carries the footnote bodies as footnotes, not as prose.
+        let html = temp_dir.path().join("out.html");
+        chickenscratch_core::core::compile::compile(&output_path, &html, "html", None, None, None)
+            .expect("compiles");
+        let compiled = fs::read_to_string(&html).unwrap();
+        assert!(
+            compiled.contains("See p. 12] and on."),
+            "footnote body compiled: {compiled}"
+        );
+        assert!(compiled.contains("inline foot"), "{compiled}");
+        assert!(
+            compiled.contains("class=\"footnotes"),
+            "a footnotes section exists: {compiled}"
+        );
+        assert!(
+            !compiled.contains("data-body"),
+            "the raw element is gone: {compiled}"
+        );
     }
 
     /// Two custom fields sharing a title switch the project to ID keys plus a
