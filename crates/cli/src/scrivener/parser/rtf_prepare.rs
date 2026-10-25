@@ -23,6 +23,16 @@
 //! words so a fallback that is itself an escaped brace, or a `\uN` inside a
 //! hyperlink field, is handled like any other.
 
+use std::collections::HashMap;
+
+/// Per-group state the prepare pass tracks: the `\ucN` fallback count and
+/// the active font (`\fN`), both scoped to the RTF group like the spec says.
+#[derive(Clone, Copy)]
+struct PrepGroup {
+    uc: u32,
+    font: Option<i64>,
+}
+
 /// The encoding behind an RTF `\ansicpgN` number, for the pages
 /// `encoding_rs` knows (review finding s1-3: a Cyrillic document declared
 /// `\ansicpg1251` was decoded as Windows-1252 into mojibake).
@@ -43,6 +53,102 @@ pub(crate) fn encoding_for_code_page(code_page: u32) -> Option<&'static encoding
         _ => return None,
     };
     encoding_rs::Encoding::for_label(label.as_bytes())
+}
+
+/// The Windows code page behind an RTF `\fcharsetN` value.
+fn charset_code_page(charset: u32) -> Option<u32> {
+    Some(match charset {
+        0 => 1252,
+        77 => 10000,
+        128 => 932,
+        129 => 949,
+        134 => 936,
+        136 => 950,
+        161 => 1253,
+        162 => 1254,
+        163 => 1258,
+        177 => 1255,
+        178 => 1256,
+        186 => 1257,
+        204 => 1251,
+        222 => 874,
+        238 => 1250,
+        _ => return None,
+    })
+}
+
+/// Per-font encodings from the `\fonttbl` group: `\cpgN` when a font
+/// declares one, else the page behind its `\fcharsetN`. A font's encoding
+/// overrides the document's `\ansicpgN` for text set in that font (review
+/// finding s1-3, re-review: a 1251 document with a `\fcharset0` font set
+/// `caf\'e9` in Windows-1252).
+pub(crate) fn font_encodings(input: &[u8]) -> HashMap<i64, &'static encoding_rs::Encoding> {
+    let mut map = HashMap::new();
+    let needle = b"\\fonttbl";
+    let Some(pos) = input.windows(needle.len()).position(|w| w == needle) else {
+        return map;
+    };
+    let n = input.len();
+    let mut depth = 0i32;
+    let mut font: Option<i64> = None;
+    let mut i = pos + needle.len();
+    while i < n {
+        match input[i] {
+            b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b'}' => {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+                i += 1;
+            }
+            b'\\' => {
+                let mut j = i + 1;
+                while j < n && input[j].is_ascii_alphabetic() {
+                    j += 1;
+                }
+                if j == i + 1 {
+                    // Control symbol or escape: two bytes, no font meaning.
+                    i = (i + 2).min(n);
+                    continue;
+                }
+                let word = &input[i + 1..j];
+                let mut k = j;
+                if k < n && input[k] == b'-' {
+                    k += 1;
+                }
+                while k < n && input[k].is_ascii_digit() {
+                    k += 1;
+                }
+                let param: Option<i64> = std::str::from_utf8(&input[j..k])
+                    .ok()
+                    .and_then(|s| s.parse().ok());
+                match (word, param) {
+                    (b"f", Some(p)) => font = Some(p),
+                    (b"cpg", Some(p)) => {
+                        if let (Some(f), Some(enc)) = (font, encoding_for_code_page(p as u32)) {
+                            map.insert(f, enc);
+                        }
+                    }
+                    (b"fcharset", Some(p)) => {
+                        if let (Some(f), Some(enc)) = (
+                            font,
+                            charset_code_page(p as u32).and_then(encoding_for_code_page),
+                        ) {
+                            map.entry(f).or_insert(enc);
+                        }
+                    }
+                    _ => {}
+                }
+                i = k;
+            }
+            _ => i += 1,
+        }
+    }
+    map
 }
 
 /// The declared code page's encoding, Windows-1252 when absent or unknown.
@@ -107,14 +213,16 @@ fn rtf_unicode_escape(code_point: u32) -> String {
 /// fails: anything it does not understand is copied through unchanged.
 pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
     // Hex escapes are rewritten for every code page `encoding_rs` knows;
-    // an unknown page leaves them for Pandoc.
-    let encoding = declared_code_page(input).map_or(Some(encoding_rs::WINDOWS_1252), |cp| {
+    // an unknown page leaves them for Pandoc. A font's own encoding wins
+    // over the document's for text set in that font.
+    let document = declared_code_page(input).map_or(Some(encoding_rs::WINDOWS_1252), |cp| {
         encoding_for_code_page(cp)
     });
+    let fonts = font_encodings(input);
 
     let mut out: Vec<u8> = Vec::with_capacity(input.len() + input.len() / 16);
-    // `\ucN` per group; the document default is 1.
-    let mut uc_stack: Vec<u32> = vec![1];
+    // Per-group `\ucN` (document default 1) and active font.
+    let mut groups: Vec<PrepGroup> = vec![PrepGroup { uc: 1, font: None }];
     // Fallback items still to swallow after a `\uN`.
     let mut skip_fallback: u32 = 0;
 
@@ -124,15 +232,15 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
         let b = input[i];
         match b {
             b'{' => {
-                let uc = *uc_stack.last().unwrap_or(&1);
-                uc_stack.push(uc);
+                let top = *groups.last().unwrap_or(&PrepGroup { uc: 1, font: None });
+                groups.push(top);
                 skip_fallback = 0;
                 out.push(b);
                 i += 1;
             }
             b'}' => {
-                if uc_stack.len() > 1 {
-                    uc_stack.pop();
+                if groups.len() > 1 {
+                    groups.pop();
                 }
                 skip_fallback = 0;
                 out.push(b);
@@ -149,22 +257,46 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                             i += 1;
                         }
                     }
-                    // Hex escapes: the whole run of consecutive escapes is
-                    // one byte string in the declared code page, so a
-                    // two-byte character (Shift JIS, GBK) decodes whole.
+                    // Hex escapes start a text run: the escapes and the plain
+                    // bytes that follow them (up to the next brace or
+                    // control sequence) are one byte string in the active
+                    // encoding, so a two-byte character decodes whole even
+                    // when its second byte is a literal (`\'83A` is `ア` in
+                    // CP932). Bare line ends inside the run are ignored, as
+                    // RTF readers ignore them.
                     Some(b'\'') => {
-                        let mut bytes: Vec<u8> = Vec::new();
+                        // (byte, start, end) of each text item in the run.
+                        let mut items: Vec<(u8, usize, usize)> = Vec::new();
                         let mut j = i;
-                        while j + 3 < n && input[j] == b'\\' && input[j + 1] == b'\'' {
-                            match (hex_val(input[j + 2]), hex_val(input[j + 3])) {
-                                (Some(hi), Some(lo)) => {
-                                    bytes.push((hi << 4) | lo);
-                                    j += 4;
+                        while j < n {
+                            let c = input[j];
+                            if c == b'\\' {
+                                if input.get(j + 1) == Some(&b'\'') {
+                                    match (
+                                        input.get(j + 2).copied().and_then(hex_val),
+                                        input.get(j + 3).copied().and_then(hex_val),
+                                    ) {
+                                        (Some(hi), Some(lo)) => {
+                                            items.push(((hi << 4) | lo, j, j + 4));
+                                            j += 4;
+                                            continue;
+                                        }
+                                        _ => break,
+                                    }
                                 }
-                                _ => break,
+                                break;
                             }
+                            if c == b'{' || c == b'}' {
+                                break;
+                            }
+                            if c == b'\r' || c == b'\n' {
+                                j += 1;
+                                continue;
+                            }
+                            items.push((c, j, j + 1));
+                            j += 1;
                         }
-                        if bytes.is_empty() {
+                        if items.is_empty() {
                             // Malformed; copy the two bytes and move on.
                             out.extend_from_slice(&input[i..(i + 2).min(n)]);
                             i += 2;
@@ -173,26 +305,40 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                         // Fallback bytes after `\uN` are swallowed one by one
                         // (`\ucN` counts bytes, two for a double-byte page).
                         let mut first = 0;
-                        while skip_fallback > 0 && first < bytes.len() {
+                        while skip_fallback > 0 && first < items.len() {
                             skip_fallback -= 1;
                             first += 1;
                         }
-                        let rest = &bytes[first..];
-                        let rest_start = j - 4 * rest.len();
+                        let rest = &items[first..];
+                        if rest.is_empty() {
+                            i = j;
+                            continue;
+                        }
+                        let slice_start = rest[0].1;
+                        let bytes: Vec<u8> = rest.iter().map(|item| item.0).collect();
+                        let encoding = groups
+                            .last()
+                            .and_then(|g| g.font)
+                            .and_then(|f| fonts.get(&f).copied())
+                            .or(document);
                         match encoding {
-                            Some(enc) if !rest.is_empty() => {
-                                let (decoded, had_errors) = enc.decode_without_bom_handling(rest);
+                            Some(enc) => {
+                                let (decoded, had_errors) = enc.decode_without_bom_handling(&bytes);
                                 if had_errors {
-                                    out.extend_from_slice(&input[rest_start..j]);
+                                    out.extend_from_slice(&input[slice_start..j]);
                                 } else {
                                     for c in decoded.chars() {
-                                        out.extend_from_slice(
-                                            rtf_unicode_escape(c as u32).as_bytes(),
-                                        );
+                                        if c.is_ascii() {
+                                            out.push(c as u8);
+                                        } else {
+                                            out.extend_from_slice(
+                                                rtf_unicode_escape(c as u32).as_bytes(),
+                                            );
+                                        }
                                     }
                                 }
                             }
-                            _ => out.extend_from_slice(&input[rest_start..j]),
+                            None => out.extend_from_slice(&input[slice_start..j]),
                         }
                         i = j;
                     }
@@ -254,8 +400,8 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                         match word {
                             b"uc" => {
                                 let uc = param.unwrap_or(1).max(0) as u32;
-                                if let Some(top) = uc_stack.last_mut() {
-                                    *top = uc;
+                                if let Some(top) = groups.last_mut() {
+                                    top.uc = uc;
                                 }
                                 out.extend_from_slice(b"\\uc1 ");
                             }
@@ -265,7 +411,13 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                                 // The delimiter space after `\uN`, if any,
                                 // is not a fallback item; `end` already
                                 // steps over it.
-                                skip_fallback = *uc_stack.last().unwrap_or(&1);
+                                skip_fallback = groups.last().map(|g| g.uc).unwrap_or(1);
+                            }
+                            b"f" if param.is_some() => {
+                                if let Some(top) = groups.last_mut() {
+                                    top.font = param;
+                                }
+                                out.extend_from_slice(&input[i..end]);
                             }
                             _ => out.extend_from_slice(&input[i..end]),
                         }
@@ -390,6 +542,35 @@ mod tests {
         assert_eq!(
             prep("{\\rtf1\\ansi\\ansicpg932 \\'82\\'a0}"),
             "{\\rtf1\\ansi\\ansicpg932 \\u12354 ?}"
+        );
+    }
+
+    /// Re-review of s1-3: a font's own encoding wins over the document's,
+    /// and a two-byte character may end in a literal byte.
+    #[test]
+    fn font_encoding_and_mixed_runs() {
+        let src = "{\\rtf1\\ansi\\ansicpg1251{\\fonttbl{\\f0\\fcharset0\\cpg1252 Arial;}{\\f1\\fcharset204 Arial;}}\\f0 caf\\'e9 \\f1 \\'cf}";
+        let prepared = prep(src);
+        assert_eq!(
+            prepared,
+            "{\\rtf1\\ansi\\ansicpg1251{\\fonttbl{\\f0\\fcharset0\\cpg1252 Arial;}{\\f1\\fcharset204 Arial;}}\\f0 caf\\u233 ? \\f1 \\u1055 ?}"
+        );
+        assert_reads(&prepared, "café П");
+        // The font is scoped to its group.
+        let src = "{\\rtf1\\ansi\\ansicpg1251{\\fonttbl{\\f0\\fcharset0 Arial;}}{\\f0 \\'e9}\\'e9}";
+        assert_eq!(
+            prep(src),
+            "{\\rtf1\\ansi\\ansicpg1251{\\fonttbl{\\f0\\fcharset0 Arial;}}{\\f0 \\u233 ?}\\u1081 ?}"
+        );
+        // CP932 `ア` is the escaped byte 0x83 followed by a literal `A`.
+        assert_eq!(
+            prep("{\\rtf1\\ansi\\ansicpg932 \\'83A!}"),
+            "{\\rtf1\\ansi\\ansicpg932 \\u12450 ?!}"
+        );
+        // A bare line end inside the run is ignored, as readers ignore it.
+        assert_eq!(
+            prep("{\\rtf1\\ansi\\ansicpg932 \\'83\nA}"),
+            "{\\rtf1\\ansi\\ansicpg932 \\u12450 ?}"
         );
     }
 

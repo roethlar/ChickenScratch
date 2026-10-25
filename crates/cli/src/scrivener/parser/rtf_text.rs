@@ -7,7 +7,8 @@
 //! Hyperlink fields survive as Markdown links so the `scrivcmt://` anchors
 //! slice 4 relies on are kept (review finding plan-3 R1-5).
 
-use super::rtf_prepare::document_encoding;
+use super::rtf_prepare::{document_encoding, font_encodings};
+use std::collections::HashMap;
 
 /// Groups whose content is never document text.
 const SKIPPED_DESTINATIONS: &[&[u8]] = &[
@@ -67,6 +68,9 @@ enum Sink {
 struct Group {
     sink: Sink,
     uc: u32,
+    /// Active font (`\fN`); its encoding, when the font table gives one,
+    /// decides how this group's code-page bytes decode.
+    font: Option<i64>,
     /// Set on the `{` of a `\field` group so its `}` can emit the link.
     opens_field: bool,
     /// True until the first control word of the group has been seen
@@ -80,15 +84,18 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
     let mut groups: Vec<Group> = vec![Group {
         sink: Sink::Body,
         uc: 1,
+        font: None,
         opens_field: false,
         fresh: false,
     }];
     let mut fields: Vec<Field> = Vec::new();
     let mut skip_fallback: u32 = 0;
-    // Code-page bytes (hex escapes and raw high bytes) are gathered and
-    // decoded as one run in the declared encoding, so a two-byte character
+    // Text bytes (hex escapes and literal bytes alike) are gathered and
+    // decoded as one run, in the active font's encoding when the font table
+    // gives one and the document's otherwise, so a two-byte character
     // decodes whole and Cyrillic is Cyrillic (review finding s1-3).
-    let encoding = document_encoding(input);
+    let document = document_encoding(input);
+    let fonts: HashMap<i64, &'static encoding_rs::Encoding> = font_encodings(input);
     let mut pending: Vec<u8> = Vec::new();
     // A high surrogate from `\uN` waits for its low half (review finding
     // s1-4): RTF carries anything above the BMP as a UTF-16 pair.
@@ -96,7 +103,8 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
 
     fn flush_pending(
         pending: &mut Vec<u8>,
-        encoding: &'static encoding_rs::Encoding,
+        fonts: &HashMap<i64, &'static encoding_rs::Encoding>,
+        document: &'static encoding_rs::Encoding,
         groups: &[Group],
         fields: &mut [Field],
         text: &mut String,
@@ -104,6 +112,11 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
         if pending.is_empty() {
             return;
         }
+        let encoding = groups
+            .last()
+            .and_then(|g| g.font)
+            .and_then(|f| fonts.get(&f).copied())
+            .unwrap_or(document);
         let (decoded, _had_errors) = encoding.decode_without_bom_handling(pending);
         for c in decoded.chars() {
             push(c, groups, fields, text);
@@ -136,10 +149,23 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
     let mut i = 0;
     while i < n {
         let b = input[i];
-        // Anything but another code-page byte ends the pending run.
-        let continues_run = b >= 0x80 || (b == b'\\' && input.get(i + 1) == Some(&b'\''));
+        // A brace or a control sequence other than a hex escape ends the
+        // pending text run; plain bytes extend it and bare line ends are
+        // ignored inside it, as RTF readers ignore them.
+        let continues_run = match b {
+            b'{' | b'}' => false,
+            b'\\' => input.get(i + 1) == Some(&b'\''),
+            _ => true,
+        };
         if !continues_run {
-            flush_pending(&mut pending, encoding, &groups, &mut fields, &mut text);
+            flush_pending(
+                &mut pending,
+                &fonts,
+                document,
+                &groups,
+                &mut fields,
+                &mut text,
+            );
         }
         // A high surrogate not followed by its low half (fallback items in
         // between are skipped, not read) is a lone half: show U+FFFD rather
@@ -161,6 +187,7 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                 groups.push(Group {
                     sink: parent.sink,
                     uc: parent.uc,
+                    font: parent.font,
                     opens_field: false,
                     fresh: true,
                 });
@@ -346,6 +373,11 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                                         g.uc = param.unwrap_or(1).max(0) as u32;
                                     }
                                 }
+                                b"f" if param.is_some() => {
+                                    if let Some(g) = groups.last_mut() {
+                                        g.font = param;
+                                    }
+                                }
                                 b"u" => {
                                     if let Some(p) = param {
                                         let unit = (if p < 0 { p + 65536 } else { p }) as u32;
@@ -414,17 +446,24 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
             _ => {
                 if skip_fallback > 0 {
                     skip_fallback -= 1;
-                } else if b >= 0x80 {
-                    // Bytes above 0x7F outside an escape are code-page text.
-                    pending.push(b);
                 } else {
-                    push(b as char, &groups, &mut fields, &mut text);
+                    // Literal text joins the pending run so a multi-byte
+                    // character split between an escape and a literal byte
+                    // decodes whole.
+                    pending.push(b);
                 }
                 i += 1;
             }
         }
     }
-    flush_pending(&mut pending, encoding, &groups, &mut fields, &mut text);
+    flush_pending(
+        &mut pending,
+        &fonts,
+        document,
+        &groups,
+        &mut fields,
+        &mut text,
+    );
     if pending_high.is_some() {
         push('\u{FFFD}', &groups, &mut fields, &mut text);
     }
@@ -664,6 +703,27 @@ Second paragraph with \\'93quotes\\'94.\\\n\
             rtf_to_plain_markdown(b"{\\rtf1\\ansi\\ansicpg1251 \xcf\xf0}"),
             "Пр"
         );
+    }
+
+    /// Re-review of s1-3: a font's own encoding wins over the document's,
+    /// and a two-byte character may end in a literal byte.
+    #[test]
+    fn font_encoding_and_mixed_runs() {
+        assert_eq!(
+            plain("{\\rtf1\\ansi\\ansicpg1251{\\fonttbl{\\f0\\fcharset0\\cpg1252 Arial;}{\\f1\\fcharset204 Arial;}}\\f0 caf\\'e9 \\f1 \\'cf}"),
+            "café П"
+        );
+        // The font is scoped to its group.
+        assert_eq!(
+            plain(
+                "{\\rtf1\\ansi\\ansicpg1251{\\fonttbl{\\f0\\fcharset0 Arial;}}{\\f0 \\'e9}\\'e9}"
+            ),
+            "éй"
+        );
+        // CP932 `ア` is the escaped byte 0x83 followed by a literal `A`.
+        assert_eq!(plain("{\\rtf1\\ansi\\ansicpg932 \\'83A!}"), "\u{30A2}\\!");
+        // A bare line end inside the run is ignored, as readers ignore it.
+        assert_eq!(plain("{\\rtf1\\ansi\\ansicpg932 \\'83\nA}"), "\u{30A2}");
     }
 
     /// Review finding s1-4: a UTF-16 surrogate pair is one character; a
