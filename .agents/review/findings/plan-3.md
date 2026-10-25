@@ -76,4 +76,50 @@ Each checked against the working tree before acceptance.
    (ar-1..ar-4) place it in `crates/cli`. The plan follows the code and
    records the ruling needed; it moves no code between crates.
 
-**Plan revision**: committed for round 2 (see the plan's Status).
+**Plan revision**: committed for round 2 (`9a6b105`).
+
+## Round 2 dispatch
+
+- **Reviewer**: same incantation; transcript header `model: gpt-6-astra`,
+  `reasoning effort: xhigh`, `sandbox: read-only`, session
+  `01a174cf-9e0c-7e13-b474-158f108e4da6`.
+- **Reviewed SHA**: `9a6b105d84afceef88b0890e5790419a95ace383`; **Base
+  SHA**: `a9b76dd…` (unchanged, plan-less parent). Round-1 findings quoted
+  verbatim so the reviewer verifies the revision rather than re-litigating.
+- **Dispatched**: 2026-10-25 20:45 UTC, finished 20:51 UTC; exit 0; 108,578
+  tokens. Capability proof: plan read, `git rev-parse HEAD` → `9a6b105…`.
+- **Verdict**: `reopened`. R1-2..R1-6 resolved. R1-1, R1-7, R1-8 not
+  resolved; four new findings.
+
+## Round 2 dispositions
+
+- **R1-1 — ADMITTED again.** Measured on Pandoc 3.11: `caf\u233? fin` →
+  `caféfin` because Pandoc takes the character after the number as the
+  delimiter; `caf\u233 ? fin` → `café fin`; `\ucN` and group scope are
+  honoured. Plan now emits `\uN ?` and tests Pandoc's final text as well
+  as the prepared RTF.
+- **R1-7 — ADMITTED again.** Suffixing titles could still collide with a
+  literal title. Plan: unique titles → `custom.<title>`; any collision
+  switches the whole project to `custom.<id>` plus one
+  `custom_field_titles` map.
+- **R1-8 — owner gate.** The reviewer wants an owner-approved exception or
+  a compliant boundary; neither is the reviewer's or the orchestrator's to
+  grant. Recorded under the plan's Decisions and put to the owner as one
+  ruling. The plan is otherwise constrained to the converter crate as every
+  accepted Scrivener change has been.
+- **R2-1 Footnote bodies disappear on compile — HIGH — ADMITTED.**
+  Confirmed: `crates/core/src/core/compile.rs` has no footnote handling;
+  `FootnoteNode.ts` only claims it. Slice 4 adds the core compile step
+  (`<sup class="footnote" data-body>` → `^[body]`) with a compile test.
+- **R2-2 Notes-only folders have no persistence target — HIGH —
+  ADMITTED.** Confirmed: `TreeNode::Folder` carries no metadata; the
+  companion document is created only for non-empty folder text. Slice 3
+  creates it whenever the folder has text or any side value.
+- **R2-3 Fallback text interpreted as Markdown — HIGH — ADMITTED.** The
+  extractor escapes Markdown before inserting generated links; test with
+  stars, angle brackets, brackets and a backslash through the renderer.
+- **R2-4 Fallback leaks unstarred destinations — MEDIUM — ADMITTED.** The
+  plan now names the destination set (`fonttbl`, `colortbl`, `pict`, …)
+  and `\binN` skipping; test with a real sample header and a picture.
+
+**Plan revision**: committed for round 3 (see the plan's Status).

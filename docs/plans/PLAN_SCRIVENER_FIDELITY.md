@@ -77,27 +77,45 @@ read becomes plain text with a named warning instead of killing the import.
 
 - **Prepare before Pandoc** (`rtf_prepare.rs`, a small RTF tokenizer that
   walks groups and control words, not a regex): rewrite `\` + newline to
-  `\par `; rewrite each stand-alone `\'xx` hex escape to `\uN?` using the
+  `\par `; rewrite each stand-alone `\'xx` hex escape to `\uN ?` using the
   file's `\ansicpg` (default 1252); for every `\uN` keep the code point and
   replace its fallback sequence (the next `\ucN` items of the current
   group, default 1, each a plain character, a `\'xx` escape or a `\\`, `\{`,
-  `\}` escape) with one `?`, so `\uc1 caf\u233\'e9 fin` stays `café fin` and
-  a document with `\uc2` loses nothing; `\ucN` is tracked per group like the
-  spec says. Hyperlink fields and every other group pass through untouched.
-  Pure function, unit-tested with exact expected output on: the `\'eb's`
-  shape, `\uc1` plus hex fallback, `\uc2` plus two fallbacks, `\uc0`, a
-  fallback that is itself an escaped brace, and a hyperlink field.
+  `\}` escape) with one `?`, and emit every `\ucN` as `\uc1` so the reader
+  and this pass agree on the count; `\ucN` is tracked per group like the
+  spec says. **The emitted form is `\uN ?`, space then question mark**:
+  measured on Pandoc 3.11, its reader takes whatever character follows the
+  number as the delimiter, so `\u233?` eats the real space after the `?`
+  (`caféfin`, review finding plan-3 R1-1 round 2) while `\u233 ?` gives
+  `café fin` in Pandoc and in a spec-following reader alike; Pandoc does
+  honour `\ucN` and its group scope (`\uc2` skips two). Hyperlink fields and
+  every other group pass through untouched. Pure function, unit-tested on
+  the prepared RTF **and**, where Pandoc is installed, on Pandoc's final
+  text for the same inputs: the `\'eb's` shape, `\uc1` plus hex fallback
+  (`café fin`, with its space), `\uc2` plus two fallbacks, `\uc0` with the
+  delimiter space, a fallback that is itself an escaped brace, nested
+  groups with different `\ucN`, and a hyperlink field.
 - **Writer flags**: `-t markdown-smart --wrap=none` (plain apostrophes and
   quotes; curly quotes in the RTF stay curly as Unicode).
 - **Per-document fallback** (`rtf_text.rs`): if Pandoc still fails, a
-  built-in RTF text extractor yields plain paragraphs: skip `{\*…}`
-  destinations except `\fldinst`, drop control words, honour `\par`,
-  `\line`, `\tab`, `\'xx`, `\uN` with its fallback skip, `\{ \} \\`; a
-  `\field` group becomes the Markdown link `[result text](target)` so the
-  `scrivcmt://` anchors slice 4 needs survive this path too. The document
-  is imported as that text and a warning names it: "<title>: formatting
-  could not be read; text imported plain". The import as a whole succeeds.
-  Pandoc missing entirely still fails up front as today.
+  built-in RTF text extractor yields plain paragraphs. It tracks
+  destinations, not just starred ones: `{\*…}` groups are skipped except
+  `\fldinst`, and the unstarred non-body destinations (`fonttbl`,
+  `colortbl`, `stylesheet`, `info`, `pict`, `header*`, `footer*`,
+  `listtable`, `listoverridetable`, `themedata` and the other tables) are
+  skipped whole, so font names, colour tables and picture hex never reach
+  the prose; `\binN` payloads are skipped by length. It honours `\par`,
+  `\line`, `\tab`, `\'xx`, `\uN` with its fallback skip per `\ucN`, the
+  named characters (`\emdash`, `\rquote`, …) and `\{ \} \\`. A `\field`
+  group becomes the Markdown link `[result text](target)` so the
+  `scrivcmt://` anchors slice 4 needs survive this path too. **The
+  extracted text is escaped for Markdown** (backslash, `*`, `_`, `` ` ``,
+  `[`, `]`, `<`, `>`, `#`, `|`, `~`, and a leading `+`, `-`, `>`, `#` or
+  `N.` on a line) before the generated links are inserted, so literal stars
+  or angle brackets in the prose stay visible after reopening and export.
+  The document is imported as that text and a warning names it: "<title>:
+  formatting could not be read; text imported plain". The import as a whole
+  succeeds. Pandoc missing entirely still fails up front as today.
 - `samples/Zoe 2.scriv` imports (test, skipped when Pandoc is absent, which
   is CI); the Corn opening document has four Markdown paragraphs and no `\'`;
   a fixture whose RTF forces the fallback and carries a hyperlink field
@@ -147,13 +165,26 @@ read becomes plain text with a named warning instead of killing the import.
   `Value`) with the field titles from the project's `CustomMetaDataSettings`
   table → `Document.fields["custom.<title>"]`. Two fields may share a title
   with different IDs; when titles collide, every colliding field is keyed
-  `custom.<title>.<id>` instead, deterministically, so no value overwrites
-  another. Test two same-titled fields with different values.
+  by ID instead: the whole project switches to `custom.<id>` for every
+  custom value, with the titles kept once as the map
+  `fields["custom_field_titles"] = { <id>: <title> }`. IDs are unique by
+  construction and no title key exists in that mode, so no generated key
+  can collide with another. Test two same-titled fields with different
+  values (both kept, titles recoverable) and the unique-title case.
 - Document notes: `Files/Data/<UUID>/notes.rtf` through the same RTF path →
   Markdown in `Document.fields["notes"]`. The Inspector gains a **Notes**
   box bound to `fields.notes` (plain multi-line text, saved like the
   synopsis), so the imported notes are visible and editable, not buried.
-- Section type and include-in-compile stay as they are.
+- **Folders carry metadata too.** A `TreeNode::Folder` has only an id, a
+  name and children (`crates/core/src/models/hierarchy.rs`), so a folder's
+  synopsis, label, status, keywords, custom metadata or notes have nowhere
+  to live unless the folder has a companion document. Today that document
+  is created only when the folder's own text is non-empty. Change: create
+  the folder's companion document (same name, first in the folder) whenever
+  the folder has text **or** any of those side values, with empty content
+  if there is no text. Fixture: a notes-only folder; after reopening, its
+  notes, synopsis and label are on that document.
+- Section type stays as it is; include-in-compile is mapped in slice 2.
 
 ### Slice 4 — inline comments and footnotes
 
@@ -168,6 +199,16 @@ read becomes plain text with a named warning instead of killing the import.
   footnote element `<sup class="footnote" data-body="…">●</sup>` placed after
   the text for footnotes. An anchor with no matching comment is unwrapped
   and named in the warnings.
+- **Footnotes must survive compile.** `FootnoteNode.ts` says the Rust side
+  turns that element into a Pandoc footnote on compile, but
+  `crates/core/src/core/compile.rs` has no such step: today every footnote,
+  imported or typed, is lost from compiled output (its body is an attribute
+  Pandoc never reads). This slice adds the step in core compile: before
+  Pandoc runs, each `<sup class="footnote" data-body="…">…</sup>` becomes
+  the Pandoc inline footnote `^[body]` (attribute-unescaped). Test: a
+  document with one footnote compiled to Markdown and to DOCX shows the
+  body as a footnote; a document without footnotes compiles byte-identical
+  to before.
 - Anchors are gathered before any lossy step: the prepare step records each
   `scrivcmt://<ID>` field it passes, and after conversion (Pandoc or the
   fallback) every sidecar body is reconciled against the anchors found in
@@ -218,15 +259,22 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
 
 ## [MODEL] Tests
 
-- [ ] prepare (exact output): `\`+newline → `\par`; `\'eb's` → `\u235?'s`
-      under cpg 1252; `\'xx` under another `\ansicpg` maps by that page;
-      `\uc1 caf\u233\'e9 fin` → `\uc1 caf\u233? fin`; `\uc2` with two
-      fallbacks → one `?`; `\uc0` → no fallback consumed; a fallback that
-      is `\{`; a hyperlink field passes through byte-for-byte.
-- [ ] fallback extractor: a Cocoa RTF with two paragraphs, a tab, a hex
-      escape, a `\uN` with fallback and a `{\*\expandedcolortbl}` group →
-      two plain paragraphs with the right characters; a `\field` hyperlink
-      → `[text](url)`.
+- [ ] prepare (exact prepared RTF, and exact Pandoc plain text when Pandoc
+      is present): `\`+newline → `\par`; `\'eb's` → `\u235 ?'s` and reads
+      `Zoë's`; `\'xx` under another `\ansicpg` is left alone;
+      `\uc1 caf\u233\'e9 fin` → `\uc1 caf\u233 ? fin` and reads `café fin`;
+      `\uc2` with two fallbacks → `\uc1 … \uN ?`, reads one character;
+      `\uc0 caf\u233  fin` reads `café fin`; a fallback that is `\{`; nested
+      groups with different `\ucN`; a hyperlink field passes through
+      byte-for-byte.
+- [ ] fallback extractor: an actual sample header (`fonttbl` with
+      Palatino, `colortbl`, `{\*\expandedcolortbl}`) plus a `\pict`
+      destination, two paragraphs, a tab, a hex escape and a `\uN` with
+      fallback → two plain paragraphs with the right characters and no font
+      names, colour tables or hex; a `\field` hyperlink → `[text](url)`;
+      text containing `*these stars*`, `<redacted>`, `[brackets]` and a
+      backslash reads back literally after a round trip through the
+      Markdown renderer used by compile.
 - [ ] import of a fixture whose one document is unreadable RTF → project
       with the plain text, its hyperlink kept, and one warning naming the
       document; `Zoe 2` imports (Pandoc present).
@@ -287,4 +335,13 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
   `IncludeInCompile` never applied; inline annotations are literal text;
   the fallback dropped hyperlink anchors; the default label is not the empty
   label; same-titled custom fields collide; I2 wording contradiction. Plan
-  revised as above; round 2 pending.
+  revised as above.
+- 2026-10-25 round 2 (`9a6b105`): reopened. Five round-1 findings resolved;
+  R1-1 (the `\uN?` form still broke under Pandoc, measured and fixed to
+  `\uN ?`), R1-7 (collision-free custom keys) revised again; R1-8 is an
+  owner ruling, not a reviewer call, and is recorded under Decisions. Four
+  new findings, all admitted: footnotes never survive compile (core compile
+  step added to slice 4); notes-only folders had no persistence target
+  (companion document rule in slice 3); fallback text must be escaped for
+  Markdown; the fallback must skip unstarred non-body destinations. Round 3
+  pending.
