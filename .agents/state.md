@@ -41,7 +41,24 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   novelWriter, Manuskript recommended), Import File inside a project for
   every Pandoc reader with an off-by-default heading split. Awaiting the go
   and the format list. No code changed. Latent bug noted there: `io.rs`
-  maps legacy `.doc` to the Pandoc `docx` reader, which cannot read `.doc`. Known limits, by design: the safety copy is per browser profile
+  maps legacy `.doc` to the Pandoc `docx` reader, which cannot read `.doc`.
+- **Scrivener import is not perfected** (owner asked 2026-10-25; checked by
+  running `chikn-converter` on the three `samples/*.scriv`, all Scrivener 3
+  layout): `Zoe 2.scriv` fails outright, Pandoc's RTF reader rejects one
+  document (`Zo\'eb's`, accented letter then apostrophe) and the whole
+  import aborts with the raw Pandoc error, no per-document fallback or
+  partial result; converted text keeps `\'` for every apostrophe (Pandoc
+  `markdown` writer with smart quotes; `markdown-smart` writes plain
+  apostrophes) and line-end backslashes, visible in the committed
+  `samples/Corn.chikn` too; empty documents are dropped (Corn: 20 text items
+  → 16 documents, outline-only scenes "Relationship", "Trouble" vanish);
+  Characters, Places, Notes, Front Matter and Template Sheets are filed
+  under Manuscript, not Research. By code inspection, unexercised by any
+  sample: document notes, Scrivener 3 inline comments/footnotes
+  (`content.comments`), synopses (`synopsis.txt`; the parser reads a
+  `<Synopsis>` element Scrivener 3 does not write), labels/status/keywords
+  as ID references, snapshots, custom metadata, collections are not read;
+  Scrivener 2 layout (`Files/Docs/N.rtf`) unsupported. Not yet planned. Known limits, by design: the safety copy is per browser profile
   (a copy made on the phone restores on the phone); a brand-new tab gets a
   new session id, so the "Take over" offer still applies there; no service
   worker, so the installed icon needs the server reachable.
