@@ -1,7 +1,8 @@
 //! `GET /api/fs/dirs?path=…`: the folder browser behind the web shell's
 //! folder picker (backup folder, Scrivener source). Lists sub-folders of one
-//! folder inside the projects root; hidden entries and symlinks are skipped
-//! and nothing outside the root is ever listed.
+//! folder inside a browsable root — the projects root, or the backup folder
+//! when the server has one; hidden entries and symlinks are skipped and
+//! nothing outside those roots is ever listed.
 
 use std::fs;
 use std::path::Path;
@@ -14,6 +15,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::commands::CmdError;
+use crate::projects::{browse_roots, BrowseRoot};
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -32,9 +34,11 @@ pub struct DirEntry {
 #[derive(Debug, Serialize)]
 pub struct DirListing {
     pub path: String,
-    /// Parent folder, or null at the root.
+    /// Parent folder, or null at a root.
     pub parent: Option<String>,
     pub dirs: Vec<DirEntry>,
+    /// The browsable roots, so the picker can offer a switch between them.
+    pub roots: Vec<BrowseRoot>,
 }
 
 pub fn list_dirs(dir: &Path) -> Vec<DirEntry> {
@@ -70,16 +74,17 @@ pub async fn dirs(
     let dir = if query.path.trim().is_empty() {
         state.root.clone()
     } else {
-        state.gate.existing(&query.path)?
+        state.browse.existing(&query.path)?
     };
     if !dir.is_dir() {
         return Err(CmdError::BadRequest("Not a folder".to_string()));
     }
-    let parent = if dir == state.root {
+    let at_root = state.browse.roots().contains(&dir);
+    let parent = if at_root {
         None
     } else {
         dir.parent()
-            .filter(|p| p.starts_with(&state.root))
+            .filter(|p| state.browse.roots().iter().any(|r| p.starts_with(r)))
             .map(|p| p.to_string_lossy().into_owned())
     };
     let listing_dir = dir.clone();
@@ -90,6 +95,7 @@ pub async fn dirs(
         path: dir.to_string_lossy().into_owned(),
         parent,
         dirs: entries,
+        roots: browse_roots(&state),
     }))
 }
 

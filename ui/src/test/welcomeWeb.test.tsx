@@ -16,7 +16,12 @@ const listProjectsMock = vi.hoisted(() =>
   vi.fn(async () => [{ name: "Notes", path: "/srv/root/Notes.chikn" }])
 );
 const infoMock = vi.hoisted(() =>
-  vi.fn(async () => ({ root: "/srv/root", version: "1.0.0", events: false }))
+  vi.fn(async () => ({
+    root: "/srv/root",
+    version: "1.0.0",
+    events: false,
+    roots: [{ label: "Projects", path: "/srv/root" }],
+  }))
 );
 const takeOverMock = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("../commands/web", () => ({

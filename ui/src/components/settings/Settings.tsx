@@ -260,7 +260,10 @@ export function Settings({
                     <button
                       className="settings-browse-btn"
                       onClick={async () => {
-                        const dir = await pickFolder({ title: "Choose Backup Folder" });
+                        const dir = await pickFolder({
+                          title: "Choose Backup Folder",
+                          startRoot: "Backups",
+                        });
                         if (dir) update("backup", "backup_directory", dir);
                       }}
                     >

@@ -43,6 +43,12 @@ struct Cli {
     #[arg(long)]
     bind: Option<SocketAddr>,
 
+    /// Optional second folder the browser's folder picker may browse, for
+    /// the backup setting. Falls back to CHIKN_WEB_BACKUP, then to `backup`
+    /// in the settings file.
+    #[arg(long)]
+    backup: Option<PathBuf>,
+
     /// Settings file to read instead of ~/.config/chickenscratch/web.toml.
     #[arg(long, value_name = "FILE")]
     config: Option<PathBuf>,
@@ -76,6 +82,8 @@ fn load_settings(cli: &Cli) -> Result<(Settings, PathBuf, bool), String> {
         root_env: std::env::var(config::ENV_ROOT).ok(),
         bind_flag: cli.bind,
         bind_env: std::env::var(config::ENV_BIND).ok(),
+        backup_flag: cli.backup.clone(),
+        backup_env: std::env::var(config::ENV_BACKUP).ok(),
         ui_dir_flag: cli.ui_dir.clone(),
     };
     let settings =
@@ -145,7 +153,7 @@ async fn main() -> ExitCode {
         }
     };
 
-    let state = match AppState::new(&root, ui) {
+    let state = match AppState::new(&root, settings.backup.as_deref(), ui) {
         Ok(s) => Arc::new(s),
         Err(e) => {
             eprintln!("projects root {}: {e}", root.display());

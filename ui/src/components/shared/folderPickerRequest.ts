@@ -8,6 +8,8 @@ export interface FolderPickRequest {
   title: string;
   /** Only folders whose name ends with this are choosable (e.g. ".scriv"). */
   suffix?: string;
+  /** Start in the server root with this label ("Backups") if the server has one. */
+  startRoot?: string;
   resolve: (path: string | null) => void;
 }
 
@@ -20,11 +22,11 @@ function notify() {
 
 export function pickServerFolder(
   title: string,
-  options: { suffix?: string } = {}
+  options: { suffix?: string; startRoot?: string } = {}
 ): Promise<string | null> {
   return new Promise((resolve) => {
     current?.resolve(null);
-    current = { title, suffix: options.suffix, resolve };
+    current = { title, suffix: options.suffix, startRoot: options.startRoot, resolve };
     notify();
   });
 }

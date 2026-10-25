@@ -331,6 +331,10 @@ It asks three questions, each with a default you can accept with Enter:
    machine only.
 3. **Start at boot?** Yes needs one admin command the installer runs (or
    prints) for you: `sudo loginctl enable-linger <you>`.
+4. **Folder for backups** (optional). Anywhere you like, on the NAS or
+   elsewhere; it does not have to be inside the projects folder. The browser's
+   folder picker then offers it as **Backups** when you set the backup folder
+   under **Settings → Backup**. Enter `none` to skip.
 
 Then it builds the program, installs it to `~/.local/bin/chikn-web`, saves
 your answers, sets up a background service, starts it, and prints the
@@ -360,8 +364,9 @@ scripts/install-web.sh --rollback
 `~/.config/chickenscratch/web.toml`:
 
 ```toml
-root = "/mnt/nas/Notes"   # folder that holds your .chikn projects
-bind = "0.0.0.0:7391"     # address:port to listen on
+root = "/mnt/nas/Notes"      # folder that holds your .chikn projects
+bind = "0.0.0.0:7391"        # address:port to listen on
+backup = "/mnt/nas/Backups"  # optional: offered as "Backups" in the folder picker
 ```
 
 Change them with `scripts/install-web.sh --reconfigure` (asks the questions

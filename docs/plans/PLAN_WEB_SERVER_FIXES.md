@@ -119,10 +119,13 @@ web version cannot save a revision there.
 ## [MODEL] Tests
 
 - [x] `cargo test -p chickenscratch-services` — fallback store cases (5 new)
-- [ ] `cargo test -p chickenscratch-web` — `backup` precedence, `/api/info`
-      roots, `/api/fs/dirs` inside the backup root and refused outside both
-- [ ] UI tests — picker switches roots; Settings uses the Backups root
-- [ ] Installer dry run with `--backup` into a throwaway `$HOME`
+- [x] `cargo test -p chickenscratch-web` — `backup` precedence, `/api/info`
+      roots, `/api/fs/dirs` inside the backup root and refused outside both;
+      `create_project` into the backup folder refused
+- [x] UI tests — picker switches roots, starts in Backups when asked, falls
+      back when the server has none
+- [x] Installer dry run with `--backup` into a throwaway `$HOME` (install,
+      upgrade keeps it, unit renders one mount check for both folders)
 - [ ] `cargo test -p chickenscratch-core` — ownership wrapper
 - [ ] Declared suite; CI on push
 
@@ -149,3 +152,7 @@ web version cannot save a revision there.
   warning line). Slice 3 default follows the recommendation (skip the check
   in `chikn-web`, `verify_repo_owner = true` opts back in) since the go
   covered all slices without a different answer.
+- 2026-10-25: slice 2 landed: `backup` in `web.toml` / `--backup` /
+  `CHIKN_WEB_BACKUP`; `/api/info` and `/api/fs/dirs` report browsable roots;
+  the picker shows Projects / Backups tabs and opens in Backups for the
+  backup setting; installer asks for the folder (`none` to skip).

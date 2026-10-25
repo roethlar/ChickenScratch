@@ -23,6 +23,30 @@ pub struct Info {
     pub version: &'static str,
     /// Whether `/api/events` is live (AI streaming).
     pub events: bool,
+    /// Folders the folder picker may browse: Projects first, then Backups
+    /// when the server was given a backup folder.
+    pub roots: Vec<BrowseRoot>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BrowseRoot {
+    pub label: &'static str,
+    pub path: String,
+}
+
+/// The browsable folders with their labels, in the order the UI shows them.
+pub fn browse_roots(state: &AppState) -> Vec<BrowseRoot> {
+    let mut roots = vec![BrowseRoot {
+        label: "Projects",
+        path: state.root.to_string_lossy().into_owned(),
+    }];
+    if let Some(backup) = &state.backup {
+        roots.push(BrowseRoot {
+            label: "Backups",
+            path: backup.to_string_lossy().into_owned(),
+        });
+    }
+    roots
 }
 
 const MAX_DEPTH: usize = 3;
@@ -87,6 +111,7 @@ pub async fn info(State(state): State<Arc<AppState>>) -> Json<Info> {
         root: state.root.to_string_lossy().into_owned(),
         version: env!("CARGO_PKG_VERSION"),
         events: true,
+        roots: browse_roots(&state),
     })
 }
 

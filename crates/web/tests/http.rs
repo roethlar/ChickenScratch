@@ -31,13 +31,38 @@ fn harness() -> Harness {
     fs::create_dir_all(&outside).unwrap();
     fs::create_dir_all(&ui).unwrap();
     fs::write(ui.join("index.html"), "<!doctype html><title>stub</title>").unwrap();
-    let state = AppState::new(&root, UiSource::Dir(ui)).unwrap();
+    let state = AppState::new(&root, None, UiSource::Dir(ui)).unwrap();
     Harness {
         root: state.root.clone(),
         outside: outside.canonicalize().unwrap(),
         app: build_router(Arc::new(state)),
         _tmp: tmp,
     }
+}
+
+/// Like `harness()`, with a backup folder beside the root (not inside it).
+fn harness_with_backup() -> (Harness, std::path::PathBuf) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path().join("root");
+    let outside = tmp.path().join("outside");
+    let backup = tmp.path().join("backups");
+    let ui = tmp.path().join("ui");
+    fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    fs::create_dir_all(&ui).unwrap();
+    fs::write(ui.join("index.html"), "<!doctype html><title>stub</title>").unwrap();
+    // `backup` does not exist yet: the server creates it.
+    let state = AppState::new(&root, Some(&backup), UiSource::Dir(ui)).unwrap();
+    let backup = state.backup.clone().unwrap();
+    (
+        Harness {
+            root: state.root.clone(),
+            outside: outside.canonicalize().unwrap(),
+            app: build_router(Arc::new(state)),
+            _tmp: tmp,
+        },
+        backup,
+    )
 }
 
 async fn call(app: &Router, req: Request<Body>) -> (StatusCode, Value, axum::http::HeaderMap) {
@@ -352,6 +377,70 @@ async fn ui_is_served_with_security_headers_and_info_reports_the_root() {
         .to_str()
         .unwrap()
         .starts_with("text/event-stream"));
+}
+
+#[tokio::test]
+async fn backup_folder_is_a_second_browsable_root_but_not_a_project_root() {
+    let (h, backup) = harness_with_backup();
+    assert!(backup.is_dir(), "server creates the backup folder");
+    fs::create_dir_all(backup.join("nightly")).unwrap();
+
+    let (status, info, _) = call(
+        &h.app,
+        Request::get("/api/info").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(info["roots"][0]["label"], json!("Projects"));
+    assert_eq!(info["roots"][1]["label"], json!("Backups"));
+    assert_eq!(info["roots"][1]["path"], json!(path_str(&backup)));
+
+    // Browsing inside the backup folder works and tops out at that root.
+    let (status, listing, _) = call(
+        &h.app,
+        Request::get(format!("/api/fs/dirs?path={}", path_str(&backup)))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listing["parent"], Value::Null);
+    assert_eq!(listing["dirs"][0]["name"], json!("nightly"));
+    assert_eq!(listing["roots"][1]["label"], json!("Backups"));
+    let (status, nightly, _) = call(
+        &h.app,
+        Request::get(format!(
+            "/api/fs/dirs?path={}",
+            path_str(&backup.join("nightly"))
+        ))
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(nightly["parent"], json!(path_str(&backup)));
+
+    // Still nothing outside either root.
+    let (status, _, _) = call(
+        &h.app,
+        Request::get(format!("/api/fs/dirs?path={}", path_str(&h.outside)))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // And the backup folder is not a place projects may be created.
+    let (status, _, _) = call(
+        &h.app,
+        cmd(
+            "create_project",
+            json!({ "name": "Sneaky", "path": path_str(&backup) }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(!backup.join("Sneaky.chikn").exists());
 }
 
 #[tokio::test]

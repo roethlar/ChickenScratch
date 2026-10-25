@@ -4,14 +4,17 @@
 //! ```toml
 //! root = "/mnt/stuff/Notes"   # folder that holds the .chikn projects
 //! bind = "0.0.0.0:7391"       # address:port to listen on
+//! # backup = "/mnt/stuff/Backups"  # optional: a second folder the browser may pick from
 //! # ui_dir = "/path/to/ui/dist"   # development builds only
 //! ```
 //!
 //! Every value can also come from the command line or the environment.
 //! Precedence, highest first: flag → environment (`CHIKN_WEB_ROOT`,
-//! `CHIKN_WEB_BIND`) → settings file → built-in default. `root` has no
-//! default; without one anywhere the server refuses to start and names the
-//! file.
+//! `CHIKN_WEB_BIND`, `CHIKN_WEB_BACKUP`) → settings file → built-in default.
+//! `root` has no default; without one anywhere the server refuses to start
+//! and names the file. `backup` is optional: when set, the folder picker in
+//! the browser offers it as a second place to browse (for the backup
+//! setting), outside the projects root.
 //!
 //! Paths in the file may start with `~/`, which means the home directory.
 //! Any other relative path is taken relative to the working directory the
@@ -28,6 +31,7 @@ use serde::Deserialize;
 pub const FILE_NAME: &str = "web.toml";
 pub const ENV_ROOT: &str = "CHIKN_WEB_ROOT";
 pub const ENV_BIND: &str = "CHIKN_WEB_BIND";
+pub const ENV_BACKUP: &str = "CHIKN_WEB_BACKUP";
 pub const DEFAULT_BIND: &str = "127.0.0.1:7391";
 
 /// Exactly what the file may contain. Unknown keys are an error so a typo
@@ -37,6 +41,7 @@ pub const DEFAULT_BIND: &str = "127.0.0.1:7391";
 pub struct FileConfig {
     pub root: Option<PathBuf>,
     pub bind: Option<String>,
+    pub backup: Option<PathBuf>,
     pub ui_dir: Option<PathBuf>,
 }
 
@@ -48,6 +53,8 @@ pub struct Overrides {
     pub root_env: Option<String>,
     pub bind_flag: Option<SocketAddr>,
     pub bind_env: Option<String>,
+    pub backup_flag: Option<PathBuf>,
+    pub backup_env: Option<String>,
     pub ui_dir_flag: Option<PathBuf>,
 }
 
@@ -80,6 +87,8 @@ pub struct Settings {
     pub root_source: Source,
     pub bind: SocketAddr,
     pub bind_source: Source,
+    pub backup: Option<PathBuf>,
+    pub backup_source: Source,
     pub ui_dir: Option<PathBuf>,
     pub ui_dir_source: Source,
 }
@@ -111,6 +120,14 @@ or put root = \"/path/to/projects\" in {}.",
             None => out.push_str(&format!("root = (not set)  [{}]\n", self.root_source)),
         }
         out.push_str(&format!("bind = {}  [{}]\n", self.bind, self.bind_source));
+        match &self.backup {
+            Some(dir) => out.push_str(&format!(
+                "backup = {}  [{}]\n",
+                dir.display(),
+                self.backup_source
+            )),
+            None => out.push_str(&format!("backup = (none)  [{}]\n", self.backup_source)),
+        }
         match &self.ui_dir {
             Some(dir) => out.push_str(&format!(
                 "ui_dir = {}  [{}]\n",
@@ -223,6 +240,16 @@ pub fn resolve(
         )
     };
 
+    let (backup, backup_source) = if let Some(dir) = &overrides.backup_flag {
+        (Some(dir.clone()), Source::Flag)
+    } else if let Some(dir) = non_empty(overrides.backup_env.as_deref()) {
+        (Some(expand_home(Path::new(dir))), Source::Env(ENV_BACKUP))
+    } else if let Some(dir) = file.and_then(|f| f.backup.as_deref()) {
+        (Some(expand_home(dir)), from_file.clone())
+    } else {
+        (None, Source::Unset)
+    };
+
     let (ui_dir, ui_dir_source) = if let Some(dir) = &overrides.ui_dir_flag {
         (Some(dir.clone()), Source::Flag)
     } else if let Some(dir) = file.and_then(|f| f.ui_dir.as_deref()) {
@@ -236,6 +263,8 @@ pub fn resolve(
         root_source,
         bind,
         bind_source,
+        backup,
+        backup_source,
         ui_dir,
         ui_dir_source,
     })
@@ -275,6 +304,7 @@ mod tests {
         FileConfig {
             root: root.map(PathBuf::from),
             bind: bind.map(str::to_string),
+            backup: None,
             ui_dir: None,
         }
     }
@@ -412,6 +442,27 @@ mod tests {
         let s = resolve(&Overrides::default(), Some(&loaded), &missing).unwrap();
         let home = dirs::home_dir().unwrap();
         assert_eq!(s.root, Some(home.join("Notes")));
+    }
+
+    #[test]
+    fn backup_folder_is_optional_and_follows_the_same_precedence() {
+        let s = resolve(&Overrides::default(), None, &path()).unwrap();
+        assert_eq!(s.backup, None);
+        assert_eq!(s.backup_source, Source::Unset);
+
+        let f = parse("root = \"/n\"\nbackup = \"~/Backups\"\n").unwrap();
+        let s = resolve(&Overrides::default(), Some(&f), &path()).unwrap();
+        assert_eq!(s.backup, Some(dirs::home_dir().unwrap().join("Backups")));
+        assert_eq!(s.backup_source, Source::File(path()));
+
+        let o = Overrides {
+            backup_env: Some("/env/backups".into()),
+            ..Default::default()
+        };
+        let s = resolve(&o, Some(&f), &path()).unwrap();
+        assert_eq!(s.backup.as_deref(), Some(Path::new("/env/backups")));
+        assert_eq!(s.backup_source, Source::Env(ENV_BACKUP));
+        assert!(s.describe(&path(), true).contains("backup = /env/backups"));
     }
 
     #[test]

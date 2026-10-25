@@ -13,6 +13,11 @@ use crate::static_ui::UiSource;
 pub struct AppState {
     /// Canonical projects root: the only folder project paths may resolve into.
     pub root: PathBuf,
+    /// Optional second folder the browser may browse (backup setting). Not a
+    /// project root: commands still resolve project paths against `gate`.
+    pub backup: Option<PathBuf>,
+    /// Folders the folder picker may list: the root, plus `backup` if set.
+    pub browse: Gate,
     /// Where the built UI comes from (a folder, or assets embedded in the binary).
     pub ui: UiSource,
     pub gate: Gate,
@@ -27,7 +32,8 @@ pub struct AppState {
 
 impl AppState {
     /// `root` must exist; it is canonicalized so symlinked roots still work.
-    pub fn new(root: &Path, ui: UiSource) -> std::io::Result<Self> {
+    /// `backup`, when given, is created if missing and canonicalized too.
+    pub fn new(root: &Path, backup: Option<&Path>, ui: UiSource) -> std::io::Result<Self> {
         let root = root.canonicalize()?;
         if !root.is_dir() {
             return Err(std::io::Error::new(
@@ -35,9 +41,20 @@ impl AppState {
                 format!("projects root is not a directory: {}", root.display()),
             ));
         }
+        let backup = match backup {
+            Some(dir) => {
+                std::fs::create_dir_all(dir)?;
+                Some(dir.canonicalize()?)
+            }
+            None => None,
+        };
+        let mut browse_roots = vec![root.clone()];
+        browse_roots.extend(backup.iter().cloned());
         Ok(Self {
             gate: Gate::new(vec![root.clone()]),
+            browse: Gate::new(browse_roots),
             root,
+            backup,
             ui,
             locks: ProjectWriteLocks::default(),
             tokens: ProjectTokens::default(),

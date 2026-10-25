@@ -18,6 +18,8 @@ Usage: scripts/install-web.sh [options]
 
   --root <folder>     Folder that will hold your projects (asked if missing)
   --bind <addr:port>  Address to listen on (default 0.0.0.0:7391)
+  --backup <folder>   Folder offered for backups in the browser (optional;
+                      "none" for none)
   --boot yes|no       Start at boot (default yes; needs one sudo command)
   --yes               Accept defaults for anything not given; never ask
   --reconfigure       Ask the questions again, pre-filled with current values
@@ -50,6 +52,7 @@ unit_path=$unit_dir/$unit_name
 
 opt_root=""
 opt_bind=""
+opt_backup=""
 opt_boot=""
 opt_yes=0
 opt_reconfigure=0
@@ -62,6 +65,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) [[ $# -ge 2 ]] || die "--root needs a folder"; opt_root=$2; shift 2 ;;
     --bind) [[ $# -ge 2 ]] || die "--bind needs addr:port"; opt_bind=$2; shift 2 ;;
+    --backup) [[ $# -ge 2 ]] || die "--backup needs a folder (or none)"; opt_backup=$2; shift 2 ;;
     --boot) [[ $# -ge 2 ]] || die "--boot needs yes or no"; opt_boot=$2; shift 2 ;;
     --no-boot) opt_boot=no; shift ;;
     --yes|-y) opt_yes=1; shift ;;
@@ -145,12 +149,16 @@ network_mount_for() {
 }
 
 render_unit() {
-  local root=$1 mount pre="" mp_bin
-  mount=$(network_mount_for "$root")
-  if [[ -n $mount ]]; then
-    mp_bin=$(command -v mountpoint || true)
-    [[ -n $mp_bin ]] && pre="ExecStartPre=$mp_bin -q $mount"$'\n'
-  fi
+  local root=$1 backup=${2:-} mount pre="" mp_bin seen=""
+  mp_bin=$(command -v mountpoint || true)
+  for folder in "$root" "$backup"; do
+    [[ -n $folder ]] || continue
+    mount=$(network_mount_for "$folder")
+    [[ -n $mount && -n $mp_bin ]] || continue
+    case " $seen " in *" $mount "*) continue ;; esac
+    seen="$seen $mount"
+    pre+="ExecStartPre=$mp_bin -q $mount"$'\n'
+  done
   cat <<EOF
 # Written by scripts/install-web.sh — rerun the installer rather than editing.
 [Unit]
@@ -171,15 +179,22 @@ EOF
 }
 
 write_config() {
-  local root=$1 bind=$2
+  local root=$1 bind=$2 backup=${3:-}
   mkdir -p "$config_dir"
-  cat >"$config_file" <<EOF
+  {
+    cat <<EOF
 # ChickenScratch web settings — read by chikn-web at start.
 # Rerun scripts/install-web.sh --reconfigure to change these with prompts,
 # or edit and then: systemctl --user restart chikn-web
 root = "$root"   # folder that holds your .chikn projects
 bind = "$bind"   # address:port to listen on; 127.0.0.1:7391 = this machine only
 EOF
+    if [[ -n $backup ]]; then
+      printf 'backup = "%s"   # folder the browser offers for backups\n' "$backup"
+    else
+      printf '# backup = "/path/to/backups"   # optional: a folder the browser offers for backups\n'
+    fi
+  } >"$config_file"
   chmod 600 "$config_file"
 }
 
@@ -216,22 +231,30 @@ fi
 
 existing_root=$(toml_get root)
 existing_bind=$(toml_get bind)
+existing_backup=$(toml_get backup)
 configure=1
-if [[ -n $existing_root && $opt_reconfigure -eq 0 && -z $opt_root && -z $opt_bind ]]; then
+if [[ -n $existing_root && $opt_reconfigure -eq 0 && -z $opt_root && -z $opt_bind && -z $opt_backup ]]; then
   configure=0
 fi
 
 if [[ $configure -eq 1 ]]; then
   default_root=${existing_root:-$HOME/Notes}
   default_bind=${existing_bind:-0.0.0.0:7391}
+  default_backup=${existing_backup:-none}
   root=${opt_root:-$(ask "Folder that will hold your projects (a NAS path is fine)" "$default_root")}
   bind=${opt_bind:-$(ask "Address to listen on (0.0.0.0 = whole network/VPN)" "$default_bind")}
+  backup=${opt_backup:-$(ask "Folder for backups, offered in the browser (none = skip)" "$default_backup")}
   root=$(expand_home "$root")
   [[ $root == /* ]] || root=$PWD/$root
   [[ $bind == *:* ]] || die "listen address must look like 0.0.0.0:7391 (got '$bind')"
+  case "$backup" in none|NONE|None|"") backup="" ;; *) backup=$(expand_home "$backup"); [[ $backup == /* ]] || backup=$PWD/$backup ;; esac
+  if [[ -n $backup && $backup == "$root"* ]]; then
+    warn "the backup folder is inside the projects folder; backups work but live next to your notes"
+  fi
 else
   root=$existing_root
   bind=$existing_bind
+  backup=$existing_backup
   say "Settings found in $config_file — upgrading, keeping them."
 fi
 
@@ -248,7 +271,7 @@ fi
 case "$boot" in y|Y|yes|YES|Yes) boot=yes ;; *) boot=no ;; esac
 
 if [[ $opt_print_unit -eq 1 ]]; then
-  render_unit "$root"
+  render_unit "$root" "$backup"
   exit 0
 fi
 
@@ -289,8 +312,12 @@ if [[ -x $bin_path ]]; then
 fi
 install -m 755 "$new_binary" "$bin_path"
 
+if [[ -n $backup && ! -d $backup ]]; then
+  mkdir -p "$backup" || die "cannot create $backup"
+fi
+
 if [[ $configure -eq 1 ]]; then
-  write_config "$root" "$bind"
+  write_config "$root" "$bind" "$backup"
   say "Settings written to $config_file"
 fi
 
@@ -298,7 +325,7 @@ fi
 
 if have_systemd_user; then
   mkdir -p "$unit_dir"
-  render_unit "$root" >"$unit_path"
+  render_unit "$root" "$backup" >"$unit_path"
   systemctl --user daemon-reload
   if [[ $boot == yes ]]; then
     systemctl --user enable --quiet "$unit_name"
@@ -327,6 +354,7 @@ if have_systemd_user; then
       say "chikn-web $new_version is running."
     fi
     say "Projects folder: $root"
+    [[ -n $backup ]] && say "Backups folder:  $backup (pick it under Settings → Backup)"
     print_how_to_reach "$bind"
     say ""
     say "Useful commands:"

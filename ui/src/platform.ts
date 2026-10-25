@@ -26,6 +26,8 @@ export interface PickFolderOptions {
   title?: string;
   /** Web shell only: the chosen folder's name must end with this (e.g. ".scriv"). */
   suffix?: string;
+  /** Web shell only: open the picker in this server root ("Backups") when it exists. */
+  startRoot?: string;
 }
 
 export interface PickFileOptions {
@@ -43,7 +45,11 @@ export interface PickSaveOptions {
 export const WEB_NOT_AVAILABLE = "Not available in the web version yet.";
 
 export async function pickFolder(options: PickFolderOptions = {}): Promise<string | null> {
-  if (!isTauri()) return pickServerFolder(options.title ?? "Choose a folder", { suffix: options.suffix });
+  if (!isTauri())
+    return pickServerFolder(options.title ?? "Choose a folder", {
+      suffix: options.suffix,
+      startRoot: options.startRoot,
+    });
   const picked = await dialogOpen({ directory: true, title: options.title });
   return typeof picked === "string" ? picked : null;
 }

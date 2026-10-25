@@ -3786,6 +3786,25 @@
   margin: 0;
   font-size: 1rem;
 }
+.server-folder-picker-roots {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0 1rem 0.5rem;
+}
+.server-folder-picker-root {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.server-folder-picker-root.active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
 .server-folder-picker-path {
   padding: 0.5rem 1rem;
   font-size: 0.8rem;

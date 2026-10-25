@@ -11,10 +11,17 @@ export interface WebProject {
   path: string;
 }
 
+/** A folder the server lets the picker browse: "Projects", and "Backups" when configured. */
+export interface BrowseRoot {
+  label: string;
+  path: string;
+}
+
 export interface WebInfo {
   root: string;
   version: string;
   events: boolean;
+  roots: BrowseRoot[];
 }
 
 export function listWebProjects(): Promise<WebProject[]> {
@@ -93,9 +100,10 @@ export interface DirListing {
   path: string;
   parent: string | null;
   dirs: DirEntry[];
+  roots: BrowseRoot[];
 }
 
-/** Sub-folders of one folder under the server root (empty path = the root). */
+/** Sub-folders of one folder under a browsable root (empty path = the projects root). */
 export function listServerDirs(path = ""): Promise<DirListing> {
   const query = path ? `?path=${encodeURIComponent(path)}` : "";
   return webGet<DirListing>(`/api/fs/dirs${query}`);
