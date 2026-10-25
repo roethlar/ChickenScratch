@@ -53,6 +53,7 @@ cargo fmt --all -- --check
 cargo clippy --locked -p chickenscratch-core -p chickenscratch-services -p chickenscratch-web -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
 cargo test --locked -p chickenscratch-core -p chickenscratch-services -p chickenscratch-web -p chickenscratch -p chickenscratch-tui -p chikn-converter --lib --bins --tests
 scripts/check-release-metadata.sh
+bash -n scripts/*.sh && shellcheck scripts/*.sh
 cd ui && npm run lint && npm run build && npm run test
 ```
 

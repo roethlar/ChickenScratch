@@ -34,6 +34,12 @@ jobs:
       - name: Release metadata
         run: scripts/check-release-metadata.sh
 
+      - name: Shell scripts
+        run: |
+          shellcheck --version
+          bash -n scripts/*.sh
+          shellcheck scripts/*.sh
+
       - name: Rust clippy
         run: cargo clippy --locked -p chickenscratch-core -p chickenscratch-services -p chickenscratch-web -p chickenscratch -p chickenscratch-tui -p chikn-converter --all-targets -- -D warnings
 

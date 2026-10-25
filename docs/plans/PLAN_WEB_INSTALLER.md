@@ -120,10 +120,14 @@ owner's `~/.config`. Behaviour:
 
 - [x] `cargo test --locked -p chickenscratch-web` — config precedence, no
       file, malformed file, `--show-config` output
-- [ ] `bash -n` and `shellcheck` on both scripts
-- [ ] Installer dry run on the Linux box into a throwaway `$HOME`
+- [x] `bash -n` and `shellcheck` on both scripts (shellcheck 0.11 via npx
+      locally; the Validation workflow runs it on every push)
+- [x] Installer dry run on the Linux box into a throwaway `$HOME`
       (`HOME=/tmp/… ./scripts/install-web.sh --root … --yes`), then rerun to
-      prove the upgrade path asks nothing; `--rollback`; uninstall
+      prove the upgrade path asks nothing; `--rollback`; uninstall; unit
+      rendering for a NAS path (`ExecStartPre=mountpoint -q /mnt/stuff`) —
+      all with `--no-systemd`, so the real service start is the owner's
+      first install
 - [ ] Declared suite (`.agents/repo-guidance.md` Verification)
 
 ## [MODEL] Owner verification (plain English)
@@ -147,4 +151,11 @@ version with the same projects."
 - 2026-10-24: owner "go" → slice 1 landed: `chikn-web` reads `web.toml`,
   flags and `CHIKN_WEB_*` win, `--config`, `--show-config`, plain refusal
   when no root is set anywhere. 12 unit tests; live smoke of every source.
-  Slices 2–3 await their go.
+- 2026-10-24: owner "do all the slices" → slice 2 landed:
+  `scripts/install-web.sh` (questions once, rerun = upgrade, `--reconfigure`,
+  `--binary`, `--rollback`, `--print-unit`, `--no-systemd`, user systemd
+  unit with a mount check for NFS/CIFS roots, linger for start-at-boot) and
+  `scripts/uninstall-web.sh`; `shellcheck` added to the Validation
+  workflow and the declared suite. Found during the dry run: on this box
+  the NAS is an autofs automount, so `findmnt` lists `autofs` first and
+  `nfs` second — the mount check now scans every line.
