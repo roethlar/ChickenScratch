@@ -290,9 +290,18 @@ export function Inspector() {
   // restored metadata (plan slice 3, round 8). The reload generation
   // catches that case.
   const reloadGeneration = getReloadGeneration();
-  const [lastDocId, setLastDocId] = useState<string | undefined>(activeDoc?.id);
+  // Starts undefined so a mount with a document already selected hydrates
+  // too; it used to start as that id, leaving every field empty and the
+  // first debounced save then erased the stored metadata (review finding
+  // s3-1).
+  const [lastDocId, setLastDocId] = useState<string | undefined>(undefined);
   const [lastGeneration, setLastGeneration] = useState(reloadGeneration);
+  // Counts hydrations; the debounce effect skips the run a hydration causes,
+  // so a hydration is never a save.
+  const [hydration, setHydration] = useState(0);
+  const savedHydration = useRef(0);
   if (activeDoc && (activeDoc.id !== lastDocId || reloadGeneration !== lastGeneration)) {
+    setHydration((h) => h + 1);
     setLastDocId(activeDoc.id);
     setLastGeneration(reloadGeneration);
     setTitle(activeDoc.name || "");
@@ -382,8 +391,13 @@ export function Inspector() {
     setEditingTitle(false);
   }, [project, activeDoc, title, setProject]);
 
-  // Debounced save on metadata changes
+  // Debounced save on metadata changes; the run that follows a hydration
+  // (mount or document change) saves nothing, only edits do.
   useEffect(() => {
+    if (hydration !== savedHydration.current) {
+      savedHydration.current = hydration;
+      return;
+    }
     if (!activeDoc) return;
     const timer = setTimeout(save, 1500);
     return () => clearTimeout(timer);
@@ -391,7 +405,7 @@ export function Inspector() {
     // which would restart the debounce on every keystroke instead of every
     // 1.5s idle window.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [synopsis, notes, label, status, keywords, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene]);
+  }, [hydration, synopsis, notes, label, status, keywords, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene]);
 
   if (!activeDoc) {
     return (

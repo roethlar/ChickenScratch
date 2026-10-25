@@ -86,6 +86,27 @@ describe("Inspector notes", () => {
     expect(last[2].fields?.notes).toBe("Remember the egg and the key.");
   });
 
+  it("mounting on an already selected document shows its notes and saves nothing by itself", async () => {
+    // Review finding s3-1: opening the Inspector used to leave the form
+    // empty and then save the empty form, erasing the stored metadata.
+    storeState.activeDoc = aliceDoc;
+    render(<Inspector />);
+    const box = screen.getByLabelText("Notes") as HTMLTextAreaElement;
+    expect(box.value).toBe("Remember the egg.");
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(updateMetaMock).not.toHaveBeenCalled();
+
+    fireEvent.change(box, { target: { value: "Edited." } });
+    await act(async () => {
+      vi.advanceTimersByTime(1600);
+    });
+    expect(updateMetaMock).toHaveBeenCalledTimes(1);
+    const calls = updateMetaMock.mock.calls as unknown as [string, string, { fields?: Record<string, unknown>; synopsis?: unknown }][];
+    expect(calls[0][2].fields?.notes).toBe("Edited.");
+  });
+
   it("clears the stored notes when the box is emptied", async () => {
     renderWithAlice();
     const box = screen.getByLabelText("Notes") as HTMLTextAreaElement;
