@@ -9,6 +9,30 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 - Phase **Engine hardening — protect writers' work** remains active;
   `docs/CURRENT_PHASE.md` owns the phase and exit criteria.
+- **Owner 2026-10-25, awaiting "plan it" (no plan written yet):** two
+  directions given in words after the second-machine install.
+  (a) "reloading the page should not abandon the open project" … "more than
+  that. a reload should not abandon any unsaved changes in the currently open
+  doc." Proposed slice (owner has not yet said plan it): a per-note local
+  safety copy in browser storage, cleared when the server confirms the save
+  and restored on reload/crash with a one-line notice; remember the last open
+  project + note and reopen it with the same session seat; a **Projects**
+  button that saves, releases the project and shows the list (today
+  `closeProject` exists in `projectStore.ts` but nothing in the UI calls it;
+  the only way back is a reload). Today's gap: autosave is debounced
+  (`Editor.tsx`, min 250 ms / default 2 s) and the web `beforeunload` path
+  cannot await the final flush, so a reload inside that window loses the
+  last words — an I6 matter.
+  (b) "this needs a mobile-friendly UI for taking quick notes or edits on a
+  mobile device": one-column layout under a width threshold, binder as a
+  drawer, inspector hidden, quick-note button on the project list, touch-size
+  controls, home-screen install. Proposed as the slices after (a), in one
+  plan. Owner also asked "how do I start a new project once a project has
+  been opened? there's no close" → the Projects button above.
+- **Owner 2026-10-25: "the install did not ask any new questions"** → fixed
+  in `e56483d` (unpushed): an upgrade asks once for a setting the settings
+  file has never seen, flags change one setting, `--yes` writes the
+  placeholder. Dry-run verified; shellcheck clean.
 - **Owner 2026-10-25: "plan" after the first install on a second machine**
   (projects on NFS at `/mnt/notes`): settings save fails there with a keyring
   D-Bus error; the backup folder can only be picked inside the root; git's
@@ -128,12 +152,16 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 
 ## Next
 
-1. **Push the web server fixes** (five commits since `8d587a2`; push needs
-   the owner's go) and watch Validation. Then the owner's checks on the
-   second machine after `git pull && scripts/install-web.sh`: Settings
-   save, backup picker shows Backups, Save Revision on the NAS lists an
-   entry.
-2. **Web installer shipped and pushed** (`docs/plans/PLAN_WEB_INSTALLER.md`):
+1. **Push `e56483d`** (installer asks for new settings; needs the owner's
+   push go), then the owner reruns `git pull && scripts/install-web.sh` on
+   the second machine: it asks the backup question once; Settings → Backup
+   then shows a Backups tab. Owner checks still open there: Settings save,
+   Save Revision on the NAS lists an entry.
+2. **Write the plan the owner asked about in words** when they say "plan it":
+   slice 1 = local safety copy + reopen last project/note + Projects button;
+   slices 2+ = mobile layout, quick note, touch targets, home-screen install.
+   No code before the go.
+3. **Web installer shipped and pushed** (`docs/plans/PLAN_WEB_INSTALLER.md`):
    ask for the push go, then the owner's first real install on the server
    (`scripts/install-web.sh`, NAS folder when asked) is the verification.
    Later, needs its own plan: a CI-built Linux tarball with the installer
@@ -144,21 +172,24 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
    `import_scrivener` still ignores a failed post-import token acquisition
    (not reachable after ar-1); welcome-screen errors keep a
    developer-ish "Invalid project:" prefix.
-2. Then re-ask whether to close hardening and move to the Tauri
+4. Then re-ask whether to close hardening and move to the Tauri
    reference-app phase. The phase declaration remains the owner's call.
    Vault work remains paused.
-3. **Web shell side quest**: every slice shipped and the owner has run it
+5. **Web shell side quest**: every slice shipped and the owner has run it
    (2026-10-24: works over the VPN after the plain-HTTP random-id fix
    `a054e9d`). CI on a push is the first check of the Tauri wrappers on a
    machine with WebKitGTK.
-4. **Project profiles**: all four slices shipped 2026-10-24 (owner: "complete
+6. **Project profiles**: all four slices shipped 2026-10-24 (owner: "complete
    all slices and push when done"); next evidence is the owner creating a
    Notes project in the browser and seeing no fiction tools.
 
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section.
-- **2026-10-25 as of `52ad932`** (web server fixes, unpushed): fmt, clippy
+- **2026-10-25 as of `ad44c22`, pushed by the owner to `origin` and
+  `github`**: GitHub Validation run `40162108795` succeeded (all jobs,
+  shellcheck step included). `e56483d` (installer) is local only.
+- **2026-10-25 as of `52ad932`** (web server fixes): fmt, clippy
   `-D warnings` and tests green for core (138, five full runs), services,
   web, tui, converter; release-metadata script; `bash -n` + shellcheck 0.11
   on the scripts; UI lint/build/test (97). Tauri crate not compiled on this
