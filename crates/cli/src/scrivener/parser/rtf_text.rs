@@ -494,10 +494,32 @@ fn render_field(f: &Field) -> String {
         .map(|rest| rest.trim().trim_matches('"').trim())
         .filter(|u| !u.is_empty() && !u.contains(char::is_whitespace));
     match url {
-        Some(url) if !result.is_empty() => format!("[{result}]({url})"),
-        Some(url) => format!("<{url}>"),
+        Some(url) if !result.is_empty() => {
+            format!("[{result}]({})", markdown_destination(url))
+        }
+        Some(url) => format!("<{}>", markdown_destination(url)),
         None => result.to_string(),
     }
+}
+
+/// Percent-encodes the characters that end or break a Markdown link
+/// destination (review finding s1-5: a `)` in the target truncated the
+/// link and leaked text into the prose). Anything already percent-encoded
+/// is left alone; `scrivcmt://<UUID>` targets never contain these.
+fn markdown_destination(url: &str) -> String {
+    let mut out = String::with_capacity(url.len());
+    for c in url.chars() {
+        match c {
+            '(' => out.push_str("%28"),
+            ')' => out.push_str("%29"),
+            '<' => out.push_str("%3C"),
+            '>' => out.push_str("%3E"),
+            ' ' => out.push_str("%20"),
+            '\\' => out.push_str("%5C"),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// Collapse runs of blank lines, trim paragraph edges, drop empty output.
@@ -559,6 +581,27 @@ Second paragraph with \\'93quotes\\'94.\\\n\
         assert_eq!(
             plain("{\\rtf1 before {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://X\"}}"),
             "before <scrivcmt://X>"
+        );
+    }
+
+    /// Review finding s1-5: a `)` or `<` in a hyperlink target must not end
+    /// the Markdown destination early.
+    #[test]
+    fn link_targets_with_brackets_stay_whole() {
+        assert_eq!(
+            plain("{\\rtf1 {\\field{\\*\\fldinst{HYPERLINK \"https://example.com/a)b(c\"}}{\\fldrslt click}}}"),
+            "[click](https://example.com/a%29b%28c)"
+        );
+        assert_eq!(
+            plain("{\\rtf1 {\\field{\\*\\fldinst{HYPERLINK \"https://x.y/<z>\"}}}}"),
+            "<https://x.y/%3Cz%3E>"
+        );
+        // The anchors slice 4 relies on are untouched.
+        assert_eq!(
+            plain(
+                "{\\rtf1 {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://ABC-123\"}}{\\fldrslt t}}}"
+            ),
+            "[t](scrivcmt://ABC-123)"
         );
     }
 
