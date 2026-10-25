@@ -90,6 +90,9 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
     // decodes whole and Cyrillic is Cyrillic (review finding s1-3).
     let encoding = document_encoding(input);
     let mut pending: Vec<u8> = Vec::new();
+    // A high surrogate from `\uN` waits for its low half (review finding
+    // s1-4): RTF carries anything above the BMP as a UTF-16 pair.
+    let mut pending_high: Option<u16> = None;
 
     fn flush_pending(
         pending: &mut Vec<u8>,
@@ -137,6 +140,20 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
         let continues_run = b >= 0x80 || (b == b'\\' && input.get(i + 1) == Some(&b'\''));
         if !continues_run {
             flush_pending(&mut pending, encoding, &groups, &mut fields, &mut text);
+        }
+        // A high surrogate not followed by its low half (fallback items in
+        // between are skipped, not read) is a lone half: show U+FFFD rather
+        // than drop it silently.
+        if pending_high.is_some() && skip_fallback == 0 {
+            let is_unicode_escape = b == b'\\'
+                && input.get(i + 1) == Some(&b'u')
+                && input
+                    .get(i + 2)
+                    .is_some_and(|c| c.is_ascii_digit() || *c == b'-');
+            if !is_unicode_escape {
+                pending_high = None;
+                push('\u{FFFD}', &groups, &mut fields, &mut text);
+            }
         }
         match b {
             b'{' => {
@@ -326,9 +343,46 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                                 }
                                 b"u" => {
                                     if let Some(p) = param {
-                                        let cp = if p < 0 { p + 65536 } else { p } as u32;
-                                        if let Some(c) = char::from_u32(cp) {
-                                            push(c, &groups, &mut fields, &mut text);
+                                        let unit = (if p < 0 { p + 65536 } else { p }) as u32;
+                                        match (pending_high.take(), unit) {
+                                            (Some(hi), 0xDC00..=0xDFFF) => {
+                                                let cp = 0x10000
+                                                    + ((hi as u32 - 0xD800) << 10)
+                                                    + (unit - 0xDC00);
+                                                push(
+                                                    char::from_u32(cp).unwrap_or('\u{FFFD}'),
+                                                    &groups,
+                                                    &mut fields,
+                                                    &mut text,
+                                                );
+                                            }
+                                            (high, 0xD800..=0xDBFF) => {
+                                                if high.is_some() {
+                                                    push(
+                                                        '\u{FFFD}',
+                                                        &groups,
+                                                        &mut fields,
+                                                        &mut text,
+                                                    );
+                                                }
+                                                pending_high = Some(unit as u16);
+                                            }
+                                            (high, _) => {
+                                                if high.is_some() {
+                                                    push(
+                                                        '\u{FFFD}',
+                                                        &groups,
+                                                        &mut fields,
+                                                        &mut text,
+                                                    );
+                                                }
+                                                push(
+                                                    char::from_u32(unit).unwrap_or('\u{FFFD}'),
+                                                    &groups,
+                                                    &mut fields,
+                                                    &mut text,
+                                                );
+                                            }
                                         }
                                         skip_fallback = groups.last().map(|g| g.uc).unwrap_or(1);
                                     }
@@ -370,6 +424,9 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
         }
     }
     flush_pending(&mut pending, encoding, &groups, &mut fields, &mut text);
+    if pending_high.is_some() {
+        push('\u{FFFD}', &groups, &mut fields, &mut text);
+    }
 
     // A truncated document ends inside open groups. Treat the end of input
     // as closing every brace so a field cut off mid-way still yields its
@@ -525,6 +582,21 @@ Second paragraph with \\'93quotes\\'94.\\\n\
             rtf_to_plain_markdown(b"{\\rtf1\\ansi\\ansicpg1251 \xcf\xf0}"),
             "Пр"
         );
+    }
+
+    /// Review finding s1-4: a UTF-16 surrogate pair is one character; a
+    /// lone half shows U+FFFD instead of vanishing.
+    #[test]
+    fn surrogate_pairs_combine() {
+        let src = format!(
+            "{{\\rtf1\\ansi\\uc1 before \\u{} ?\\u{} ? after}}",
+            -10179, -8704
+        );
+        assert_eq!(plain(&src), "before \u{1F600} after");
+        let lone = format!("{{\\rtf1\\ansi\\uc1 x\\u{} ?y}}", -10179);
+        assert_eq!(plain(&lone), "x\u{FFFD}y");
+        let trailing = format!("{{\\rtf1\\ansi\\uc1 x\\u{} ?}}", -10179);
+        assert_eq!(plain(&trailing), "x\u{FFFD}");
     }
 
     #[test]
