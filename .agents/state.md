@@ -74,8 +74,16 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   **Slice 1 landed** `caf8a5e` (RTF prepare step, `markdown-smart`,
   plain-text fallback with a named warning; Zoe 2 imports; Corn keeps
   paragraphs and plain apostrophes). Its Codex review returned six
-  findings, all admitted: `.agents/review/index.md` rows s1-1..s1-6, one
-  fix commit each, each re-reviewed before slice 2 starts. Known limits, by design: the safety copy is per browser profile
+  findings, all admitted and fixed one commit each
+  (`.agents/review/index.md` s1-1..s1-6); s1-1, s1-2, s1-5 accepted,
+  s1-3/s1-4/s1-6 repaired after re-review and awaiting their re-review.
+  **Slice 2 landed** `0d813f9` (Draft→Manuscript by type, other roots under
+  Research with `research/` paths, Trash kept, text containers become
+  folders, IncludeInCompile applied). **Slice 3 landed** (Scrivener 3
+  label/status/keyword tables, `synopsis.txt`, custom metadata by title or
+  ID, `notes.rtf` → `fields.notes`, companion documents for folders with
+  side values, Inspector Notes box). Codex reviews of slices 2 and 3
+  pending; slice 4 (comments, footnotes, compile footnotes) next. Known limits, by design: the safety copy is per browser profile
   (a copy made on the phone restores on the phone); a brand-new tab gets a
   new session id, so the "Take over" offer still applies there; no service
   worker, so the installed icon needs the server reachable.

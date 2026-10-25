@@ -382,4 +382,11 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
   parser. Only R1-8 (owner ruling on the I2 wording) stays open; it moves no
   code either way, so implementation begins in the converter crate under
   the recommended reading (option A) and the owner can still rule B.
-- 2026-10-25: slice 1 in progress.
+- 2026-10-25: slice 1 landed (`caf8a5e`). Its Codex review returned six
+  findings (`.agents/review/index.md` s1-1..s1-6), each fixed in its own
+  commit and re-reviewed; three repairs followed re-reviews. The I2 wording
+  ruling (R1-8) is still with the owner.
+- 2026-10-25: slice 2 landed (`0d813f9`, binder placement, Trash kept, text
+  containers, IncludeInCompile); slice 3 landed (synopsis, label, status,
+  keywords, custom metadata, notes, companion documents, Inspector Notes
+  box). Codex reviews of both pending.
