@@ -12,7 +12,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 - **Owner 2026-10-24: "get rid of the access token"** — done the same day
   (`docs/plans/PLAN_WEB_NO_LOGIN.md`, `.agents/decisions.md`): `chikn-web`
   has no login; the private network is the boundary. Token file, `?token=`
-  link, UI token gate and `--token` flag are gone.
+  link, UI token gate and `--token` flag are gone. Pushed as `aec8f18` on the
+  owner's `/git push all`; Validation run `40157115663` failed only in the
+  new Shell scripts step (macOS runner has no shellcheck) — fixed by
+  installing it in the step; the fix awaits its push.
 - **Owner 2026-10-24: web installer queued** ("this needs an installer for
   the web version. the default data dir should be set at install time, and
   here it will be on my NAS" … "a .config/ entry or similar. and a way to

@@ -36,6 +36,7 @@ jobs:
 
       - name: Shell scripts
         run: |
+          command -v shellcheck >/dev/null || brew install shellcheck
           shellcheck --version
           bash -n scripts/*.sh
           shellcheck scripts/*.sh
