@@ -17,6 +17,7 @@ pub mod settings;
 pub mod templates;
 pub mod threads;
 
+pub use chickenscratch_core::core::git::trust_repository_ownership;
 pub use chickenscratch_core::{ChiknError, Document, Project, SessionTarget, Thread, TreeNode};
 
 pub use ai::{AiStreamRegistry, AiStreamSink};

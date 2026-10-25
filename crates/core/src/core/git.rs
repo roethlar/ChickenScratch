@@ -16,6 +16,30 @@ use std::path::Path;
 /// Name of the git remote used for remote-sync (distinct from `backup` which is
 /// the local-directory mirror remote).
 const SYNC_REMOTE: &str = "sync";
+
+/// Stop libgit2 refusing a repository whose folder belongs to another user.
+///
+/// libgit2 (like the git CLI's `safe.directory`) refuses to open a repository
+/// owned by a different uid. On a network share that maps ownership (NFS
+/// `all_squash`, an SMB mount with a fixed uid) every project looks like
+/// that, and Save Revision fails. The check exists to protect a user from a
+/// hostile repository planted in a shared folder; a server whose projects
+/// root the owner chose and the gate confines does not have that exposure,
+/// so `chikn-web` turns the check off at startup unless told otherwise
+/// (`docs/plans/PLAN_WEB_SERVER_FIXES.md` slice 3). The desktop app keeps
+/// libgit2's default.
+///
+/// Process-wide. Call once, at startup, before any repository is opened.
+pub fn trust_repository_ownership() -> Result<(), ChiknError> {
+    // SAFETY: libgit2 documents this as a global option that must not be
+    // changed while repository operations are in flight. The only caller
+    // runs it once from `main` before the first repository is opened.
+    unsafe { git2::opts::set_verify_owner_validation(false) }.map_err(|e| {
+        ChiknError::Unknown(format!(
+            "Could not relax the repository ownership check: {e}"
+        ))
+    })
+}
 const SIMPLE_WORD_DIFF_LCS_CELL_CAP: usize = 1_500 * 1_500;
 
 /// One-shot failure injection for the epoch-guard error-path tests.
@@ -1942,6 +1966,16 @@ fn oid_to_revision(repo: &Repository, oid: Oid) -> Revision {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn trusting_repository_ownership_is_accepted_and_repositories_still_open() {
+        super::trust_repository_ownership().expect("libgit2 accepts the option");
+        let tmp = tempfile::TempDir::new().unwrap();
+        let repo = super::init_repo(tmp.path()).unwrap();
+        assert!(repo.path().starts_with(tmp.path().canonicalize().unwrap()));
+        // Calling it again is harmless (the server may be restarted in-process by tests).
+        super::trust_repository_ownership().unwrap();
+    }
+
     use super::*;
     use crate::core::project::fidelity::WriteToken;
 

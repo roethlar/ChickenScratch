@@ -49,6 +49,12 @@ struct Cli {
     #[arg(long)]
     backup: Option<PathBuf>,
 
+    /// Keep libgit2's refusal of project repositories owned by another user.
+    /// Off by default: on a NAS that maps ownership every project looks
+    /// foreign, and the server's projects are confined to folders you chose.
+    #[arg(long)]
+    verify_repo_owner: bool,
+
     /// Settings file to read instead of ~/.config/chickenscratch/web.toml.
     #[arg(long, value_name = "FILE")]
     config: Option<PathBuf>,
@@ -85,6 +91,7 @@ fn load_settings(cli: &Cli) -> Result<(Settings, PathBuf, bool), String> {
         backup_flag: cli.backup.clone(),
         backup_env: std::env::var(config::ENV_BACKUP).ok(),
         ui_dir_flag: cli.ui_dir.clone(),
+        verify_repo_owner_flag: cli.verify_repo_owner,
     };
     let settings =
         config::resolve(&overrides, file.as_ref(), &file_path).map_err(|e| e.to_string())?;
@@ -144,6 +151,19 @@ async fn main() -> ExitCode {
         return ExitCode::from(2);
     };
     let bind = settings.bind;
+
+    if !settings.verify_repo_owner {
+        // Before the first repository is opened (see the core doc comment).
+        if let Err(e) = chickenscratch_services::trust_repository_ownership() {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+        tracing::info!(
+            "repository ownership check off: projects on a share that maps file \
+ownership still open (set verify_repo_owner = true in {} to keep the check)",
+            file_path.display()
+        );
+    }
 
     let ui = match resolve_ui(settings.ui_dir.clone()) {
         Ok(ui) => ui,

@@ -5,6 +5,7 @@
 //! root = "/mnt/stuff/Notes"   # folder that holds the .chikn projects
 //! bind = "0.0.0.0:7391"       # address:port to listen on
 //! # backup = "/mnt/stuff/Backups"  # optional: a second folder the browser may pick from
+//! # verify_repo_owner = true      # keep libgit2's folder-ownership check (off by default here)
 //! # ui_dir = "/path/to/ui/dist"   # development builds only
 //! ```
 //!
@@ -43,6 +44,10 @@ pub struct FileConfig {
     pub bind: Option<String>,
     pub backup: Option<PathBuf>,
     pub ui_dir: Option<PathBuf>,
+    /// Keep libgit2's refusal of repositories owned by another user. Off by
+    /// default on the server, where a NAS that maps ownership is the common
+    /// case (`PLAN_WEB_SERVER_FIXES.md` slice 3).
+    pub verify_repo_owner: Option<bool>,
 }
 
 /// Values given on the command line or found in the environment, before
@@ -56,6 +61,8 @@ pub struct Overrides {
     pub backup_flag: Option<PathBuf>,
     pub backup_env: Option<String>,
     pub ui_dir_flag: Option<PathBuf>,
+    /// `--verify-repo-owner` on the command line.
+    pub verify_repo_owner_flag: bool,
 }
 
 /// Where a resolved value came from, for `--show-config`.
@@ -91,6 +98,8 @@ pub struct Settings {
     pub backup_source: Source,
     pub ui_dir: Option<PathBuf>,
     pub ui_dir_source: Source,
+    pub verify_repo_owner: bool,
+    pub verify_repo_owner_source: Source,
 }
 
 impl Settings {
@@ -139,6 +148,10 @@ or put root = \"/path/to/projects\" in {}.",
                 self.ui_dir_source
             )),
         }
+        out.push_str(&format!(
+            "verify_repo_owner = {}  [{}]\n",
+            self.verify_repo_owner, self.verify_repo_owner_source
+        ));
         out
     }
 }
@@ -253,9 +266,17 @@ pub fn resolve(
     let (ui_dir, ui_dir_source) = if let Some(dir) = &overrides.ui_dir_flag {
         (Some(dir.clone()), Source::Flag)
     } else if let Some(dir) = file.and_then(|f| f.ui_dir.as_deref()) {
-        (Some(expand_home(dir)), from_file)
+        (Some(expand_home(dir)), from_file.clone())
     } else {
         (None, Source::Default)
+    };
+
+    let (verify_repo_owner, verify_repo_owner_source) = if overrides.verify_repo_owner_flag {
+        (true, Source::Flag)
+    } else if let Some(v) = file.and_then(|f| f.verify_repo_owner) {
+        (v, from_file)
+    } else {
+        (false, Source::Default)
     };
 
     Ok(Settings {
@@ -267,6 +288,8 @@ pub fn resolve(
         backup_source,
         ui_dir,
         ui_dir_source,
+        verify_repo_owner,
+        verify_repo_owner_source,
     })
 }
 
@@ -306,6 +329,7 @@ mod tests {
             bind: bind.map(str::to_string),
             backup: None,
             ui_dir: None,
+            verify_repo_owner: None,
         }
     }
 
@@ -463,6 +487,28 @@ mod tests {
         assert_eq!(s.backup.as_deref(), Some(Path::new("/env/backups")));
         assert_eq!(s.backup_source, Source::Env(ENV_BACKUP));
         assert!(s.describe(&path(), true).contains("backup = /env/backups"));
+    }
+
+    #[test]
+    fn repository_ownership_check_is_off_unless_asked_for() {
+        let s = resolve(&Overrides::default(), None, &path()).unwrap();
+        assert!(!s.verify_repo_owner);
+        assert_eq!(s.verify_repo_owner_source, Source::Default);
+
+        let f = parse("root = \"/n\"\nverify_repo_owner = true\n").unwrap();
+        let s = resolve(&Overrides::default(), Some(&f), &path()).unwrap();
+        assert!(s.verify_repo_owner);
+        assert_eq!(s.verify_repo_owner_source, Source::File(path()));
+
+        let o = Overrides {
+            verify_repo_owner_flag: true,
+            ..Default::default()
+        };
+        let s = resolve(&o, None, &path()).unwrap();
+        assert!(s.verify_repo_owner);
+        assert!(s
+            .describe(&path(), false)
+            .contains("verify_repo_owner = true  [command line]"));
     }
 
     #[test]
