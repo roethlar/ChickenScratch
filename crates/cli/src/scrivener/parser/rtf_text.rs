@@ -358,6 +358,23 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
         }
     }
 
+    // A truncated document ends inside open groups. Treat the end of input
+    // as closing every brace so a field cut off mid-way still yields its
+    // result text and target (review finding s1-2).
+    while groups.len() > 1 {
+        let g = groups.pop().unwrap();
+        if g.opens_field {
+            if let Some(f) = fields.pop() {
+                let link = render_field(&f);
+                push_str(&link, &groups, &mut fields, &mut text);
+            }
+        }
+    }
+    while let Some(f) = fields.pop() {
+        let link = render_field(&f);
+        push_str(&link, &groups, &mut fields, &mut text);
+    }
+
     finish(text)
 }
 
@@ -456,6 +473,21 @@ Second paragraph with \\'93quotes\\'94.\\\n\
     fn hyperlink_field_becomes_a_markdown_link() {
         let src = "{\\rtf1 see {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://ABC-123\"}}{\\fldrslt this bit}} here}";
         assert_eq!(plain(src), "see [this bit](scrivcmt://ABC-123) here");
+    }
+
+    /// Review finding s1-2: a document cut off inside a hyperlink field
+    /// still yields the field's text and target.
+    #[test]
+    fn truncated_field_keeps_its_text() {
+        assert_eq!(
+            plain("{\\rtf1 before {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://X\"}}{\\fldrslt essential text"),
+            "before [essential text](scrivcmt://X)"
+        );
+        // Cut off before the result: the target alone is kept.
+        assert_eq!(
+            plain("{\\rtf1 before {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://X\"}}"),
+            "before <scrivcmt://X>"
+        );
     }
 
     #[test]
