@@ -60,3 +60,9 @@ Deliberately **not** on the roadmap: name generators, deep character-psychology 
   projects folder (the owner's NAS) and listen address, a user systemd
   service that waits for the mount, and reruns that upgrade without asking
   again. Queued 2026-10-24; all three slices shipped the same day.
+- **[PLAN_RELOAD_SAFETY_MOBILE.md](PLAN_RELOAD_SAFETY_MOBILE.md)** — a
+  browser reload never loses the open project, note or the last seconds of
+  typing (local safety copy, remembered place, a Projects button that hands
+  the project back), then a one-column phone layout, Quick note from the
+  project list, finger-sized controls and home-screen install. Drafted
+  2026-10-25 with the go for every slice.
