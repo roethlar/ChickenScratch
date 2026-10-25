@@ -145,4 +145,23 @@ Each checked against the working tree before acceptance.
   definitions; tests cover `]`, literal markup, two paragraphs, distinct
   ids, and DOCX footnotes.xml contents.
 
-**Plan revision**: committed for round 4 (see the plan's Status).
+**Plan revision**: committed for round 4 (`5639711`).
+
+## Round 4 dispatch
+
+- **Reviewer**: same incantation; header `model: gpt-6-astra`, `reasoning
+  effort: xhigh`, `sandbox: read-only`, session
+  `01a174e1-592e-7af3-9bd7-ce7b6f8d0b2d`. Reviewed SHA `56397117b856…`,
+  base `a9b76dd…`. Finished 21:08 UTC; exit 0; 63,728 tokens. Capability
+  proof: plan read, `git rev-parse HEAD` → `5639711…`.
+- **Verdict**: `reopened` on R2-3 only. R3-1 resolved (checked against real
+  DOCX footnote bodies). R1-8 owner ruling pending.
+
+## Round 4 disposition
+
+- **R2-3 — ADMITTED again.** `%` title blocks, `:` definition lists and
+  smart punctuation were still exposed. The allow-list is dropped: the
+  fallback escapes every ASCII punctuation character, as footnote bodies
+  do; regression cases added for each probe the reviewer ran.
+
+**Plan revision**: committed for round 5 (see the plan's Status).

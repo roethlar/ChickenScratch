@@ -109,16 +109,19 @@ read becomes plain text with a named warning instead of killing the import.
   named characters (`\emdash`, `\rquote`, …) and `\{ \} \\`. A `\field`
   group becomes the Markdown link `[result text](target)` so the
   `scrivcmt://` anchors slice 4 needs survive this path too. **The
-  extracted text is escaped for Pandoc Markdown**, the dialect compile uses
-  (`-f markdown`, all extensions on): every ASCII punctuation character
-  that opens a construct there is backslash-escaped — backslash, `*`, `_`,
-  `` ` ``, `[`, `]`, `<`, `>`, `#`, `|`, `~`, `&` (entities such as
-  `&copy;`), `$` (TeX math), `^` (superscript, inline notes), `@`
-  (citations) — plus a leading `+`, `-`, `>`, `#` or `N.` on a line, before
-  the generated links are inserted, so literal stars, angle brackets,
-  entities or dollar signs in the prose stay visible after reopening and
-  export. Pandoc accepts a backslash before any ASCII punctuation, so the
-  escapes are safe wherever they land.
+  extracted text is serialised as literal text for Pandoc Markdown**, the
+  dialect compile uses (`-f markdown`, all extensions on): **every ASCII
+  punctuation character is backslash-escaped**, the same rule slice 4 uses
+  for footnote bodies. No allow-list: a list of "dangerous" characters was
+  wrong three rounds running (`&` entities, `$` math, `%` title blocks, `:`
+  definition lists, `--`/`...`/quotes under smart punctuation). Pandoc
+  accepts a backslash before any ASCII punctuation and renders the
+  character itself, so `\.`, `\-`, `\"` and `\%` are all literal; the
+  editor's Markdown parser follows CommonMark, which reads them the same
+  way. The escaping happens before the generated links are inserted (link
+  text escaped, targets not). The `.md` on disk is uglier for these
+  fallback documents; the editor re-serialises cleanly on the next save,
+  and the warning already says the document came in plain.
   The document is imported as that text and a warning names it: "<title>:
   formatting could not be read; text imported plain". The import as a whole
   succeeds. Pandoc missing entirely still fails up front as today.
@@ -289,9 +292,13 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
       fallback → two plain paragraphs with the right characters and no font
       names, colour tables or hex; a `\field` hyperlink → `[text](url)`;
       text containing `*these stars*`, `<redacted>`, `[brackets]`,
-      `&copy;`, `$x$`, `^up^`, `@key` and a backslash reads back literally
-      after a round trip through Pandoc Markdown as compile uses it (exact
-      rendered text, Pandoc present).
+      `&copy;`, `$x$`, `^up^`, `@key`, a backslash, a first line
+      `% 80% of the village had gone.`, a paragraph `Term` followed by
+      `: definition`, and `"hello" -- paused...` each read back exactly as
+      written after a round trip through Pandoc Markdown as compile uses it
+      (reader, metadata and standalone options of `compile.rs`; exact
+      rendered text; Pandoc present), and the editor's Markdown parser
+      renders the same text.
 - [ ] import of a fixture whose one document is unreadable RTF → project
       with the plain text, its hyperlink kept, and one warning naming the
       document; `Zoe 2` imports (Pandoc present).
@@ -365,4 +372,8 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
   escape list lacked `&` and `$` (Pandoc renders entities and TeX math);
   the inline footnote form `^[…]` breaks on a `]` or a second paragraph, so
   compile now emits reference footnotes with escaped, multi-paragraph
-  bodies. Everything else resolved; R1-8 awaits the owner. Round 4 pending.
+  bodies. Everything else resolved; R1-8 awaits the owner.
+- 2026-10-25 round 4 (`5639711`): reopened on R2-3 alone (the allow-list
+  still missed `%`, `:` and smart punctuation); the fallback now escapes
+  every ASCII punctuation character, no allow-list. The reference-footnote
+  step was checked against real DOCX output and accepted. Round 5 pending.
