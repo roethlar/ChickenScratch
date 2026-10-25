@@ -158,6 +158,76 @@ pub(crate) fn document_encoding(input: &[u8]) -> &'static encoding_rs::Encoding 
         .unwrap_or(encoding_rs::WINDOWS_1252)
 }
 
+/// The default font `\deffN` declared at the top of the file, if any. Text
+/// before any `\fN`, and text after `\plain`, is set in it (review finding
+/// s1-3, second re-review).
+pub(crate) fn declared_default_font(input: &[u8]) -> Option<i64> {
+    let head = &input[..input.len().min(512)];
+    let needle = b"\\deff";
+    let pos = head.windows(needle.len()).position(|w| w == needle)?;
+    let mut digits = String::new();
+    for &b in &head[pos + needle.len()..] {
+        if b.is_ascii_digit() && digits.len() < 6 {
+            digits.push(b as char);
+        } else {
+            break;
+        }
+    }
+    digits.parse().ok()
+}
+
+/// Appends decoded run text to `out` as RTF text: a backslash or brace is
+/// re-escaped, a non-ASCII character becomes `\uN ?`, and a space delimiter
+/// goes first when `out` ends inside a control word, so `\b` followed by a
+/// decoded `a` stays `\b a` and never `\ba` (review finding s1-3, second
+/// re-review).
+fn emit_run_text(out: &mut Vec<u8>, decoded: &str) {
+    let mut first = true;
+    for c in decoded.chars() {
+        if c.is_ascii() {
+            if first && ends_in_control_word(out) {
+                out.push(b' ');
+            }
+            match c as u8 {
+                b'\\' => out.extend_from_slice(b"\\\\"),
+                b'{' => out.extend_from_slice(b"\\{"),
+                b'}' => out.extend_from_slice(b"\\}"),
+                b => out.push(b),
+            }
+        } else {
+            out.extend_from_slice(rtf_unicode_escape(c as u32).as_bytes());
+        }
+        first = false;
+    }
+}
+
+/// True when `out` ends with an undelimited control word (`\b`, `\fs24`,
+/// `\u-123`): letters, digits or `-` back to a backslash that is itself not
+/// escaped.
+fn ends_in_control_word(out: &[u8]) -> bool {
+    let mut i = out.len();
+    let mut saw_body = false;
+    while i > 0 {
+        let b = out[i - 1];
+        if b.is_ascii_alphanumeric() || b == b'-' {
+            saw_body = true;
+            i -= 1;
+            continue;
+        }
+        if b == b'\\' && saw_body {
+            let mut preceding = 0;
+            let mut k = i - 1;
+            while k > 0 && out[k - 1] == b'\\' {
+                preceding += 1;
+                k -= 1;
+            }
+            return preceding % 2 == 0;
+        }
+        return false;
+    }
+    false
+}
+
 /// The `\ansicpgN` declared at the top of the file, if any.
 pub(crate) fn declared_code_page(input: &[u8]) -> Option<u32> {
     let head = &input[..input.len().min(512)];
@@ -219,10 +289,15 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
         encoding_for_code_page(cp)
     });
     let fonts = font_encodings(input);
+    let default_font = declared_default_font(input);
 
     let mut out: Vec<u8> = Vec::with_capacity(input.len() + input.len() / 16);
-    // Per-group `\ucN` (document default 1) and active font.
-    let mut groups: Vec<PrepGroup> = vec![PrepGroup { uc: 1, font: None }];
+    // Per-group `\ucN` (document default 1) and active font, which starts
+    // as the document's default font.
+    let mut groups: Vec<PrepGroup> = vec![PrepGroup {
+        uc: 1,
+        font: default_font,
+    }];
     // Fallback items still to swallow after a `\uN`.
     let mut skip_fallback: u32 = 0;
 
@@ -232,7 +307,10 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
         let b = input[i];
         match b {
             b'{' => {
-                let top = *groups.last().unwrap_or(&PrepGroup { uc: 1, font: None });
+                let top = *groups.last().unwrap_or(&PrepGroup {
+                    uc: 1,
+                    font: default_font,
+                });
                 groups.push(top);
                 skip_fallback = 0;
                 out.push(b);
@@ -327,15 +405,7 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                                 if had_errors {
                                     out.extend_from_slice(&input[slice_start..j]);
                                 } else {
-                                    for c in decoded.chars() {
-                                        if c.is_ascii() {
-                                            out.push(c as u8);
-                                        } else {
-                                            out.extend_from_slice(
-                                                rtf_unicode_escape(c as u32).as_bytes(),
-                                            );
-                                        }
-                                    }
+                                    emit_run_text(&mut out, &decoded);
                                 }
                             }
                             None => out.extend_from_slice(&input[slice_start..j]),
@@ -416,6 +486,14 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                             b"f" if param.is_some() => {
                                 if let Some(top) = groups.last_mut() {
                                     top.font = param;
+                                }
+                                out.extend_from_slice(&input[i..end]);
+                            }
+                            // `\plain` resets character formatting, the font
+                            // included, to the document default.
+                            b"plain" => {
+                                if let Some(top) = groups.last_mut() {
+                                    top.font = default_font;
                                 }
                                 out.extend_from_slice(&input[i..end]);
                             }
@@ -567,6 +645,33 @@ mod tests {
             prep("{\\rtf1\\ansi\\ansicpg932 \\'83A!}"),
             "{\\rtf1\\ansi\\ansicpg932 \\u12450 ?!}"
         );
+        // Second re-review: the default font (`\deffN`) is the font before
+        // any `\fN`, and `\plain` goes back to it.
+        let src = "{\\rtf1\\ansi\\ansicpg1251\\deff0{\\fonttbl{\\f0\\fcharset0 A;}{\\f1\\fcharset204 B;}} caf\\'e9 \\f1\\plain caf\\'e9}";
+        let prepared = prep(src);
+        assert_eq!(
+            prepared,
+            "{\\rtf1\\ansi\\ansicpg1251\\deff0{\\fonttbl{\\f0\\fcharset0 A;}{\\f1\\fcharset204 B;}} caf\\u233 ? \\f1\\plain caf\\u233 ?}"
+        );
+        assert_reads(&prepared, "café café");
+    }
+
+    /// Second re-review of s1-3: decoded text is written back as RTF text,
+    /// so it never merges into a control word or turns into syntax.
+    #[test]
+    fn decoded_text_stays_text() {
+        let prepared = prep("{\\rtf1\\ansi \\b\\'61bc}");
+        assert_eq!(prepared, "{\\rtf1\\ansi \\b abc}");
+        assert_reads(&prepared, "abc");
+        let prepared = prep("{\\rtf1\\ansi \\'5cpar tail}");
+        assert_eq!(prepared, "{\\rtf1\\ansi \\\\par tail}");
+        assert_reads(&prepared, "\\par tail");
+        assert_eq!(
+            prep("{\\rtf1\\ansi x\\'7by\\'7d}"),
+            "{\\rtf1\\ansi x\\{y\\}}"
+        );
+        // An escaped backslash before the run is not a control word.
+        assert_eq!(prep("{\\rtf1\\ansi \\\\\\'61}"), "{\\rtf1\\ansi \\\\a}");
         // A bare line end inside the run is ignored, as readers ignore it.
         assert_eq!(
             prep("{\\rtf1\\ansi\\ansicpg932 \\'83\nA}"),

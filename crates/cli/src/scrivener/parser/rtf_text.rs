@@ -7,7 +7,7 @@
 //! Hyperlink fields survive as Markdown links so the `scrivcmt://` anchors
 //! slice 4 relies on are kept (review finding plan-3 R1-5).
 
-use super::rtf_prepare::{document_encoding, font_encodings};
+use super::rtf_prepare::{declared_default_font, document_encoding, font_encodings};
 use std::collections::HashMap;
 
 /// Groups whose content is never document text.
@@ -81,10 +81,13 @@ struct Group {
 /// Extracts the document text of `input` as Markdown paragraphs. Never fails.
 pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
     let mut text = String::new();
+    // The active font starts as the document default (`\deffN`); `\plain`
+    // goes back to it (review finding s1-3, second re-review).
+    let default_font = declared_default_font(input);
     let mut groups: Vec<Group> = vec![Group {
         sink: Sink::Body,
         uc: 1,
-        font: None,
+        font: default_font,
         opens_field: false,
         fresh: false,
     }];
@@ -409,6 +412,11 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                                 b"f" if param.is_some() => {
                                     if let Some(g) = groups.last_mut() {
                                         g.font = param;
+                                    }
+                                }
+                                b"plain" => {
+                                    if let Some(g) = groups.last_mut() {
+                                        g.font = default_font;
                                     }
                                 }
                                 b"u" => {
@@ -790,6 +798,12 @@ Second paragraph with \\'93quotes\\'94.\\\n\
         );
         // CP932 `ア` is the escaped byte 0x83 followed by a literal `A`.
         assert_eq!(plain("{\\rtf1\\ansi\\ansicpg932 \\'83A!}"), "\u{30A2}\\!");
+        // Second re-review: the default font is the font before any `\fN`,
+        // and `\plain` goes back to it.
+        assert_eq!(
+            plain("{\\rtf1\\ansi\\ansicpg1251\\deff0{\\fonttbl{\\f0\\fcharset0 A;}{\\f1\\fcharset204 B;}} caf\\'e9 \\f1\\plain caf\\'e9}"),
+            "café café"
+        );
         // A bare line end inside the run is ignored, as readers ignore it.
         assert_eq!(plain("{\\rtf1\\ansi\\ansicpg932 \\'83\nA}"), "\u{30A2}");
     }
