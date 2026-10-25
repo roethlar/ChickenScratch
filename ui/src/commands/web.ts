@@ -117,3 +117,12 @@ export async function takeOverProject(projectPath: string): Promise<void> {
     body: JSON.stringify({ projectPath }),
   });
 }
+
+/** Stop being the writer for a project now (the Projects button), instead of after the idle expiry. */
+export async function releaseProject(projectPath: string): Promise<void> {
+  await webFetch("/api/lease/release", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectPath }),
+  });
+}

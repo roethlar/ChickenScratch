@@ -924,6 +924,15 @@
   flex-shrink: 0;
 }
 
+/* Between the Projects button and the view switches. */
+.view-toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--color-border);
+  margin: 4px 4px;
+  flex-shrink: 0;
+}
+
 /* AI Menu */
 
 .ai-menu-wrapper {

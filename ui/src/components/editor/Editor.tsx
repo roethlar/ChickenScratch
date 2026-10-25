@@ -19,9 +19,19 @@ import { getReloadGeneration, isBarrierActive, type LeaseHandle } from "../../co
 import { useBarrierActive } from "../../hooks/useBarrier";
 import { Markdown } from "tiptap-markdown";
 import * as docCmd from "../../commands/document";
-import { toastError } from "../shared/Toast";
+import { toast, toastError } from "../shared/Toast";
+import { dialogConfirm } from "../shared/Dialog";
 import { useProfile } from "../../profiles";
 import { FlowBoundary, buildFlowBoundary, splitFlowSections } from "./FlowBoundary";
+import {
+  clearSafetyCopy,
+  decideRestore,
+  readSafetyCopy,
+  writeSafetyCopy,
+} from "./safetyCopy";
+
+/** How often, at most, the dirty buffer is mirrored into browser storage while typing. */
+const SAFETY_WRITE_MS = 500;
 
 /**
  * Mirror a just-saved markdown payload into `project.documents` *and*
@@ -80,6 +90,67 @@ export function Editor() {
   const [findReplace, setFindReplace] = useState(false);
   const editorRef = useRef<TipTapEditor | null>(null);
 
+  // Safety copy (PLAN_RELOAD_SAFETY_MOBILE slice 1, `safetyCopy.ts`): the
+  // disk text each loaded document was built from, so a copy records what it
+  // diverged from, and the throttle timer for writing copies while typing.
+  const baseRef = useRef<Map<string, string>>(new Map());
+  const safetyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Mirror the dirty buffer into browser storage, one copy per document. */
+  const writeSafetyNow = useCallback(() => {
+    if (safetyTimer.current) {
+      clearTimeout(safetyTimer.current);
+      safetyTimer.current = null;
+    }
+    if (!dirtyRef.current) return;
+    const ed = editorRef.current;
+    const project = useProjectStore.getState().project;
+    if (!ed || !project) return;
+    const markdown = getEditorMarkdown(ed);
+    if (flowIdsRef.current && flowDocsRef.current) {
+      for (const sec of splitFlowSections(markdown)) {
+        writeSafetyCopy(project.path, sec.docId, sec.content, baseRef.current.get(sec.docId) ?? "");
+      }
+      return;
+    }
+    const docId = docIdRef.current;
+    if (!docId) return;
+    writeSafetyCopy(project.path, docId, markdown, baseRef.current.get(docId) ?? "");
+  }, []);
+
+  const scheduleSafetyWrite = useCallback(() => {
+    if (safetyTimer.current) return;
+    safetyTimer.current = setTimeout(writeSafetyNow, SAFETY_WRITE_MS);
+  }, [writeSafetyNow]);
+
+  /**
+   * A save of `saved` landed for `docId`: the disk holds it now. The copy
+   * goes unless the buffer has already moved on (then the next save settles
+   * it; a reload in between restores the newer text).
+   */
+  const settleSafety = useCallback(
+    (projectPath: string, docId: string, saved: string, bufferNow: string | null) => {
+      baseRef.current.set(docId, saved);
+      if (bufferNow === null || bufferNow === saved) clearSafetyCopy(projectPath, docId);
+    },
+    []
+  );
+
+  /** Flow-mode counterpart: settle every section that was saved. */
+  const settleFlowSafety = useCallback(
+    (projectPath: string, saved: { docId: string; content: string }[]) => {
+      const ed = editorRef.current;
+      const now = new Map<string, string>();
+      if (ed) {
+        for (const sec of splitFlowSections(getEditorMarkdown(ed))) now.set(sec.docId, sec.content);
+      }
+      for (const sec of saved) {
+        settleSafety(projectPath, sec.docId, sec.content, now.get(sec.docId) ?? null);
+      }
+    },
+    [settleSafety]
+  );
+
   const saveCurrent = useCallback(async () => {
     const editor = editorRef.current;
     const p = useProjectStore.getState().project;
@@ -102,14 +173,17 @@ export function Editor() {
         // loop and unconditionally cleared `dirty`, hiding partial-save
         // states behind a "Saved" indicator.
         const sections = splitFlowSections(markdown);
+        const saved: { docId: string; content: string }[] = [];
         for (const sec of sections) {
           try {
             await docCmd.updateDocumentContent(p.path, sec.docId, sec.content);
+            saved.push(sec);
           } catch (e) {
             anyFailure = true;
             toastError(`Failed to save ${sec.docId}: ${e}`);
           }
         }
+        settleFlowSafety(p.path, saved);
         // Reload project so docs pick up updated content (even partial —
         // the on-disk truth is what we mirror).
         const Project = await import("../../commands/project");
@@ -125,6 +199,7 @@ export function Editor() {
         // stale `project.documents[d.id].content` from before this save —
         // silently reverting whatever the user just typed.
         applyContentToStore(d.id, markdown);
+        settleSafety(p.path, d.id, markdown, getEditorMarkdown(editor));
       }
       if (!anyFailure) setDirtyTracked(false);
     } catch (e) {
@@ -132,7 +207,7 @@ export function Editor() {
     } finally {
       useProjectStore.setState({ saving: false });
     }
-  }, [setDirtyTracked]);
+  }, [setDirtyTracked, settleSafety, settleFlowSafety]);
 
   const autoSaveSeconds = useSettingsStore(
     (s) => s.appSettings?.writing.auto_save_seconds
@@ -144,6 +219,9 @@ export function Editor() {
     // reaching here mid-operation is programmatic noise, not typing.
     if (isBarrierActive()) return;
     setDirtyTracked(true);
+    // The safety copy covers the debounce window below: a reload before the
+    // save fires finds the text in browser storage.
+    scheduleSafetyWrite();
     if (saveTimer.current) clearTimeout(saveTimer.current);
     // Settings exposes the delay; fall back to 2s if settings haven't
     // hydrated yet. Convert seconds → ms.
@@ -151,7 +229,43 @@ export function Editor() {
     saveTimer.current = setTimeout(() => {
       saveCurrent();
     }, delayMs);
-  }, [saveCurrent, autoSaveSeconds, setDirtyTracked]);
+  }, [saveCurrent, autoSaveSeconds, setDirtyTracked, scheduleSafetyWrite]);
+
+  /**
+   * Put back a safety copy left by an earlier page of this browser, once the
+   * document's disk text is in the buffer. Disk unchanged since the copy →
+   * apply it and let autosave write it, with one notice. Disk changed since
+   * (another tab or device saved) → ask; never overwrite either side quietly.
+   */
+  const restoreSafetyCopy = useCallback(
+    async (docId: string, name: string, disk: string, stale: () => boolean) => {
+      const ed = editorRef.current;
+      const project = useProjectStore.getState().project;
+      if (!ed || !project || useProjectStore.getState().readOnly) return;
+      const copy = readSafetyCopy(project.path, docId);
+      const decision = decideRestore(copy, disk);
+      if (decision.kind === "none") {
+        if (copy) clearSafetyCopy(project.path, docId);
+        return;
+      }
+      if (decision.kind === "conflict") {
+        const useCopy = await dialogConfirm(
+          `"${name}" has unsaved changes from an earlier session in this browser, but it was also changed elsewhere since. Use the unsaved changes from this browser? Cancel keeps the note as it is now.`
+        );
+        // The writer moved on while the question was open: keep the copy
+        // for the next time this note opens.
+        if (stale() || docIdRef.current !== docId) return;
+        if (!useCopy) {
+          clearSafetyCopy(project.path, docId);
+          return;
+        }
+      }
+      ed.commands.setContent(decision.content, { emitUpdate: false });
+      debouncedSave();
+      toast(`Restored unsaved changes to "${name}" from this browser.`, "info");
+    },
+    [debouncedSave]
+  );
 
   /**
    * Flush a pending debounced save synchronously, BEFORE the editor swaps
@@ -199,14 +313,17 @@ export function Editor() {
         applyContentToStore(sec.docId, sec.content);
       }
       let anyFailure = false;
+      const saved: { docId: string; content: string }[] = [];
       for (const sec of sections) {
         try {
           await docCmd.updateDocumentContent(project.path, sec.docId, sec.content, lease);
+          saved.push(sec);
         } catch (e) {
           anyFailure = true;
           toastError(`Failed to save ${sec.docId}: ${e}`);
         }
       }
+      settleFlowSafety(project.path, saved);
       if (!anyFailure) setDirtyTracked(false);
       if (anyFailure) throw new Error("Flow save partially failed");
       return;
@@ -222,12 +339,13 @@ export function Editor() {
     applyContentToStore(oldDocId, markdown);
     try {
       await docCmd.updateDocumentContent(project.path, oldDocId, markdown, lease);
+      settleSafety(project.path, oldDocId, markdown, getEditorMarkdown(ed));
       setDirtyTracked(false);
     } catch (e) {
       toastError(`Save failed: ${e}`);
       throw e;
     }
-  }, [setDirtyTracked]);
+  }, [setDirtyTracked, settleSafety, settleFlowSafety]);
 
   const editor = useEditor({
     extensions: [
@@ -347,16 +465,34 @@ export function Editor() {
 
         const project = useProjectStore.getState().project;
         if (!project) return;
+        const canRestore = !useProjectStore.getState().readOnly;
+        const restored: string[] = [];
         const parts: string[] = [];
         for (const fd of flow) {
           const doc = project.documents[fd.docId];
           if (!doc) continue;
+          const disk = doc.content || "";
+          baseRef.current.set(fd.docId, disk);
+          let text = disk;
+          if (canRestore) {
+            // A safety copy whose disk text has not moved comes back here;
+            // one the disk has outrun stays in storage and is decided when
+            // the note opens on its own (restoreSafetyCopy asks).
+            const copy = readSafetyCopy(project.path, fd.docId);
+            const decision = decideRestore(copy, disk);
+            if (decision.kind === "restore") {
+              text = decision.content;
+              restored.push(fd.name);
+            } else if (decision.kind === "none" && copy) {
+              clearSafetyCopy(project.path, fd.docId);
+            }
+          }
           // Emit a leading boundary for *every* doc — including the first.
           // splitFlowSections only outputs sections delimited by markers, so
           // skipping the leading marker silently drops every edit to the
           // first document on save.
           parts.push(buildFlowBoundary(fd.docId, fd.name));
-          parts.push(doc.content || "");
+          parts.push(text);
         }
         // emitUpdate=false: Tiptap 3 fires onUpdate by default on programmatic
         // setContent, which would route through debouncedSave and immediately
@@ -364,6 +500,13 @@ export function Editor() {
         // typed. Document loads must be inert.
         editor.commands.setContent(parts.join(""), { emitUpdate: false });
         setDirtyTracked(false);
+        if (restored.length > 0) {
+          debouncedSave();
+          toast(
+            `Restored unsaved changes to ${restored.map((n) => `"${n}"`).join(", ")} from this browser.`,
+            "info"
+          );
+        }
         return;
       }
 
@@ -409,10 +552,12 @@ export function Editor() {
         docIdRef.current = activeDoc.id;
         loadedGenerationRef.current = generation;
         const md = activeDoc.content || "";
+        baseRef.current.set(activeDoc.id, md);
         // emitUpdate=false so loading a doc doesn't trigger autosave (Tiptap
         // 3 emits update on setContent by default).
         editor.commands.setContent(md, { emitUpdate: false });
         setDirtyTracked(false);
+        await restoreSafetyCopy(activeDoc.id, activeDoc.name, md, () => cancelled);
       }
     };
 
@@ -456,9 +601,23 @@ export function Editor() {
   // which awaits the same flush before backup_on_close runs.
   useEffect(() => {
     return () => {
+      writeSafetyNow();
       flushPendingSave();
     };
-  }, [flushPendingSave]);
+  }, [flushPendingSave, writeSafetyNow]);
+
+  // The last keystrokes must survive a reload: a storage write is
+  // synchronous where the save request started from `beforeunload` is not
+  // awaited by the browser (PLAN_RELOAD_SAFETY_MOBILE slice 1).
+  useEffect(() => {
+    const onHide = () => writeSafetyNow();
+    window.addEventListener("pagehide", onHide);
+    window.addEventListener("beforeunload", onHide);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      window.removeEventListener("beforeunload", onHide);
+    };
+  }, [writeSafetyNow]);
 
   useEffect(() => {
     setCurrentEditor(editor);

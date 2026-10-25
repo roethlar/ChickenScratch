@@ -92,6 +92,21 @@ impl Leases {
         );
     }
 
+    /// Give the project up at once when `session` holds it (the Projects
+    /// button, plan PLAN_RELOAD_SAFETY_MOBILE slice 1), so another tab or
+    /// device can write without waiting out [`LEASE_TTL`]. A session that
+    /// does not hold the lease changes nothing. Returns whether it was held.
+    pub fn release(&self, project: &Path, session: &str) -> bool {
+        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        match map.get(project) {
+            Some(lease) if lease.session == session => {
+                map.remove(project);
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub fn holder(&self, project: &Path) -> Option<String> {
         let map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         map.get(project).map(|l| l.session.clone())
@@ -229,6 +244,22 @@ pub async fn take(
     Ok(Json(()))
 }
 
+/// `POST /api/lease/release`: this session stops being the writer for the
+/// project (a no-op when it is not). Same body as `take`.
+pub async fn release(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(args): Json<TakeArgs>,
+) -> Result<Json<()>, CmdError> {
+    let session = session_of(&headers)
+        .ok_or_else(|| CmdError::BadRequest("Missing session id".to_string()))?;
+    let project = state
+        .gate
+        .existing(&args.project_path.existing(&state.gate)?)?;
+    state.leases.release(&project, &session);
+    Ok(Json(()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,6 +288,27 @@ mod tests {
             leases.claim(p, "b", t0 + Duration::from_secs(11) + LEASE_TTL),
             Err(LeaseHeld)
         );
+    }
+
+    #[test]
+    fn release_frees_the_project_only_for_its_holder() {
+        let leases = Leases::default();
+        let p = Path::new("/srv/root/Notes.chikn");
+        let t0 = Instant::now();
+        assert_eq!(leases.claim(p, "a", t0), Ok(()));
+        // A non-holder's release changes nothing: a is still the writer.
+        assert!(!leases.release(p, "b"));
+        assert_eq!(leases.holder(p), Some("a".to_string()));
+        assert_eq!(
+            leases.claim(p, "b", t0 + Duration::from_secs(1)),
+            Err(LeaseHeld)
+        );
+        // The holder's release frees it at once, no TTL wait.
+        assert!(leases.release(p, "a"));
+        assert_eq!(leases.holder(p), None);
+        assert_eq!(leases.claim(p, "b", t0 + Duration::from_secs(2)), Ok(()));
+        // Releasing a project nobody holds is harmless.
+        assert!(!leases.release(Path::new("/srv/root/Other.chikn"), "a"));
     }
 
     #[test]

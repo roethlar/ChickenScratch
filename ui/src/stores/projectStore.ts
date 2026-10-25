@@ -116,7 +116,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   closeProject: () => {
-    set({ project: null, readOnly: false, readOnlyReasons: [], activeDocId: null, activeDoc: null });
+    set({
+      project: null,
+      readOnly: false,
+      readOnlyReasons: [],
+      activeDocId: null,
+      activeDoc: null,
+      flowDocs: null,
+      searchHighlight: null,
+      error: null,
+    });
   },
 
   selectDocument: (docId: string) => {

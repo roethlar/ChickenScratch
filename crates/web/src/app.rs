@@ -25,6 +25,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .route_layer(middleware::from_fn_with_state(state.clone(), lease::guard)),
         )
         .route("/lease/take", post(lease::take))
+        .route("/lease/release", post(lease::release))
         .route("/projects", get(projects::list))
         .route("/info", get(projects::info))
         .route("/export", post(export::export))

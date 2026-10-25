@@ -861,3 +861,89 @@ async fn second_session_is_refused_until_it_takes_over() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
+
+fn lease_request(route: &str, project_path: &str, session: &str) -> Request<Body> {
+    Request::post(route)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("x-cs-session", session)
+        .body(Body::from(
+            json!({ "projectPath": project_path }).to_string(),
+        ))
+        .unwrap()
+}
+
+/// The Projects button hands the lease back (PLAN_RELOAD_SAFETY_MOBILE
+/// slice 1): the next device writes at once instead of waiting out the
+/// idle expiry, and a tab that does not hold the project cannot release it.
+#[tokio::test]
+async fn releasing_the_lease_frees_the_project_for_the_next_session() {
+    let h = harness();
+    let project = ok(
+        &h.app,
+        "create_project",
+        json!({ "name": "Scratch", "path": path_str(&h.root) }),
+    )
+    .await;
+    let project_path = project["path"].as_str().unwrap().to_string();
+
+    // A holds the project; B is refused.
+    let (status, _, _) = call(
+        &h.app,
+        cmd_as("load_project", json!({ "path": project_path }), "tab-a"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = call(
+        &h.app,
+        cmd_as("load_project", json!({ "path": project_path }), "tab-b"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // B cannot release what A holds.
+    let (status, _, _) = call(
+        &h.app,
+        lease_request("/api/lease/release", &project_path, "tab-b"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = call(
+        &h.app,
+        cmd_as("load_project", json!({ "path": project_path }), "tab-b"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // A leaves; B opens immediately.
+    let (status, _, _) = call(
+        &h.app,
+        lease_request("/api/lease/release", &project_path, "tab-a"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = call(
+        &h.app,
+        cmd_as("load_project", json!({ "path": project_path }), "tab-b"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Release needs a session id and stays inside the root.
+    let (status, _, _) = call(
+        &h.app,
+        Request::post("/api/lease/release")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                json!({ "projectPath": project_path }).to_string(),
+            ))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _, _) = call(
+        &h.app,
+        lease_request("/api/lease/release", &path_str(&h.outside), "tab-a"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}

@@ -8,11 +8,14 @@ import { MergeBanner } from "./components/revisions/MergeBanner";
 import { useMergeState } from "./hooks/useMergeState";
 import { getCurrentEditor, flushPendingEditorSave } from "./components/editor/editorRef";
 import { isBarrierActive } from "./commands/barrier";
-import { invoke } from "./commands/transport";
+import { invoke, isWeb } from "./commands/transport";
 import { openExternal, registerCloseHandler } from "./platform";
 import { effectiveViewFor, useProfile } from "./profiles";
 import * as gitCmd from "./commands/git";
+import { leaveProject, reopenLastProject } from "./leaveProject";
+import { getLastProject, rememberDocument, rememberProject } from "./lastOpen";
 import {
+  FolderOpen,
   PenLine,
   LayoutGrid,
   PanelRight,
@@ -96,6 +99,22 @@ export default function App() {
   const project = useProjectStore((s) => s.project);
   const readOnly = useProjectStore((s) => s.readOnly);
   const readOnlyReasons = useProjectStore((s) => s.readOnlyReasons);
+  const activeDocId = useProjectStore((s) => s.activeDocId);
+
+  // The remembered place (PLAN_RELOAD_SAFETY_MOBILE slice 1): in a browser a
+  // reload is the only "launch", so the page comes back to the project and
+  // note that were open. The desktop shell keeps showing Welcome on launch.
+  const [reopening, setReopening] = useState(() => isWeb() && getLastProject() !== null);
+  useEffect(() => {
+    if (!reopening) return;
+    reopenLastProject().finally(() => setReopening(false));
+  }, [reopening]);
+  useEffect(() => {
+    if (isWeb() && project?.path) rememberProject(project.path);
+  }, [project?.path]);
+  useEffect(() => {
+    if (isWeb() && project?.path && activeDocId) rememberDocument(project.path, activeDocId);
+  }, [project?.path, activeDocId]);
   const { theme, setTheme, focusMode, toggleFocusMode, loadSettings } = useSettingsStore();
   // Merge-in-progress state survives restart: queried from the backend,
   // not from any conflict dialog the writer may have long since closed.
@@ -303,6 +322,15 @@ export default function App() {
   }, [project?.path, readOnly]);
 
   if (!project) {
+    if (reopening) {
+      return (
+        <div className="welcome">
+          <div className="welcome-inner">
+            <p className="welcome-sub">Opening your project…</p>
+          </div>
+        </div>
+      );
+    }
     return <Welcome />;
   }
 
@@ -356,6 +384,15 @@ export default function App() {
           <ReadOnlyBanner reasons={readOnlyReasons} />
         )}
         <div className="view-toolbar">
+          <button
+            className="view-btn"
+            onClick={() => { leaveProject().catch(() => {}); }}
+            title="Projects — save and go back to the project list"
+            aria-label="Projects"
+          >
+            <FolderOpen size={16} />
+          </button>
+          <span className="view-toolbar-sep" />
           <button
             className={`view-btn ${effectiveView === "editor" ? "active" : ""}`}
             onClick={() => setView("editor")}
