@@ -376,4 +376,10 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
 - 2026-10-25 round 4 (`5639711`): reopened on R2-3 alone (the allow-list
   still missed `%`, `:` and smart punctuation); the fallback now escapes
   every ASCII punctuation character, no allow-list. The reference-footnote
-  step was checked against real DOCX output and accepted. Round 5 pending.
+  step was checked against real DOCX output and accepted.
+- 2026-10-25 round 5 (`c3e67b0`): **accepted**, no findings; the reviewer
+  probed the escape rule through compile's Pandoc options and the editor's
+  parser. Only R1-8 (owner ruling on the I2 wording) stays open; it moves no
+  code either way, so implementation begins in the converter crate under
+  the recommended reading (option A) and the owner can still rule B.
+- 2026-10-25: slice 1 in progress.

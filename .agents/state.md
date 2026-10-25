@@ -63,9 +63,14 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   Scrivener 2 layout (`Files/Docs/N.rtf`) unsupported. Plan:
   `docs/plans/PLAN_SCRIVENER_FIDELITY.md`. Owner go 2026-10-25: "plan,
   review the plan with gpt-6-astra xhigh, then begin once you have
-  consensus. review code slices with the same codex model" — the Codex
-  review of the plan is the gate before code; each slice gets a Codex
-  defect review before the next starts. Known limits, by design: the safety copy is per browser profile
+  consensus. review code slices with the same codex model". Plan review
+  `plan-3` (`.agents/review/findings/plan-3.md`): five Codex rounds
+  (gpt-6-astra, xhigh, CLI transport), accepted at `c3e67b0`. **Owner
+  ruling pending (R1-8):** `docs/INVARIANTS.md` I2 and ADR-001 say Scrivener
+  import lives in core; I2's own table, `docs/ARCHITECTURE.md` and the code
+  put the converter in `crates/cli`. Asked as A (fix the wording, converter
+  stays; recommended) / B (move the importer into core first). Slices
+  proceed under A; each slice gets a Codex defect review before the next. Known limits, by design: the safety copy is per browser profile
   (a copy made on the phone restores on the phone); a brand-new tab gets a
   new session id, so the "Take over" offer still applies there; no service
   worker, so the installed icon needs the server reachable.

@@ -4,8 +4,9 @@
 were; no branch, no guard proof — the artifact is a plan document on
 `master`. The doc-review analog of the guard proof: the reviewer verifies
 the plan's factual claims against the code and the sample projects.)
-**Status**: In progress — round 1 reopened 2026-10-25; plan revised; round 2
-pending
+**Status**: Verified — accepted round 5 (2026-10-25, `c3e67b0`); five
+rounds, every finding checked before disposition; R1-8 is an owner ruling
+(I2 wording), recorded in the plan's Decisions and put to the owner
 **Subject**: `docs/plans/PLAN_SCRIVENER_FIDELITY.md`
 **Owner go**: "plan, review the plan with gpt-6-astra xhigh, then begin once
 you have consensus. review code slices with the same codex model"
@@ -164,4 +165,19 @@ Each checked against the working tree before acceptance.
   fallback escapes every ASCII punctuation character, as footnote bodies
   do; regression cases added for each probe the reviewer ran.
 
-**Plan revision**: committed for round 5 (see the plan's Status).
+**Plan revision**: committed for round 5 (`c3e67b0`).
+
+## Round 5 dispatch
+
+- **Reviewer**: same incantation; header `model: gpt-6-astra`, `reasoning
+  effort: xhigh`, `sandbox: read-only`, session
+  `01a174e6-141f-7ff1-a177-591d7bda259e`. Reviewed SHA `c3e67b0a2775…`,
+  base `a9b76dd…`. Finished 21:12 UTC; exit 0; 51,227 tokens. Capability
+  proof: plan read, `git rev-parse HEAD` → `c3e67b0…`.
+- **Verdict**: `accepted`. R2-3 resolved (probed through compile's Pandoc
+  options and the editor's TipTap parser). R1-8 owner ruling pending. No
+  new findings.
+
+Provenance note for all rounds: the CLI prints the dispatched model and
+effort in its transcript header; it does not echo a resolved model id
+beyond that, so the resolved identity is "as dispatched".
