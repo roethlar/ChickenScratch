@@ -556,11 +556,44 @@ fn paragraph_break(groups: &[Group], fields: &mut [Field], text: &mut String) {
     push_str("\n\n", groups, fields, text);
 }
 
+/// Removes hard-break markers (an odd run of trailing backslashes) and
+/// blank lines from the end of `lines`; an even run is escaped literal
+/// backslashes and stays. A break with nothing after it would read as a
+/// literal backslash (review finding s1-6, re-review).
+fn strip_trailing_breaks(lines: &mut Vec<String>) {
+    while let Some(last) = lines.last_mut() {
+        let trimmed_len = last.trim_end().len();
+        last.truncate(trimmed_len);
+        let trailing = last.chars().rev().take_while(|c| *c == '\\').count();
+        if trailing % 2 == 1 {
+            last.pop();
+            if last.trim().is_empty() {
+                lines.pop();
+            }
+            continue;
+        }
+        if last.trim().is_empty() {
+            lines.pop();
+            continue;
+        }
+        break;
+    }
+}
+
 /// `HYPERLINK "url"` + result text → a Markdown link; any other field →
-/// its result text.
+/// its result text. A break at the very end of the result is dropped so
+/// the link syntax stays intact.
 fn render_field(f: &Field) -> String {
     let inst = f.instruction.trim();
-    let result = f.result.trim();
+    let mut result_lines: Vec<String> = f
+        .result
+        .trim()
+        .lines()
+        .map(|l| l.trim().to_string())
+        .collect();
+    strip_trailing_breaks(&mut result_lines);
+    let result = result_lines.join("\n");
+    let result = result.as_str();
     let url = inst
         .strip_prefix("HYPERLINK")
         .map(|rest| rest.trim().trim_matches('"').trim())
@@ -605,14 +638,7 @@ fn finish(text: String) -> String {
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty())
             .collect();
-        if let Some(last) = lines.last_mut() {
-            // An odd run of trailing backslashes ends in the hard-break
-            // marker; an even run is escaped backslashes only.
-            let trailing = last.chars().rev().take_while(|c| *c == '\\').count();
-            if trailing % 2 == 1 {
-                last.pop();
-            }
-        }
+        strip_trailing_breaks(&mut lines);
         if !lines.is_empty() {
             paragraphs.push(lines.join("\n"));
         }
@@ -718,6 +744,14 @@ Second paragraph with \\'93quotes\\'94.\\\n\
         // backslash at a paragraph end is kept.
         assert_eq!(plain("{\\rtf1 a\\line\\par b}"), "a\n\nb");
         assert_eq!(plain("{\\rtf1 a\\\\\\par b}"), "a\\\\\n\nb");
+        // Re-review: a run of trailing breaks goes entirely, and a break at
+        // the end of link text does not break the link.
+        assert_eq!(plain("{\\rtf1 a\\line\\line\\par b}"), "a\n\nb");
+        assert_eq!(plain("{\\rtf1 a\\line\\line}"), "a");
+        assert_eq!(
+            plain("{\\rtf1 {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://ABC-123\"}}{\\fldrslt note\\line}}}"),
+            "[note](scrivcmt://ABC-123)"
+        );
     }
 
     /// Review finding s1-3: hex escapes and raw high bytes follow the
