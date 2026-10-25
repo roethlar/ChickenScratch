@@ -108,16 +108,11 @@ pub fn import_scriv_with_report(
     // Pre-pass: build Scrivener UUID -> chikn path map from the entire binder tree
     // This must happen before conversion so all links can be resolved
     let mut uuid_to_path: HashMap<String, String> = HashMap::new();
-    build_uuid_map(
-        &scriv_project.binder,
-        scriv_path,
-        &mut uuid_to_path,
-        "manuscript",
-    )?;
+    build_uuid_map_root(&scriv_project.binder, scriv_path, &mut uuid_to_path)?;
 
     // Convert binder items to documents and hierarchy
     let mut documents = HashMap::new();
-    let hierarchy = convert_binder_items(
+    let roots = convert_binder_items(
         &scriv_project.binder,
         scriv_path,
         &mut documents,
@@ -130,9 +125,8 @@ pub fn import_scriv_with_report(
         doc.content = clean_scrivener_markup(&doc.content, &uuid_to_path);
     }
 
-    // Ensure proper project structure: Manuscript, Research, Trash
-    // Move any loose root items into the Manuscript folder
-    chikn_project.hierarchy = ensure_project_structure(hierarchy);
+    // Shape the binder: Manuscript, Research, Trash at the top (slice 2).
+    chikn_project.hierarchy = ensure_project_structure(roots);
     chikn_project.documents = documents;
 
     let revision_message = format!("Imported from Scrivener: {}", scriv_project.name);
@@ -226,6 +220,66 @@ fn find_scrivx_file(scriv_path: &Path) -> Result<std::path::PathBuf, ChiknError>
     )))
 }
 
+/// Which of the three top-level `.chikn` folders a Scrivener root item
+/// belongs to (PLAN_SCRIVENER_FIDELITY slice 2). Only the Draft folder is
+/// the manuscript; Research and Trash keep their roles; everything else at
+/// the root (Characters, Places, Notes, Front Matter, Template Sheets) is
+/// reference material and goes under Research.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RootKind {
+    Draft,
+    Research,
+    Trash,
+    Other,
+}
+
+fn root_kind(item: &BinderItem) -> RootKind {
+    match item.item_type.as_str() {
+        "DraftFolder" => RootKind::Draft,
+        "ResearchFolder" => RootKind::Research,
+        "TrashFolder" => RootKind::Trash,
+        _ => RootKind::Other,
+    }
+}
+
+/// The on-disk folder for a root item's documents. The engine reads
+/// documents from `manuscript/` and `research/` (and the entity folders)
+/// only, and compiles `manuscript/` paths only, so trashed and reference
+/// documents live under `research/` whatever their binder folder.
+fn root_target_folder(item: &BinderItem) -> &'static str {
+    match root_kind(item) {
+        RootKind::Draft => "manuscript",
+        _ => "research",
+    }
+}
+
+/// Is this Scrivener item compiled? `<IncludeInCompile>No</IncludeInCompile>`
+/// excludes it; absent means yes (review finding plan-3 R1-3).
+fn include_in_compile(item: &BinderItem) -> bool {
+    item.metadata
+        .as_ref()
+        .and_then(|m| m.include_in_compile.as_deref())
+        .map(|v| !v.trim().eq_ignore_ascii_case("no"))
+        .unwrap_or(true)
+}
+
+/// Pre-pass over the root items, each with its own target folder.
+fn build_uuid_map_root(
+    items: &[BinderItem],
+    scriv_path: &Path,
+    uuid_to_path: &mut HashMap<String, String>,
+) -> Result<(), ChiknError> {
+    for item in items {
+        build_uuid_map(
+            std::slice::from_ref(item),
+            scriv_path,
+            uuid_to_path,
+            root_target_folder(item),
+        )?;
+    }
+    Ok(())
+}
+
 /// Pre-pass: builds a map of Scrivener UUID -> expected chikn .md path.
 /// This traverses the entire binder tree before conversion so that
 /// scrivlnk:// references in any document can be resolved.
@@ -238,13 +292,11 @@ fn build_uuid_map(
     // Track slugs we've seen to handle collisions (mirrors unique_slug logic)
     for item in items {
         match item.item_type.as_str() {
-            "TrashFolder" => continue,
-
             "ResearchFolder" => {
                 build_uuid_map(&item.children.items, scriv_path, uuid_to_path, "research")?;
             }
 
-            "DraftFolder" | "Folder" => {
+            "DraftFolder" | "Folder" | "TrashFolder" => {
                 // For folders, map UUID to the first child doc if one exists
                 if let Some(path) = find_first_text_path(&item.children.items, target_folder) {
                     uuid_to_path.insert(item.uuid.clone(), path);
@@ -317,23 +369,29 @@ fn find_first_text_path(items: &[BinderItem], target_folder: &str) -> Option<Str
     None
 }
 
-/// Converts Scrivener binder items to .chikn hierarchy and documents
+/// Converts the Scrivener root items to .chikn nodes, each tagged with the
+/// top-level folder it belongs to; `ensure_project_structure` shapes them.
 fn convert_binder_items(
     items: &[BinderItem],
     scriv_path: &Path,
     documents: &mut HashMap<String, Document>,
     uuid_to_path: &mut HashMap<String, String>,
     pandoc_path: Option<&Path>,
-) -> Result<Vec<TreeNode>, ChiknError> {
-    convert_binder_items_inner(
-        items,
-        scriv_path,
-        documents,
-        uuid_to_path,
-        None,
-        "manuscript",
-        pandoc_path,
-    )
+) -> Result<Vec<(RootKind, TreeNode)>, ChiknError> {
+    let mut roots = Vec::new();
+    for item in items {
+        let nodes = convert_binder_items_inner(
+            std::slice::from_ref(item),
+            scriv_path,
+            documents,
+            uuid_to_path,
+            None,
+            root_target_folder(item),
+            pandoc_path,
+        )?;
+        roots.extend(nodes.into_iter().map(|node| (root_kind(item), node)));
+    }
+    Ok(roots)
 }
 
 /// Converts Scrivener binder items with parent and target folder tracking
@@ -350,9 +408,6 @@ fn convert_binder_items_inner(
 
     for item in items {
         match item.item_type.as_str() {
-            // Skip trash entirely
-            "TrashFolder" => continue,
-
             // Research folder — convert children into research/ instead of manuscript/
             "ResearchFolder" => {
                 let folder_id = Uuid::new_v4().to_string();
@@ -375,8 +430,10 @@ fn convert_binder_items_inner(
                 });
             }
 
-            // Draft folder and regular folders
-            "DraftFolder" | "Folder" => {
+            // Draft folder, regular folders, and the Trash: nothing a writer
+            // parked in Scrivener's Trash is dropped (slice 2); its items
+            // land in the project's Trash folder.
+            "DraftFolder" | "Folder" | "TrashFolder" => {
                 let folder_id = Uuid::new_v4().to_string();
                 let folder_name = item.title.clone().unwrap_or_else(|| "Folder".to_string());
 
@@ -421,6 +478,7 @@ fn convert_binder_items_inner(
                             parent_id: Some(folder_id.clone()),
                             created,
                             modified,
+                            include_in_compile: include_in_compile(item),
                             ..Document::default()
                         };
                         documents.insert(doc_id.clone(), document);
@@ -453,6 +511,17 @@ fn convert_binder_items_inner(
                 let doc_id = Uuid::new_v4().to_string();
                 let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
 
+                // A Scrivener text item can have children. It then becomes
+                // a folder of its own name whose first document is the
+                // item's text, followed by the children in order (review
+                // finding plan-3 R1-2: the children used to be dropped).
+                let container_id = if item.children.items.is_empty() {
+                    None
+                } else {
+                    Some(Uuid::new_v4().to_string())
+                };
+                let doc_parent = container_id.clone().or_else(|| parent_id.clone());
+
                 let rtf_path = get_rtf_path(scriv_path, &item.uuid)?;
                 let content = if rtf_path.exists() {
                     read_document_text(&rtf_path, item, uuid_to_path, pandoc_path)?
@@ -484,23 +553,44 @@ fn convert_binder_items_inner(
                     name: doc_name.clone(),
                     path: doc_path.clone(),
                     content,
-                    parent_id: parent_id.clone(),
+                    parent_id: doc_parent,
                     created,
                     modified,
                     synopsis: meta.and_then(|m| m.synopsis.clone()),
                     label: meta.and_then(|m| m.label.clone()),
                     status: meta.and_then(|m| m.status.clone()),
                     keywords: meta.and_then(|m| m.keywords.clone()),
+                    include_in_compile: include_in_compile(item),
                     ..Document::default()
                 };
 
                 documents.insert(doc_id.clone(), document);
 
-                hierarchy.push(TreeNode::Document {
+                let doc_node = TreeNode::Document {
                     id: doc_id,
-                    name: doc_name,
+                    name: doc_name.clone(),
                     path: doc_path,
-                });
+                };
+                match container_id {
+                    Some(folder_id) => {
+                        let mut children = vec![doc_node];
+                        children.extend(convert_binder_items_inner(
+                            &item.children.items,
+                            scriv_path,
+                            documents,
+                            uuid_to_path,
+                            Some(folder_id.clone()),
+                            target_folder,
+                            pandoc_path,
+                        )?);
+                        hierarchy.push(TreeNode::Folder {
+                            id: folder_id,
+                            name: doc_name,
+                            children,
+                        });
+                    }
+                    None => hierarchy.push(doc_node),
+                }
             }
 
             // Any other type — check if it's a media file we can copy
@@ -622,8 +712,7 @@ fn read_document_text(
 fn validate_media_file_extensions(items: &[BinderItem]) -> Result<(), ChiknError> {
     for item in items {
         match item.item_type.as_str() {
-            "TrashFolder" => continue,
-            "ResearchFolder" | "DraftFolder" | "Folder" | "Text" => {
+            "ResearchFolder" | "DraftFolder" | "Folder" | "TrashFolder" | "Text" => {
                 validate_media_file_extensions(&item.children.items)?;
             }
             _ => {
@@ -649,60 +738,57 @@ fn validate_media_file_extensions(items: &[BinderItem]) -> Result<(), ChiknError
 /// - `\<\$Scr_Cs::N\>` / `\<!\$Scr_Cs::N\>` → character style tags, stripped
 /// - `{\\Scrv_annot ...}` → inline annotations, converted to HTML comments
 ///
-/// Ensure the hierarchy has Manuscript, Research, and Trash at the top level.
-/// Loose items (not inside one of these) are moved into Manuscript.
-fn ensure_project_structure(mut hierarchy: Vec<TreeNode>) -> Vec<TreeNode> {
+/// Shape the converted roots into the three top-level folders: the Draft
+/// folder's contents become Manuscript (by Scrivener type, whatever the
+/// writer named the folder), the Research folder's contents Research, the
+/// Trash folder's contents Trash, and every other root item goes under
+/// Research as the reference material it is (slice 2; it used to be filed
+/// under Manuscript).
+fn ensure_project_structure(roots: Vec<(RootKind, TreeNode)>) -> Vec<TreeNode> {
     let mut manuscript_children: Vec<TreeNode> = Vec::new();
     let mut research_children: Vec<TreeNode> = Vec::new();
+    let mut trash_children: Vec<TreeNode> = Vec::new();
     let mut manuscript_id = None;
     let mut research_id = None;
-    let mut kept: Vec<TreeNode> = Vec::new();
+    let mut trash_id = None;
 
-    for node in hierarchy.drain(..) {
-        match &node {
-            TreeNode::Folder { name, id, .. }
-                if name.to_lowercase() == "manuscript" || name.to_lowercase() == "draft" =>
-            {
-                // This is the manuscript folder — keep its ID
-                if let TreeNode::Folder { id, children, .. } = node {
-                    manuscript_id = Some(id.clone());
-                    manuscript_children.extend(children);
-                }
+    for (kind, node) in roots {
+        match (kind, node) {
+            (RootKind::Draft, TreeNode::Folder { id, children, .. }) => {
+                manuscript_id.get_or_insert(id);
+                manuscript_children.extend(children);
             }
-            TreeNode::Folder { name, .. } if name.to_lowercase() == "research" => {
-                if let TreeNode::Folder { id, children, .. } = node {
-                    research_id = Some(id.clone());
-                    research_children.extend(children);
-                }
+            (RootKind::Research, TreeNode::Folder { id, children, .. }) => {
+                research_id.get_or_insert(id);
+                research_children.extend(children);
             }
-            TreeNode::Folder { name, .. } if name.to_lowercase() == "trash" => {
-                // Skip — we'll create our own
+            (RootKind::Trash, TreeNode::Folder { id, children, .. }) => {
+                trash_id.get_or_insert(id);
+                trash_children.extend(children);
             }
-            _ => {
-                // Loose item — goes into Manuscript
-                manuscript_children.push(node);
-            }
+            (RootKind::Draft, node) => manuscript_children.push(node),
+            (RootKind::Trash, node) => trash_children.push(node),
+            (_, node) => research_children.push(node),
         }
     }
 
-    // Build the three required folders
-    kept.push(TreeNode::Folder {
-        id: manuscript_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
-        name: "Manuscript".to_string(),
-        children: manuscript_children,
-    });
-    kept.push(TreeNode::Folder {
-        id: research_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
-        name: "Research".to_string(),
-        children: research_children,
-    });
-    kept.push(TreeNode::Folder {
-        id: Uuid::new_v4().to_string(),
-        name: "Trash".to_string(),
-        children: Vec::new(),
-    });
-
-    kept
+    vec![
+        TreeNode::Folder {
+            id: manuscript_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+            name: "Manuscript".to_string(),
+            children: manuscript_children,
+        },
+        TreeNode::Folder {
+            id: research_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+            name: "Research".to_string(),
+            children: research_children,
+        },
+        TreeNode::Folder {
+            id: trash_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+            name: "Trash".to_string(),
+            children: trash_children,
+        },
+    ]
 }
 
 fn clean_scrivener_markup(content: &str, uuid_to_path: &HashMap<String, String>) -> String {
@@ -865,6 +951,190 @@ mod tests {
         );
     }
 
+    /// PLAN_SCRIVENER_FIDELITY slice 2: the binder lands where Scrivener had
+    /// it. Only the Draft folder (whatever its title) is the Manuscript;
+    /// other root folders go under Research; the Trash is kept; a text item
+    /// with children becomes a folder with its text first; IncludeInCompile
+    /// No is honoured, and all of it survives reopening and compile.
+    #[test]
+    fn binder_lands_where_scrivener_had_it() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Shape.scriv");
+        let output_path = temp_dir.path().join("Shape.chikn");
+        let ids: Vec<String> = (1..=8)
+            .map(|n| format!("B1B2C3D4-0000-4000-8000-00000000000{n}"))
+            .collect();
+        let texts = [
+            (&ids[0], "Chapter one text."),
+            (&ids[1], "Container text."),
+            (&ids[2], "Scene text."),
+            (&ids[3], "Deep text."),
+            (&ids[4], "Hero sketch."),
+            (&ids[5], "Research note."),
+            (&ids[6], "Old draft, binned."),
+            (&ids[7], "Private note, not compiled."),
+        ];
+        for (uuid, body) in texts {
+            let dir = scriv_path.join("Files").join("Data").join(uuid);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(
+                dir.join("content.rtf"),
+                format!("{{\\rtf1\\ansi {body}\\\n}}"),
+            )
+            .unwrap();
+        }
+        fs::write(
+            scriv_path.join("Shape.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="2.0">
+    <Binder>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000D" Type="DraftFolder">
+            <Title>Novel</Title>
+            <Children>
+                <BinderItem UUID="{a}" Type="Text"><Title>Chapter One</Title></BinderItem>
+                <BinderItem UUID="{b}" Type="Text">
+                    <Title>Container</Title>
+                    <Children>
+                        <BinderItem UUID="{c}" Type="Text"><Title>Scene</Title></BinderItem>
+                        <BinderItem UUID="00000000-0000-4000-8000-00000000000F" Type="Folder">
+                            <Title>Part</Title>
+                            <Children>
+                                <BinderItem UUID="{d}" Type="Text"><Title>Deep</Title></BinderItem>
+                            </Children>
+                        </BinderItem>
+                    </Children>
+                </BinderItem>
+                <BinderItem UUID="{h}" Type="Text">
+                    <Title>Private</Title>
+                    <MetaData><IncludeInCompile>No</IncludeInCompile></MetaData>
+                </BinderItem>
+            </Children>
+        </BinderItem>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000C" Type="Folder">
+            <Title>Characters</Title>
+            <Children>
+                <BinderItem UUID="{e}" Type="Text"><Title>Hero</Title></BinderItem>
+            </Children>
+        </BinderItem>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000E" Type="ResearchFolder">
+            <Title>Research</Title>
+            <Children>
+                <BinderItem UUID="{f}" Type="Text"><Title>Note</Title></BinderItem>
+            </Children>
+        </BinderItem>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000A" Type="TrashFolder">
+            <Title>Trash</Title>
+            <Children>
+                <BinderItem UUID="{g}" Type="Text"><Title>Old</Title></BinderItem>
+            </Children>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#,
+                a = ids[0],
+                b = ids[1],
+                c = ids[2],
+                d = ids[3],
+                e = ids[4],
+                f = ids[5],
+                g = ids[6],
+                h = ids[7],
+            ),
+        )
+        .unwrap();
+
+        let report = import_scriv_with_report(&scriv_path, &output_path, None).expect("imports");
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+
+        // Reopen through the engine so persistence is what is checked.
+        let project = chickenscratch_core::core::project::reader::read_project(&output_path)
+            .expect("reopens");
+        let names: Vec<&str> = project.hierarchy.iter().map(|n| n.name()).collect();
+        assert_eq!(names, ["Manuscript", "Research", "Trash"]);
+        let folder = |name: &str| -> &[TreeNode] {
+            match project.hierarchy.iter().find(|n| n.name() == name) {
+                Some(TreeNode::Folder { children, .. }) => children,
+                _ => panic!("{name} folder missing"),
+            }
+        };
+        let doc = |name: &str| -> &Document {
+            project
+                .documents
+                .values()
+                .find(|d| d.name == name)
+                .unwrap_or_else(|| panic!("document {name} missing"))
+        };
+
+        // Manuscript: Chapter One, the Container folder, Private.
+        let manuscript: Vec<&str> = folder("Manuscript").iter().map(|n| n.name()).collect();
+        assert_eq!(manuscript, ["Chapter One", "Container", "Private"]);
+        match &folder("Manuscript")[1] {
+            TreeNode::Folder { children, .. } => {
+                let inner: Vec<&str> = children.iter().map(|n| n.name()).collect();
+                assert_eq!(inner, ["Container", "Scene", "Part"]);
+                assert!(matches!(children[0], TreeNode::Document { .. }));
+                match &children[2] {
+                    TreeNode::Folder { children, .. } => {
+                        assert_eq!(
+                            children.iter().map(|n| n.name()).collect::<Vec<_>>(),
+                            ["Deep"]
+                        );
+                    }
+                    other => panic!("Part should be a folder, got {other:?}"),
+                }
+            }
+            other => panic!("Container should be a folder, got {other:?}"),
+        }
+        assert_eq!(doc("Container").content.trim(), "Container text.");
+        assert_eq!(doc("Deep").content.trim(), "Deep text.");
+        assert!(doc("Chapter One").path.starts_with("manuscript/"));
+
+        // Research: the Characters folder and the Research folder's note.
+        let research: Vec<&str> = folder("Research").iter().map(|n| n.name()).collect();
+        assert_eq!(research, ["Characters", "Note"]);
+        assert!(
+            doc("Hero").path.starts_with("research/"),
+            "{}",
+            doc("Hero").path
+        );
+
+        // Trash: kept, with its text, filed under research/ on disk.
+        let trash: Vec<&str> = folder("Trash").iter().map(|n| n.name()).collect();
+        assert_eq!(trash, ["Old"]);
+        assert_eq!(doc("Old").content.trim(), "Old draft, binned.");
+        assert!(
+            doc("Old").path.starts_with("research/"),
+            "{}",
+            doc("Old").path
+        );
+
+        // IncludeInCompile persisted and honoured by compile.
+        assert!(!doc("Private").include_in_compile);
+        assert!(doc("Chapter One").include_in_compile);
+        let html = temp_dir.path().join("out.html");
+        chickenscratch_core::core::compile::compile(&output_path, &html, "html", None, None, None)
+            .expect("compiles");
+        let compiled = fs::read_to_string(&html).unwrap();
+        assert!(compiled.contains("Chapter one text."));
+        assert!(
+            compiled.contains("Deep text."),
+            "container children compile"
+        );
+        assert!(
+            !compiled.contains("Private note"),
+            "excluded document must not compile"
+        );
+        assert!(!compiled.contains("Old draft"), "trash must not compile");
+        assert!(
+            !compiled.contains("Hero sketch"),
+            "research must not compile"
+        );
+    }
+
     /// The Zoe 2 sample used to abort the whole import on one hex escape
     /// followed by an apostrophe (`Zo\'eb's`).
     #[test]
@@ -1019,7 +1289,10 @@ mod tests {
         let result = import_scriv(&scriv_path, &output_path, None);
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
+        // A root-level text item lands under research/ (slice 2); neither
+        // folder may hold it.
         assert!(!output_path.join("manuscript/escape.md").exists());
+        assert!(!output_path.join("research/escape.md").exists());
     }
 
     #[test]
@@ -1046,6 +1319,7 @@ mod tests {
 
         assert!(matches!(result, Err(ChiknError::InvalidFormat(_))));
         assert!(!output_path.join("manuscript/escape.md").exists());
+        assert!(!output_path.join("research/escape.md").exists());
     }
 
     /// PLAN_IMPORT_MEDIA_SAFETY step 2: an attachment that cannot be copied
@@ -1091,11 +1365,12 @@ mod tests {
             .expect("one unreadable attachment must not fail the import");
         fs::set_permissions(&media, fs::Permissions::from_mode(0o644)).unwrap();
 
+        // A root-level attachment is reference material: research/ (slice 2).
         assert!(
             report
                 .warnings
                 .iter()
-                .any(|w| w.contains("manuscript/reference-pdf.pdf")),
+                .any(|w| w.contains("research/reference-pdf.pdf")),
             "the skipped attachment must be named: {:?}",
             report.warnings
         );
@@ -1107,7 +1382,7 @@ mod tests {
                 .project
                 .documents
                 .values()
-                .any(|d| d.path == "manuscript/reference-pdf.pdf"),
+                .any(|d| d.path == "research/reference-pdf.pdf"),
             "a failed attachment must be dropped from the project"
         );
         assert!(matches!(
@@ -1244,8 +1519,9 @@ mod tests {
         let result = import_scriv(&scriv_path, &output_path, None);
 
         assert!(result.is_ok(), "import failed: {result:?}");
+        // A root-level attachment is reference material: research/ (slice 2).
         assert_eq!(
-            fs::read(output_path.join("manuscript/reference-pdf.pdf")).unwrap(),
+            fs::read(output_path.join("research/reference-pdf.pdf")).unwrap(),
             b"%PDF sample"
         );
     }
