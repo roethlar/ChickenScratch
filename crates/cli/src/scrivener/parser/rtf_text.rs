@@ -188,6 +188,11 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
         }
         match b {
             b'{' => {
+                // A waiting half belongs to the group it appeared in: resolve
+                // it there before a new destination opens, so it can neither
+                // leak into a field nor vanish into a skipped group (review
+                // finding s1-4, second re-review).
+                resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
                 let parent = groups.last().unwrap();
                 groups.push(Group {
                     sink: parent.sink,
@@ -217,6 +222,9 @@ pub fn rtf_to_plain_markdown(input: &[u8]) -> String {
                 let next = input.get(i + 1).copied();
                 match next {
                     Some(b'\n') | Some(b'\r') => {
+                        // A paragraph break produces text: a waiting half is
+                        // resolved before it, as `\par` does.
+                        resolve_lone_high(&mut pending_high, &groups, &mut fields, &mut text);
                         paragraph_break(&groups, &mut fields, &mut text);
                         i += 2;
                         if next == Some(b'\r') && input.get(i) == Some(&b'\n') {
@@ -843,6 +851,21 @@ Second paragraph with \\'93quotes\\'94.\\\n\
             -10179
         );
         assert_eq!(plain(&in_field), "[\u{FFFD}](u)");
+
+        // Second re-review: a half waiting in the body is resolved there
+        // before a field or a skipped group opens, and before a
+        // backslash-newline paragraph break.
+        let before_field = format!(
+            "{{\\rtf1\\uc1 x\\u{} ?{{\\field{{\\*\\fldinst{{HYPERLINK \"u\"}}}}{{\\fldrslt label}}}}y}}",
+            -10179
+        );
+        assert_eq!(plain(&before_field), "x\u{FFFD}[label](u)y");
+        let before_skipped = format!("{{\\rtf1\\uc1 x\\u{} ?{{\\*\\unknown hidden}}y}}", -10179);
+        assert_eq!(plain(&before_skipped), "x\u{FFFD}y");
+        let before_par = format!("{{\\rtf1\\uc1 x\\u{} ?\\\ny}}", -10179);
+        assert_eq!(plain(&before_par), "x\u{FFFD}\n\ny");
+        let across_par = format!("{{\\rtf1\\uc1 x\\u{} ?\\\n\\u{} ?y}}", -10179, -8704);
+        assert_eq!(plain(&across_par), "x\u{FFFD}\n\n\u{FFFD}y");
     }
 
     #[test]
