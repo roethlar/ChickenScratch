@@ -30,7 +30,8 @@ Usage: scripts/install-web.sh [options]
   --help              This text
 
 Reinstalling with settings already present upgrades the program and keeps
-every setting. Environment: CHIKN_BIN_DIR (default ~/.local/bin).
+every setting; a setting that did not exist when you last installed is
+asked for once. Environment: CHIKN_BIN_DIR (default ~/.local/bin).
 EOF
 }
 
@@ -229,12 +230,27 @@ fi
 
 # ── settings ───────────────────────────────────────────────────────────────
 
+# Does the settings file mention this key at all (set or as a commented
+# placeholder)? A key it never saw is a setting added since the last install.
+toml_has_key() {
+  [[ -f $config_file ]] && grep -qE "^[[:space:]]*#?[[:space:]]*$1[[:space:]]*=" "$config_file"
+}
+
+normalize_backup() {
+  case "$1" in
+    none|NONE|None|"") printf '' ;;
+    *) local b; b=$(expand_home "$1"); [[ $b == /* ]] || b=$PWD/$b; printf '%s' "$b" ;;
+  esac
+}
+
 existing_root=$(toml_get root)
 existing_bind=$(toml_get bind)
 existing_backup=$(toml_get backup)
-configure=1
-if [[ -n $existing_root && $opt_reconfigure -eq 0 && -z $opt_root && -z $opt_bind && -z $opt_backup ]]; then
+configure=1       # ask every question
+write_settings=1  # rewrite web.toml at the end
+if [[ -n $existing_root && $opt_reconfigure -eq 0 ]]; then
   configure=0
+  write_settings=0
 fi
 
 if [[ $configure -eq 1 ]]; then
@@ -247,15 +263,25 @@ if [[ $configure -eq 1 ]]; then
   root=$(expand_home "$root")
   [[ $root == /* ]] || root=$PWD/$root
   [[ $bind == *:* ]] || die "listen address must look like 0.0.0.0:7391 (got '$bind')"
-  case "$backup" in none|NONE|None|"") backup="" ;; *) backup=$(expand_home "$backup"); [[ $backup == /* ]] || backup=$PWD/$backup ;; esac
-  if [[ -n $backup && $backup == "$root"* ]]; then
-    warn "the backup folder is inside the projects folder; backups work but live next to your notes"
-  fi
+  backup=$(normalize_backup "$backup")
 else
   root=$existing_root
   bind=$existing_bind
   backup=$existing_backup
   say "Settings found in $config_file — upgrading, keeping them."
+  # Flags given with an existing install change just that setting.
+  if [[ -n $opt_root ]]; then root=$(expand_home "$opt_root"); [[ $root == /* ]] || root=$PWD/$root; write_settings=1; fi
+  if [[ -n $opt_bind ]]; then bind=$opt_bind; [[ $bind == *:* ]] || die "listen address must look like 0.0.0.0:7391 (got '$bind')"; write_settings=1; fi
+  if [[ -n $opt_backup ]]; then backup=$(normalize_backup "$opt_backup"); write_settings=1; fi
+  # Settings that did not exist at the last install are asked for once.
+  if [[ -z $opt_backup ]] && ! toml_has_key backup; then
+    say "One new setting since your last install:"
+    backup=$(normalize_backup "$(ask "Folder for backups, offered in the browser (none = skip)" "none")")
+    write_settings=1
+  fi
+fi
+if [[ -n $backup && $backup == "$root"* ]]; then
+  warn "the backup folder is inside the projects folder; backups work but live next to your notes"
 fi
 
 boot=$opt_boot
@@ -316,7 +342,7 @@ if [[ -n $backup && ! -d $backup ]]; then
   mkdir -p "$backup" || die "cannot create $backup"
 fi
 
-if [[ $configure -eq 1 ]]; then
+if [[ $write_settings -eq 1 ]]; then
   write_config "$root" "$bind" "$backup"
   say "Settings written to $config_file"
 fi
