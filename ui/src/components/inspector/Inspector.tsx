@@ -305,6 +305,18 @@ export function Inspector() {
   // StrictMode replays every effect in development) saves nothing (review
   // finding s3-1, re-review).
   const baseline = useRef<string | null>(null);
+  // Which form the baseline describes (project, document, hydration), so a
+  // save that settles after the writer moved to another document cannot
+  // replace that document's baseline (s3-1, third re-review).
+  const baselineKey = useRef<string | null>(null);
+  // The save in flight, if any. Only one runs at a time; an edit made while
+  // it runs waits for it to settle and is then compared against the
+  // acknowledged baseline, so editing back to the old text during a save is
+  // still saved (s3-1, third re-review).
+  const inFlight = useRef<string | null>(null);
+  // Bumped when a save settles, so the debounce effect reconciles the form
+  // against the new baseline even though no field changed.
+  const [settled, setSettled] = useState(0);
   if (activeDoc && (activeDoc.id !== lastDocId || reloadGeneration !== lastGeneration)) {
     setHydration((h) => h + 1);
     setLastDocId(activeDoc.id);
@@ -361,6 +373,7 @@ export function Inspector() {
   const formSnapshot = JSON.stringify([
     synopsis, notes, label, status, keywords, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene,
   ]);
+  const formKey = `${project?.path ?? ""}|${activeDoc?.id ?? ""}|${hydration}`;
 
   /**
    * Every metadata save goes through here: the debounced form save and the
@@ -379,6 +392,7 @@ export function Inspector() {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+      inFlight.current = formKey;
       try {
         const updated = await docCmd.updateDocumentMetadata(
           project.path,
@@ -392,16 +406,26 @@ export function Inspector() {
             ...extra,
           }
         );
-        baseline.current = formSnapshot;
+        // A late answer for another document (or an earlier hydration of
+        // this one) must not become the current form's baseline.
+        if (baselineKey.current === formKey) {
+          baseline.current = formSnapshot;
+        }
         setProject(updated);
+        setSettled((n) => n + 1);
       } catch (e) {
         // The dispatch gate refuses metadata writes while an epoch-bumping
         // operation runs; the pending draft is dropped loudly — the
-        // generation resync above reloads the restored values.
+        // generation resync above reloads the restored values. The baseline
+        // stays, so the next edit tries again; no automatic retry.
         toastError(`Details not saved: ${e}`);
+      } finally {
+        if (inFlight.current === formKey) {
+          inFlight.current = null;
+        }
       }
     },
-    [project, activeDoc, synopsis, label, status, keywords, scenePayload, formSnapshot, setProject]
+    [project, activeDoc, synopsis, label, status, keywords, scenePayload, formSnapshot, formKey, setProject]
   );
 
   const handleTitleSave = useCallback(async () => {
@@ -423,9 +447,12 @@ export function Inspector() {
     if (hydration !== savedHydration.current) {
       savedHydration.current = hydration;
       baseline.current = formSnapshot;
+      baselineKey.current = formKey;
       return;
     }
-    if (!activeDoc || formSnapshot === baseline.current) return;
+    // While a save runs, wait: when it settles the effect runs again and
+    // compares the form with the acknowledged baseline.
+    if (!activeDoc || inFlight.current !== null || formSnapshot === baseline.current) return;
     const timer = setTimeout(() => {
       void persist();
     }, 1500);
@@ -434,7 +461,7 @@ export function Inspector() {
     // state, which would restart the debounce on every keystroke instead of
     // every 1.5s idle window.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydration, formSnapshot]);
+  }, [hydration, formSnapshot, settled]);
 
   if (!activeDoc) {
     return (
