@@ -218,6 +218,116 @@ fn footnotes_to_references(
     counter: &mut usize,
     definitions: &mut Vec<String>,
 ) -> String {
+    // Code is left alone (review finding s4-8: a footnote-shaped example in
+    // a fenced block was rewritten): fenced blocks, indented code blocks and
+    // inline code spans are copied through; only prose is transformed.
+    let mut out = String::with_capacity(section.len());
+    let mut fence: Option<(char, usize)> = None;
+    let mut previous_blank = true;
+    let mut in_indented = false;
+    for line in section.split_inclusive('\n') {
+        let text = line.trim_end_matches(['\n', '\r']);
+        let trimmed = text.trim_start();
+        if let Some((ch, len)) = fence {
+            out.push_str(line);
+            let run = trimmed.chars().take_while(|c| *c == ch).count();
+            if run >= len && trimmed[run..].trim().is_empty() {
+                fence = None;
+            }
+            previous_blank = false;
+            continue;
+        }
+        let leading = text.len() - trimmed.len();
+        if leading < 4 && (trimmed.starts_with("```") || trimmed.starts_with("~~~")) {
+            let ch = trimmed.chars().next().unwrap_or('`');
+            let len = trimmed.chars().take_while(|c| *c == ch).count();
+            fence = Some((ch, len));
+            in_indented = false;
+            previous_blank = false;
+            out.push_str(line);
+            continue;
+        }
+        let is_blank = trimmed.is_empty();
+        let indented = !is_blank && (text.starts_with("    ") || text.starts_with('\t'));
+        if indented && (previous_blank || in_indented) {
+            in_indented = true;
+            previous_blank = false;
+            out.push_str(line);
+            continue;
+        }
+        if is_blank {
+            previous_blank = true;
+            out.push_str(line);
+            continue;
+        }
+        in_indented = false;
+        previous_blank = false;
+        out.push_str(&footnotes_outside_inline_code(line, counter, definitions));
+    }
+    out
+}
+
+/// Transforms a line of prose, leaving inline code spans (matching backtick
+/// runs) untouched.
+fn footnotes_outside_inline_code(
+    line: &str,
+    counter: &mut usize,
+    definitions: &mut Vec<String>,
+) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut segment_start = 0;
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'`' {
+            i += 1;
+            continue;
+        }
+        let run_start = i;
+        while i < bytes.len() && bytes[i] == b'`' {
+            i += 1;
+        }
+        let run = i - run_start;
+        // A closing run of exactly the same length ends the span.
+        let mut j = i;
+        let mut close: Option<usize> = None;
+        while j < bytes.len() {
+            if bytes[j] == b'`' {
+                let cs = j;
+                while j < bytes.len() && bytes[j] == b'`' {
+                    j += 1;
+                }
+                if j - cs == run {
+                    close = Some(cs);
+                    break;
+                }
+            } else {
+                j += 1;
+            }
+        }
+        if let Some(cs) = close {
+            out.push_str(&footnotes_in_prose(
+                &line[segment_start..run_start],
+                counter,
+                definitions,
+            ));
+            out.push_str(&line[run_start..cs + run]);
+            i = cs + run;
+            segment_start = i;
+        }
+        // No closing run: the backticks are ordinary text.
+    }
+    out.push_str(&footnotes_in_prose(
+        &line[segment_start..],
+        counter,
+        definitions,
+    ));
+    out
+}
+
+/// Replaces every footnote element in `section` (prose only) with its
+/// reference.
+fn footnotes_in_prose(section: &str, counter: &mut usize, definitions: &mut Vec<String>) -> String {
     let mut out = String::with_capacity(section.len());
     let mut rest = section;
     loop {
@@ -428,6 +538,43 @@ mod tests {
         let (out, defs) = convert("T<sup class='footnote' data-body='a > b'>●</sup>");
         assert_eq!(out, "T[^cs-fn1]");
         assert_eq!(defs, vec!["[^cs-fn1]: a \\> b".to_string()]);
+    }
+
+    /// Review finding s4-8: code examples are not transformed.
+    #[test]
+    fn footnote_shaped_markup_inside_code_is_left_alone() {
+        let fenced = "Real<sup class=\"footnote\" data-body=\"one\">●</sup>.\n\n```html\n<sup class=\"footnote\" data-body=\"example\">●</sup>\n```\n\nAfter.\n";
+        let (out, defs) = convert(fenced);
+        assert_eq!(
+            out,
+            "Real[^cs-fn1].\n\n```html\n<sup class=\"footnote\" data-body=\"example\">●</sup>\n```\n\nAfter.\n"
+        );
+        assert_eq!(defs.len(), 1);
+
+        let tilde = "~~~\n<sup class=\"footnote\" data-body=\"x\">●</sup>\n~~~\n";
+        let (out, defs) = convert(tilde);
+        assert_eq!(out, tilde);
+        assert!(defs.is_empty());
+
+        let indented = "Text.\n\n    <sup class=\"footnote\" data-body=\"x\">●</sup>\n    more code\n\nTail<sup class=\"footnote\" data-body=\"two\">●</sup>\n";
+        let (out, defs) = convert(indented);
+        assert_eq!(
+            out,
+            "Text.\n\n    <sup class=\"footnote\" data-body=\"x\">●</sup>\n    more code\n\nTail[^cs-fn1]\n"
+        );
+        assert_eq!(defs.len(), 1);
+
+        let inline = "Use `<sup class=\"footnote\" data-body=\"x\">●</sup>` like this<sup class=\"footnote\" data-body=\"two\">●</sup>, ``a ` b`` too.";
+        let (out, defs) = convert(inline);
+        assert_eq!(
+            out,
+            "Use `<sup class=\"footnote\" data-body=\"x\">●</sup>` like this[^cs-fn1], ``a ` b`` too."
+        );
+        assert_eq!(defs.len(), 1);
+
+        // An unmatched backtick is ordinary text.
+        let (out, _) = convert("a ` b<sup class=\"footnote\" data-body=\"n\">●</sup>");
+        assert_eq!(out, "a ` b[^cs-fn1]");
     }
 
     #[test]
