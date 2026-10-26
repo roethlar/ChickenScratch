@@ -4,6 +4,7 @@ import * as docCmd from "../../commands/document";
 import * as threadCmd from "../../commands/threads";
 import type { Thread } from "../../types";
 import { toastError } from "../shared/Toast";
+import * as saves from "./metadataSaves";
 import { getReloadGeneration } from "../../commands/barrier";
 import { useBarrierActive } from "../../hooks/useBarrier";
 import { useProfile } from "../../profiles";
@@ -297,26 +298,20 @@ export function Inspector() {
   const [lastDocId, setLastDocId] = useState<string | undefined>(undefined);
   const [lastGeneration, setLastGeneration] = useState(reloadGeneration);
   // Counts hydrations; the debounce effect records the hydrated form as the
-  // baseline instead of saving it, so a hydration is never a save.
+  // document's baseline instead of saving it, so a hydration is never a save
+  // (review finding s3-1). The baseline, the save in flight and any draft
+  // waiting behind it live in `metadataSaves`, outside this component, so an
+  // effect that runs again with the same values (React's StrictMode replays
+  // every effect in development) saves nothing, a save that settles after
+  // the writer moved on cannot touch another document's baseline, and a
+  // draft deferred behind a slow or refused save is still sent after
+  // navigation or unmount (s3-1, re-reviews one to four).
   const [hydration, setHydration] = useState(0);
   const savedHydration = useRef(0);
-  // The form as last hydrated or last saved. Only a form that differs from
-  // it is saved, so an effect that runs again with the same values (React's
-  // StrictMode replays every effect in development) saves nothing (review
-  // finding s3-1, re-review).
-  const baseline = useRef<string | null>(null);
-  // Which form the baseline describes (project, document, hydration), so a
-  // save that settles after the writer moved to another document cannot
-  // replace that document's baseline (s3-1, third re-review).
-  const baselineKey = useRef<string | null>(null);
-  // The save in flight, if any. Only one runs at a time; an edit made while
-  // it runs waits for it to settle and is then compared against the
-  // acknowledged baseline, so editing back to the old text during a save is
-  // still saved (s3-1, third re-review).
-  const inFlight = useRef<string | null>(null);
-  // Bumped when a save settles, so the debounce effect reconciles the form
-  // against the new baseline even though no field changed.
+  // Bumped when any save settles, so the debounce effect reconciles the form
+  // against the acknowledged baseline even though no field changed.
   const [settled, setSettled] = useState(0);
+  useEffect(() => saves.subscribe(() => setSettled((n) => n + 1)), []);
   if (activeDoc && (activeDoc.id !== lastDocId || reloadGeneration !== lastGeneration)) {
     setHydration((h) => h + 1);
     setLastDocId(activeDoc.id);
@@ -373,60 +368,50 @@ export function Inspector() {
   const formSnapshot = JSON.stringify([
     synopsis, notes, label, status, keywords, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene,
   ]);
-  const formKey = `${project?.path ?? ""}|${activeDoc?.id ?? ""}|${hydration}`;
+  const draftKey = project && activeDoc ? saves.draftKey(project.path, activeDoc.id) : null;
 
   /**
    * Every metadata save goes through here: the debounced form save and the
    * immediate controls (Include in Compile, Compile Order, Word Target),
-   * which send the whole form along with their own field. The baseline
-   * moves to the form that was sent only once the write succeeds, so an
-   * immediate control saving the form never leaves a later edit back to the
-   * old text unsaved, and a refused write leaves the form dirty so the next
-   * edit, even back to the same text, tries again (review finding s3-1,
-   * second re-review).
+   * which send the whole form along with their own field. The draft is
+   * handed to `metadataSaves`, which sends one at a time per document, moves
+   * the baseline only once a write succeeds and keeps the newest draft for
+   * after a slow or refused save (review finding s3-1, re-reviews).
    */
   const persist = useCallback(
-    async (extra: Parameters<typeof docCmd.updateDocumentMetadata>[2] = {}) => {
+    (extra: saves.MetadataPayload = {}) => {
       if (!project || !activeDoc) return;
       const kw = keywords
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      inFlight.current = formKey;
-      try {
-        const updated = await docCmd.updateDocumentMetadata(
-          project.path,
-          activeDoc.id,
-          {
-            synopsis: synopsis || null,
-            label: label || null,
-            status: status || null,
-            keywords: kw.length ? kw : null,
-            fields: scenePayload(),
-            ...extra,
-          }
-        );
-        // A late answer for another document (or an earlier hydration of
-        // this one) must not become the current form's baseline.
-        if (baselineKey.current === formKey) {
-          baseline.current = formSnapshot;
-        }
-        setProject(updated);
-        setSettled((n) => n + 1);
-      } catch (e) {
-        // The dispatch gate refuses metadata writes while an epoch-bumping
-        // operation runs; the pending draft is dropped loudly — the
-        // generation resync above reloads the restored values. The baseline
-        // stays, so the next edit tries again; no automatic retry.
-        toastError(`Details not saved: ${e}`);
-      } finally {
-        if (inFlight.current === formKey) {
-          inFlight.current = null;
-        }
-      }
+      saves.submit({
+        projectPath: project.path,
+        docId: activeDoc.id,
+        snapshot: formSnapshot,
+        payload: {
+          synopsis: synopsis || null,
+          label: label || null,
+          status: status || null,
+          keywords: kw.length ? kw : null,
+          fields: scenePayload(),
+          ...extra,
+        },
+        apply: setProject,
+      });
     },
-    [project, activeDoc, synopsis, label, status, keywords, scenePayload, formSnapshot, formKey, setProject]
+    [project, activeDoc, synopsis, label, status, keywords, scenePayload, formSnapshot, setProject]
   );
+  // The latest form and how to save it, for the leave-time flush below
+  // (recorded after each render, never during one).
+  const latest = useRef<{ key: string | null; snapshot: string; persist: () => void }>({
+    key: null,
+    snapshot: "",
+    persist: () => {},
+  });
+  useEffect(() => {
+    latest.current = { key: draftKey, snapshot: formSnapshot, persist };
+  });
 
   const handleTitleSave = useCallback(async () => {
     if (!project || !activeDoc) return;
@@ -443,25 +428,38 @@ export function Inspector() {
 
   // Debounced save on metadata changes; the run that follows a hydration
   // (mount or document change) saves nothing, only edits do.
+  const lastSeenSnapshot = useRef<string | null>(null);
   useEffect(() => {
     if (hydration !== savedHydration.current) {
       savedHydration.current = hydration;
-      baseline.current = formSnapshot;
-      baselineKey.current = formKey;
+      lastSeenSnapshot.current = formSnapshot;
+      if (draftKey) saves.hydrated(draftKey, formSnapshot);
       return;
     }
-    // While a save runs, wait: when it settles the effect runs again and
-    // compares the form with the acknowledged baseline.
-    if (!activeDoc || inFlight.current !== null || formSnapshot === baseline.current) return;
+    if (formSnapshot !== lastSeenSnapshot.current) {
+      // An edit: a form refused earlier may be tried again.
+      lastSeenSnapshot.current = formSnapshot;
+      if (draftKey) saves.edited(draftKey);
+    }
+    if (!draftKey || !saves.isDirty(draftKey, formSnapshot)) return;
     const timer = setTimeout(() => {
-      void persist();
+      persist();
     }, 1500);
     return () => clearTimeout(timer);
     // `persist` is intentionally omitted; its identity changes with form
     // state, which would restart the debounce on every keystroke instead of
     // every 1.5s idle window.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydration, formSnapshot, settled]);
+  }, [hydration, formSnapshot, settled, draftKey]);
+
+  // Leaving the document (another one selected, the Inspector hidden) hands
+  // a dirty form over at once instead of waiting out the debounce.
+  useEffect(() => {
+    return () => {
+      const { key, snapshot, persist: flush } = latest.current;
+      if (key && saves.isDirty(key, snapshot)) flush();
+    };
+  }, [draftKey]);
 
   if (!activeDoc) {
     return (
