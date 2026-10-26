@@ -1014,19 +1014,16 @@ fn link_end(markdown: &str, start: usize) -> Option<usize> {
                 // A destination stays on its line.
                 b'\n' | b'\r' => return None,
                 b' ' | b'\t' => {
-                    // Whitespace with parentheses still open is not a link
-                    // (fifth re-review: a destination ending in `(` was
-                    // followed by prose). Otherwise a quoted title may
-                    // follow; if not, Pandoc's writer leaves spaces inside a
-                    // destination (`https://e.com/a `b`), so it goes on.
-                    if depth != 0 {
-                        return None;
-                    }
+                    // Pandoc's reader keeps a space inside a destination
+                    // unless a title or the closing parenthesis follows, and
+                    // anything inside balanced parentheses, spaces included
+                    // (sixth re-review: `https://e.com/(a `b)`); a
+                    // destination left open at the line end is not a link.
                     let mut k = j;
                     while matches!(bytes.get(k), Some(b' ' | b'\t')) {
                         k += 1;
                     }
-                    if matches!(bytes.get(k), Some(b'"' | b'\'' | b'(')) {
+                    if depth == 0 && matches!(bytes.get(k), Some(b'"' | b'\'' | b'(')) {
                         break;
                     }
                     j = k;
@@ -2682,6 +2679,18 @@ mod tests {
         let md = "`x\n\n[anchor](scrivcmt://FN-14)`";
         let text = attach_annotations(md, footnote("FN-14"), Vec::new(), &item, &mut map);
         assert_eq!(text.content, format!("`x\n\nanchor{sup}`"));
+        assert!(map.is_empty(), "no warnings: {map:?}");
+
+        // Sixth re-review: a space inside balanced parentheses is part of the
+        // destination, as Pandoc reads it, so two such links around an
+        // anchor stay opaque and the anchor attaches.
+        let mut map = HashMap::new();
+        let md = "[r](https://e.com/(a `b)) [anchor](scrivcmt://FN-15) [r](https://e.com/(a `b))";
+        let text = attach_annotations(md, footnote("FN-15"), Vec::new(), &item, &mut map);
+        assert_eq!(
+            text.content,
+            format!("[r](https://e.com/(a `b)) anchor{sup} [r](https://e.com/(a `b))")
+        );
         assert!(map.is_empty(), "no warnings: {map:?}");
     }
 
