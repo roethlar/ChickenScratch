@@ -306,48 +306,57 @@ fn protected_code_ranges(section: &str) -> Vec<Range<usize>> {
 /// comment are verbatim to Pandoc: protected to their own closing delimiter
 /// only, so prose after them on the same line is still prose.
 fn html_block_code_ranges(section: &str, range: Range<usize>, protected: &mut Vec<Range<usize>>) {
-    const VERBATIM: [&str; 4] = ["pre", "script", "style", "textarea"];
+    // Only a block-level tag at the start of a line is structure here, as in
+    // Pandoc; a tag inside a line (an inline `<sup>`, a literal `1 < 2`, a
+    // `` `<pre>` `` in a code span) is inline content for the Markdown parse
+    // to judge (fourth re-review). The filler is a letter, not a space, so a
+    // masked tag never turns the rest of its line into indented code.
+    const FILLER: u8 = b'x';
     let block = &section[range.clone()];
-    let mut masked = block.as_bytes().to_vec();
-    let blank = |masked: &mut Vec<u8>, from: usize, to: usize| {
+    let bytes = block.as_bytes();
+    let n = bytes.len();
+    let mut masked = bytes.to_vec();
+    let fill = |masked: &mut Vec<u8>, from: usize, to: usize| {
         for b in &mut masked[from..to] {
             if *b != b'\n' && *b != b'\r' {
-                *b = b' ';
+                *b = FILLER;
             }
         }
     };
     let mut i = 0;
-    while let Some(open) = block[i..].find('<') {
-        let open = i + open;
-        let rest = &block[open..];
+    while i < n {
+        let line_end = block[i..].find('\n').map_or(n, |p| i + p + 1);
+        // Quote prefixes and indentation before the line's first token.
+        let mut j = i;
+        while j < n && matches!(bytes[j], b' ' | b'\t' | b'>') {
+            j += 1;
+        }
+        let rest = &block[j..];
         if rest.starts_with("<!--") {
-            let end = rest.find("-->").map_or(block.len(), |p| open + p + 3);
-            protected.push(range.start + open..range.start + end);
-            blank(&mut masked, open, end);
+            let end = rest.find("-->").map_or(n, |p| j + p + 3);
+            protected.push(range.start + j..range.start + end);
+            fill(&mut masked, j, end);
             i = end;
             continue;
         }
-        let Some(close) = tag_end(rest) else {
-            break;
-        };
-        let name: String = rest[1..]
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric())
-            .collect::<String>()
-            .to_ascii_lowercase();
-        if VERBATIM.contains(&name.as_str()) {
-            let lower = block[open..].to_ascii_lowercase();
-            let end = lower
-                .find(&format!("</{name}"))
-                .and_then(|p| tag_end(&block[open + p..]).map(|t| open + p + t + 1))
-                .unwrap_or(block.len());
-            protected.push(range.start + open..range.start + end);
-            blank(&mut masked, open, end);
-            i = end;
+        if let Some((name, closing, tag_len)) = block_level_tag(rest) {
+            if !closing && VERBATIM_ELEMENTS.contains(&name.as_str()) {
+                let lower = rest.to_ascii_lowercase();
+                let end = lower
+                    .find(&format!("</{name}"))
+                    .and_then(|p| tag_end(&rest[p..]).map(|t| j + p + t + 1))
+                    .unwrap_or(n);
+                protected.push(range.start + j..range.start + end);
+                fill(&mut masked, j, end);
+                i = end;
+                continue;
+            }
+            fill(&mut masked, j, j + tag_len);
+            // Another tag may follow on the same line (`</div></div>`).
+            i = j + tag_len;
             continue;
         }
-        blank(&mut masked, open, open + close + 1);
-        i = open + close + 1;
+        i = line_end;
     }
     let masked = String::from_utf8(masked).unwrap_or_default();
     for (event, inner) in Parser::new(&masked).into_offset_iter() {
@@ -355,6 +364,108 @@ fn html_block_code_ranges(section: &str, range: Range<usize>, protected: &mut Ve
             protected.push(range.start + inner.start..range.start + inner.end);
         }
     }
+}
+
+/// Elements Pandoc keeps verbatim inside an HTML block.
+const VERBATIM_ELEMENTS: [&str; 4] = ["pre", "script", "style", "textarea"];
+
+/// Elements whose tags open or close an HTML block (CommonMark's list, plus
+/// the verbatim ones).
+const BLOCK_ELEMENTS: [&str; 66] = [
+    "address",
+    "article",
+    "aside",
+    "base",
+    "basefont",
+    "blockquote",
+    "body",
+    "caption",
+    "center",
+    "col",
+    "colgroup",
+    "dd",
+    "details",
+    "dialog",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "frame",
+    "frameset",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hr",
+    "html",
+    "iframe",
+    "legend",
+    "li",
+    "link",
+    "main",
+    "menu",
+    "menuitem",
+    "nav",
+    "noframes",
+    "ol",
+    "optgroup",
+    "option",
+    "p",
+    "param",
+    "pre",
+    "script",
+    "search",
+    "section",
+    "style",
+    "summary",
+    "table",
+    "tbody",
+    "td",
+    "textarea",
+    "tfoot",
+    "th",
+    "thead",
+    "title",
+    "tr",
+    "track",
+    "ul",
+];
+
+/// A block-level tag at the start of `rest`: its lower-case name, whether it
+/// is a closing tag, and the tag's length in bytes.
+fn block_level_tag(rest: &str) -> Option<(String, bool, usize)> {
+    let after_lt = rest.strip_prefix('<')?;
+    let (closing, after_slash) = match after_lt.strip_prefix('/') {
+        Some(s) => (true, s),
+        None => (false, after_lt),
+    };
+    let name: String = after_slash
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if name.is_empty() || !BLOCK_ELEMENTS.contains(&name.as_str()) {
+        return None;
+    }
+    // The name must end the tag or be followed by whitespace or `/`.
+    let after_name = &after_slash[name.len()..];
+    if !matches!(
+        after_name.chars().next(),
+        Some(' ' | '\t' | '\n' | '\r' | '>' | '/')
+    ) {
+        return None;
+    }
+    let close = tag_end(rest)?;
+    Some((name, closing, close + 1))
 }
 
 /// Replaces every footnote element in `section` (prose only) with its
@@ -692,6 +803,48 @@ mod tests {
         let (out, defs) = convert(&quoted);
         assert_eq!(out, quoted);
         assert!(defs.is_empty());
+    }
+
+    /// Review finding s4-8, fourth re-review: inside an HTML block only a
+    /// block-level tag at the start of a line is structure; everything else
+    /// on a line is inline content for the Markdown rules.
+    #[test]
+    fn html_block_content_lines_follow_inline_rules() {
+        let sup = |body: &str| format!("<sup class=\"footnote\" data-body=\"{body}\">●</sup>");
+
+        // (1) A real footnote on the wrapper's own line still converts: the
+        // masked tag does not turn the line into indented code.
+        let (out, defs) = convert(&format!("<div>Real{}</div>\n", sup("note")));
+        assert_eq!(out, "<div>Real[^cs-fn1]</div>\n");
+        assert_eq!(defs.len(), 1);
+
+        // (2) A verbatim opener or a comment opener quoted in a code span is
+        // code, not structure: the footnote after it still converts.
+        let (out, defs) = convert(&format!(
+            "<div>\nUse `<pre>` and `<!--` here, T{}.\n</div>\n",
+            sup("note")
+        ));
+        assert_eq!(
+            out,
+            "<div>\nUse `<pre>` and `<!--` here, T[^cs-fn1].\n</div>\n"
+        );
+        assert_eq!(defs.len(), 1);
+
+        // (3) A literal less-than sign after footnote-shaped markup inside a
+        // code span does not break the span: the example stays.
+        let example = format!("<div>\nUse `{} 1 < 2` here.\n</div>\n", sup("example"));
+        let (out, defs) = convert(&example);
+        assert_eq!(out, example);
+        assert!(defs.is_empty());
+
+        // A closing tag at the end of a content line and nested wrappers on
+        // one line are fine too.
+        let (out, defs) = convert(&format!(
+            "<div><div class=\"a\">\nT{} end</div></div>\n",
+            sup("note")
+        ));
+        assert_eq!(out, "<div><div class=\"a\">\nT[^cs-fn1] end</div></div>\n");
+        assert_eq!(defs.len(), 1);
     }
 
     /// Review finding s4-8: code examples are not transformed.
