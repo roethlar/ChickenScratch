@@ -236,26 +236,10 @@ fn find_control_word(input: &[u8], name: &[u8], depth: Option<i32>) -> Option<Co
 /// finding s1-3, second re-review). The caller knows whether a control word
 /// is open; a backward scan over the output mistook prose for one (third
 /// re-review).
-fn emit_run_text(
-    out: &mut Vec<u8>,
-    decoded: &str,
-    after_open_control_word: bool,
-    after_delimiter_space: bool,
-) {
+fn emit_run_text(out: &mut Vec<u8>, decoded: &str, after_open_control_word: bool) {
     let mut first = true;
     for c in decoded.chars() {
         if c.is_ascii() {
-            if first && c == ' ' && (after_open_control_word || after_delimiter_space) {
-                // A text space right after a control word's delimiter space
-                // would be two spaces, and Pandoc 3.11 drops both
-                // (`before\bin0\'20after` and `before\bin0 \'20after` both
-                // read as `beforeafter`), so the space is written as an
-                // escape instead (review finding s1-3, fourth and fifth
-                // re-reviews).
-                out.extend_from_slice(b"\\u32 ?");
-                first = false;
-                continue;
-            }
             if first && after_open_control_word {
                 out.push(b' ');
             }
@@ -269,6 +253,35 @@ fn emit_run_text(
             out.extend_from_slice(rtf_unicode_escape(c as u32).as_bytes());
         }
         first = false;
+    }
+}
+
+/// Decodes one segment of a text run (its `(byte, start, end)` items) in
+/// `encoding` and writes it as RTF text; a segment that does not decode, or
+/// one in an unknown code page, is copied through as it was.
+fn emit_decoded_segment(
+    out: &mut Vec<u8>,
+    input: &[u8],
+    segment: &[(u8, usize, usize)],
+    encoding: Option<&'static encoding_rs::Encoding>,
+    open_control_word_end: Option<usize>,
+) {
+    let (Some(first), Some(last)) = (segment.first(), segment.last()) else {
+        return;
+    };
+    let raw = &input[first.1..last.2];
+    match encoding {
+        Some(enc) => {
+            let bytes: Vec<u8> = segment.iter().map(|item| item.0).collect();
+            let (decoded, had_errors) = enc.decode_without_bom_handling(&bytes);
+            if had_errors {
+                out.extend_from_slice(raw);
+            } else {
+                let after_open = open_control_word_end == Some(out.len());
+                emit_run_text(out, &decoded, after_open);
+            }
+        }
+        None => out.extend_from_slice(raw),
     }
 }
 
@@ -654,9 +667,6 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
     // Output length right after an undelimited control word was written;
     // decoded text appended at exactly that length needs a space first.
     let mut open_control_word_end: Option<usize> = None;
-    // Where the output last ended with a control word's delimiter space: a
-    // decoded space written there must be escaped (s1-3, fifth re-review).
-    let mut delimited_control_word_end: Option<usize> = None;
 
     let mut i = 0;
     let n = input.len();
@@ -755,27 +765,47 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                             i = j;
                             continue;
                         }
-                        let slice_start = rest[0].1;
-                        let bytes: Vec<u8> = rest.iter().map(|item| item.0).collect();
                         let encoding = groups
                             .last()
                             .and_then(|g| g.font)
                             .and_then(|f| fonts.get(&f).copied())
                             .or(document);
-                        match encoding {
-                            Some(enc) => {
-                                let (decoded, had_errors) = enc.decode_without_bom_handling(&bytes);
-                                if had_errors {
-                                    out.extend_from_slice(&input[slice_start..j]);
-                                } else {
-                                    let after_open = open_control_word_end == Some(out.len());
-                                    let after_delimiter =
-                                        delimited_control_word_end == Some(out.len());
-                                    emit_run_text(&mut out, &decoded, after_open, after_delimiter);
-                                }
+                        // A hex-escaped space, tab, vertical tab or form feed
+                        // is written as `\uN ?` on its own: Pandoc 3.11
+                        // swallows whitespace after a control word's
+                        // delimiter however it got there (a second space, a
+                        // line end, a tab), and tracking that context proved
+                        // brittle over four re-reviews of s1-3; the escape is
+                        // that character wherever it stands. Literal bytes in
+                        // the run stay as they are: Pandoc reads them the
+                        // same in the original. The text between such
+                        // escapes is decoded segment by segment.
+                        let mut segment: Vec<(u8, usize, usize)> = Vec::new();
+                        for item in rest {
+                            let is_hex = item.2 - item.1 == 4;
+                            if is_hex && matches!(item.0, 0x20 | 0x09 | 0x0B | 0x0C) {
+                                emit_decoded_segment(
+                                    &mut out,
+                                    input,
+                                    &segment,
+                                    encoding,
+                                    open_control_word_end,
+                                );
+                                segment.clear();
+                                out.extend_from_slice(
+                                    rtf_unicode_escape(u32::from(item.0)).as_bytes(),
+                                );
+                            } else {
+                                segment.push(*item);
                             }
-                            None => out.extend_from_slice(&input[slice_start..j]),
                         }
+                        emit_decoded_segment(
+                            &mut out,
+                            input,
+                            &segment,
+                            encoding,
+                            open_control_word_end,
+                        );
                         i = j;
                     }
                     // Escaped literal characters count as fallback items.
@@ -875,14 +905,6 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                         if end == k && word != b"uc" && word != b"u" {
                             open_control_word_end = Some(out.len());
                         }
-                        // Whitespace after a control word is swallowed by
-                        // Pandoc however much there is (delimiter space, bare
-                        // line ends, further spaces: s1-3 sixth re-review),
-                        // so the marker starts here and the whitespace arms
-                        // below carry it forward.
-                        if word != b"u" {
-                            delimited_control_word_end = Some(out.len());
-                        }
                         i = end;
                     }
                     // `\*` opens a destination: structural, so it is kept and
@@ -911,25 +933,15 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
             }
             b'\r' | b'\n' => {
                 // Bare line ends are ignored by RTF readers; keep for
-                // readability. Whitespace right after a control word keeps
-                // the delimiter marker alive.
-                let after_control_word = delimited_control_word_end == Some(out.len());
+                // readability.
                 out.push(b);
-                if after_control_word {
-                    delimited_control_word_end = Some(out.len());
-                }
                 i += 1;
             }
             _ => {
                 if skip_fallback > 0 {
                     skip_fallback -= 1;
                 } else {
-                    let after_control_word =
-                        b == b' ' && delimited_control_word_end == Some(out.len());
                     out.push(b);
-                    if after_control_word {
-                        delimited_control_word_end = Some(out.len());
-                    }
                 }
                 i += 1;
             }
@@ -1091,7 +1103,7 @@ mod tests {
         // (Only the first space needs the escape; Pandoc's plain writer
         // collapses space runs, so the reading is not asserted here.)
         let prepared = prep("{\\rtf1\\ansi a\\b\\'20\\'20b}");
-        assert_eq!(prepared, "{\\rtf1\\ansi a\\b\\u32 ? b}");
+        assert_eq!(prepared, "{\\rtf1\\ansi a\\b\\u32 ?\\u32 ?b}");
         // Fifth re-review: the same when the control word already has its
         // delimiter space (`before\bin0 \'20after` also read `beforeafter`).
         let prepared = prep("{\\rtf1\\ansi before\\bin0 \\'20after}");
@@ -1100,8 +1112,9 @@ mod tests {
         let prepared = prep("{\\rtf1\\ansi a\\b \\'20b}");
         assert_eq!(prepared, "{\\rtf1\\ansi a\\b \\u32 ?b}");
         assert_reads(&prepared, "a b");
-        // A decoded space after ordinary text is written as itself.
-        assert_eq!(prep("{\\rtf1\\ansi a\\'20b}"), "{\\rtf1\\ansi a b}");
+        // Seventh re-review: decoded whitespace is always an escape, wherever
+        // it stands, so no whitespace context needs tracking.
+        assert_eq!(prep("{\\rtf1\\ansi a\\'20b}"), "{\\rtf1\\ansi a\\u32 ?b}");
         // Sixth re-review: whitespace between the control word and the
         // escape (a bare line end, CRLF, a second space) is swallowed by
         // Pandoc too, so the escape still applies across it.
@@ -1117,8 +1130,23 @@ mod tests {
         let prepared = prep("{\\rtf1\\ansi a\\b\n\\'20b}");
         assert_eq!(prepared, "{\\rtf1\\ansi a\\b\n\\u32 ?b}");
         assert_reads(&prepared, "a b");
-        // Whitespace after ordinary text does not count.
-        assert_eq!(prep("{\\rtf1\\ansi a \n\\'20b}"), "{\\rtf1\\ansi a \n b}");
+        assert_eq!(
+            prep("{\\rtf1\\ansi a \n\\'20b}"),
+            "{\\rtf1\\ansi a \n\\u32 ?b}"
+        );
+        // Seventh re-review: a tab between the control word and the escape,
+        // literal or hex-encoded, is swallowed by Pandoc too; the decoded
+        // tab itself becomes an escape so it survives as well.
+        let prepared = prep("{\\rtf1\\ansi before\\bin0 \t\\'20after}");
+        assert_eq!(prepared, "{\\rtf1\\ansi before\\bin0 \t\\u32 ?after}");
+        assert_reads(&prepared, "before after");
+        let prepared = prep("{\\rtf1\\ansi before\\bin0 \\'09\\'20after}");
+        assert_eq!(prepared, "{\\rtf1\\ansi before\\bin0 \\u9 ?\\u32 ?after}");
+        let prepared = prep("{\\rtf1\\ansi before\\bin0 \\'0b\\'0c\\'20after}");
+        assert_eq!(
+            prepared,
+            "{\\rtf1\\ansi before\\bin0 \\u11 ?\\u12 ?\\u32 ?after}"
+        );
     }
 
     /// Third re-review of s1-3: header declarations are control words, found
