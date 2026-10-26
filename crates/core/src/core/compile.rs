@@ -230,8 +230,7 @@ fn footnotes_to_references(
     // unclosed fence that swallowed the rest of the section. Raw HTML, the
     // footnote element included, is prose here; an HTML tag outranks the
     // backticks inside it, as in CommonMark.
-    let mut protected: Vec<Range<usize>> = Vec::new();
-    protected_code_ranges(section, 0, &mut protected);
+    let mut protected = protected_code_ranges(section);
     protected.sort_by_key(|range| range.start);
     let mut out = String::with_capacity(section.len());
     let mut last = 0;
@@ -260,61 +259,101 @@ fn footnotes_to_references(
 /// a `<pre>`, `<script>`, `<style>`, `<textarea>` block or a comment is
 /// verbatim to Pandoc and is protected whole (review finding s4-8, second
 /// re-review: a code span inside a `<div>` was rewritten on export).
-fn protected_code_ranges(text: &str, base: usize, protected: &mut Vec<Range<usize>>) {
-    // pulldown-cmark reports an HTML block one line at a time; the lines
-    // are joined back into the block before its tags are read.
+fn protected_code_ranges(section: &str) -> Vec<Range<usize>> {
+    let mut protected: Vec<Range<usize>> = Vec::new();
+    // pulldown-cmark reports an HTML block one line at a time, and inside a
+    // blockquote the `> ` prefixes sit between those lines; the lines are
+    // joined back into one block (prefixes included) before it is read.
     let mut html_block: Option<Range<usize>> = None;
     let flush = |block: &mut Option<Range<usize>>, protected: &mut Vec<Range<usize>>| {
         if let Some(range) = block.take() {
-            html_block_code_ranges(&text[range.clone()], base + range.start, protected);
+            html_block_code_ranges(section, range, protected);
         }
     };
-    for (event, range) in Parser::new(text).into_offset_iter() {
+    for (event, range) in Parser::new(section).into_offset_iter() {
         match event {
             Event::Html(_) => match &mut html_block {
-                Some(block) if block.end == range.start => block.end = range.end,
+                Some(block)
+                    if section[block.end..range.start]
+                        .bytes()
+                        .all(|b| matches!(b, b' ' | b'\t' | b'>')) =>
+                {
+                    block.end = range.end
+                }
                 _ => {
-                    flush(&mut html_block, protected);
+                    flush(&mut html_block, &mut protected);
                     html_block = Some(range);
                 }
             },
             Event::Code(_) | Event::Start(Tag::CodeBlock(_)) => {
-                flush(&mut html_block, protected);
-                protected.push(base + range.start..base + range.end);
+                flush(&mut html_block, &mut protected);
+                protected.push(range);
             }
-            _ => flush(&mut html_block, protected),
+            _ => flush(&mut html_block, &mut protected),
         }
     }
-    flush(&mut html_block, protected);
+    flush(&mut html_block, &mut protected);
+    protected
 }
 
-/// The code ranges inside one HTML block (see `protected_code_ranges`).
-fn html_block_code_ranges(block: &str, base: usize, protected: &mut Vec<Range<usize>>) {
+/// The code ranges inside one HTML block of `section` (see
+/// `protected_code_ranges`). The block's tags are raw and everything between
+/// them is Markdown, so the tags are blanked out in a copy of the same
+/// length and the copy is read as Markdown: offsets carry over one to one,
+/// a blockquote's prefixes keep working, and no recursion is needed (the
+/// third re-review found a run of 2000 sibling elements overflowing the
+/// stack). A `<pre>`, `<script>`, `<style>` or `<textarea>` element and a
+/// comment are verbatim to Pandoc: protected to their own closing delimiter
+/// only, so prose after them on the same line is still prose.
+fn html_block_code_ranges(section: &str, range: Range<usize>, protected: &mut Vec<Range<usize>>) {
     const VERBATIM: [&str; 4] = ["pre", "script", "style", "textarea"];
-    let trimmed = block.trim_start();
-    let name: String = trimmed
-        .strip_prefix('<')
-        .unwrap_or("")
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric())
-        .collect();
-    if trimmed.starts_with("<!--") || VERBATIM.contains(&name.to_ascii_lowercase().as_str()) {
-        protected.push(base..base + block.len());
-        return;
+    let block = &section[range.clone()];
+    let mut masked = block.as_bytes().to_vec();
+    let blank = |masked: &mut Vec<u8>, from: usize, to: usize| {
+        for b in &mut masked[from..to] {
+            if *b != b'\n' && *b != b'\r' {
+                *b = b' ';
+            }
+        }
+    };
+    let mut i = 0;
+    while let Some(open) = block[i..].find('<') {
+        let open = i + open;
+        let rest = &block[open..];
+        if rest.starts_with("<!--") {
+            let end = rest.find("-->").map_or(block.len(), |p| open + p + 3);
+            protected.push(range.start + open..range.start + end);
+            blank(&mut masked, open, end);
+            i = end;
+            continue;
+        }
+        let Some(close) = tag_end(rest) else {
+            break;
+        };
+        let name: String = rest[1..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        if VERBATIM.contains(&name.as_str()) {
+            let lower = block[open..].to_ascii_lowercase();
+            let end = lower
+                .find(&format!("</{name}"))
+                .and_then(|p| tag_end(&block[open + p..]).map(|t| open + p + t + 1))
+                .unwrap_or(block.len());
+            protected.push(range.start + open..range.start + end);
+            blank(&mut masked, open, end);
+            i = end;
+            continue;
+        }
+        blank(&mut masked, open, open + close + 1);
+        i = open + close + 1;
     }
-    // The opening tag is raw; everything after it is Markdown again, where a
-    // tag inside a code span is code, a nested wrapper is another HTML block
-    // (handled by the same recursion) and the closing tag is a block of its
-    // own with nothing inside.
-    let Some(open) = block.find('<') else {
-        return;
-    };
-    let Some(close) = tag_end(&block[open..]) else {
-        return;
-    };
-    let after = open + close + 1;
-    if after < block.len() {
-        protected_code_ranges(&block[after..], base + after, protected);
+    let masked = String::from_utf8(masked).unwrap_or_default();
+    for (event, inner) in Parser::new(&masked).into_offset_iter() {
+        if matches!(event, Event::Code(_) | Event::Start(Tag::CodeBlock(_))) {
+            protected.push(range.start + inner.start..range.start + inner.end);
+        }
     }
 }
 
@@ -618,6 +657,41 @@ mod tests {
             )
         );
         assert_eq!(defs.len(), 1);
+    }
+
+    /// Review finding s4-8, third re-review: HTML blocks are read without
+    /// recursion (a long run of sibling elements overflowed the stack), a
+    /// verbatim element or comment is protected only to its own end, and
+    /// code inside a blockquoted wrapper is still code.
+    #[test]
+    fn html_blocks_are_read_flat_and_to_their_own_end() {
+        let sup = |body: &str| format!("<sup class=\"footnote\" data-body=\"{body}\">●</sup>");
+
+        // 2000 sibling elements: no recursion, no overflow, text unchanged.
+        let siblings = "<div></div>\n".repeat(2000);
+        let (out, defs) = convert(&siblings);
+        assert_eq!(out, siblings);
+        assert!(defs.is_empty());
+
+        // Prose after a verbatim element or a comment on the same line is
+        // still prose.
+        let (out, defs) = convert(&format!("<pre>code</pre> Real{}\n", sup("note")));
+        assert_eq!(out, "<pre>code</pre> Real[^cs-fn1]\n");
+        assert_eq!(defs.len(), 1);
+        let (out, defs) = convert(&format!("<!-- {} --> Real{}\n", sup("x"), sup("note")));
+        assert_eq!(out, format!("<!-- {} --> Real[^cs-fn1]\n", sup("x")));
+        assert_eq!(defs.len(), 1);
+
+        // A wrapper inside a blockquote: the code span and the fence inside
+        // it keep their examples.
+        let quoted = format!(
+            "> <div>\n> Use `{}` literally.\n>\n> ```\n> {}\n> ```\n> </div>\n",
+            sup("example"),
+            sup("example")
+        );
+        let (out, defs) = convert(&quoted);
+        assert_eq!(out, quoted);
+        assert!(defs.is_empty());
     }
 
     /// Review finding s4-8: code examples are not transformed.
