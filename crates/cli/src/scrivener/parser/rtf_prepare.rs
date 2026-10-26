@@ -681,9 +681,13 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                             _ => out.extend_from_slice(&input[i..end]),
                         }
                         // A control word copied without its delimiter space
-                        // (and not `\binN`, whose payload follows) is open:
-                        // decoded text written right after it needs a space.
-                        if end == k && word != b"bin" && word != b"uc" && word != b"u" {
+                        // is open: decoded text written right after it needs
+                        // a space. `\binN` with a payload is not open (the
+                        // payload follows the number); `\bin0` is, or its
+                        // number would swallow a decoded digit (s1-3, fourth
+                        // re-review). `\uc` and `\u` are always written with
+                        // their own terminator.
+                        if end == k && word != b"uc" && word != b"u" {
                             open_control_word_end = Some(out.len());
                         }
                         i = end;
@@ -870,6 +874,11 @@ mod tests {
             "{\\rtf1\\ansi co\\-operate}"
         );
         assert_eq!(prep("{\\rtf1\\ansi \\b\\'61}"), "{\\rtf1\\ansi \\b a}");
+        // Fourth re-review: a zero-length `\bin0` is an open control word
+        // too; a decoded digit after it must not become its byte count.
+        let prepared = prep("{\\rtf1\\ansi before\\bin0\\'31after}");
+        assert_eq!(prepared, "{\\rtf1\\ansi before\\bin0 1after}");
+        assert_reads(&prepared, "before1after");
     }
 
     /// Third re-review of s1-3: header declarations are control words, found
