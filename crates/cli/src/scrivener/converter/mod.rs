@@ -917,11 +917,86 @@ fn read_document_text(
     ))
 }
 
-// The label may contain backslash-escaped characters: Pandoc writes `a\] b`
-// for anchor text `a] b` (review finding s4-5).
-static ANCHOR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[((?:\\.|[^\]\\])*)\]\((scrivcmt|scrivfn|scrivannot)://([^)\s]+)\)").unwrap()
-});
+/// An anchor Pandoc (or the fallback) left in the Markdown:
+/// `[text](scheme://id)` for one of the Scrivener schemes.
+struct Anchor<'a> {
+    start: usize,
+    end: usize,
+    text: &'a str,
+    scheme: &'a str,
+    id: &'a str,
+}
+
+/// Finds the anchors by scanning rather than by regex. The label may hold
+/// backslash-escaped characters, since Pandoc writes `a\] b` for anchor
+/// text `a] b` (review finding s4-5); the opening bracket must not itself
+/// be escaped, so `\[aside\] [anchor](…)` starts at the second bracket and
+/// the prose `aside` stays; and the escaped character may be a newline,
+/// which the fallback writes for a hard break inside the anchor text (s4-5
+/// re-review, both regressions of the regex that replaced `[^\]]*`).
+fn find_anchors(markdown: &str) -> Vec<Anchor<'_>> {
+    let bytes = markdown.as_bytes();
+    let mut anchors = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 1 + char_len_at(markdown, i + 1),
+            b'[' => {
+                if let Some(anchor) = parse_anchor(markdown, i) {
+                    i = anchor.end;
+                    anchors.push(anchor);
+                } else {
+                    i += 1;
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    anchors
+}
+
+/// Length in bytes of the character at `pos`, 0 at the end of the text.
+fn char_len_at(s: &str, pos: usize) -> usize {
+    s.get(pos..)
+        .and_then(|rest| rest.chars().next())
+        .map_or(0, char::len_utf8)
+}
+
+/// Parses `[text](scheme://id)` at the unescaped `[` at `start`. An
+/// unescaped `[` inside the label is not a label: the scan resumes there.
+fn parse_anchor(markdown: &str, start: usize) -> Option<Anchor<'_>> {
+    const SCHEMES: [&str; 3] = ["scrivcmt", "scrivfn", "scrivannot"];
+    let bytes = markdown.as_bytes();
+    let mut j = start + 1;
+    let text_end = loop {
+        match bytes.get(j)? {
+            b'\\' => j += 1 + char_len_at(markdown, j + 1),
+            b']' => break j,
+            b'[' => return None,
+            _ => j += 1,
+        }
+    };
+    let text = &markdown[start + 1..text_end];
+    let rest = markdown[text_end + 1..].strip_prefix('(')?;
+    let scheme = SCHEMES.into_iter().find(|s| rest.starts_with(s))?;
+    let after = rest.strip_prefix(scheme)?.strip_prefix("://")?;
+    let id_len = after
+        .find(|c: char| c == ')' || c.is_whitespace())
+        .unwrap_or(after.len());
+    if id_len == 0 || !after[id_len..].starts_with(')') {
+        return None;
+    }
+    let id = &after[..id_len];
+    // `](` + scheme + `://` + id + `)`
+    let end = text_end + 2 + scheme.len() + 3 + id_len + 1;
+    Some(Anchor {
+        start,
+        end,
+        text,
+        scheme,
+        id,
+    })
+}
 
 /// Turns the anchors Pandoc (or the fallback) left in the Markdown into the
 /// editor's own comments and footnotes (PLAN_SCRIVENER_FIDELITY slice 4):
@@ -961,18 +1036,14 @@ fn attach_annotations(
     // All anchors first, so the look-ahead for a word after an annotation
     // can never run past the next anchor (review finding s4-2: it consumed
     // the next marker as the "word" and the cursor overtook the match).
-    let matches: Vec<regex::Captures> = ANCHOR_RE.captures_iter(markdown).collect();
-    for (index, caps) in matches.iter().enumerate() {
-        let whole = caps.get(0).unwrap();
-        let text = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-        let scheme = &caps[2];
-        let id = &caps[3];
-        let next_anchor_start = matches
-            .get(index + 1)
-            .map(|c| c.get(0).unwrap().start())
-            .unwrap_or(markdown.len());
-        out.push_str(&markdown[last..whole.start()]);
-        last = whole.end();
+    let anchors = find_anchors(markdown);
+    for (index, anchor) in anchors.iter().enumerate() {
+        let text = anchor.text;
+        let scheme = anchor.scheme;
+        let id = anchor.id;
+        let next_anchor_start = anchors.get(index + 1).map_or(markdown.len(), |a| a.start);
+        out.push_str(&markdown[last..anchor.start]);
+        last = anchor.end;
         match scheme {
             "scrivcmt" => {
                 if let Some(pos) = scriv_comments.iter().position(|c| c.id == id) {
@@ -2328,6 +2399,43 @@ mod tests {
             "see a\\] b<sup class=\"footnote\" data-body=\"the note\">●</sup> here"
         );
         assert!(text.comments.is_empty(), "{:?}", text.comments);
+        assert!(map.is_empty(), "no warnings: {map:?}");
+    }
+
+    /// Review finding s4-5, re-review: an escaped bracket before the anchor
+    /// is prose, not the anchor's start, and an escaped newline inside the
+    /// anchor text (the fallback's hard break) still matches.
+    #[test]
+    fn anchor_scan_skips_escaped_brackets_and_spans_escaped_newlines() {
+        let item = bare_item("Alpha");
+        let footnote = |id: &str| {
+            vec![ScrivComment {
+                id: id.to_string(),
+                body: "the note".to_string(),
+                footnote: true,
+            }]
+        };
+        let sup = "<sup class=\"footnote\" data-body=\"the note\">●</sup>";
+
+        let mut map = HashMap::new();
+        let md = r"see \[aside\] [anchor](scrivcmt://FN-1) here";
+        let text = attach_annotations(md, footnote("FN-1"), Vec::new(), &item, &mut map);
+        assert_eq!(text.content, format!("see \\[aside\\] anchor{sup} here"));
+        assert!(text.comments.is_empty(), "{:?}", text.comments);
+        assert!(map.is_empty(), "no warnings: {map:?}");
+
+        let mut map = HashMap::new();
+        let md = "[a\\\nb](scrivcmt://FN-2) tail";
+        let text = attach_annotations(md, footnote("FN-2"), Vec::new(), &item, &mut map);
+        assert_eq!(text.content, format!("a\\\nb{sup} tail"));
+        assert!(text.comments.is_empty(), "{:?}", text.comments);
+        assert!(map.is_empty(), "no warnings: {map:?}");
+
+        // An escaped backslash before the bracket leaves the bracket live.
+        let mut map = HashMap::new();
+        let md = r"x \\[anchor](scrivcmt://FN-3)";
+        let text = attach_annotations(md, footnote("FN-3"), Vec::new(), &item, &mut map);
+        assert_eq!(text.content, format!("x \\\\anchor{sup}"));
         assert!(map.is_empty(), "no warnings: {map:?}");
     }
 
