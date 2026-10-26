@@ -398,3 +398,13 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
   write-guard test still finds it Full). Codex reviews still pending: the
   second repairs of s1-3/s1-4/s1-6, slice 3, slice 4, the s2-1 fix. Slice 5
   (Scrivener 2) optional and not started.
+- 2026-10-26: every slice finding accepted. Slice 3 returned three findings
+  (s3-1..s3-3), slice 4 eight (s4-1..s4-8); each was fixed in its own
+  commit and re-reviewed, reopened items repaired one commit at a time
+  until the reviewer accepted (s1-3 ten repairs, s3-1 six, s4-8 six, s4-5
+  eight, s4-4 two; the rest at once). Two designs changed under that
+  pressure: compile's footnote conversion and the import's anchor
+  recognition both moved into Pandoc's own parse as Lua filters, after
+  repeated attempts to re-implement Markdown's rules on the text each left
+  a case behind; the Inspector's saves moved into a queue outside the form.
+  The I2 wording ruling (R1-8) is still with the owner.

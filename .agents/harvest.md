@@ -4,6 +4,28 @@ Governance rules from this repo that other repos would benefit from.
 
 ## Ideas
 
+### Reinterpret a format inside the tool that parses it
+
+- **Source:** the Scrivener-fidelity reviews of 2026-10-25/26
+  (`.agents/review/findings/s4-8.md`, `s4-5.md`): a fix that rewrote
+  footnote markup in Markdown text was reopened five times, and one that
+  found link anchors in Markdown six times, each round on another construct
+  the real parser (Pandoc) reads differently — fences in quotes, code spans
+  across lines, wrappers in lists, destinations with spaces or unbalanced
+  parentheses. Both closed the day they moved into Pandoc as Lua filters
+  working on the parsed document.
+- **The rule:** When a change must tell structure from content in a format
+  that another tool already parses (Markdown via Pandoc, HTML via a DOM,
+  RTF via its reader), do the work inside that tool's parse — a filter, an
+  AST walk, a plugin — rather than re-deriving its rules on the text. A
+  text-level approximation is acceptable only with a bounded, named set of
+  inputs.
+- **Why it generalizes:** every text-level reimplementation of another
+  parser's grammar is a second parser that must agree with the first on
+  every input; reviewers find the disagreements one at a time, forever.
+- **Proposed home:** `AGENTS.template.md` (a design rule under Verification
+  or Earned Practices).
+
 ### One concern per branch and commit during multi-fix agent work
 
 - **Source:** `.review/README.md` ("No broad sweeps") and the incident recorded

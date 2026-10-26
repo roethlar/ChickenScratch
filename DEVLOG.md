@@ -48,6 +48,26 @@ footnote elements; Scrivener's inline forms are lifted out of the RTF
 before Pandoc. Core compile now emits reference footnotes for the editor's
 footnote element — before this, every footnote vanished on compile.
 
+**What the reviews changed** (2026-10-26). Slices 3 and 4 returned eleven
+findings; the repair-delta reviews kept reopening two of them until the
+design changed. Compile stopped rewriting footnote markup in the Markdown
+text (five attempts to re-implement Markdown's code rules by hand each left
+a case behind: fences in quotes, code spans across lines, wrappers in
+lists, verbatim elements after prose) and now converts the editor's
+footnote element inside Pandoc's own parse with a Lua filter
+(`crates/core/src/core/cs-footnotes.lua`): whatever Pandoc reads as code is
+never touched, whatever it reads as prose is converted. The import stopped
+finding its `scrivcmt://` anchors as Markdown links (six attempts, each
+tripped by another link or code-span shape Pandoc writes) and marks them
+inside Pandoc with a second filter (`parser/scriv-anchors.lua`) as
+private-use-character markers the importer resolves exactly. The
+Inspector's metadata saves moved into a queue outside the form
+(`ui/src/components/inspector/metadataSaves.ts`) after a first fix for
+"opening the Inspector wipes the metadata" met StrictMode replays, late
+answers, refusals, navigation and immediate controls one review at a time.
+The lesson is recorded in `.agents/harvest.md`: when a fix needs to
+reinterpret a format another tool parses, run inside that tool's parse.
+
 Open: the owner's ruling on the I2 wording (the invariant says Scrivener
 import lives in core; the converter crate is where it has always lived).
 

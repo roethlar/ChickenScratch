@@ -21,7 +21,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   targets + home-screen manifest; records `ab29eb7`. The owner pushed
   `fe0ffbf` to both remotes 2026-10-25. Next evidence is the owner
   reloading mid-typing in the browser and opening the server address on a
-  phone.
+  phone. Known limits, by design: the safety copy is per browser profile
+  (a copy made on the phone restores on the phone); a brand-new tab gets a
+  new session id, so the "Take over" offer still applies there; no service
+  worker, so the installed icon needs the server reachable.
 - **Owner 2026-10-25: import anything, not just Scrivener.** First words:
   "import scrivener needs to support uploads of scrivener files"; then
   "import restricted to scrivener pigeonholes this app … a new project
@@ -75,8 +78,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   plain-text fallback with a named warning; Zoe 2 imports; Corn keeps
   paragraphs and plain apostrophes). Its Codex review returned six
   findings, all admitted and fixed one commit each
-  (`.agents/review/index.md` s1-1..s1-6); s1-1, s1-2, s1-5 accepted,
-  s1-3/s1-4/s1-6 repaired after re-review and awaiting their re-review.
+  (`.agents/review/index.md` s1-1..s1-6); s1-1, s1-2, s1-4, s1-5, s1-6
+  accepted (s1-4 and s1-6 after three repairs each); s1-3's fourth repair
+  `a224ba7` awaits review.
   **Slice 2 landed** `0d813f9` (Draft→Manuscript by type, other roots under
   Research with `research/` paths, Trash kept, text containers become
   folders, IncludeInCompile applied). **Slice 3 landed** (Scrivener 3
@@ -87,14 +91,28 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   editor's spans and footnote elements; core compile emits reference
   footnotes, fixing a pre-existing loss of every footnote on compile).
   Slice 2 review: one finding s2-1 (links vs predicted paths), fixed
-  `8c3f05e`. Records landed (user guide, DEVLOG, `samples/Corn.chikn`
-  regenerated). Codex reviews pending: second repairs of s1-3 (`a883e00`),
-  s1-4 (`fa802f8`), s1-6 (`3a1c80f`); slice 3 (`c46f8b5`); slice 4
-  (`19f1c89`); s2-1 (`8c3f05e`). Slice 5 (Scrivener 2) optional, not
-  started. Nothing pushed since `fe0ffbf`. Known limits, by design: the safety copy is per browser profile
-  (a copy made on the phone restores on the phone); a brand-new tab gets a
-  new session id, so the "Take over" offer still applies there; no service
-  worker, so the installed icon needs the server reachable.
+  `8c3f05e`, accepted. Slice 3 review: three findings s3-1..s3-3
+  (Inspector wipe, research roots/attachments skipping metadata,
+  unreadable synopsis), fixed one commit each. Slice 4 review: eight
+  findings s4-1..s4-8 (two import panics, inline-note double decode and
+  lost encoding, bracket in anchor text, folder comments, quoted `>` in a
+  footnote, footnotes inside code), fixed one commit each. Records landed
+  (user guide, DEVLOG, `samples/Corn.chikn` regenerated). Every fix got a
+  Codex repair-delta review; reopened items were repaired one commit each
+  and re-reviewed until accepted (s1-3 ten repairs, s3-1 six, s4-8 six,
+  s4-5 eight, s4-4 two). All eighteen slice findings are accepted
+  (`.agents/review/index.md`, 2026-10-26); per-finding verdicts,
+  dispositions and commit ids live in `.agents/review/findings/<id>.md`.
+  Two designs changed under review: compile converts the editor's
+  footnotes inside Pandoc with a Lua filter
+  (`crates/core/src/core/cs-footnotes.lua`) instead of rewriting Markdown,
+  and the Scrivener import marks comment/footnote anchors inside Pandoc
+  with a Lua filter (`crates/cli/src/scrivener/parser/scriv-anchors.lua`)
+  instead of finding Markdown links afterwards; the Inspector's metadata
+  saves live in a queue outside the form
+  (`ui/src/components/inspector/metadataSaves.ts`). Slice 5 (Scrivener 2)
+  optional, not started. Nothing pushed since `fe0ffbf`; the owner's I2
+  wording ruling (option A recommended) is still open.
 - **Owner 2026-10-25: governance remediation** (`487e775`): three stale
   path references in `.agents/break-it-validation.md` resolved on owner
   rulings; hygiene lint clean. The pending
