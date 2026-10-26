@@ -1065,9 +1065,12 @@ fn wrap_previous_word(out: &mut String, id: &str) -> bool {
         return false;
     }
     let trailing = line.len() - trimmed_end.len();
+    // The whitespace before the word may be more than one byte (a
+    // non-breaking space from `\~`), so step over its real length (review
+    // finding s4-1: a byte offset of one panicked on it).
     let word_start_rel = trimmed_end
         .rfind(|ch: char| ch.is_whitespace())
-        .map(|p| p + 1)
+        .map(|p| p + trimmed_end[p..].chars().next().map_or(1, char::len_utf8))
         .unwrap_or(0);
     let word = &trimmed_end[word_start_rel..];
     if word.contains('<') || word.contains('>') {
@@ -2118,6 +2121,47 @@ mod tests {
         for path in scans.iter().chain(std::iter::once(&hero_notes_doc.path)) {
             assert!(output_path.join(path).exists(), "{path} exists on disk");
         }
+    }
+
+    fn bare_item(title: &str) -> BinderItem {
+        BinderItem {
+            uuid: "A1A1A1A1-0000-4000-8000-000000000001".to_string(),
+            item_type: "Text".to_string(),
+            created: None,
+            modified: None,
+            title: Some(title.to_string()),
+            children: super::super::parser::scrivx::ChildrenContainer { items: Vec::new() },
+            metadata: None,
+        }
+    }
+
+    fn note(id: &str, body: &str) -> InlineNote {
+        InlineNote {
+            id: id.to_string(),
+            body: body.to_string(),
+            footnote: false,
+        }
+    }
+
+    /// Review finding s4-1: a non-breaking space (two bytes) before the word an
+    /// inline annotation attaches to must not panic the import.
+    #[test]
+    fn annotation_after_a_non_breaking_space_attaches_to_the_word() {
+        let item = bare_item("Alpha");
+        let mut map = HashMap::new();
+        let md = format!("alpha\u{A0}word [\u{200B}](scrivannot://inline-1) rest");
+        let text = attach_annotations(
+            &md,
+            Vec::new(),
+            vec![note("inline-1", "n")],
+            &item,
+            &mut map,
+        );
+        assert_eq!(
+            text.content,
+            "alpha\u{A0}<span class=\"comment\" data-comment-id=\"inline-1\">word</span>  rest"
+        );
+        assert_eq!(text.comments.len(), 1);
     }
 
     /// Review finding s3-3: a synopsis file that exists but cannot be read is
