@@ -54,6 +54,15 @@ fn compile_html_uses_ordering_title_page_separator_and_pandoc_args() {
     assert!(args.lines().any(|line| line == "--standalone"));
     assert_metadata_arg(&args, "title=Export Title");
     assert_metadata_arg(&args, "author=Export Author");
+    // The editor's footnotes are converted inside Pandoc by a Lua filter
+    // (review finding s4-8), handed over as a file.
+    let lines: Vec<&str> = args.lines().collect();
+    let filter = lines
+        .windows(2)
+        .find(|pair| pair[0] == "--lua-filter")
+        .map(|pair| pair[1].to_string())
+        .expect("--lua-filter argument");
+    assert!(filter.ends_with(".lua"), "{filter}");
 }
 
 #[test]
