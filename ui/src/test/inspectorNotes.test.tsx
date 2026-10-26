@@ -14,6 +14,7 @@ const aliceDoc = vi.hoisted(() => ({
   name: "Alice",
   path: "manuscript/alice.md",
   content: "Scene text.",
+  keywords: [] as string[],
   fields: { notes: "Remember the egg." },
 }));
 // The Inspector loads a document's values when the active document
