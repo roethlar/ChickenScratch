@@ -385,6 +385,30 @@ fn first_text_uuid(items: &[BinderItem]) -> Option<&str> {
     None
 }
 
+/// A path stem (`<folder>/<slug>`) no document in the project uses under
+/// any extension. Every content file has a `.meta` sidecar named after its
+/// stem, so a stem shared across extensions is a shared sidecar:
+/// `research/research.md` and `research/research.pdf` would both write
+/// `research/research.meta`, each erasing the other's metadata (review
+/// finding s3-2, re-review). `unique_slug` only checks `.md` paths.
+fn unique_stem(name: &str, target_folder: &str, documents: &HashMap<String, Document>) -> String {
+    let base = chickenscratch_core::utils::slug::slugify(name);
+    let taken = |stem: &str| {
+        documents.values().any(|d| {
+            let path = d.path.as_str();
+            let existing = path.rsplit_once('.').map_or(path, |(stem, _)| stem);
+            existing.eq_ignore_ascii_case(stem)
+        })
+    };
+    let mut stem = format!("{target_folder}/{base}");
+    let mut counter = 1;
+    while taken(&stem) {
+        stem = format!("{target_folder}/{base}-{counter}");
+        counter += 1;
+    }
+    stem
+}
+
 /// Finds the .md path of the first Text item in a binder subtree.
 fn find_first_text_path(items: &[BinderItem], target_folder: &str) -> Option<String> {
     for item in items {
@@ -480,12 +504,8 @@ fn convert_binder_items_inner(
                 // body must keep it somewhere (review finding s4-6).
                 if !content.trim().is_empty() || !side.is_empty() || !comments.is_empty() {
                     let doc_id = Uuid::new_v4().to_string();
-                    let slug = chickenscratch_core::utils::slug::unique_slug(
-                        &folder_name,
-                        &format!("{}/", target_folder),
-                        documents,
-                    );
-                    let doc_path = format!("{}/{}.md", target_folder, slug);
+                    let doc_path =
+                        format!("{}.md", unique_stem(&folder_name, target_folder, documents));
                     let created = item
                         .created
                         .clone()
@@ -562,12 +582,7 @@ fn convert_binder_items_inner(
                     DocumentText::default()
                 };
 
-                let slug = chickenscratch_core::utils::slug::unique_slug(
-                    &doc_name,
-                    &format!("{}/", target_folder),
-                    documents,
-                );
-                let doc_path = format!("{}/{}.md", target_folder, slug);
+                let doc_path = format!("{}.md", unique_stem(&doc_name, target_folder, documents));
 
                 let created = item
                     .created
@@ -644,24 +659,16 @@ fn convert_binder_items_inner(
                     if media_src.exists() {
                         let doc_id = Uuid::new_v4().to_string();
                         let doc_name = item.title.clone().unwrap_or_else(|| "Untitled".to_string());
-                        // unique_slug only checks `.md` paths; two attachments
-                        // with the same title and extension must still land
-                        // at distinct files (review finding ar-1, reopen).
-                        let base_slug = chickenscratch_core::utils::slug::unique_slug(
-                            &doc_name,
-                            &format!("{}/", target_folder),
-                            documents,
+                        // Two attachments with the same title and extension
+                        // must land at distinct files (review finding ar-1,
+                        // reopen), and so must an attachment and a document
+                        // of the same title, whose `.meta` sidecars would
+                        // otherwise share a name (s3-2, re-review).
+                        let dest_rel = format!(
+                            "{}.{}",
+                            unique_stem(&doc_name, target_folder, documents),
+                            ext
                         );
-                        let mut dest_rel = format!("{}/{}.{}", target_folder, base_slug, ext);
-                        let mut counter = 1;
-                        while documents
-                            .values()
-                            .any(|d| d.path.eq_ignore_ascii_case(&dest_rel))
-                        {
-                            dest_rel =
-                                format!("{}/{}-{}.{}", target_folder, base_slug, counter, ext);
-                            counter += 1;
-                        }
 
                         // The actual file copy happens after write_project, below
 
@@ -1568,6 +1575,115 @@ mod tests {
         for (name, body) in files {
             fs::write(dir.join(name), body).unwrap();
         }
+    }
+
+    /// Review finding s3-2, re-review: a Research root and an attachment of
+    /// the same title must not share a path stem, because they would then
+    /// share one `.meta` sidecar and each erase the other's metadata.
+    #[test]
+    fn same_title_root_and_attachment_keep_separate_sidecars() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Same.scriv");
+        let output_path = temp_dir.path().join("Same.chikn");
+        let research_root = "D1B2C3D4-0000-4000-8000-000000000001";
+        let pdf = "D1B2C3D4-0000-4000-8000-000000000002";
+        write_scriv_files(
+            &scriv_path,
+            research_root,
+            &[("notes.rtf", "{\\rtf1\\ansi Root notes.}")],
+        );
+        write_scriv_files(&scriv_path, pdf, &[("synopsis.txt", "A scanned letter.\n")]);
+        fs::write(
+            scriv_path
+                .join("Files")
+                .join("Data")
+                .join(pdf)
+                .join("content.pdf"),
+            b"%PDF sample",
+        )
+        .unwrap();
+        fs::write(
+            scriv_path.join("Same.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="2.0">
+    <Binder>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000D" Type="DraftFolder">
+            <Title>Draft</Title>
+            <Children/>
+        </BinderItem>
+        <BinderItem UUID="{research_root}" Type="ResearchFolder">
+            <Title>Research</Title>
+            <Children>
+                <BinderItem UUID="{pdf}" Type="PDF">
+                    <Title>Research</Title>
+                    <MetaData><FileExtension>pdf</FileExtension></MetaData>
+                </BinderItem>
+            </Children>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#
+            ),
+        )
+        .unwrap();
+
+        let report = import_scriv_with_report(&scriv_path, &output_path, None).expect("imports");
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        let stem = |path: &str| path.rsplit_once('.').map(|(s, _)| s.to_string()).unwrap();
+        let attachment = report
+            .project
+            .documents
+            .values()
+            .find(|d| d.path.ends_with(".pdf"))
+            .expect("attachment entry");
+        let companion = report
+            .project
+            .documents
+            .values()
+            .find(|d| d.path.ends_with(".md"))
+            .expect("companion document");
+        assert_ne!(
+            stem(&attachment.path),
+            stem(&companion.path),
+            "{} and {} would share one sidecar",
+            attachment.path,
+            companion.path
+        );
+        let attachment_meta =
+            fs::read_to_string(output_path.join(format!("{}.meta", stem(&attachment.path))))
+                .expect("attachment sidecar");
+        assert!(
+            attachment_meta.contains("A scanned letter."),
+            "{attachment_meta}"
+        );
+        assert!(
+            !attachment_meta.contains("Root notes."),
+            "{attachment_meta}"
+        );
+        let companion_meta =
+            fs::read_to_string(output_path.join(format!("{}.meta", stem(&companion.path))))
+                .expect("companion sidecar");
+        assert!(companion_meta.contains("Root notes."), "{companion_meta}");
+        assert!(
+            !companion_meta.contains("A scanned letter."),
+            "{companion_meta}"
+        );
+
+        let project = chickenscratch_core::core::project::reader::read_project(&output_path)
+            .expect("reopens");
+        let root = project
+            .documents
+            .values()
+            .find(|d| d.name == "Research")
+            .expect("companion reopens");
+        assert_eq!(
+            root.fields.get("notes").and_then(|v| v.as_str()),
+            Some("Root notes.")
+        );
     }
 
     /// PLAN_SCRIVENER_FIDELITY slice 3: label, status and keywords resolve
