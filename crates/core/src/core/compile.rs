@@ -225,7 +225,7 @@ fn footnotes_to_references(
             out.push_str(rest);
             break;
         };
-        let Some(tag_end_rel) = rest[start..].find('>') else {
+        let Some(tag_end_rel) = tag_end(&rest[start..]) else {
             out.push_str(rest);
             break;
         };
@@ -251,6 +251,23 @@ fn footnotes_to_references(
         rest = &after_tag[close + "</sup>".len()..];
     }
     out
+}
+
+/// Byte index of the `>` that closes the tag starting at `s`, ignoring any
+/// `>` inside a quoted attribute value (review finding s4-7: a footnote body
+/// `x > y` ended the tag early and the footnote vanished from export).
+fn tag_end(s: &str) -> Option<usize> {
+    let mut quote: Option<char> = None;
+    for (i, c) in s.char_indices() {
+        match (quote, c) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), _) => {}
+            (None, '"') | (None, '\'') => quote = Some(c),
+            (None, '>') => return Some(i),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// The `data-body` attribute of a footnote tag, HTML-unescaped.
@@ -400,6 +417,17 @@ mod tests {
         assert_eq!(a, "a[^cs-fn1]");
         assert_eq!(b, "b<sup>2</sup> c[^cs-fn2]");
         assert_eq!(defs.len(), 2);
+    }
+
+    /// Review finding s4-7: a `>` inside the quoted body does not end the tag.
+    #[test]
+    fn a_quoted_greater_than_in_the_body_keeps_the_footnote() {
+        let (out, defs) = convert("T<sup class=\"footnote\" data-body=\"x > y\">●</sup> end");
+        assert_eq!(out, "T[^cs-fn1] end");
+        assert_eq!(defs, vec!["[^cs-fn1]: x \\> y".to_string()]);
+        let (out, defs) = convert("T<sup class='footnote' data-body='a > b'>●</sup>");
+        assert_eq!(out, "T[^cs-fn1]");
+        assert_eq!(defs, vec!["[^cs-fn1]: a \\> b".to_string()]);
     }
 
     #[test]
