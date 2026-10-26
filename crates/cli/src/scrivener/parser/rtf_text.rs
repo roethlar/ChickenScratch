@@ -712,6 +712,7 @@ fn markdown_destination(url: &str) -> String {
             '>' => out.push_str("%3E"),
             ' ' => out.push_str("%20"),
             '\\' => out.push_str("%5C"),
+            '`' => out.push_str("%60"),
             _ => out.push(c),
         }
     }

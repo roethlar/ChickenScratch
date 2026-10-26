@@ -2464,6 +2464,23 @@ mod tests {
         );
         assert!(text.comments.is_empty(), "{:?}", text.comments);
         assert!(map.is_empty(), "no warnings: {map:?}");
+        // Eighth repair: the stored Markdown reads back as written. The
+        // ordinary links keep their targets (percent-encoded) and the
+        // footnote element is not swallowed into a destination when the
+        // document is read again at compile time.
+        let read_back = markdown_to_html(&text.content);
+        assert!(
+            read_back.contains("href=\"https://e.com/search?q=%28%28x\""),
+            "{read_back}"
+        );
+        assert!(
+            read_back.contains("href=\"https://e.com/%28a%20%60b%29\""),
+            "{read_back}"
+        );
+        assert!(
+            read_back.contains("anchor<sup class=\"footnote\" data-body=\"the note\">"),
+            "{read_back}"
+        );
 
         let fallback = super::super::parser::rtf_text::rtf_to_plain_markdown(rtf.as_bytes());
         let mut map = HashMap::new();
@@ -2471,6 +2488,41 @@ mod tests {
         assert!(text.content.contains(attached), "{}", text.content);
         assert!(text.comments.is_empty(), "{:?}", text.comments);
         assert!(map.is_empty(), "no warnings: {map:?}");
+        let read_back = markdown_to_html(&text.content);
+        assert!(
+            read_back.contains("href=\"https://e.com/search?q=%28%28x\""),
+            "{read_back}"
+        );
+        assert!(
+            read_back.contains("anchor<sup class=\"footnote\" data-body=\"the note\">"),
+            "{read_back}"
+        );
+    }
+
+    /// Pandoc's HTML for stored Markdown, as compile would read it.
+    fn markdown_to_html(markdown: &str) -> String {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let mut child = Command::new("pandoc")
+            .args(["-f", "markdown", "-t", "html"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("pandoc starts");
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(markdown.as_bytes())
+            .unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap()
     }
 
     /// Review finding s4-6: a folder whose own text is empty but whose
