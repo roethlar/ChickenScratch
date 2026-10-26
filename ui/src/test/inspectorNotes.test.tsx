@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 
@@ -105,6 +106,39 @@ describe("Inspector notes", () => {
     expect(updateMetaMock).toHaveBeenCalledTimes(1);
     const calls = updateMetaMock.mock.calls as unknown as [string, string, { fields?: Record<string, unknown>; synopsis?: unknown }][];
     expect(calls[0][2].fields?.notes).toBe("Edited.");
+  });
+
+  it("under StrictMode, mounting on a selected document still saves nothing by itself", async () => {
+    // Review finding s3-1, re-review: StrictMode runs every effect twice in
+    // development; the replay used to look like an edit and save the
+    // hydrated form, re-splitting a keyword that contains a comma.
+    storeState.activeDoc = { ...aliceDoc, keywords: ["family, friends"] };
+    render(
+      <StrictMode>
+        <Inspector />
+      </StrictMode>
+    );
+    const box = screen.getByLabelText("Notes") as HTMLTextAreaElement;
+    expect(box.value).toBe("Remember the egg.");
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(updateMetaMock).not.toHaveBeenCalled();
+
+    // An edit saves once; editing back to the stored text saves again,
+    // because the stored value has moved on.
+    fireEvent.change(box, { target: { value: "Edited." } });
+    await act(async () => {
+      vi.advanceTimersByTime(1600);
+    });
+    expect(updateMetaMock).toHaveBeenCalledTimes(1);
+    fireEvent.change(box, { target: { value: "Remember the egg." } });
+    await act(async () => {
+      vi.advanceTimersByTime(1600);
+    });
+    expect(updateMetaMock).toHaveBeenCalledTimes(2);
+    const calls = updateMetaMock.mock.calls as unknown as [string, string, { fields?: Record<string, unknown> }][];
+    expect(calls[1][2].fields?.notes).toBe("Remember the egg.");
   });
 
   it("clears the stored notes when the box is emptied", async () => {

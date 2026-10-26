@@ -296,10 +296,15 @@ export function Inspector() {
   // s3-1).
   const [lastDocId, setLastDocId] = useState<string | undefined>(undefined);
   const [lastGeneration, setLastGeneration] = useState(reloadGeneration);
-  // Counts hydrations; the debounce effect skips the run a hydration causes,
-  // so a hydration is never a save.
+  // Counts hydrations; the debounce effect records the hydrated form as the
+  // baseline instead of saving it, so a hydration is never a save.
   const [hydration, setHydration] = useState(0);
   const savedHydration = useRef(0);
+  // The form as last hydrated or last saved. Only a form that differs from
+  // it is saved, so an effect that runs again with the same values (React's
+  // StrictMode replays every effect in development) saves nothing (review
+  // finding s3-1, re-review).
+  const baseline = useRef<string | null>(null);
   if (activeDoc && (activeDoc.id !== lastDocId || reloadGeneration !== lastGeneration)) {
     setHydration((h) => h + 1);
     setLastDocId(activeDoc.id);
@@ -393,19 +398,26 @@ export function Inspector() {
 
   // Debounced save on metadata changes; the run that follows a hydration
   // (mount or document change) saves nothing, only edits do.
+  const formSnapshot = JSON.stringify([
+    synopsis, notes, label, status, keywords, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene,
+  ]);
   useEffect(() => {
     if (hydration !== savedHydration.current) {
       savedHydration.current = hydration;
+      baseline.current = formSnapshot;
       return;
     }
-    if (!activeDoc) return;
-    const timer = setTimeout(save, 1500);
+    if (!activeDoc || formSnapshot === baseline.current) return;
+    const timer = setTimeout(() => {
+      baseline.current = formSnapshot;
+      void save();
+    }, 1500);
     return () => clearTimeout(timer);
     // `save` is intentionally omitted; its identity changes with form state,
     // which would restart the debounce on every keystroke instead of every
     // 1.5s idle window.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydration, synopsis, notes, label, status, keywords, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene]);
+  }, [hydration, formSnapshot]);
 
   if (!activeDoc) {
     return (
