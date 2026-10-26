@@ -150,6 +150,35 @@ describe("leaving during a pending save", () => {
   );
 });
 
+describe("a queued draft made obsolete by a later edit", () => {
+  it.each(["select another document", "hide the Inspector"])(
+    "does not overwrite the final edit when the writer chooses to %s before the answer",
+    async (mode) => {
+      // Review finding s3-1, sixth re-review: A→B held, C queued past the
+      // debounce, then back to B; leaving must not let the queued C win.
+      const finish = delayNextSave();
+      const view = render(<Inspector />);
+      const box = screen.getByLabelText("Notes");
+      fireEvent.change(box, { target: { value: "B" } });
+      await advance(1600);
+      expect(updateMetaMock).toHaveBeenCalledTimes(1);
+      fireEvent.change(box, { target: { value: "C" } });
+      await advance(1600);
+      fireEvent.change(box, { target: { value: "B" } });
+      if (mode === "select another document") {
+        act(() => useProjectStore.getState().selectDocument("d2"));
+      } else {
+        view.unmount();
+      }
+      await act(async () => {
+        finish();
+      });
+      await advance(5000);
+      expect(stored.documents.d1.fields?.notes).toBe("B");
+    }
+  );
+});
+
 describe("reopening during a pending save", () => {
   it("shows the values being saved and never writes the older ones back", async () => {
     const finish = delayNextSave();

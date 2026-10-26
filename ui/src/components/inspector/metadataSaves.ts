@@ -69,13 +69,16 @@ export function outstanding(key: string): Draft | undefined {
 }
 
 /**
- * True when `snapshot` is not what the document is known or about to be
- * saved as: while a save runs, the form is dirty if it differs from the form
- * being saved (an edit back to the old text during a save still counts,
- * fifth re-review); otherwise if it differs from the acknowledged form and
- * from the last refused one.
+ * True when `snapshot` is not what the document will end up saved as: the
+ * draft waiting to go next if there is one (sixth re-review: a form edited
+ * back to the running save's text while a newer draft waited was not dirty,
+ * and the waiting draft then overwrote it), else the form being saved (an
+ * edit back to the old text during a save still counts, fifth re-review),
+ * else the acknowledged form, a refused form excepted.
  */
 export function isDirty(key: string, snapshot: string): boolean {
+  const waiting = pending.get(key);
+  if (waiting) return snapshot !== waiting.snapshot;
   const flying = inFlight.get(key);
   if (flying) return snapshot !== flying.snapshot;
   return snapshot !== acknowledged.get(key) && snapshot !== refused.get(key);
