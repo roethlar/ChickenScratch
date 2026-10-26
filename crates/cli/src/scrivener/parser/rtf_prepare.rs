@@ -875,8 +875,12 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                         if end == k && word != b"uc" && word != b"u" {
                             open_control_word_end = Some(out.len());
                         }
-                        // Copied with its delimiter space (`\uc1 ` always is).
-                        if (end == k + 1 && word != b"u") || word == b"uc" {
+                        // Whitespace after a control word is swallowed by
+                        // Pandoc however much there is (delimiter space, bare
+                        // line ends, further spaces: s1-3 sixth re-review),
+                        // so the marker starts here and the whitespace arms
+                        // below carry it forward.
+                        if word != b"u" {
                             delimited_control_word_end = Some(out.len());
                         }
                         i = end;
@@ -907,15 +911,25 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
             }
             b'\r' | b'\n' => {
                 // Bare line ends are ignored by RTF readers; keep for
-                // readability.
+                // readability. Whitespace right after a control word keeps
+                // the delimiter marker alive.
+                let after_control_word = delimited_control_word_end == Some(out.len());
                 out.push(b);
+                if after_control_word {
+                    delimited_control_word_end = Some(out.len());
+                }
                 i += 1;
             }
             _ => {
                 if skip_fallback > 0 {
                     skip_fallback -= 1;
                 } else {
+                    let after_control_word =
+                        b == b' ' && delimited_control_word_end == Some(out.len());
                     out.push(b);
+                    if after_control_word {
+                        delimited_control_word_end = Some(out.len());
+                    }
                 }
                 i += 1;
             }
@@ -1088,6 +1102,23 @@ mod tests {
         assert_reads(&prepared, "a b");
         // A decoded space after ordinary text is written as itself.
         assert_eq!(prep("{\\rtf1\\ansi a\\'20b}"), "{\\rtf1\\ansi a b}");
+        // Sixth re-review: whitespace between the control word and the
+        // escape (a bare line end, CRLF, a second space) is swallowed by
+        // Pandoc too, so the escape still applies across it.
+        let prepared = prep("{\\rtf1\\ansi before\\bin0 \n\\'20after}");
+        assert_eq!(prepared, "{\\rtf1\\ansi before\\bin0 \n\\u32 ?after}");
+        assert_reads(&prepared, "before after");
+        let prepared = prep("{\\rtf1\\ansi before\\bin0 \r\n\\'20after}");
+        assert_eq!(prepared, "{\\rtf1\\ansi before\\bin0 \r\n\\u32 ?after}");
+        assert_reads(&prepared, "before after");
+        let prepared = prep("{\\rtf1\\ansi before\\bin0  \\'20after}");
+        assert_eq!(prepared, "{\\rtf1\\ansi before\\bin0  \\u32 ?after}");
+        assert_reads(&prepared, "before after");
+        let prepared = prep("{\\rtf1\\ansi a\\b\n\\'20b}");
+        assert_eq!(prepared, "{\\rtf1\\ansi a\\b\n\\u32 ?b}");
+        assert_reads(&prepared, "a b");
+        // Whitespace after ordinary text does not count.
+        assert_eq!(prep("{\\rtf1\\ansi a \n\\'20b}"), "{\\rtf1\\ansi a \n b}");
     }
 
     /// Third re-review of s1-3: header declarations are control words, found
