@@ -356,6 +356,7 @@ pub fn lift_inline_notes(input: &[u8]) -> (Vec<u8>, Vec<InlineNote>) {
             body_prefix: b"",
         },
     ];
+    let header = document_header(input);
     let mut out: Vec<u8> = Vec::with_capacity(input.len());
     let mut notes = Vec::new();
     let mut i = 0;
@@ -399,8 +400,11 @@ pub fn lift_inline_notes(input: &[u8]) -> (Vec<u8>, Vec<InlineNote>) {
         // writer's own backslash and braces, `\'xx` is a character, and a
         // control word is formatting. The literal form used to be unescaped
         // first and then read again, which turned `C:\\temp` into a control
-        // word and `\{braces\}` into a group (review finding s4-3).
-        let mut wrapped = b"{\\rtf1\\ansi ".to_vec();
+        // word and `\{braces\}` into a group (review finding s4-3). The
+        // body is read under the document's own header, so its hex escapes
+        // and font switches decode as they would in place (review finding
+        // s4-4: a `\ansicpg1251` note read `Привет` as `Ïðèâåò`).
+        let mut wrapped = header.clone();
         wrapped.extend_from_slice(body);
         wrapped.push(b'}');
         let text = super::rtf_text::rtf_to_plain_text(&wrapped);
@@ -421,6 +425,50 @@ pub fn lift_inline_notes(input: &[u8]) -> (Vec<u8>, Vec<InlineNote>) {
         i = end + end_marker.len();
     }
     (out, notes)
+}
+
+/// The opening of a document that reads text the way `input` does: its
+/// `\ansicpgN`, its `\deffN` and its font table, so a fragment lifted out
+/// of `input` decodes under the same encodings (review finding s4-4).
+/// Ends with a space delimiter; the caller appends the fragment and `}`.
+fn document_header(input: &[u8]) -> Vec<u8> {
+    let mut header = b"{\\rtf1\\ansi".to_vec();
+    if let Some(cp) = declared_code_page(input) {
+        header.extend_from_slice(format!("\\ansicpg{cp}").as_bytes());
+    }
+    if let Some(f) = declared_default_font(input) {
+        header.extend_from_slice(format!("\\deff{f}").as_bytes());
+    }
+    if let Some(table) = font_table_body(input) {
+        header.extend_from_slice(b"{\\fonttbl");
+        header.extend_from_slice(table);
+        header.push(b'}');
+    }
+    header.push(b' ');
+    header
+}
+
+/// The contents of the `\fonttbl` group after the word itself, up to but
+/// not including the brace that closes the group.
+fn font_table_body(input: &[u8]) -> Option<&[u8]> {
+    let start = find_control_word(input, b"fonttbl", None)?.end;
+    let mut depth = 0i32;
+    let mut i = start;
+    while i < input.len() {
+        match input[i] {
+            b'{' => depth += 1,
+            b'}' => {
+                if depth == 0 {
+                    return Some(&input[start..i]);
+                }
+                depth -= 1;
+            }
+            b'\\' => i += 1,
+            _ => {}
+        }
+        i += 1;
+    }
+    None
 }
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -957,6 +1005,19 @@ mod tests {
             "{\\rtf1\\ansi x \\{\\\\Scrv_fn=Keep \\{braces\\} and C:\\\\temp\\\\end_Scrv_fn\\} y}";
         let (_, notes) = lift_inline_notes(src.as_bytes());
         assert_eq!(notes[0].body, "Keep {braces} and C:\\temp");
+
+        // Review finding s4-4: a body decodes under the document's own
+        // header. Code page, default font and font-table encodings all
+        // carry over.
+        let src = "{\\rtf1\\ansi\\ansicpg1251 a {\\Scrv_fn=\\'cf\\'f0\\end_Scrv_fn} b}";
+        let (_, notes) = lift_inline_notes(src.as_bytes());
+        assert_eq!(notes[0].body, "Пр");
+        let src = "{\\rtf1\\ansi\\ansicpg1252\\deff1{\\fonttbl{\\f0\\fcharset0 A;}{\\f1\\fcharset204 B;}} a \\{\\\\Scrv_fn=\\'cf\\\\end_Scrv_fn\\} b}";
+        let (_, notes) = lift_inline_notes(src.as_bytes());
+        assert_eq!(notes[0].body, "П");
+        let src = "{\\rtf1\\ansi\\ansicpg1252{\\fonttbl{\\f0\\fcharset0 A;}{\\f1\\fcharset204 B;}} a {\\Scrv_fn=caf\\'e9 \\f1 \\'cf\\end_Scrv_fn} b}";
+        let (_, notes) = lift_inline_notes(src.as_bytes());
+        assert_eq!(notes[0].body, "café П");
 
         // Unterminated marker: left alone, nothing lifted.
         let src = "{\\rtf1\\ansi a {\\Scrv_fn=never closed}";
