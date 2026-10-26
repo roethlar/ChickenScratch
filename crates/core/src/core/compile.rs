@@ -231,12 +231,7 @@ fn footnotes_to_references(
     // footnote element included, is prose here; an HTML tag outranks the
     // backticks inside it, as in CommonMark.
     let mut protected: Vec<Range<usize>> = Vec::new();
-    for (event, range) in Parser::new(section).into_offset_iter() {
-        match event {
-            Event::Code(_) | Event::Start(Tag::CodeBlock(_)) => protected.push(range),
-            _ => {}
-        }
-    }
+    protected_code_ranges(section, 0, &mut protected);
     protected.sort_by_key(|range| range.start);
     let mut out = String::with_capacity(section.len());
     let mut last = 0;
@@ -255,6 +250,72 @@ fn footnotes_to_references(
     }
     out.push_str(&footnotes_in_prose(&section[last..], counter, definitions));
     out
+}
+
+/// Appends the byte ranges of `text` that Pandoc's Markdown reader treats as
+/// code, shifted by `base`: CommonMark code spans and code blocks, plus
+/// what lies inside HTML blocks. CommonMark leaves an HTML block raw, but
+/// Pandoc (`markdown_in_html_blocks`, on by default) reads the Markdown
+/// between its tags, code included, so those stretches are searched again;
+/// a `<pre>`, `<script>`, `<style>`, `<textarea>` block or a comment is
+/// verbatim to Pandoc and is protected whole (review finding s4-8, second
+/// re-review: a code span inside a `<div>` was rewritten on export).
+fn protected_code_ranges(text: &str, base: usize, protected: &mut Vec<Range<usize>>) {
+    // pulldown-cmark reports an HTML block one line at a time; the lines
+    // are joined back into the block before its tags are read.
+    let mut html_block: Option<Range<usize>> = None;
+    let flush = |block: &mut Option<Range<usize>>, protected: &mut Vec<Range<usize>>| {
+        if let Some(range) = block.take() {
+            html_block_code_ranges(&text[range.clone()], base + range.start, protected);
+        }
+    };
+    for (event, range) in Parser::new(text).into_offset_iter() {
+        match event {
+            Event::Html(_) => match &mut html_block {
+                Some(block) if block.end == range.start => block.end = range.end,
+                _ => {
+                    flush(&mut html_block, protected);
+                    html_block = Some(range);
+                }
+            },
+            Event::Code(_) | Event::Start(Tag::CodeBlock(_)) => {
+                flush(&mut html_block, protected);
+                protected.push(base + range.start..base + range.end);
+            }
+            _ => flush(&mut html_block, protected),
+        }
+    }
+    flush(&mut html_block, protected);
+}
+
+/// The code ranges inside one HTML block (see `protected_code_ranges`).
+fn html_block_code_ranges(block: &str, base: usize, protected: &mut Vec<Range<usize>>) {
+    const VERBATIM: [&str; 4] = ["pre", "script", "style", "textarea"];
+    let trimmed = block.trim_start();
+    let name: String = trimmed
+        .strip_prefix('<')
+        .unwrap_or("")
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric())
+        .collect();
+    if trimmed.starts_with("<!--") || VERBATIM.contains(&name.to_ascii_lowercase().as_str()) {
+        protected.push(base..base + block.len());
+        return;
+    }
+    // The opening tag is raw; everything after it is Markdown again, where a
+    // tag inside a code span is code, a nested wrapper is another HTML block
+    // (handled by the same recursion) and the closing tag is a block of its
+    // own with nothing inside.
+    let Some(open) = block.find('<') else {
+        return;
+    };
+    let Some(close) = tag_end(&block[open..]) else {
+        return;
+    };
+    let after = open + close + 1;
+    if after < block.len() {
+        protected_code_ranges(&block[after..], base + after, protected);
+    }
 }
 
 /// Replaces every footnote element in `section` (prose only) with its
@@ -509,6 +570,53 @@ mod tests {
         // footnotes after it still convert.
         let (out, defs) = convert(&format!("```example```\n\nT{}\n", sup("one")));
         assert_eq!(out, "```example```\n\nT[^cs-fn1]\n");
+        assert_eq!(defs.len(), 1);
+    }
+
+    /// Review finding s4-8, second re-review: Pandoc reads Markdown inside an
+    /// HTML block, so code there is code; `<pre>` and comments are verbatim.
+    #[test]
+    fn code_inside_html_blocks_is_left_alone() {
+        let sup = |body: &str| format!("<sup class=\"footnote\" data-body=\"{body}\">●</sup>");
+
+        let inline = format!("<div>\nUse `{}` literally.\n</div>\n", sup("example"));
+        let (out, defs) = convert(&inline);
+        assert_eq!(out, inline);
+        assert!(defs.is_empty());
+
+        let fenced = format!("<div>\n```\n{}\n```\n</div>\n", sup("example"));
+        let (out, defs) = convert(&fenced);
+        assert_eq!(out, fenced);
+        assert!(defs.is_empty());
+
+        let pre = format!("<pre>\n{}\n</pre>\n", sup("example"));
+        let (out, defs) = convert(&pre);
+        assert_eq!(out, pre);
+        assert!(defs.is_empty());
+
+        let comment = format!("<!-- {} -->\n", sup("example"));
+        let (out, defs) = convert(&comment);
+        assert_eq!(out, comment);
+        assert!(defs.is_empty());
+
+        // A real footnote inside a wrapper still converts; a nested wrapper
+        // keeps its code.
+        let (out, defs) = convert(&format!("<div>\nT{} end\n</div>\n", sup("one")));
+        assert_eq!(out, "<div>\nT[^cs-fn1] end\n</div>\n");
+        assert_eq!(defs.len(), 1);
+        let nested = format!(
+            "<div>\n<div class=\"inner\">\nSee `{}` here, T{}.\n</div>\n</div>\n",
+            sup("example"),
+            sup("one")
+        );
+        let (out, defs) = convert(&nested);
+        assert_eq!(
+            out,
+            format!(
+                "<div>\n<div class=\"inner\">\nSee `{}` here, T[^cs-fn1].\n</div>\n</div>\n",
+                sup("example")
+            )
+        );
         assert_eq!(defs.len(), 1);
     }
 
