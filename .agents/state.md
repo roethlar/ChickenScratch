@@ -110,8 +110,9 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   instead of finding Markdown links afterwards; the Inspector's metadata
   saves live in a queue outside the form
   (`ui/src/components/inspector/metadataSaves.ts`). Slice 5 (Scrivener 2)
-  optional, not started. Nothing pushed since `fe0ffbf` (push needs an
-  owner go). The I2 wording ruling is closed (option A, above).
+  optional, not started. The owner pushed `529d4df` (everything through
+  the R1-8 ruling) to both remotes on 2026-10-26; GitHub Validation run
+  `40373870174` was still in progress when last checked. The I2 wording ruling is closed (option A, above).
 - **Owner 2026-10-25: governance remediation** (`487e775`): three stale
   path references in `.agents/break-it-validation.md` resolved on owner
   rulings; hygiene lint clean. The pending
@@ -194,14 +195,16 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section.
-- **2026-10-25 reload safety + phone layout (slices 1–4, unpushed)**: fmt,
+- **2026-10-25 reload safety + phone layout (slices 1–4, pushed in
+  `529d4df`)**: fmt,
   clippy `-D warnings` and tests green for core, services, web, tui,
   converter; release-metadata script; `bash -n` on the scripts (shellcheck
   is not installed on this box; no script changed); UI lint/build/test
   (125); `cargo check -p chickenscratch-web --features embed-ui` with the
   built `ui/dist`. Tauri crate not compiled on this box (Known drift). Bite
   proof: the editor safety-copy tests fail with the restore and the
-  pagehide write removed. CI runs on the next push.
+  pagehide write removed. CI ran on the 2026-10-26 push (Validation
+  `40373870174`, in progress when last checked).
 - **2026-10-25 as of `82ba252`**: GitHub Validation runs `40162108795`
   (`ad44c22`), `40164051106` (`487e775`) and `40164229608` (`82ba252`) all
   succeeded (all jobs, shellcheck step included).
