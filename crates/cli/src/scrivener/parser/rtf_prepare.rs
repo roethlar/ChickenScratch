@@ -405,6 +405,12 @@ pub fn lift_inline_notes(input: &[u8]) -> (Vec<u8>, Vec<InlineNote>) {
         // and font switches decode as they would in place (review finding
         // s4-4: a `\ansicpg1251` note read `Привет` as `Ïðèâåò`).
         let mut wrapped = header.clone();
+        // The font in force where the note sits carries into the wrapper:
+        // with `\deff1` Cyrillic and `\f0` Western selected before the
+        // note, `caf\'e9` is `café`, not `cafй` (s4-4 re-review).
+        if let Some(font) = active_font_at(input, start) {
+            wrapped.extend_from_slice(format!("\\f{font} ").as_bytes());
+        }
         wrapped.extend_from_slice(body);
         wrapped.push(b'}');
         let text = super::rtf_text::rtf_to_plain_text(&wrapped);
@@ -446,6 +452,69 @@ fn document_header(input: &[u8]) -> Vec<u8> {
     }
     header.push(b' ');
     header
+}
+
+/// The font selected by `\fN` in force at byte `pos`, honouring group scope
+/// (a `\fN` inside a closed group is gone) and `\plain` (back to the
+/// document default, so `None`). `None` also when no font was ever
+/// selected; the document's `\deffN` then applies.
+fn active_font_at(input: &[u8], pos: usize) -> Option<i64> {
+    let end = pos.min(input.len());
+    let mut stack: Vec<Option<i64>> = Vec::new();
+    let mut current: Option<i64> = None;
+    let mut i = 0;
+    while i < end {
+        match input[i] {
+            b'{' => {
+                stack.push(current);
+                i += 1;
+            }
+            b'}' => {
+                current = stack.pop().flatten();
+                i += 1;
+            }
+            b'\\' => {
+                let next = input.get(i + 1).copied();
+                match next {
+                    Some(b'\'') => i += 4,
+                    Some(c) if c.is_ascii_alphabetic() => {
+                        let word_start = i + 1;
+                        let mut j = word_start;
+                        while j < input.len() && input[j].is_ascii_alphabetic() {
+                            j += 1;
+                        }
+                        let word = &input[word_start..j];
+                        let mut k = j;
+                        if k < input.len() && input[k] == b'-' {
+                            k += 1;
+                        }
+                        while k < input.len() && input[k].is_ascii_digit() {
+                            k += 1;
+                        }
+                        let param: Option<i64> = std::str::from_utf8(&input[j..k])
+                            .ok()
+                            .and_then(|s| s.parse().ok());
+                        match word {
+                            b"f" if param.is_some() => current = param,
+                            b"plain" => current = None,
+                            b"bin" => {
+                                // The payload follows one delimiter byte.
+                                let len = usize::try_from(param.unwrap_or(0)).unwrap_or(0);
+                                k += 1 + len;
+                            }
+                            _ => {}
+                        }
+                        i = k;
+                    }
+                    // Any control symbol or escaped character: two bytes.
+                    Some(_) => i += 2,
+                    None => i += 1,
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    current
 }
 
 /// The contents of the `\fonttbl` group after the word itself, up to but
@@ -1018,6 +1087,24 @@ mod tests {
         let src = "{\\rtf1\\ansi\\ansicpg1252{\\fonttbl{\\f0\\fcharset0 A;}{\\f1\\fcharset204 B;}} a {\\Scrv_fn=caf\\'e9 \\f1 \\'cf\\end_Scrv_fn} b}";
         let (_, notes) = lift_inline_notes(src.as_bytes());
         assert_eq!(notes[0].body, "café П");
+
+        // s4-4 re-review: the font selected before the note carries into
+        // it. With a Cyrillic default font and `\f0` (Western) in force,
+        // `caf\'e9` is `café`; a `\f0` inside a closed group does not reach
+        // the note (`\'e9` is `й` in the default font), nor does one undone
+        // by `\plain`.
+        let fonts = "{\\fonttbl{\\f0\\fcharset0 Arial;}{\\f1\\fcharset204 Arial;}}";
+        let src = format!(
+            "{{\\rtf1\\ansi\\ansicpg1252\\deff1{fonts}\\f0 before {{\\Scrv_fn=caf\\'e9\\end_Scrv_fn}} after}}"
+        );
+        let (_, notes) = lift_inline_notes(src.as_bytes());
+        assert_eq!(notes[0].body, "café");
+        let src = format!(
+            "{{\\rtf1\\ansi\\ansicpg1252\\deff1{fonts} {{\\f0 x}} {{\\Scrv_fn=\\'e9\\end_Scrv_fn}} \\f0\\plain \\{{\\\\Scrv_fn=\\'e9\\\\end_Scrv_fn\\}}}}"
+        );
+        let (_, notes) = lift_inline_notes(src.as_bytes());
+        assert_eq!(notes[0].body, "й");
+        assert_eq!(notes[1].body, "й");
 
         // Unterminated marker: left alone, nothing lifted.
         let src = "{\\rtf1\\ansi a {\\Scrv_fn=never closed}";
