@@ -395,17 +395,13 @@ pub fn lift_inline_notes(input: &[u8]) -> (Vec<u8>, Vec<InlineNote>) {
             }
         }
         let id = format!("inline-{}", notes.len() + 1);
-        // The literal-text form carries RTF escapes for its own backslashes
-        // and braces; undo those first so the body reads as Scrivener wrote
-        // it, then reduce it to plain text like any RTF.
-        let literal_form = k == 0 || k == 2;
-        let body_bytes: Vec<u8> = if literal_form {
-            unescape_literal_rtf(body)
-        } else {
-            body.to_vec()
-        };
+        // Both forms are RTF text read once: `\\`, `\{` and `\}` are the
+        // writer's own backslash and braces, `\'xx` is a character, and a
+        // control word is formatting. The literal form used to be unescaped
+        // first and then read again, which turned `C:\\temp` into a control
+        // word and `\{braces\}` into a group (review finding s4-3).
         let mut wrapped = b"{\\rtf1\\ansi ".to_vec();
-        wrapped.extend_from_slice(&body_bytes);
+        wrapped.extend_from_slice(body);
         wrapped.push(b'}');
         let text = super::rtf_text::rtf_to_plain_text(&wrapped);
         out.extend_from_slice(&input[i..start]);
@@ -425,22 +421,6 @@ pub fn lift_inline_notes(input: &[u8]) -> (Vec<u8>, Vec<InlineNote>) {
         i = end + end_marker.len();
     }
     (out, notes)
-}
-
-/// `\\` → `\`, `\{` → `{`, `\}` → `}`; everything else untouched.
-fn unescape_literal_rtf(body: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(body.len());
-    let mut i = 0;
-    while i < body.len() {
-        if body[i] == b'\\' && i + 1 < body.len() && matches!(body[i + 1], b'\\' | b'{' | b'}') {
-            out.push(body[i + 1]);
-            i += 2;
-        } else {
-            out.push(body[i]);
-            i += 1;
-        }
-    }
-    out
 }
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -921,7 +901,9 @@ mod tests {
     /// bodies lifted out.
     #[test]
     fn inline_notes_are_lifted_into_marker_fields() {
-        let src = "{\\rtf1\\ansi plain \\{\\\\Scrv_annot \\\\color=\\{\\\\R=0.0\\\\G=0.0\\\\B=1.0\\} \\\\text=note \\\\b here\\\\b0\\\\end_Scrv_annot\\} after \\{\\\\Scrv_fn=foot \\\\i note\\\\i0\\\\end_Scrv_fn\\} end}";
+        // Inside the literal form, `\\`, `\{` and `\}` are the writer's own
+        // characters; a bare control word is formatting.
+        let src = "{\\rtf1\\ansi plain \\{\\\\Scrv_annot \\\\color=\\{\\\\R=0.0\\\\G=0.0\\\\B=1.0\\} \\\\text=note \\b here\\b0\\\\end_Scrv_annot\\} after \\{\\\\Scrv_fn=foot \\i note\\i0\\\\end_Scrv_fn\\} end}";
         let (lifted, notes) = lift_inline_notes(src.as_bytes());
         let lifted = String::from_utf8(lifted).unwrap();
         let marker = |scheme: &str, id: &str| {
@@ -968,6 +950,13 @@ mod tests {
         assert_eq!(notes[0].body, "raw body");
         assert_eq!(notes[1].body, "raw foot");
         assert!(notes[1].footnote);
+
+        // Review finding s4-3: the writer's braces and backslash survive; the
+        // body is read as RTF exactly once.
+        let src =
+            "{\\rtf1\\ansi x \\{\\\\Scrv_fn=Keep \\{braces\\} and C:\\\\temp\\\\end_Scrv_fn\\} y}";
+        let (_, notes) = lift_inline_notes(src.as_bytes());
+        assert_eq!(notes[0].body, "Keep {braces} and C:\\temp");
 
         // Unterminated marker: left alone, nothing lifted.
         let src = "{\\rtf1\\ansi a {\\Scrv_fn=never closed}";
