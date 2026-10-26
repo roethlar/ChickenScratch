@@ -34,7 +34,7 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 | s4-5 | code | A bracket in anchor text keeps a footnote from attaching (slice 4 review, codex) | `[~]`  | — (default-branch mode) |
 | s4-6 | code | A folder with empty text drops its comments (slice 4 review, codex) | `[x]`  | — (default-branch mode) |
 | s4-7 | code | A quoted `>` in a footnote body drops it from export (slice 4 review, codex) | `[x]`  | — (default-branch mode) |
-| s4-8 | code | Compile rewrites footnote-shaped markup inside code examples (slice 4 review, codex) | `[~]`  | — (default-branch mode) |
+| s4-8 | code | Compile rewrites footnote-shaped markup inside code examples (slice 4 review, codex) | `[x]`  | — (default-branch mode) |
 | s4-1 | code | Force not bound to the confirmed merge (slice 4, codex) | `[x]`  | n/a (pre-commit fix in slice-4 working tree) |
 | s4-2 | code | Recovery fingerprint omits index contents (slice 4, codex) | `[x]`  | n/a (pre-commit fix in slice-4 working tree) |
 | s4-3 | code | No re-attestation at the last safe point (slice 4, codex) | `[x]`  | n/a (pre-commit fix in slice-4 working tree) |
