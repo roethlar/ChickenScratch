@@ -443,6 +443,26 @@ mod tests {
         );
     }
 
+    /// Review finding s4-8, fifth re-review: a paragraph of many unclosed
+    /// openers is scanned once, not once per opener.
+    #[test]
+    fn many_unclosed_elements_are_handled_in_one_pass() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let md = "<sup class=\"footnote\" data-body=\"x\">x ".repeat(10_000);
+        let started = std::time::Instant::now();
+        let doc = ast(&md);
+        let elapsed = started.elapsed();
+        assert_eq!(count(&doc, "Note"), 0);
+        assert_eq!(unconverted(&doc), 10_000, "every opener kept as raw HTML");
+        assert!(
+            elapsed.as_secs() < 30,
+            "10,000 unclosed openers took {elapsed:?}; the scan must be linear"
+        );
+    }
+
     #[test]
     fn other_sup_tags_and_unclosed_elements_are_left_alone() {
         if !pandoc_present() {

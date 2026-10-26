@@ -95,9 +95,15 @@ function Inlines(inlines)
         out:insert(pandoc.Note(body_blocks(body)))
         i = j + 1
       else
-        -- No closing tag in this run: left as it is.
-        out:insert(el)
-        i = i + 1
+        -- No closing tag anywhere after this opener: nothing further in
+        -- this run can be a footnote either, so the rest is copied as it is
+        -- (review finding s4-8, fifth re-review: rescanning after every
+        -- unclosed opener was quadratic and timed out a 10,000-opener
+        -- paragraph).
+        for k = i, #inlines do
+          out:insert(inlines[k])
+        end
+        break
       end
     else
       out:insert(el)
