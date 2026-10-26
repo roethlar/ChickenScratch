@@ -980,9 +980,14 @@ fn label_end(markdown: &str, start: usize) -> Option<usize> {
     }
 }
 
-/// Index just past an ordinary Markdown link `[text](destination)` opening
-/// at `start`. The destination runs to its matching `)` (parentheses
-/// balanced, escapes skipped, an angle-bracketed form taken whole).
+/// Index just past an ordinary Markdown link `[text](destination)` or
+/// `[text](destination "title")` opening at `start`, following CommonMark:
+/// a bare destination holds no whitespace and balances its parentheses, an
+/// angle-bracketed one is taken whole, and whitespace after it may only be
+/// followed by a quoted title and the closing `)`. Anything else is not a
+/// link, so the scan resumes after the bracket (s4-5, fourth re-review: a
+/// destination ending in `(` was balanced through the prose that followed,
+/// swallowing the footnote anchor in it).
 fn link_end(markdown: &str, start: usize) -> Option<usize> {
     let bytes = markdown.as_bytes();
     let text_end = label_end(markdown, start)?;
@@ -990,28 +995,55 @@ fn link_end(markdown: &str, start: usize) -> Option<usize> {
         return None;
     }
     let mut j = text_end + 2;
-    let mut depth = 0usize;
-    loop {
-        match bytes.get(j)? {
-            b'\\' => j += 1 + char_len_at(markdown, j + 1),
-            b'<' if j == text_end + 2 => {
-                j = text_end + 2 + markdown[j..].find('>')? + 1;
-            }
-            b'(' => {
-                depth += 1;
-                j += 1;
-            }
-            b')' => {
-                if depth == 0 {
-                    return Some(j + 1);
+    if bytes.get(j) == Some(&b'<') {
+        j += markdown[j..].find('>')? + 1;
+    } else {
+        let mut depth = 0usize;
+        loop {
+            match bytes.get(j)? {
+                b'\\' => j += 1 + char_len_at(markdown, j + 1),
+                b'(' => {
+                    depth += 1;
+                    j += 1;
                 }
-                depth -= 1;
-                j += 1;
+                b')' if depth == 0 => break,
+                b')' => {
+                    depth -= 1;
+                    j += 1;
+                }
+                b' ' | b'\t' | b'\n' | b'\r' => break,
+                _ => j += 1,
             }
-            b'\n' => return None,
-            _ => j += 1,
         }
     }
+    // Optional title after whitespace.
+    let after_destination = j;
+    while matches!(bytes.get(j), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+        j += 1;
+    }
+    if j > after_destination {
+        let close = match bytes.get(j)? {
+            b'"' => b'"',
+            b'\'' => b'\'',
+            b'(' => b')',
+            _ => return None,
+        };
+        j += 1;
+        loop {
+            match bytes.get(j)? {
+                b'\\' => j += 1 + char_len_at(markdown, j + 1),
+                &c if c == close => {
+                    j += 1;
+                    break;
+                }
+                _ => j += 1,
+            }
+        }
+        while matches!(bytes.get(j), Some(b' ' | b'\t')) {
+            j += 1;
+        }
+    }
+    (bytes.get(j) == Some(&b')')).then_some(j + 1)
 }
 
 /// Index just past the code span whose opening backtick run starts at
@@ -2567,6 +2599,27 @@ mod tests {
         assert_eq!(
             text.content,
             format!("[a](b(c)`d) [b](<x `y>) anchor{sup}`")
+        );
+        assert!(map.is_empty(), "no warnings: {map:?}");
+
+        // Fourth re-review: what is not a link by CommonMark's rules is not
+        // skipped as one. A destination ending in `(` followed by prose is
+        // not a link, so the anchor after it still attaches; a destination
+        // with a quoted title is a link and is skipped whole.
+        let mut map = HashMap::new();
+        let md = "(see [r](https://e.com/s?q=() \"ex\" and [anchor](scrivcmt://FN-10)).";
+        let text = attach_annotations(md, footnote("FN-10"), Vec::new(), &item, &mut map);
+        assert_eq!(
+            text.content,
+            format!("(see [r](https://e.com/s?q=() \"ex\" and anchor{sup}).")
+        );
+        assert!(map.is_empty(), "no warnings: {map:?}");
+        let mut map = HashMap::new();
+        let md = "[r](https://e.com/`x \"t `)\") [anchor](scrivcmt://FN-11)";
+        let text = attach_annotations(md, footnote("FN-11"), Vec::new(), &item, &mut map);
+        assert_eq!(
+            text.content,
+            format!("[r](https://e.com/`x \"t `)\") anchor{sup}")
         );
         assert!(map.is_empty(), "no warnings: {map:?}");
     }
