@@ -236,21 +236,27 @@ fn find_control_word(input: &[u8], name: &[u8], depth: Option<i32>) -> Option<Co
 /// finding s1-3, second re-review). The caller knows whether a control word
 /// is open; a backward scan over the output mistook prose for one (third
 /// re-review).
-fn emit_run_text(out: &mut Vec<u8>, decoded: &str, after_open_control_word: bool) {
+fn emit_run_text(
+    out: &mut Vec<u8>,
+    decoded: &str,
+    after_open_control_word: bool,
+    after_delimiter_space: bool,
+) {
     let mut first = true;
     for c in decoded.chars() {
         if c.is_ascii() {
+            if first && c == ' ' && (after_open_control_word || after_delimiter_space) {
+                // A text space right after a control word's delimiter space
+                // would be two spaces, and Pandoc 3.11 drops both
+                // (`before\bin0\'20after` and `before\bin0 \'20after` both
+                // read as `beforeafter`), so the space is written as an
+                // escape instead (review finding s1-3, fourth and fifth
+                // re-reviews).
+                out.extend_from_slice(b"\\u32 ?");
+                first = false;
+                continue;
+            }
             if first && after_open_control_word {
-                if c == ' ' {
-                    // A text space right after the delimiter space would be
-                    // two spaces, and Pandoc 3.11 drops both
-                    // (`before\bin0\'20after` read as `beforeafter`), so the
-                    // space is written as an escape instead (review finding
-                    // s1-3, fourth re-review).
-                    out.extend_from_slice(b"\\u32 ?");
-                    first = false;
-                    continue;
-                }
                 out.push(b' ');
             }
             match c as u8 {
@@ -648,6 +654,9 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
     // Output length right after an undelimited control word was written;
     // decoded text appended at exactly that length needs a space first.
     let mut open_control_word_end: Option<usize> = None;
+    // Where the output last ended with a control word's delimiter space: a
+    // decoded space written there must be escaped (s1-3, fifth re-review).
+    let mut delimited_control_word_end: Option<usize> = None;
 
     let mut i = 0;
     let n = input.len();
@@ -760,7 +769,9 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                                     out.extend_from_slice(&input[slice_start..j]);
                                 } else {
                                     let after_open = open_control_word_end == Some(out.len());
-                                    emit_run_text(&mut out, &decoded, after_open);
+                                    let after_delimiter =
+                                        delimited_control_word_end == Some(out.len());
+                                    emit_run_text(&mut out, &decoded, after_open, after_delimiter);
                                 }
                             }
                             None => out.extend_from_slice(&input[slice_start..j]),
@@ -863,6 +874,10 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                         // their own terminator.
                         if end == k && word != b"uc" && word != b"u" {
                             open_control_word_end = Some(out.len());
+                        }
+                        // Copied with its delimiter space (`\uc1 ` always is).
+                        if (end == k + 1 && word != b"u") || word == b"uc" {
+                            delimited_control_word_end = Some(out.len());
                         }
                         i = end;
                     }
@@ -1063,6 +1078,16 @@ mod tests {
         // collapses space runs, so the reading is not asserted here.)
         let prepared = prep("{\\rtf1\\ansi a\\b\\'20\\'20b}");
         assert_eq!(prepared, "{\\rtf1\\ansi a\\b\\u32 ? b}");
+        // Fifth re-review: the same when the control word already has its
+        // delimiter space (`before\bin0 \'20after` also read `beforeafter`).
+        let prepared = prep("{\\rtf1\\ansi before\\bin0 \\'20after}");
+        assert_eq!(prepared, "{\\rtf1\\ansi before\\bin0 \\u32 ?after}");
+        assert_reads(&prepared, "before after");
+        let prepared = prep("{\\rtf1\\ansi a\\b \\'20b}");
+        assert_eq!(prepared, "{\\rtf1\\ansi a\\b \\u32 ?b}");
+        assert_reads(&prepared, "a b");
+        // A decoded space after ordinary text is written as itself.
+        assert_eq!(prep("{\\rtf1\\ansi a\\'20b}"), "{\\rtf1\\ansi a b}");
     }
 
     /// Third re-review of s1-3: header declarations are control words, found
