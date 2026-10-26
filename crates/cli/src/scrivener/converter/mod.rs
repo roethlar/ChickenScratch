@@ -476,7 +476,9 @@ fn convert_binder_items_inner(
                     DocumentText::default()
                 };
                 let side = side_values(project, scriv_path, item, uuid_to_path, pandoc_path)?;
-                if !content.trim().is_empty() || !side.is_empty() {
+                // Comments count too: a folder with empty text but a comment
+                // body must keep it somewhere (review finding s4-6).
+                if !content.trim().is_empty() || !side.is_empty() || !comments.is_empty() {
                     let doc_id = Uuid::new_v4().to_string();
                     let slug = chickenscratch_core::utils::slug::unique_slug(
                         &folder_name,
@@ -2211,6 +2213,76 @@ mod tests {
         );
         assert!(text.comments.is_empty(), "{:?}", text.comments);
         assert!(map.is_empty(), "no warnings: {map:?}");
+    }
+
+    /// Review finding s4-6: a folder whose own text is empty but whose
+    /// comments file has a body still gets a companion document carrying it.
+    #[test]
+    fn folder_with_only_a_comment_keeps_it() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Fold.scriv");
+        let output_path = temp_dir.path().join("Fold.chikn");
+        let folder = "B9B2C3D4-0000-4000-8000-000000000001";
+        let child = "B9B2C3D4-0000-4000-8000-000000000002";
+        write_scriv_files(
+            &scriv_path,
+            folder,
+            &[
+                ("content.rtf", "{\\rtf1\\ansi }"),
+                (
+                    "content.comments",
+                    "<Comments><Comment ID=\"X-1\">Folder-level remark.</Comment></Comments>",
+                ),
+            ],
+        );
+        write_scriv_files(
+            &scriv_path,
+            child,
+            &[("content.rtf", "{\\rtf1\\ansi Child.}")],
+        );
+        fs::write(
+            scriv_path.join("Fold.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="2.0">
+    <Binder>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000D" Type="DraftFolder">
+            <Title>Draft</Title>
+            <Children>
+                <BinderItem UUID="{folder}" Type="Folder">
+                    <Title>Part</Title>
+                    <Children>
+                        <BinderItem UUID="{child}" Type="Text"><Title>Scene</Title></BinderItem>
+                    </Children>
+                </BinderItem>
+            </Children>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#
+            ),
+        )
+        .unwrap();
+        let report = import_scriv_with_report(&scriv_path, &output_path, None).expect("imports");
+        let part = report
+            .project
+            .documents
+            .values()
+            .find(|d| d.name == "Part")
+            .expect("companion document for the folder with a comment");
+        assert_eq!(part.comments.len(), 1, "{:?}", part.comments);
+        assert!(part.comments[0].body.contains("Folder-level remark."));
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.contains("no place in the text")),
+            "{:?}",
+            report.warnings
+        );
     }
 
     /// Review finding s3-3: a synopsis file that exists but cannot be read is
