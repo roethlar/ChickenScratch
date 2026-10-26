@@ -31,10 +31,11 @@ use std::collections::HashMap;
 struct PrepGroup {
     uc: u32,
     font: Option<i64>,
-    /// Inside a `\*` destination (a field instruction, metadata): control
-    /// text, not prose, so a hex-escaped space stays a space there (review
-    /// finding s1-3, eighth re-review: `HYPERLINK\'20"…"` lost its target
-    /// when the space became `\u32 ?`).
+    /// Inside a `\fldinst` field instruction: control text, not prose, so a
+    /// hex-escaped space stays a space there (review finding s1-3, eighth
+    /// re-review: `HYPERLINK\'20"…"` lost its target when the space became
+    /// `\u32 ?`). Only field instructions: other `\*` destinations such as a
+    /// shape's `\shptxt` hold prose Pandoc reads (ninth re-review).
     destination: bool,
 }
 
@@ -904,6 +905,14 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                                 }
                                 out.extend_from_slice(&input[i..end]);
                             }
+                            // A field instruction's text is control text
+                            // for the rest of its group.
+                            b"fldinst" => {
+                                if let Some(top) = groups.last_mut() {
+                                    top.destination = true;
+                                }
+                                out.extend_from_slice(&input[i..end]);
+                            }
                             _ => out.extend_from_slice(&input[i..end]),
                         }
                         // A control word copied without its delimiter space
@@ -922,9 +931,6 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                     // ends any fallback run rather than being swallowed.
                     Some(b'*') => {
                         skip_fallback = 0;
-                        if let Some(top) = groups.last_mut() {
-                            top.destination = true;
-                        }
                         out.extend_from_slice(&input[i..i + 2]);
                         i += 2;
                     }
@@ -1199,6 +1205,15 @@ mod tests {
             prepared,
             "{\\rtf1\\ansi {\\field{\\*\\fldinst HYPERLINK \"u\"}{\\fldrslt a\\b\\u32 ?b}}}"
         );
+        // Ninth re-review: only a field instruction is control text; a
+        // shape's text is prose Pandoc reads, so its hex space is escaped.
+        let prepared =
+            prep("{\\rtf1\\ansi {\\shp{\\*\\shpinst{\\shptxt before\\bin0\\'20after}}}}");
+        assert_eq!(
+            prepared,
+            "{\\rtf1\\ansi {\\shp{\\*\\shpinst{\\shptxt before\\bin0\\u32 ?after}}}}"
+        );
+        assert_reads(&prepared, "before after");
     }
 
     /// Third re-review of s1-3: header declarations are control words, found
