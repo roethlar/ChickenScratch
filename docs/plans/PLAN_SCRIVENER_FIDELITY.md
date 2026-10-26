@@ -407,4 +407,6 @@ user guide "Imported Scrivener project looks wrong" rewritten; DEVLOG entry;
   recognition both moved into Pandoc's own parse as Lua filters, after
   repeated attempts to re-implement Markdown's rules on the text each left
   a case behind; the Inspector's saves moved into a queue outside the form.
-  The I2 wording ruling (R1-8) is still with the owner.
+- 2026-10-26: **R1-8 closed.** The owner ruled option A: `docs/INVARIANTS.md`
+  I2 and ADR-001 (amendment 5) now say converters live outside the engine
+  and write `.chikn` through it; no code moved. The plan is complete.

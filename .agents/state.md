@@ -69,11 +69,10 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   consensus. review code slices with the same codex model". Plan review
   `plan-3` (`.agents/review/findings/plan-3.md`): five Codex rounds
   (gpt-6-astra, xhigh, CLI transport), accepted at `c3e67b0`. **Owner
-  ruling pending (R1-8):** `docs/INVARIANTS.md` I2 and ADR-001 say Scrivener
-  import lives in core; I2's own table, `docs/ARCHITECTURE.md` and the code
-  put the converter in `crates/cli`. Asked as A (fix the wording, converter
-  stays; recommended) / B (move the importer into core first). Slices
-  proceed under A; each slice gets a Codex defect review before the next.
+  ruling R1-8 (2026-10-26): option A** — `docs/INVARIANTS.md` I2 and
+  ADR-001 (amendment 5) now say converters live outside the engine and
+  write `.chikn` through it; the importer stays in `crates/cli`. Each slice
+  got a Codex defect review before the next.
   **Slice 1 landed** `caf8a5e` (RTF prepare step, `markdown-smart`,
   plain-text fallback with a named warning; Zoe 2 imports; Corn keeps
   paragraphs and plain apostrophes). Its Codex review returned six
@@ -111,8 +110,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   instead of finding Markdown links afterwards; the Inspector's metadata
   saves live in a queue outside the form
   (`ui/src/components/inspector/metadataSaves.ts`). Slice 5 (Scrivener 2)
-  optional, not started. Nothing pushed since `fe0ffbf`; the owner's I2
-  wording ruling (option A recommended) is still open.
+  optional, not started. Nothing pushed since `fe0ffbf` (push needs an
+  owner go). The I2 wording ruling is closed (option A, above).
 - **Owner 2026-10-25: governance remediation** (`487e775`): three stale
   path references in `.agents/break-it-validation.md` resolved on owner
   rulings; hygiene lint clean. The pending

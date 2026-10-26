@@ -26,7 +26,7 @@ The durable deliverable is the **open `.chikn` format** (folder-first documents:
 
 ## I2 — One engine, many UIs
 
-All `.chikn` **read, write, git, compile, and Scrivener import** logic lives in the Rust crate **`chickenscratch-core`** (`crates/core/`). This crate is the canonical engine (future public name: *chikn-engine*).
+All `.chikn` **read, write, git, and compile** logic lives in the Rust crate **`chickenscratch-core`** (`crates/core/`). This crate is the canonical engine (future public name: *chikn-engine*). Converters from other formats (the Scrivener importer in `crates/cli/`) live outside the engine and write `.chikn` only through it (owner ruling 2026-10-26, ADR-001 amendment).
 
 **Forbidden:** Reimplementing format I/O in another language (Swift `ChiknKit`, C# `ChickenScratch.Core`, etc.) for new features or fixes.
 

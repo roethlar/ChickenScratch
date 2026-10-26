@@ -4,6 +4,8 @@
 **Date:** 2026-06-07  
 **Authority:** Owner directive — structure repo for coherence and drift resistance.
 
+**Amended:** 2026-10-26 — Scrivener conversion is a client of the engine, not part of it (Decision 5).
+
 ## Context
 
 The repository grew multiple **independent implementations** of `.chikn` read/write/git:
@@ -21,7 +23,6 @@ The owner’s intent: **one engine, any UI is a customer.**
 1. **`chickenscratch-core`** (`crates/core/`) is the only place that implements:
    - project/document read and write
    - embedded git operations
-   - Scrivener conversion
    - compile orchestration
    - path safety and atomic persistence
 
@@ -32,6 +33,8 @@ The owner’s intent: **one engine, any UI is a customer.**
    - **FFI / sidecar** — if a future native shell is revived; never a second language rewrite
 
 4. Swift `ChiknKit` and C# `ChickenScratch.Core` are **deprecated** for new work (see ADR-004).
+
+5. **Amendment 2026-10-26 (owner ruling, `docs/plans/PLAN_SCRIVENER_FIDELITY.md` R1-8).** Converters from other formats — the Scrivener importer in `crates/cli/` (`chikn-converter`) — are clients of the engine, not part of it. They parse the foreign format themselves and create `.chikn` projects only through `chickenscratch-core`. The original text listed "Scrivener conversion" among the engine's responsibilities, which contradicted I2's own table, `docs/ARCHITECTURE.md` and the code; the owner chose to correct the wording rather than move the importer.
 
 ## Consequences
 
