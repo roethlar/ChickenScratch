@@ -19,6 +19,10 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2.0"
 anyhow = "1.0"
 quick-xml = { version = "0.36", features = ["serialize"] }
+# Finds code spans and code blocks when compiling, so footnote markup
+# inside them is left alone (review finding s4-8). Already in the lockfile
+# through the TUI.
+pulldown-cmark = { version = "0.12", default-features = false }
 regex = "1.10"
 git2 = "0.19"
 tempfile = "3.8"

@@ -7,7 +7,9 @@ use crate::core::project::reader;
 use crate::models::{Project, TreeNode};
 use crate::utils::error::ChiknError;
 use crate::utils::process::{output_bounded, PANDOC_OUTPUT_LIMIT_BYTES, PANDOC_TIMEOUT};
+use pulldown_cmark::{Event, Parser, Tag};
 use std::fs;
+use std::ops::Range;
 use std::path::Path;
 use std::process::Command;
 
@@ -219,109 +221,39 @@ fn footnotes_to_references(
     definitions: &mut Vec<String>,
 ) -> String {
     // Code is left alone (review finding s4-8: a footnote-shaped example in
-    // a fenced block was rewritten): fenced blocks, indented code blocks and
-    // inline code spans are copied through; only prose is transformed.
+    // a fenced block was rewritten). Code spans and code blocks are found
+    // by a CommonMark parser with source offsets rather than by a line
+    // scanner, which the re-review showed getting four things wrong: a
+    // backtick inside the footnote's own quoted body was read as a code
+    // span, a body spanning lines was cut at the line end, a fence inside a
+    // blockquote was missed, and a one-line ```x``` code span was read as an
+    // unclosed fence that swallowed the rest of the section. Raw HTML, the
+    // footnote element included, is prose here; an HTML tag outranks the
+    // backticks inside it, as in CommonMark.
+    let mut protected: Vec<Range<usize>> = Vec::new();
+    for (event, range) in Parser::new(section).into_offset_iter() {
+        match event {
+            Event::Code(_) | Event::Start(Tag::CodeBlock(_)) => protected.push(range),
+            _ => {}
+        }
+    }
+    protected.sort_by_key(|range| range.start);
     let mut out = String::with_capacity(section.len());
-    let mut fence: Option<(char, usize)> = None;
-    let mut previous_blank = true;
-    let mut in_indented = false;
-    for line in section.split_inclusive('\n') {
-        let text = line.trim_end_matches(['\n', '\r']);
-        let trimmed = text.trim_start();
-        if let Some((ch, len)) = fence {
-            out.push_str(line);
-            let run = trimmed.chars().take_while(|c| *c == ch).count();
-            if run >= len && trimmed[run..].trim().is_empty() {
-                fence = None;
-            }
-            previous_blank = false;
+    let mut last = 0;
+    for range in protected {
+        if range.start < last {
+            // Nested in a range already copied through.
             continue;
         }
-        let leading = text.len() - trimmed.len();
-        if leading < 4 && (trimmed.starts_with("```") || trimmed.starts_with("~~~")) {
-            let ch = trimmed.chars().next().unwrap_or('`');
-            let len = trimmed.chars().take_while(|c| *c == ch).count();
-            fence = Some((ch, len));
-            in_indented = false;
-            previous_blank = false;
-            out.push_str(line);
-            continue;
-        }
-        let is_blank = trimmed.is_empty();
-        let indented = !is_blank && (text.starts_with("    ") || text.starts_with('\t'));
-        if indented && (previous_blank || in_indented) {
-            in_indented = true;
-            previous_blank = false;
-            out.push_str(line);
-            continue;
-        }
-        if is_blank {
-            previous_blank = true;
-            out.push_str(line);
-            continue;
-        }
-        in_indented = false;
-        previous_blank = false;
-        out.push_str(&footnotes_outside_inline_code(line, counter, definitions));
+        out.push_str(&footnotes_in_prose(
+            &section[last..range.start],
+            counter,
+            definitions,
+        ));
+        out.push_str(&section[range.clone()]);
+        last = range.end;
     }
-    out
-}
-
-/// Transforms a line of prose, leaving inline code spans (matching backtick
-/// runs) untouched.
-fn footnotes_outside_inline_code(
-    line: &str,
-    counter: &mut usize,
-    definitions: &mut Vec<String>,
-) -> String {
-    let mut out = String::with_capacity(line.len());
-    let mut segment_start = 0;
-    let bytes = line.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] != b'`' {
-            i += 1;
-            continue;
-        }
-        let run_start = i;
-        while i < bytes.len() && bytes[i] == b'`' {
-            i += 1;
-        }
-        let run = i - run_start;
-        // A closing run of exactly the same length ends the span.
-        let mut j = i;
-        let mut close: Option<usize> = None;
-        while j < bytes.len() {
-            if bytes[j] == b'`' {
-                let cs = j;
-                while j < bytes.len() && bytes[j] == b'`' {
-                    j += 1;
-                }
-                if j - cs == run {
-                    close = Some(cs);
-                    break;
-                }
-            } else {
-                j += 1;
-            }
-        }
-        if let Some(cs) = close {
-            out.push_str(&footnotes_in_prose(
-                &line[segment_start..run_start],
-                counter,
-                definitions,
-            ));
-            out.push_str(&line[run_start..cs + run]);
-            i = cs + run;
-            segment_start = i;
-        }
-        // No closing run: the backticks are ordinary text.
-    }
-    out.push_str(&footnotes_in_prose(
-        &line[segment_start..],
-        counter,
-        definitions,
-    ));
+    out.push_str(&footnotes_in_prose(&section[last..], counter, definitions));
     out
 }
 
@@ -538,6 +470,46 @@ mod tests {
         let (out, defs) = convert("T<sup class='footnote' data-body='a > b'>●</sup>");
         assert_eq!(out, "T[^cs-fn1]");
         assert_eq!(defs, vec!["[^cs-fn1]: a \\> b".to_string()]);
+    }
+
+    /// Review finding s4-8, re-review: code is recognised the way CommonMark
+    /// does, not by a line scanner. Each case here failed with the scanner.
+    #[test]
+    fn code_detection_follows_commonmark() {
+        let sup = |body: &str| format!("<sup class=\"footnote\" data-body=\"{body}\">●</sup>");
+
+        // (1) A backtick inside the footnote's own body is not a code span:
+        // the HTML tag outranks it.
+        let (out, defs) = convert(&format!("T{} end", sup("Use `code` here")));
+        assert_eq!(out, "T[^cs-fn1] end");
+        assert_eq!(defs, vec!["[^cs-fn1]: Use \\`code\\` here".to_string()]);
+        // Escaped backticks around a footnote are text, not a span.
+        let (out, defs) = convert(&format!("\\`{}\\`", sup("x")));
+        assert_eq!(out, "\\`[^cs-fn1]\\`");
+        assert_eq!(defs.len(), 1);
+
+        // (2) A body with a literal newline still converts; a code span that
+        // crosses a line end still protects what is inside it.
+        let (out, defs) = convert(&format!("T{} end", sup("first\nsecond")));
+        assert_eq!(out, "T[^cs-fn1] end");
+        // (the definition indents its continuation line, as footnotes need)
+        assert_eq!(defs, vec!["[^cs-fn1]: first\n    second".to_string()]);
+        let spanned = format!("`a\n{}` after", sup("x"));
+        let (out, defs) = convert(&spanned);
+        assert_eq!(out, spanned);
+        assert!(defs.is_empty());
+
+        // (3) A fence inside a blockquote is still a fence.
+        let quoted = format!("> ```\n> {}\n> ```\n", sup("x"));
+        let (out, defs) = convert(&quoted);
+        assert_eq!(out, quoted);
+        assert!(defs.is_empty());
+
+        // (4) A one-line ```x``` is a code span, not an open fence: the
+        // footnotes after it still convert.
+        let (out, defs) = convert(&format!("```example```\n\nT{}\n", sup("one")));
+        assert_eq!(out, "```example```\n\nT[^cs-fn1]\n");
+        assert_eq!(defs.len(), 1);
     }
 
     /// Review finding s4-8: code examples are not transformed.
