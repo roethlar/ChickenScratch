@@ -469,62 +469,129 @@ fn document_header(input: &[u8]) -> Vec<u8> {
 /// document default, so `None`). `None` also when no font was ever
 /// selected; the document's `\deffN` then applies.
 fn active_font_at(input: &[u8], pos: usize) -> Option<i64> {
+    // The same token rules as `prepare_rtf` (s4-4 second re-review: a `\f1`
+    // sitting in a `\uN` fallback slot was applied, and `\binN` always
+    // swallowed a byte after its number, a closing brace included).
+    struct FontGroup {
+        uc: u32,
+        font: Option<i64>,
+    }
     let end = pos.min(input.len());
-    let mut stack: Vec<Option<i64>> = Vec::new();
-    let mut current: Option<i64> = None;
+    let n = input.len();
+    let mut groups: Vec<FontGroup> = vec![FontGroup { uc: 1, font: None }];
+    let mut skip_fallback: u32 = 0;
     let mut i = 0;
     while i < end {
         match input[i] {
             b'{' => {
-                stack.push(current);
+                let (uc, font) = groups.last().map_or((1, None), |g| (g.uc, g.font));
+                groups.push(FontGroup { uc, font });
+                skip_fallback = 0;
                 i += 1;
             }
             b'}' => {
-                current = stack.pop().flatten();
+                if groups.len() > 1 {
+                    groups.pop();
+                }
+                skip_fallback = 0;
                 i += 1;
             }
             b'\\' => {
                 let next = input.get(i + 1).copied();
                 match next {
-                    Some(b'\'') => i += 4,
+                    // `\` + newline: `\par`, or one fallback item.
+                    Some(b'\n') | Some(b'\r') => {
+                        i += 2;
+                        if input.get(i) == Some(&b'\n') && next == Some(b'\r') {
+                            i += 1;
+                        }
+                        skip_fallback = skip_fallback.saturating_sub(1);
+                    }
+                    // A hex escape is one character, so one fallback item.
+                    Some(b'\'') => {
+                        i += 4;
+                        skip_fallback = skip_fallback.saturating_sub(1);
+                    }
                     Some(c) if c.is_ascii_alphabetic() => {
                         let word_start = i + 1;
                         let mut j = word_start;
-                        while j < input.len() && input[j].is_ascii_alphabetic() {
+                        while j < n && input[j].is_ascii_alphabetic() {
                             j += 1;
                         }
                         let word = &input[word_start..j];
                         let mut k = j;
-                        if k < input.len() && input[k] == b'-' {
+                        if k < n && input[k] == b'-' {
                             k += 1;
                         }
-                        while k < input.len() && input[k].is_ascii_digit() {
+                        while k < n && input[k].is_ascii_digit() {
                             k += 1;
                         }
                         let param: Option<i64> = std::str::from_utf8(&input[j..k])
                             .ok()
                             .and_then(|s| s.parse().ok());
+                        // One space after a control word is its delimiter;
+                        // `\binN` then owns the next N bytes.
+                        let mut end = k;
+                        if end < n && input[end] == b' ' {
+                            end += 1;
+                        }
+                        if word == b"bin" {
+                            let len = usize::try_from(param.unwrap_or(0)).unwrap_or(0);
+                            end = (end + len).min(n);
+                        }
+                        // A control word in a fallback slot is swallowed, not
+                        // applied; only `\u` itself is exempt.
+                        if skip_fallback > 0 && word != b"u" {
+                            skip_fallback -= 1;
+                            i = end;
+                            continue;
+                        }
                         match word {
-                            b"f" if param.is_some() => current = param,
-                            b"plain" => current = None,
-                            b"bin" => {
-                                // The payload follows one delimiter byte.
-                                let len = usize::try_from(param.unwrap_or(0)).unwrap_or(0);
-                                k += 1 + len;
+                            b"uc" => {
+                                if let Some(top) = groups.last_mut() {
+                                    top.uc = param.unwrap_or(1).max(0) as u32;
+                                }
+                            }
+                            b"u" if param.is_some() => {
+                                skip_fallback = groups.last().map_or(1, |g| g.uc);
+                            }
+                            b"f" if param.is_some() => {
+                                if let Some(top) = groups.last_mut() {
+                                    top.font = param;
+                                }
+                            }
+                            b"plain" => {
+                                if let Some(top) = groups.last_mut() {
+                                    top.font = None;
+                                }
                             }
                             _ => {}
                         }
-                        i = k;
+                        i = end;
                     }
-                    // Any control symbol or escaped character: two bytes.
-                    Some(_) => i += 2,
+                    // `\*` opens a destination and ends any fallback run.
+                    Some(b'*') => {
+                        skip_fallback = 0;
+                        i += 2;
+                    }
+                    // Any other control symbol: one fallback item.
+                    Some(_) => {
+                        skip_fallback = skip_fallback.saturating_sub(1);
+                        i += 2;
+                    }
                     None => i += 1,
                 }
             }
-            _ => i += 1,
+            // Bare line ends are ignored by RTF readers.
+            b'\r' | b'\n' => i += 1,
+            // A plain character is one fallback item.
+            _ => {
+                skip_fallback = skip_fallback.saturating_sub(1);
+                i += 1;
+            }
         }
     }
-    current
+    groups.last().and_then(|g| g.font)
 }
 
 /// The contents of the `\fonttbl` group after the word itself, up to but
@@ -1125,6 +1192,24 @@ mod tests {
         let (_, notes) = lift_inline_notes(src.as_bytes());
         assert_eq!(notes[0].body, "й");
         assert_eq!(notes[1].body, "й");
+
+        // Second re-review: a `\f1` in a `\uN` fallback slot is swallowed,
+        // not applied; a `\binN` payload follows the delimiter space only
+        // when there is one, so `{\f1\bin1!}` and `{\f1\bin0}` close.
+        let western = format!("{{\\rtf1\\ansi\\ansicpg1252\\deff0{fonts}");
+        let src = format!("{western}\\uc1\\u233\\f1 before {{\\Scrv_fn=caf\\'e9\\end_Scrv_fn}}}}");
+        let (_, notes) = lift_inline_notes(src.as_bytes());
+        assert_eq!(notes[0].body, "café", "fallback slot");
+        let src = format!("{western}{{\\f1\\bin1!}} {{\\Scrv_fn=caf\\'e9\\end_Scrv_fn}}}}");
+        let (_, notes) = lift_inline_notes(src.as_bytes());
+        assert_eq!(notes[0].body, "café", "bin1 payload");
+        let src = format!("{western}{{\\f1\\bin0}} {{\\Scrv_fn=caf\\'e9\\end_Scrv_fn}}}}");
+        let (_, notes) = lift_inline_notes(src.as_bytes());
+        assert_eq!(notes[0].body, "café", "bin0");
+        // And a `\f1` that really is in force still reaches the note.
+        let src = format!("{western}\\uc1\\u233 ?\\f1 {{\\Scrv_fn=\\'e9\\end_Scrv_fn}}}}");
+        let (_, notes) = lift_inline_notes(src.as_bytes());
+        assert_eq!(notes[0].body, "й", "font after the fallback");
 
         // Unterminated marker: left alone, nothing lifted.
         let src = "{\\rtf1\\ansi a {\\Scrv_fn=never closed}";
