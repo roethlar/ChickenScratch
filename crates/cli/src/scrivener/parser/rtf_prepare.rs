@@ -31,6 +31,11 @@ use std::collections::HashMap;
 struct PrepGroup {
     uc: u32,
     font: Option<i64>,
+    /// Inside a `\*` destination (a field instruction, metadata): control
+    /// text, not prose, so a hex-escaped space stays a space there (review
+    /// finding s1-3, eighth re-review: `HYPERLINK\'20"…"` lost its target
+    /// when the space became `\u32 ?`).
+    destination: bool,
 }
 
 /// The encoding behind an RTF `\ansicpgN` number, for the pages
@@ -661,6 +666,7 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
     let mut groups: Vec<PrepGroup> = vec![PrepGroup {
         uc: 1,
         font: default_font,
+        destination: false,
     }];
     // Fallback items still to swallow after a `\uN`.
     let mut skip_fallback: u32 = 0;
@@ -677,6 +683,7 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                 let top = *groups.last().unwrap_or(&PrepGroup {
                     uc: 1,
                     font: default_font,
+                    destination: false,
                 });
                 groups.push(top);
                 skip_fallback = 0;
@@ -780,10 +787,14 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                         // the run stay as they are: Pandoc reads them the
                         // same in the original. The text between such
                         // escapes is decoded segment by segment.
+                        let in_destination = groups.last().is_some_and(|g| g.destination);
                         let mut segment: Vec<(u8, usize, usize)> = Vec::new();
                         for item in rest {
                             let is_hex = item.2 - item.1 == 4;
-                            if is_hex && matches!(item.0, 0x20 | 0x09 | 0x0B | 0x0C) {
+                            if is_hex
+                                && !in_destination
+                                && matches!(item.0, 0x20 | 0x09 | 0x0B | 0x0C)
+                            {
                                 emit_decoded_segment(
                                     &mut out,
                                     input,
@@ -911,6 +922,9 @@ pub fn prepare_rtf(input: &[u8]) -> Vec<u8> {
                     // ends any fallback run rather than being swallowed.
                     Some(b'*') => {
                         skip_fallback = 0;
+                        if let Some(top) = groups.last_mut() {
+                            top.destination = true;
+                        }
                         out.extend_from_slice(&input[i..i + 2]);
                         i += 2;
                     }
@@ -959,6 +973,25 @@ mod tests {
     }
 
     /// Pandoc's own reading of the prepared RTF, when Pandoc is installed.
+    /// Pandoc's Markdown for an RTF string, or None when Pandoc is absent.
+    fn pandoc_markdown(rtf: &str) -> Option<String> {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let mut child = Command::new("pandoc")
+            .args(["-f", "rtf", "-t", "markdown-smart", "--wrap=none"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        child.stdin.take()?.write_all(rtf.as_bytes()).ok()?;
+        let out = child.wait_with_output().ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+
     fn pandoc_plain(rtf: &str) -> Option<String> {
         use std::io::Write;
         use std::process::{Command, Stdio};
@@ -1146,6 +1179,25 @@ mod tests {
         assert_eq!(
             prepared,
             "{\\rtf1\\ansi before\\bin0 \\u11 ?\\u12 ?\\u32 ?after}"
+        );
+        // Eighth re-review: inside a `\*` destination the text is a field
+        // instruction, not prose; a hex-escaped space stays a space there,
+        // or Pandoc loses the hyperlink target.
+        let src = "{\\rtf1\\ansi {\\field{\\*\\fldinst HYPERLINK\\'20\"https://example.com/\"}{\\fldrslt link}}}";
+        let prepared = prep(src);
+        assert_eq!(
+            prepared,
+            "{\\rtf1\\ansi {\\field{\\*\\fldinst HYPERLINK \"https://example.com/\"}{\\fldrslt link}}}"
+        );
+        if let Some(md) = pandoc_markdown(&prepared) {
+            assert_eq!(md, "[link](https://example.com/)");
+        }
+        // The result text is prose: its hex space is still escaped.
+        let prepared =
+            prep("{\\rtf1\\ansi {\\field{\\*\\fldinst HYPERLINK \"u\"}{\\fldrslt a\\b\\'20b}}}");
+        assert_eq!(
+            prepared,
+            "{\\rtf1\\ansi {\\field{\\*\\fldinst HYPERLINK \"u\"}{\\fldrslt a\\b\\u32 ?b}}}"
         );
     }
 
