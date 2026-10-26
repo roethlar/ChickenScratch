@@ -794,10 +794,23 @@ fn side_values(
         }
     };
     let synopsis_path = get_data_file_path(scriv_path, &item.uuid, "synopsis.txt")?;
-    side.synopsis = fs::read_to_string(&synopsis_path)
-        .ok()
-        .and_then(clean)
-        .or_else(|| meta.and_then(|m| m.synopsis.clone()).and_then(clean));
+    // A missing file is no synopsis; any other failure is reported, not
+    // swallowed (review finding s3-3).
+    side.synopsis = match fs::read_to_string(&synopsis_path) {
+        Ok(text) => clean(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            let title = item.title.as_deref().unwrap_or("Untitled");
+            uuid_to_path.insert(
+                format!("__skipped__synopsis-{}", item.uuid),
+                format!(
+                    "'{title}': its synopsis could not be read ({e}); the synopsis was left out."
+                ),
+            );
+            None
+        }
+    }
+    .or_else(|| meta.and_then(|m| m.synopsis.clone()).and_then(clean));
 
     let keywords = project.keyword_names(meta);
     if !keywords.is_empty() {
@@ -2105,6 +2118,74 @@ mod tests {
         for path in scans.iter().chain(std::iter::once(&hero_notes_doc.path)) {
             assert!(output_path.join(path).exists(), "{path} exists on disk");
         }
+    }
+
+    /// Review finding s3-3: a synopsis file that exists but cannot be read is
+    /// reported in the warnings, not imported as "no synopsis".
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_synopsis_is_reported() {
+        use std::os::unix::fs::PermissionsExt;
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let temp_dir = TempDir::new().unwrap();
+        let scriv_path = temp_dir.path().join("Syn.scriv");
+        let output_path = temp_dir.path().join("Syn.chikn");
+        let a = "A7B2C3D4-0000-4000-8000-000000000001";
+        write_scriv_files(
+            &scriv_path,
+            a,
+            &[
+                ("content.rtf", "{\\rtf1\\ansi Text.}"),
+                ("synopsis.txt", "Secret summary."),
+            ],
+        );
+        let synopsis = scriv_path
+            .join("Files")
+            .join("Data")
+            .join(a)
+            .join("synopsis.txt");
+        fs::set_permissions(&synopsis, fs::Permissions::from_mode(0o000)).unwrap();
+        if fs::read_to_string(&synopsis).is_ok() {
+            eprintln!("Skipping: running with permission to read mode-000 files");
+            return;
+        }
+        fs::write(
+            scriv_path.join("Syn.scrivx"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<ScrivenerProject Version="2.0">
+    <Binder>
+        <BinderItem UUID="00000000-0000-4000-8000-00000000000D" Type="DraftFolder">
+            <Title>Draft</Title>
+            <Children>
+                <BinderItem UUID="{a}" Type="Text"><Title>Guarded</Title></BinderItem>
+            </Children>
+        </BinderItem>
+    </Binder>
+</ScrivenerProject>"#
+            ),
+        )
+        .unwrap();
+        let report = import_scriv_with_report(&scriv_path, &output_path, None).expect("imports");
+        fs::set_permissions(&synopsis, fs::Permissions::from_mode(0o644)).unwrap();
+        let doc = report
+            .project
+            .documents
+            .values()
+            .find(|d| d.name == "Guarded")
+            .unwrap();
+        assert_eq!(doc.synopsis, None);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.starts_with("'Guarded':") && w.contains("synopsis could not be read")),
+            "{:?}",
+            report.warnings
+        );
     }
 
     /// Two custom fields sharing a title switch the project to ID keys plus a
