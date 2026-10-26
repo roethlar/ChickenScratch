@@ -19,7 +19,7 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 | plan-3 | plan | `docs/plans/PLAN_SCRIVENER_FIDELITY.md` (codex gpt-6-astra xhigh, 5 rounds; I2 wording ruling with owner) | `[x]`  | n/a (doc review on master) |
 | s1-1 | code | Fallback skipping deletes the letter after a character control word (range b5f958b..caf8a5e, codex; fix + 2 repairs) | `[x]`  | — (default-branch mode) |
 | s1-2 | code | Truncated hyperlink field loses its buffered text (range b5f958b..caf8a5e, codex) | `[x]`  | — (default-branch mode) |
-| s1-3 | code | Fallback decodes every ANSI byte as Windows-1252 (range b5f958b..caf8a5e, codex) | `[~]`  | — (default-branch mode) |
+| s1-3 | code | Fallback decodes every ANSI byte as Windows-1252 (range b5f958b..caf8a5e, codex) | `[x]`  | — (default-branch mode) |
 | s1-4 | code | Surrogate pairs disappear in the fallback (range b5f958b..caf8a5e, codex) | `[x]`  | — (default-branch mode) |
 | s1-5 | code | Unescaped `)` in a hyperlink target truncates the link (range b5f958b..caf8a5e, codex) | `[x]`  | — (default-branch mode) |
 | s1-6 | code | `\line` breaks render as spaces (range b5f958b..caf8a5e, codex) | `[x]`  | — (default-branch mode) |
