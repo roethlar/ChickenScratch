@@ -947,11 +947,19 @@ fn attach_annotations(
     };
     let mut orphan_anchors = 0;
 
-    for caps in ANCHOR_RE.captures_iter(markdown) {
+    // All anchors first, so the look-ahead for a word after an annotation
+    // can never run past the next anchor (review finding s4-2: it consumed
+    // the next marker as the "word" and the cursor overtook the match).
+    let matches: Vec<regex::Captures> = ANCHOR_RE.captures_iter(markdown).collect();
+    for (index, caps) in matches.iter().enumerate() {
         let whole = caps.get(0).unwrap();
         let text = caps.get(1).map(|m| m.as_str()).unwrap_or("");
         let scheme = &caps[2];
         let id = &caps[3];
+        let next_anchor_start = matches
+            .get(index + 1)
+            .map(|c| c.get(0).unwrap().start())
+            .unwrap_or(markdown.len());
         out.push_str(&markdown[last..whole.start()]);
         last = whole.end();
         match scheme {
@@ -988,8 +996,9 @@ fn attach_annotations(
                     let n = inline.remove(pos);
                     let anchored = wrap_previous_word(&mut out, &n.id);
                     if !anchored {
-                        // Nothing before it on this line: take the next word.
-                        let rest = &markdown[last..];
+                        // Nothing before it on this line: take the next word,
+                        // looking no further than the next anchor.
+                        let rest = &markdown[last..next_anchor_start];
                         let trimmed = rest.trim_start();
                         let lead = rest.len() - trimmed.len();
                         let word_len = trimmed
@@ -2149,19 +2158,36 @@ mod tests {
     fn annotation_after_a_non_breaking_space_attaches_to_the_word() {
         let item = bare_item("Alpha");
         let mut map = HashMap::new();
-        let md = format!("alpha\u{A0}word [\u{200B}](scrivannot://inline-1) rest");
-        let text = attach_annotations(
-            &md,
-            Vec::new(),
-            vec![note("inline-1", "n")],
-            &item,
-            &mut map,
-        );
+        let md = "alpha\u{A0}word [\u{200B}](scrivannot://inline-1) rest";
+        let text = attach_annotations(md, Vec::new(), vec![note("inline-1", "n")], &item, &mut map);
         assert_eq!(
             text.content,
             "alpha\u{A0}<span class=\"comment\" data-comment-id=\"inline-1\">word</span>  rest"
         );
         assert_eq!(text.comments.len(), 1);
+    }
+
+    /// Review finding s4-2: two inline annotations at the start of a paragraph
+    /// must not make the cursor overtake the next anchor (it panicked).
+    #[test]
+    fn adjacent_annotations_at_a_paragraph_start_attach_without_panic() {
+        let item = bare_item("Alpha");
+        let mut map = HashMap::new();
+        let md = "[\u{200B}](scrivannot://inline-1)[\u{200B}](scrivannot://inline-2) word more";
+        let text = attach_annotations(
+            md,
+            Vec::new(),
+            vec![note("inline-1", "a"), note("inline-2", "b")],
+            &item,
+            &mut map,
+        );
+        // The first annotation has no word before it and none before the
+        // next anchor, so it marks a bullet; the second takes "word".
+        assert_eq!(
+            text.content,
+            "<span class=\"comment\" data-comment-id=\"inline-1\">•</span> <span class=\"comment\" data-comment-id=\"inline-2\">word</span> more"
+        );
+        assert_eq!(text.comments.len(), 2);
     }
 
     /// Review finding s3-3: a synopsis file that exists but cannot be read is
