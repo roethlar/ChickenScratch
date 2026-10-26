@@ -908,8 +908,10 @@ fn read_document_text(
     ))
 }
 
+// The label may contain backslash-escaped characters: Pandoc writes `a\] b`
+// for anchor text `a] b` (review finding s4-5).
 static ANCHOR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[([^\]]*)\]\((scrivcmt|scrivfn|scrivannot)://([^)\s]+)\)").unwrap()
+    Regex::new(r"\[((?:\\.|[^\]\\])*)\]\((scrivcmt|scrivfn|scrivannot)://([^)\s]+)\)").unwrap()
 });
 
 /// Turns the anchors Pandoc (or the fallback) left in the Markdown into the
@@ -2188,6 +2190,27 @@ mod tests {
             "<span class=\"comment\" data-comment-id=\"inline-1\">•</span> <span class=\"comment\" data-comment-id=\"inline-2\">word</span> more"
         );
         assert_eq!(text.comments.len(), 2);
+    }
+
+    /// Review finding s4-5: anchor text with an escaped bracket still attaches
+    /// its footnote.
+    #[test]
+    fn anchor_text_with_an_escaped_bracket_attaches() {
+        let item = bare_item("Alpha");
+        let mut map = HashMap::new();
+        let md = r"see [a\] b](scrivcmt://FN-1) here";
+        let comments = vec![ScrivComment {
+            id: "FN-1".to_string(),
+            body: "the note".to_string(),
+            footnote: true,
+        }];
+        let text = attach_annotations(md, comments, Vec::new(), &item, &mut map);
+        assert_eq!(
+            text.content,
+            "see a\\] b<sup class=\"footnote\" data-body=\"the note\">●</sup> here"
+        );
+        assert!(text.comments.is_empty(), "{:?}", text.comments);
+        assert!(map.is_empty(), "no warnings: {map:?}");
     }
 
     /// Review finding s3-3: a synopsis file that exists but cannot be read is
