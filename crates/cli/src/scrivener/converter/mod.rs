@@ -947,6 +947,12 @@ fn find_anchors(markdown: &str) -> Vec<Anchor<'_>> {
                 if let Some(anchor) = parse_anchor(markdown, i) {
                     i = anchor.end;
                     anchors.push(anchor);
+                } else if let Some(end) = link_end(markdown, i) {
+                    // An ordinary link is opaque: a backtick in its
+                    // destination is not a code-span opener (s4-5, third
+                    // re-review: two hyperlinks to `…/`x` swallowed the
+                    // footnote anchor between them).
+                    i = end;
                 } else {
                     i += 1;
                 }
@@ -955,6 +961,57 @@ fn find_anchors(markdown: &str) -> Vec<Anchor<'_>> {
         }
     }
     anchors
+}
+
+/// Index just past the `]` closing the link label that opens at `start`,
+/// or `None` when the bracket is not a label (unclosed, or holding an
+/// unescaped `[` outside a code span: the scan resumes there).
+fn label_end(markdown: &str, start: usize) -> Option<usize> {
+    let bytes = markdown.as_bytes();
+    let mut j = start + 1;
+    loop {
+        match bytes.get(j)? {
+            b'\\' => j += 1 + char_len_at(markdown, j + 1),
+            b'`' => j = code_span_end(bytes, j),
+            b']' => return Some(j),
+            b'[' => return None,
+            _ => j += 1,
+        }
+    }
+}
+
+/// Index just past an ordinary Markdown link `[text](destination)` opening
+/// at `start`. The destination runs to its matching `)` (parentheses
+/// balanced, escapes skipped, an angle-bracketed form taken whole).
+fn link_end(markdown: &str, start: usize) -> Option<usize> {
+    let bytes = markdown.as_bytes();
+    let text_end = label_end(markdown, start)?;
+    if bytes.get(text_end + 1) != Some(&b'(') {
+        return None;
+    }
+    let mut j = text_end + 2;
+    let mut depth = 0usize;
+    loop {
+        match bytes.get(j)? {
+            b'\\' => j += 1 + char_len_at(markdown, j + 1),
+            b'<' if j == text_end + 2 => {
+                j = text_end + 2 + markdown[j..].find('>')? + 1;
+            }
+            b'(' => {
+                depth += 1;
+                j += 1;
+            }
+            b')' => {
+                if depth == 0 {
+                    return Some(j + 1);
+                }
+                depth -= 1;
+                j += 1;
+            }
+            b'\n' => return None,
+            _ => j += 1,
+        }
+    }
 }
 
 /// Index just past the code span whose opening backtick run starts at
@@ -996,17 +1053,7 @@ fn char_len_at(s: &str, pos: usize) -> usize {
 /// unescaped `[` inside the label is not a label: the scan resumes there.
 fn parse_anchor(markdown: &str, start: usize) -> Option<Anchor<'_>> {
     const SCHEMES: [&str; 3] = ["scrivcmt", "scrivfn", "scrivannot"];
-    let bytes = markdown.as_bytes();
-    let mut j = start + 1;
-    let text_end = loop {
-        match bytes.get(j)? {
-            b'\\' => j += 1 + char_len_at(markdown, j + 1),
-            b'`' => j = code_span_end(bytes, j),
-            b']' => break j,
-            b'[' => return None,
-            _ => j += 1,
-        }
-    };
+    let text_end = label_end(markdown, start)?;
     let text = &markdown[start + 1..text_end];
     let rest = markdown[text_end + 1..].strip_prefix('(')?;
     let scheme = SCHEMES.into_iter().find(|s| rest.starts_with(s))?;
@@ -2500,6 +2547,27 @@ mod tests {
         let md = "[a `b](scrivcmt://FN-7)";
         let text = attach_annotations(md, footnote("FN-7"), Vec::new(), &item, &mut map);
         assert_eq!(text.content, format!("a `b{sup}"));
+        assert!(map.is_empty(), "no warnings: {map:?}");
+
+        // Third re-review: an ordinary link is opaque, so a backtick in its
+        // destination never opens a code span across the anchor between two
+        // such links; balanced parentheses and an angle-bracketed
+        // destination are part of the link.
+        let mut map = HashMap::new();
+        let md = "[r](https://e.com/`x) [anchor](scrivcmt://FN-8) [r](https://e.com/`x)";
+        let text = attach_annotations(md, footnote("FN-8"), Vec::new(), &item, &mut map);
+        assert_eq!(
+            text.content,
+            format!("[r](https://e.com/`x) anchor{sup} [r](https://e.com/`x)")
+        );
+        assert!(map.is_empty(), "no warnings: {map:?}");
+        let mut map = HashMap::new();
+        let md = "[a](b(c)`d) [b](<x `y>) [anchor](scrivcmt://FN-9)`";
+        let text = attach_annotations(md, footnote("FN-9"), Vec::new(), &item, &mut map);
+        assert_eq!(
+            text.content,
+            format!("[a](b(c)`d) [b](<x `y>) anchor{sup}`")
+        );
         assert!(map.is_empty(), "no warnings: {map:?}");
     }
 
