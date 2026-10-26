@@ -27,7 +27,7 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 | s3-1 | code | Opening the Inspector on a selected document can wipe its metadata (slice 3 review, codex) | `[~]`  | — (default-branch mode) |
 | s3-2 | code | Research roots and attachments bypass the metadata import (slice 3 review, codex) | `[x]`  | — (default-branch mode) |
 | s3-3 | code | An unreadable synopsis file is treated as no synopsis (slice 3 review, codex) | `[x]`  | — (default-branch mode) |
-| s4-1 | code | Non-breaking space before an inline annotation panics the import (slice 4 review, codex) | `[~]`  | — (default-branch mode) |
+| s4-1 | code | Non-breaking space before an inline annotation panics the import (slice 4 review, codex) | `[x]`  | — (default-branch mode) |
 | s4-2 | code | Two inline annotations at a paragraph start panic the import (slice 4 review, codex) | `[x]`  | — (default-branch mode) |
 | s4-3 | code | Literal inline-note text decoded twice, braces and backslashes lost (slice 4 review, codex) | `[x]`  | — (default-branch mode) |
 | s4-4 | code | Inline notes lose the document's encoding (slice 4 review, codex) | `[~]`  | — (default-branch mode) |
