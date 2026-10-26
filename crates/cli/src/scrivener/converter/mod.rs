@@ -1011,14 +1011,33 @@ fn link_end(markdown: &str, start: usize) -> Option<usize> {
                     depth -= 1;
                     j += 1;
                 }
-                b' ' | b'\t' | b'\n' | b'\r' => break,
+                // A destination stays on its line.
+                b'\n' | b'\r' => return None,
+                b' ' | b'\t' => {
+                    // Whitespace with parentheses still open is not a link
+                    // (fifth re-review: a destination ending in `(` was
+                    // followed by prose). Otherwise a quoted title may
+                    // follow; if not, Pandoc's writer leaves spaces inside a
+                    // destination (`https://e.com/a `b`), so it goes on.
+                    if depth != 0 {
+                        return None;
+                    }
+                    let mut k = j;
+                    while matches!(bytes.get(k), Some(b' ' | b'\t')) {
+                        k += 1;
+                    }
+                    if matches!(bytes.get(k), Some(b'"' | b'\'' | b'(')) {
+                        break;
+                    }
+                    j = k;
+                }
                 _ => j += 1,
             }
         }
     }
-    // Optional title after whitespace.
+    // Optional title after whitespace; a title never spans a blank line.
     let after_destination = j;
-    while matches!(bytes.get(j), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+    while matches!(bytes.get(j), Some(b' ' | b'\t')) {
         j += 1;
     }
     if j > after_destination {
@@ -1036,6 +1055,7 @@ fn link_end(markdown: &str, start: usize) -> Option<usize> {
                     j += 1;
                     break;
                 }
+                b'\n' if blank_line_follows(bytes, j) => return None,
                 _ => j += 1,
             }
         }
@@ -1044,6 +1064,16 @@ fn link_end(markdown: &str, start: usize) -> Option<usize> {
         }
     }
     (bytes.get(j) == Some(&b')')).then_some(j + 1)
+}
+
+/// True when the newline at `at` is followed by a blank line (only spaces
+/// and tabs before the next line end), which ends a paragraph.
+fn blank_line_follows(bytes: &[u8], at: usize) -> bool {
+    let mut k = at + 1;
+    while matches!(bytes.get(k), Some(b' ' | b'\t' | b'\r')) {
+        k += 1;
+    }
+    matches!(bytes.get(k), Some(b'\n') | None)
 }
 
 /// Index just past the code span whose opening backtick run starts at
@@ -1067,6 +1097,10 @@ fn code_span_end(bytes: &[u8], start: usize) -> usize {
             if j - close == run {
                 return j;
             }
+        } else if bytes[j] == b'\n' && blank_line_follows(bytes, j) {
+            // A code span never crosses a blank line: the paragraph ends
+            // there and the backticks are literal (s4-5, fifth re-review).
+            return i;
         } else {
             j += 1;
         }
@@ -2621,6 +2655,33 @@ mod tests {
             text.content,
             format!("[r](https://e.com/`x \"t `)\") anchor{sup}")
         );
+        assert!(map.is_empty(), "no warnings: {map:?}");
+
+        // Fifth re-review: a title never spans a blank line, so an
+        // unfinished destination followed by quoted prose across paragraphs
+        // is not a link and the anchor in the next paragraph attaches; a
+        // destination with a space and a backtick, as Pandoc writes it, is
+        // still one link, and a code span never crosses a blank line.
+        let mut map = HashMap::new();
+        let md = "(see [r](https://e.com/s?q=() \"quoted\n\n[anchor](scrivcmt://FN-12)\") here.";
+        let text = attach_annotations(md, footnote("FN-12"), Vec::new(), &item, &mut map);
+        assert_eq!(
+            text.content,
+            format!("(see [r](https://e.com/s?q=() \"quoted\n\nanchor{sup}\") here.")
+        );
+        assert!(map.is_empty(), "no warnings: {map:?}");
+        let mut map = HashMap::new();
+        let md = "[r](https://e.com/a `b)\n\n[anchor](scrivcmt://FN-13)\n\n[r](https://e.com/a `b)";
+        let text = attach_annotations(md, footnote("FN-13"), Vec::new(), &item, &mut map);
+        assert_eq!(
+            text.content,
+            format!("[r](https://e.com/a `b)\n\nanchor{sup}\n\n[r](https://e.com/a `b)")
+        );
+        assert!(map.is_empty(), "no warnings: {map:?}");
+        let mut map = HashMap::new();
+        let md = "`x\n\n[anchor](scrivcmt://FN-14)`";
+        let text = attach_annotations(md, footnote("FN-14"), Vec::new(), &item, &mut map);
+        assert_eq!(text.content, format!("`x\n\nanchor{sup}`"));
         assert!(map.is_empty(), "no warnings: {map:?}");
     }
 
