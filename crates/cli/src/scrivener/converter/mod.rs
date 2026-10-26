@@ -941,6 +941,8 @@ fn find_anchors(markdown: &str) -> Vec<Anchor<'_>> {
     while i < bytes.len() {
         match bytes[i] {
             b'\\' => i += 1 + char_len_at(markdown, i + 1),
+            // A code span's brackets are literal text.
+            b'`' => i = code_span_end(bytes, i),
             b'[' => {
                 if let Some(anchor) = parse_anchor(markdown, i) {
                     i = anchor.end;
@@ -953,6 +955,34 @@ fn find_anchors(markdown: &str) -> Vec<Anchor<'_>> {
         }
     }
     anchors
+}
+
+/// Index just past the code span whose opening backtick run starts at
+/// `start`: the span closes at the next run of exactly the same length. An
+/// unclosed run is literal backticks, so the index just past the run is
+/// returned instead (review finding s4-5, second re-review: monospaced
+/// anchor text `a[b` restarted the scan at its bracket).
+fn code_span_end(bytes: &[u8], start: usize) -> usize {
+    let mut i = start;
+    while i < bytes.len() && bytes[i] == b'`' {
+        i += 1;
+    }
+    let run = i - start;
+    let mut j = i;
+    while j < bytes.len() {
+        if bytes[j] == b'`' {
+            let close = j;
+            while j < bytes.len() && bytes[j] == b'`' {
+                j += 1;
+            }
+            if j - close == run {
+                return j;
+            }
+        } else {
+            j += 1;
+        }
+    }
+    i
 }
 
 /// Length in bytes of the character at `pos`, 0 at the end of the text.
@@ -971,6 +1001,7 @@ fn parse_anchor(markdown: &str, start: usize) -> Option<Anchor<'_>> {
     let text_end = loop {
         match bytes.get(j)? {
             b'\\' => j += 1 + char_len_at(markdown, j + 1),
+            b'`' => j = code_span_end(bytes, j),
             b']' => break j,
             b'[' => return None,
             _ => j += 1,
@@ -2448,6 +2479,28 @@ mod tests {
         assert_eq!(text.comments.len(), 1, "{:?}", text.comments);
         assert!(text.comments[0].body.contains("no place in the text"));
         assert_eq!(map.len(), 1, "one warning: {map:?}");
+
+        // Second re-review: a bracket inside a code span is literal text.
+        // Monospaced anchor text `a[b` keeps its anchor whole; a code span
+        // that merely looks like an anchor is left alone; an unclosed
+        // backtick is ordinary text.
+        let mut map = HashMap::new();
+        let md = "see [`a[b`](scrivcmt://FN-5) tail";
+        let text = attach_annotations(md, footnote("FN-5"), Vec::new(), &item, &mut map);
+        assert_eq!(text.content, format!("see `a[b`{sup} tail"));
+        assert!(text.comments.is_empty(), "{:?}", text.comments);
+        assert!(map.is_empty(), "no warnings: {map:?}");
+        let mut map = HashMap::new();
+        let md = "`[x](scrivcmt://FN-6)` tail";
+        let text = attach_annotations(md, footnote("FN-6"), Vec::new(), &item, &mut map);
+        assert_eq!(text.content, md);
+        assert_eq!(text.comments.len(), 1, "{:?}", text.comments);
+        assert_eq!(map.len(), 1, "one warning: {map:?}");
+        let mut map = HashMap::new();
+        let md = "[a `b](scrivcmt://FN-7)";
+        let text = attach_annotations(md, footnote("FN-7"), Vec::new(), &item, &mut map);
+        assert_eq!(text.content, format!("a `b{sup}"));
+        assert!(map.is_empty(), "no warnings: {map:?}");
     }
 
     /// Review finding s4-6: a folder whose own text is empty but whose
