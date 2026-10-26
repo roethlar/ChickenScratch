@@ -15,6 +15,9 @@ const aliceDoc = vi.hoisted(() => ({
   path: "manuscript/alice.md",
   content: "Scene text.",
   keywords: [] as string[],
+  include_in_compile: true,
+  compile_order: 0,
+  word_count_target: 0,
   fields: { notes: "Remember the egg." },
 }));
 // The Inspector loads a document's values when the active document
@@ -140,6 +143,55 @@ describe("Inspector notes", () => {
     expect(updateMetaMock).toHaveBeenCalledTimes(2);
     const calls = updateMetaMock.mock.calls as unknown as [string, string, { fields?: Record<string, unknown> }][];
     expect(calls[1][2].fields?.notes).toBe("Remember the egg.");
+  });
+
+  it("an immediate control saving the form keeps a later edit back to the old text savable", async () => {
+    // Review finding s3-1, second re-review: Include in Compile saved the
+    // form with notes B at once, but the baseline still said A, so editing
+    // back to A before the debounce was skipped and B stayed on disk.
+    type Call = [string, string, { fields?: Record<string, unknown>; include_in_compile?: boolean }];
+    renderWithAlice();
+    const box = screen.getByLabelText("Notes") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "B" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("checkbox"));
+    });
+    expect(updateMetaMock).toHaveBeenCalledTimes(1);
+    let calls = updateMetaMock.mock.calls as unknown as Call[];
+    expect(calls[0][2].include_in_compile).toBe(false);
+    expect(calls[0][2].fields?.notes).toBe("B");
+
+    fireEvent.change(box, { target: { value: "Remember the egg." } });
+    await act(async () => {
+      vi.advanceTimersByTime(1600);
+    });
+    expect(updateMetaMock).toHaveBeenCalledTimes(2);
+    calls = updateMetaMock.mock.calls as unknown as Call[];
+    expect(calls[1][2].fields?.notes).toBe("Remember the egg.");
+  });
+
+  it("a refused save leaves the form dirty so the next edit tries again", async () => {
+    // Review finding s3-1, second re-review: the baseline moved before the
+    // write succeeded, so after a refusal an edit back to the same text
+    // matched the baseline and was never retried.
+    type Call = [string, string, { fields?: Record<string, unknown> }];
+    updateMetaMock.mockRejectedValueOnce(new Error("locked"));
+    renderWithAlice();
+    const box = screen.getByLabelText("Notes") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "B" } });
+    await act(async () => {
+      vi.advanceTimersByTime(1600);
+    });
+    expect(updateMetaMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(box, { target: { value: "B." } });
+    fireEvent.change(box, { target: { value: "B" } });
+    await act(async () => {
+      vi.advanceTimersByTime(1600);
+    });
+    expect(updateMetaMock).toHaveBeenCalledTimes(2);
+    const calls = updateMetaMock.mock.calls as unknown as Call[];
+    expect(calls[1][2].fields?.notes).toBe("B");
   });
 
   it("clears the stored notes when the box is emptied", async () => {

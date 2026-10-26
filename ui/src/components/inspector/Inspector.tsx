@@ -356,32 +356,53 @@ export function Inspector() {
     };
   }, [notes, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene]);
 
-  const save = useCallback(async () => {
-    if (!project || !activeDoc) return;
-    const kw = keywords
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    try {
-      const updated = await docCmd.updateDocumentMetadata(
-        project.path,
-        activeDoc.id,
-        {
-          synopsis: synopsis || null,
-          label: label || null,
-          status: status || null,
-          keywords: kw.length ? kw : null,
-          fields: scenePayload(),
-        }
-      );
-      setProject(updated);
-    } catch (e) {
-      // The dispatch gate refuses metadata writes while an epoch-bumping
-      // operation runs; the pending draft is dropped loudly — the
-      // generation resync above reloads the restored values.
-      toastError(`Details not saved: ${e}`);
-    }
-  }, [project, activeDoc, synopsis, label, status, keywords, scenePayload, setProject]);
+  // The form as it stands this render; the debounce effect compares it with
+  // the baseline, and a successful save makes it the new baseline.
+  const formSnapshot = JSON.stringify([
+    synopsis, notes, label, status, keywords, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene,
+  ]);
+
+  /**
+   * Every metadata save goes through here: the debounced form save and the
+   * immediate controls (Include in Compile, Compile Order, Word Target),
+   * which send the whole form along with their own field. The baseline
+   * moves to the form that was sent only once the write succeeds, so an
+   * immediate control saving the form never leaves a later edit back to the
+   * old text unsaved, and a refused write leaves the form dirty so the next
+   * edit, even back to the same text, tries again (review finding s3-1,
+   * second re-review).
+   */
+  const persist = useCallback(
+    async (extra: Parameters<typeof docCmd.updateDocumentMetadata>[2] = {}) => {
+      if (!project || !activeDoc) return;
+      const kw = keywords
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      try {
+        const updated = await docCmd.updateDocumentMetadata(
+          project.path,
+          activeDoc.id,
+          {
+            synopsis: synopsis || null,
+            label: label || null,
+            status: status || null,
+            keywords: kw.length ? kw : null,
+            fields: scenePayload(),
+            ...extra,
+          }
+        );
+        baseline.current = formSnapshot;
+        setProject(updated);
+      } catch (e) {
+        // The dispatch gate refuses metadata writes while an epoch-bumping
+        // operation runs; the pending draft is dropped loudly — the
+        // generation resync above reloads the restored values.
+        toastError(`Details not saved: ${e}`);
+      }
+    },
+    [project, activeDoc, synopsis, label, status, keywords, scenePayload, formSnapshot, setProject]
+  );
 
   const handleTitleSave = useCallback(async () => {
     if (!project || !activeDoc) return;
@@ -398,9 +419,6 @@ export function Inspector() {
 
   // Debounced save on metadata changes; the run that follows a hydration
   // (mount or document change) saves nothing, only edits do.
-  const formSnapshot = JSON.stringify([
-    synopsis, notes, label, status, keywords, povCharacter, location, storyTime, durationMinutes, threads, charactersInScene,
-  ]);
   useEffect(() => {
     if (hydration !== savedHydration.current) {
       savedHydration.current = hydration;
@@ -409,13 +427,12 @@ export function Inspector() {
     }
     if (!activeDoc || formSnapshot === baseline.current) return;
     const timer = setTimeout(() => {
-      baseline.current = formSnapshot;
-      void save();
+      void persist();
     }, 1500);
     return () => clearTimeout(timer);
-    // `save` is intentionally omitted; its identity changes with form state,
-    // which would restart the debounce on every keystroke instead of every
-    // 1.5s idle window.
+    // `persist` is intentionally omitted; its identity changes with form
+    // state, which would restart the debounce on every keystroke instead of
+    // every 1.5s idle window.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydration, formSnapshot]);
 
@@ -662,23 +679,8 @@ export function Inspector() {
           <input
             type="checkbox"
             checked={activeDoc.include_in_compile}
-            onChange={async () => {
-              if (!project || !activeDoc) return;
-              const updated = await docCmd.updateDocumentMetadata(
-                project.path,
-                activeDoc.id,
-                {
-                  synopsis: synopsis || null,
-                  label: label || null,
-                  status: status || null,
-                  keywords: keywords.split(",").map(s => s.trim()).filter(Boolean).length
-                    ? keywords.split(",").map(s => s.trim()).filter(Boolean)
-                    : null,
-                  include_in_compile: !activeDoc.include_in_compile,
-                  fields: scenePayload(),
-                }
-              );
-              setProject(updated);
+            onChange={() => {
+              void persist({ include_in_compile: !activeDoc.include_in_compile });
             }}
           />
         </div>
@@ -689,21 +691,8 @@ export function Inspector() {
             type="number"
             className="word-target-input"
             value={activeDoc.compile_order || ""}
-            onChange={async (e) => {
-              if (!project || !activeDoc) return;
-              const order = parseInt(e.target.value) || 0;
-              const updated = await docCmd.updateDocumentMetadata(
-                project.path, activeDoc.id, {
-                  synopsis: synopsis || null,
-                  label: label || null,
-                  status: status || null,
-                  keywords: keywords.split(",").map(s => s.trim()).filter(Boolean).length
-                    ? keywords.split(",").map(s => s.trim()).filter(Boolean) : null,
-                  compile_order: order,
-                  fields: scenePayload(),
-                }
-              );
-              setProject(updated);
+            onChange={(e) => {
+              void persist({ compile_order: parseInt(e.target.value) || 0 });
             }}
             placeholder="0 = binder order"
           />
@@ -732,21 +721,8 @@ export function Inspector() {
             type="number"
             className="word-target-input"
             value={activeDoc.word_count_target || ""}
-            onChange={async (e) => {
-              if (!project || !activeDoc) return;
-              const target = parseInt(e.target.value) || 0;
-              const updated = await docCmd.updateDocumentMetadata(
-                project.path, activeDoc.id, {
-                  synopsis: synopsis || null,
-                  label: label || null,
-                  status: status || null,
-                  keywords: keywords.split(",").map(s => s.trim()).filter(Boolean).length
-                    ? keywords.split(",").map(s => s.trim()).filter(Boolean) : null,
-                  word_count_target: target,
-                  fields: scenePayload(),
-                }
-              );
-              setProject(updated);
+            onChange={(e) => {
+              void persist({ word_count_target: parseInt(e.target.value) || 0 });
             }}
             placeholder="Set word target..."
             min="0"
