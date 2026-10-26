@@ -2437,6 +2437,17 @@ mod tests {
         let text = attach_annotations(md, footnote("FN-3"), Vec::new(), &item, &mut map);
         assert_eq!(text.content, format!("x \\\\anchor{sup}"));
         assert!(map.is_empty(), "no warnings: {map:?}");
+
+        // An escaped bracket never opens an anchor, even when what follows
+        // it has the shape of one: the text stays, the footnote has no
+        // place and is kept as an unanchored comment with a warning.
+        let mut map = HashMap::new();
+        let md = r"\[anchor](scrivcmt://FN-4)";
+        let text = attach_annotations(md, footnote("FN-4"), Vec::new(), &item, &mut map);
+        assert_eq!(text.content, md);
+        assert_eq!(text.comments.len(), 1, "{:?}", text.comments);
+        assert!(text.comments[0].body.contains("no place in the text"));
+        assert_eq!(map.len(), 1, "one warning: {map:?}");
     }
 
     /// Review finding s4-6: a folder whose own text is empty but whose
