@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useProjectStore } from "../../stores/projectStore";
 import * as docCmd from "../../commands/document";
 import * as threadCmd from "../../commands/threads";
-import type { Thread } from "../../types";
+import type { Document, Thread } from "../../types";
 import { toastError } from "../shared/Toast";
 import * as saves from "./metadataSaves";
 import { getReloadGeneration } from "../../commands/barrier";
@@ -219,6 +219,32 @@ function ThreadChips({
   );
 }
 
+/**
+ * The document as a still-outstanding save will leave it: the draft's
+ * values laid over the store's. A `null` in the payload removes the value,
+ * as the backend does.
+ */
+function withDraft(doc: Document, draft: saves.Draft | undefined): Document {
+  if (!draft) return doc;
+  const p = draft.payload;
+  const fields: Record<string, unknown> = { ...(doc.fields ?? {}) };
+  for (const [key, value] of Object.entries(p.fields ?? {})) {
+    if (value === null || value === undefined) delete fields[key];
+    else fields[key] = value;
+  }
+  return {
+    ...doc,
+    synopsis: p.synopsis === undefined ? doc.synopsis : p.synopsis,
+    label: p.label === undefined ? doc.label : p.label,
+    status: p.status === undefined ? doc.status : p.status,
+    keywords: p.keywords === undefined ? doc.keywords : p.keywords,
+    include_in_compile: p.include_in_compile ?? doc.include_in_compile,
+    compile_order: p.compile_order ?? doc.compile_order,
+    word_count_target: p.word_count_target ?? doc.word_count_target,
+    fields,
+  };
+}
+
 export function Inspector() {
   const project = useProjectStore((s) => s.project);
   const profile = useProfile();
@@ -316,12 +342,19 @@ export function Inspector() {
     setHydration((h) => h + 1);
     setLastDocId(activeDoc.id);
     setLastGeneration(reloadGeneration);
-    setTitle(activeDoc.name || "");
-    setSynopsis(activeDoc.synopsis || "");
-    setLabel(activeDoc.label || "");
-    setStatus(activeDoc.status || "");
-    setKeywords((activeDoc.keywords || []).join(", "));
-    const f = activeDoc.fields;
+    // A save still outstanding for this document holds newer values than
+    // the store; the form shows those (s3-1, fifth re-review: reopening
+    // during a save showed the old notes and later wrote them back).
+    const source = withDraft(
+      activeDoc,
+      project ? saves.outstanding(saves.draftKey(project.path, activeDoc.id)) : undefined
+    );
+    setTitle(source.name || "");
+    setSynopsis(source.synopsis || "");
+    setLabel(source.label || "");
+    setStatus(source.status || "");
+    setKeywords((source.keywords || []).join(", "));
+    const f = source.fields;
     setNotes(readString(f, "notes"));
     setPovCharacter(readString(f, NOVELIST_KEYS.pov));
     setLocation(readString(f, NOVELIST_KEYS.location));
@@ -398,10 +431,17 @@ export function Inspector() {
           ...extra,
         },
         apply: setProject,
+        // An immediate control's change is not in the form snapshot, so it
+        // is sent whatever the form's state.
+        force: Object.keys(extra).length > 0,
       });
     },
     [project, activeDoc, synopsis, label, status, keywords, scenePayload, formSnapshot, setProject]
   );
+  // Whether the writer edited the form since it was hydrated: only an edited
+  // form is ever saved by the debounce or the leave-time flush, so values
+  // hydrated from the store are never written back on their own.
+  const editedSinceHydration = useRef(false);
   // The latest form and how to save it, for the leave-time flush below
   // (recorded after each render, never during one).
   const latest = useRef<{ key: string | null; snapshot: string; persist: () => void }>({
@@ -433,15 +473,19 @@ export function Inspector() {
     if (hydration !== savedHydration.current) {
       savedHydration.current = hydration;
       lastSeenSnapshot.current = formSnapshot;
+      editedSinceHydration.current = false;
       if (draftKey) saves.hydrated(draftKey, formSnapshot);
       return;
     }
     if (formSnapshot !== lastSeenSnapshot.current) {
       // An edit: a form refused earlier may be tried again.
       lastSeenSnapshot.current = formSnapshot;
+      editedSinceHydration.current = true;
       if (draftKey) saves.edited(draftKey);
     }
-    if (!draftKey || !saves.isDirty(draftKey, formSnapshot)) return;
+    if (!draftKey || !editedSinceHydration.current || !saves.isDirty(draftKey, formSnapshot)) {
+      return;
+    }
     const timer = setTimeout(() => {
       persist();
     }, 1500);
@@ -457,7 +501,7 @@ export function Inspector() {
   useEffect(() => {
     return () => {
       const { key, snapshot, persist: flush } = latest.current;
-      if (key && saves.isDirty(key, snapshot)) flush();
+      if (key && editedSinceHydration.current && saves.isDirty(key, snapshot)) flush();
     };
   }, [draftKey]);
 
