@@ -51,13 +51,24 @@ enum PandocRtfFailure {
 /// Runs Pandoc's RTF reader on an already prepared file, writing
 /// `markdown-smart` so apostrophes and quotes come out as typed instead of
 /// as `\'` escapes.
-fn run_pandoc_rtf(prepared: &Path, pandoc_path: Option<&Path>) -> Result<String, PandocRtfFailure> {
+/// Pandoc Lua filter marking Scrivener's comment/footnote/annotation links
+/// inside Pandoc's parse, so the importer never has to find them in the
+/// Markdown (review finding s4-5, seventh repair). See the file's header.
+pub(crate) const ANCHOR_FILTER: &str = include_str!("scriv-anchors.lua");
+
+fn run_pandoc_rtf(
+    prepared: &Path,
+    filter: &Path,
+    pandoc_path: Option<&Path>,
+) -> Result<String, PandocRtfFailure> {
     let mut cmd = Command::new(pandoc_cmd(pandoc_path));
     cmd.arg("-f")
         .arg("rtf")
         .arg("-t")
         .arg("markdown-smart")
         .arg("--wrap=none")
+        .arg("--lua-filter")
+        .arg(filter)
         .arg(prepared);
     let output =
         output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES).map_err(|e| {
@@ -127,10 +138,14 @@ fn run_prepared(
     prepared: &[u8],
     pandoc_path: Option<&Path>,
 ) -> Result<Result<String, String>, ChiknError> {
-    let temp_file = std::env::temp_dir().join(format!("chikn_rtf_{}.rtf", uuid::Uuid::new_v4()));
+    let run_id = uuid::Uuid::new_v4();
+    let temp_file = std::env::temp_dir().join(format!("chikn_rtf_{run_id}.rtf"));
+    let temp_filter = std::env::temp_dir().join(format!("chikn_rtf_{run_id}.lua"));
     fs::write(&temp_file, prepared)?;
-    let result = run_pandoc_rtf(&temp_file, pandoc_path);
+    fs::write(&temp_filter, ANCHOR_FILTER)?;
+    let result = run_pandoc_rtf(&temp_file, &temp_filter, pandoc_path);
     let _ = fs::remove_file(&temp_file);
+    let _ = fs::remove_file(&temp_filter);
     match result {
         Ok(markdown) => Ok(Ok(markdown)),
         Err(PandocRtfFailure::Rejected(stderr)) => Ok(Err(stderr)),

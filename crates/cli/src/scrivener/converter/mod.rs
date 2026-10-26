@@ -917,8 +917,8 @@ fn read_document_text(
     ))
 }
 
-/// An anchor Pandoc (or the fallback) left in the Markdown:
-/// `[text](scheme://id)` for one of the Scrivener schemes.
+/// An anchor the Pandoc filter (`scriv-anchors.lua`) or the fallback writer
+/// marked in the Markdown: U+E000 scheme ":" id U+E001 text U+E002.
 struct Anchor<'a> {
     start: usize,
     end: usize,
@@ -927,216 +927,47 @@ struct Anchor<'a> {
     id: &'a str,
 }
 
-/// Finds the anchors by scanning rather than by regex. The label may hold
-/// backslash-escaped characters, since Pandoc writes `a\] b` for anchor
-/// text `a] b` (review finding s4-5); the opening bracket must not itself
-/// be escaped, so `\[aside\] [anchor](…)` starts at the second bracket and
-/// the prose `aside` stays; and the escaped character may be a newline,
-/// which the fallback writes for a hard break inside the anchor text (s4-5
-/// re-review, both regressions of the regex that replaced `[^\]]*`).
+/// Finds the anchors by their markers. The Markdown around them is not
+/// interpreted at all: an ordinary link, a code span, an escape or a
+/// literal `[x](scrivcmt://…)` typed by the writer can neither hide nor
+/// fake an anchor (review finding s4-5, seventh repair; the six earlier
+/// rounds each found a Markdown construct the scan misread). A marker
+/// without its end is left as text.
 fn find_anchors(markdown: &str) -> Vec<Anchor<'_>> {
-    let bytes = markdown.as_bytes();
+    use super::parser::rtf_text::{ANCHOR_CLOSE, ANCHOR_OPEN, ANCHOR_SCHEMES, ANCHOR_SEP};
     let mut anchors = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\\' => i += 1 + char_len_at(markdown, i + 1),
-            // A code span's brackets are literal text.
-            b'`' => i = code_span_end(bytes, i),
-            b'[' => {
-                if let Some(anchor) = parse_anchor(markdown, i) {
-                    i = anchor.end;
-                    anchors.push(anchor);
-                } else if let Some(end) = link_end(markdown, i) {
-                    // An ordinary link is opaque: a backtick in its
-                    // destination is not a code-span opener (s4-5, third
-                    // re-review: two hyperlinks to `…/`x` swallowed the
-                    // footnote anchor between them).
-                    i = end;
-                } else {
-                    i += 1;
-                }
-            }
-            _ => i += 1,
+    let mut from = 0;
+    while let Some(rel) = markdown[from..].find(ANCHOR_OPEN) {
+        let start = from + rel;
+        let head_start = start + ANCHOR_OPEN.len_utf8();
+        let Some((head, after_head)) = markdown[head_start..]
+            .split_once(ANCHOR_SEP)
+            .map(|(head, _)| (head, head_start + head.len() + ANCHOR_SEP.len_utf8()))
+        else {
+            break;
+        };
+        let Some((scheme, id)) = head.split_once(':') else {
+            from = head_start;
+            continue;
+        };
+        let Some(text_len) = markdown[after_head..].find(ANCHOR_CLOSE) else {
+            break;
+        };
+        if !ANCHOR_SCHEMES.contains(&scheme) || id.is_empty() {
+            from = head_start;
+            continue;
         }
+        let end = after_head + text_len + ANCHOR_CLOSE.len_utf8();
+        anchors.push(Anchor {
+            start,
+            end,
+            text: &markdown[after_head..after_head + text_len],
+            scheme,
+            id,
+        });
+        from = end;
     }
     anchors
-}
-
-/// Index just past the `]` closing the link label that opens at `start`,
-/// or `None` when the bracket is not a label (unclosed, or holding an
-/// unescaped `[` outside a code span: the scan resumes there).
-fn label_end(markdown: &str, start: usize) -> Option<usize> {
-    let bytes = markdown.as_bytes();
-    let mut j = start + 1;
-    loop {
-        match bytes.get(j)? {
-            b'\\' => j += 1 + char_len_at(markdown, j + 1),
-            b'`' => j = code_span_end(bytes, j),
-            b']' => return Some(j),
-            b'[' => return None,
-            _ => j += 1,
-        }
-    }
-}
-
-/// Index just past an ordinary Markdown link `[text](destination)` or
-/// `[text](destination "title")` opening at `start`, following CommonMark:
-/// a bare destination holds no whitespace and balances its parentheses, an
-/// angle-bracketed one is taken whole, and whitespace after it may only be
-/// followed by a quoted title and the closing `)`. Anything else is not a
-/// link, so the scan resumes after the bracket (s4-5, fourth re-review: a
-/// destination ending in `(` was balanced through the prose that followed,
-/// swallowing the footnote anchor in it).
-fn link_end(markdown: &str, start: usize) -> Option<usize> {
-    let bytes = markdown.as_bytes();
-    let text_end = label_end(markdown, start)?;
-    if bytes.get(text_end + 1) != Some(&b'(') {
-        return None;
-    }
-    let mut j = text_end + 2;
-    if bytes.get(j) == Some(&b'<') {
-        j += markdown[j..].find('>')? + 1;
-    } else {
-        let mut depth = 0usize;
-        loop {
-            match bytes.get(j)? {
-                b'\\' => j += 1 + char_len_at(markdown, j + 1),
-                b'(' => {
-                    depth += 1;
-                    j += 1;
-                }
-                b')' if depth == 0 => break,
-                b')' => {
-                    depth -= 1;
-                    j += 1;
-                }
-                // A destination stays on its line.
-                b'\n' | b'\r' => return None,
-                b' ' | b'\t' => {
-                    // Pandoc's reader keeps a space inside a destination
-                    // unless a title or the closing parenthesis follows, and
-                    // anything inside balanced parentheses, spaces included
-                    // (sixth re-review: `https://e.com/(a `b)`); a
-                    // destination left open at the line end is not a link.
-                    let mut k = j;
-                    while matches!(bytes.get(k), Some(b' ' | b'\t')) {
-                        k += 1;
-                    }
-                    if depth == 0 && matches!(bytes.get(k), Some(b'"' | b'\'' | b'(')) {
-                        break;
-                    }
-                    j = k;
-                }
-                _ => j += 1,
-            }
-        }
-    }
-    // Optional title after whitespace; a title never spans a blank line.
-    let after_destination = j;
-    while matches!(bytes.get(j), Some(b' ' | b'\t')) {
-        j += 1;
-    }
-    if j > after_destination {
-        let close = match bytes.get(j)? {
-            b'"' => b'"',
-            b'\'' => b'\'',
-            b'(' => b')',
-            _ => return None,
-        };
-        j += 1;
-        loop {
-            match bytes.get(j)? {
-                b'\\' => j += 1 + char_len_at(markdown, j + 1),
-                &c if c == close => {
-                    j += 1;
-                    break;
-                }
-                b'\n' if blank_line_follows(bytes, j) => return None,
-                _ => j += 1,
-            }
-        }
-        while matches!(bytes.get(j), Some(b' ' | b'\t')) {
-            j += 1;
-        }
-    }
-    (bytes.get(j) == Some(&b')')).then_some(j + 1)
-}
-
-/// True when the newline at `at` is followed by a blank line (only spaces
-/// and tabs before the next line end), which ends a paragraph.
-fn blank_line_follows(bytes: &[u8], at: usize) -> bool {
-    let mut k = at + 1;
-    while matches!(bytes.get(k), Some(b' ' | b'\t' | b'\r')) {
-        k += 1;
-    }
-    matches!(bytes.get(k), Some(b'\n') | None)
-}
-
-/// Index just past the code span whose opening backtick run starts at
-/// `start`: the span closes at the next run of exactly the same length. An
-/// unclosed run is literal backticks, so the index just past the run is
-/// returned instead (review finding s4-5, second re-review: monospaced
-/// anchor text `a[b` restarted the scan at its bracket).
-fn code_span_end(bytes: &[u8], start: usize) -> usize {
-    let mut i = start;
-    while i < bytes.len() && bytes[i] == b'`' {
-        i += 1;
-    }
-    let run = i - start;
-    let mut j = i;
-    while j < bytes.len() {
-        if bytes[j] == b'`' {
-            let close = j;
-            while j < bytes.len() && bytes[j] == b'`' {
-                j += 1;
-            }
-            if j - close == run {
-                return j;
-            }
-        } else if bytes[j] == b'\n' && blank_line_follows(bytes, j) {
-            // A code span never crosses a blank line: the paragraph ends
-            // there and the backticks are literal (s4-5, fifth re-review).
-            return i;
-        } else {
-            j += 1;
-        }
-    }
-    i
-}
-
-/// Length in bytes of the character at `pos`, 0 at the end of the text.
-fn char_len_at(s: &str, pos: usize) -> usize {
-    s.get(pos..)
-        .and_then(|rest| rest.chars().next())
-        .map_or(0, char::len_utf8)
-}
-
-/// Parses `[text](scheme://id)` at the unescaped `[` at `start`. An
-/// unescaped `[` inside the label is not a label: the scan resumes there.
-fn parse_anchor(markdown: &str, start: usize) -> Option<Anchor<'_>> {
-    const SCHEMES: [&str; 3] = ["scrivcmt", "scrivfn", "scrivannot"];
-    let text_end = label_end(markdown, start)?;
-    let text = &markdown[start + 1..text_end];
-    let rest = markdown[text_end + 1..].strip_prefix('(')?;
-    let scheme = SCHEMES.into_iter().find(|s| rest.starts_with(s))?;
-    let after = rest.strip_prefix(scheme)?.strip_prefix("://")?;
-    let id_len = after
-        .find(|c: char| c == ')' || c.is_whitespace())
-        .unwrap_or(after.len());
-    if id_len == 0 || !after[id_len..].starts_with(')') {
-        return None;
-    }
-    let id = &after[..id_len];
-    // `](` + scheme + `://` + id + `)`
-    let end = text_end + 2 + scheme.len() + 3 + id_len + 1;
-    Some(Anchor {
-        start,
-        end,
-        text,
-        scheme,
-        id,
-    })
 }
 
 /// Turns the anchors Pandoc (or the fallback) left in the Markdown into the
@@ -2490,7 +2321,7 @@ mod tests {
     fn annotation_after_a_non_breaking_space_attaches_to_the_word() {
         let item = bare_item("Alpha");
         let mut map = HashMap::new();
-        let md = "alpha\u{A0}word [\u{200B}](scrivannot://inline-1) rest";
+        let md = "alpha\u{A0}word \u{E000}scrivannot:inline-1\u{E001}\u{200B}\u{E002} rest";
         let text = attach_annotations(md, Vec::new(), vec![note("inline-1", "n")], &item, &mut map);
         assert_eq!(
             text.content,
@@ -2505,7 +2336,7 @@ mod tests {
     fn adjacent_annotations_at_a_paragraph_start_attach_without_panic() {
         let item = bare_item("Alpha");
         let mut map = HashMap::new();
-        let md = "[\u{200B}](scrivannot://inline-1)[\u{200B}](scrivannot://inline-2) word more";
+        let md = "\u{E000}scrivannot:inline-1\u{E001}\u{200B}\u{E002}\u{E000}scrivannot:inline-2\u{E001}\u{200B}\u{E002} word more";
         let text = attach_annotations(
             md,
             Vec::new(),
@@ -2528,7 +2359,7 @@ mod tests {
     fn anchor_text_with_an_escaped_bracket_attaches() {
         let item = bare_item("Alpha");
         let mut map = HashMap::new();
-        let md = r"see [a\] b](scrivcmt://FN-1) here";
+        let md = "see \u{E000}scrivcmt:FN-1\u{E001}a\\] b\u{E002} here";
         let comments = vec![ScrivComment {
             id: "FN-1".to_string(),
             body: "the note".to_string(),
@@ -2543,154 +2374,102 @@ mod tests {
         assert!(map.is_empty(), "no warnings: {map:?}");
     }
 
-    /// Review finding s4-5, re-review: an escaped bracket before the anchor
-    /// is prose, not the anchor's start, and an escaped newline inside the
-    /// anchor text (the fallback's hard break) still matches.
+    /// Review finding s4-5, seventh repair: anchors are found by their
+    /// markers, so the Markdown around them can neither hide nor fake one.
     #[test]
-    fn anchor_scan_skips_escaped_brackets_and_spans_escaped_newlines() {
+    fn anchors_are_found_by_their_markers_whatever_surrounds_them() {
         let item = bare_item("Alpha");
-        let footnote = |id: &str| {
+        let footnote = |id: &str| ScrivComment {
+            id: id.to_string(),
+            body: "the note".to_string(),
+            footnote: true,
+        };
+        let sup = "<sup class=\"footnote\" data-body=\"the note\">●</sup>";
+        let mark = |id: &str, text: &str| format!("\u{E000}scrivcmt:{id}\u{E001}{text}\u{E002}");
+        // Ordinary links with backticks and parentheses, a code span holding
+        // a literal link, escapes: none of it matters (the six earlier
+        // rounds' cases, all at once).
+        let md = format!(
+            "[r](https://e.com/(a `b)) `[x](scrivcmt://FN-6)` \\[aside\\] {} ((see [r](https://e.com/s?q=((x) and {}))).",
+            mark("FN-1", "anchor"),
+            mark("FN-2", "two")
+        );
+        let mut map = HashMap::new();
+        let text = attach_annotations(
+            &md,
+            vec![footnote("FN-1"), footnote("FN-2")],
+            Vec::new(),
+            &item,
+            &mut map,
+        );
+        assert_eq!(
+            text.content,
+            format!(
+                "[r](https://e.com/(a `b)) `[x](scrivcmt://FN-6)` \\[aside\\] anchor{sup} ((see [r](https://e.com/s?q=((x) and two{sup})))."
+            )
+        );
+        assert!(text.comments.is_empty(), "{:?}", text.comments);
+        assert!(map.is_empty(), "no warnings: {map:?}");
+
+        // A marker without its end is left as text; its footnote is kept
+        // unanchored with a warning.
+        let md = "\u{E000}scrivcmt:FN-3\u{E001}open";
+        let mut map = HashMap::new();
+        let text = attach_annotations(md, vec![footnote("FN-3")], Vec::new(), &item, &mut map);
+        assert_eq!(text.content, md);
+        assert_eq!(text.comments.len(), 1, "{:?}", text.comments);
+        assert_eq!(map.len(), 1, "one warning: {map:?}");
+    }
+
+    /// The whole path: Scrivener's hyperlink fields become markers inside
+    /// Pandoc (and in the fallback writer), and the importer resolves them
+    /// with the reviewers' awkward hyperlinks and literal text around.
+    #[test]
+    fn anchors_survive_pandoc_and_the_fallback_end_to_end() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let link = |url: &str, text: &str| {
+            format!("{{\\field{{\\*\\fldinst{{HYPERLINK \"{url}\"}}}}{{\\fldrslt {text}}}}}")
+        };
+        let rtf = format!(
+            "{{\\rtf1\\ansi ((see {} and {} and {}) `tick) [x](scrivcmt://FN-9)}}",
+            link("https://e.com/search?q=((x", "resource"),
+            link("scrivcmt://FN-1", "anchor"),
+            link("https://e.com/(a `b)", "r")
+        );
+        let item = bare_item("Alpha");
+        let footnote = || {
             vec![ScrivComment {
-                id: id.to_string(),
+                id: "FN-1".to_string(),
                 body: "the note".to_string(),
                 footnote: true,
             }]
         };
-        let sup = "<sup class=\"footnote\" data-body=\"the note\">●</sup>";
+        let attached = "anchor<sup class=\"footnote\" data-body=\"the note\">●</sup>";
 
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("anchors.rtf");
+        fs::write(&path, rtf.as_bytes()).unwrap();
+        let converted = super::super::parser::rtf::rtf_file_to_markdown(&path, None).unwrap();
+        assert!(!converted.fell_back, "Pandoc read it");
         let mut map = HashMap::new();
-        let md = r"see \[aside\] [anchor](scrivcmt://FN-1) here";
-        let text = attach_annotations(md, footnote("FN-1"), Vec::new(), &item, &mut map);
-        assert_eq!(text.content, format!("see \\[aside\\] anchor{sup} here"));
+        let text = attach_annotations(&converted.markdown, footnote(), Vec::new(), &item, &mut map);
+        assert!(text.content.contains(attached), "{}", text.content);
+        assert!(
+            text.content.contains("(scrivcmt://FN-9)"),
+            "literal text stays: {}",
+            text.content
+        );
         assert!(text.comments.is_empty(), "{:?}", text.comments);
         assert!(map.is_empty(), "no warnings: {map:?}");
 
+        let fallback = super::super::parser::rtf_text::rtf_to_plain_markdown(rtf.as_bytes());
         let mut map = HashMap::new();
-        let md = "[a\\\nb](scrivcmt://FN-2) tail";
-        let text = attach_annotations(md, footnote("FN-2"), Vec::new(), &item, &mut map);
-        assert_eq!(text.content, format!("a\\\nb{sup} tail"));
+        let text = attach_annotations(&fallback, footnote(), Vec::new(), &item, &mut map);
+        assert!(text.content.contains(attached), "{}", text.content);
         assert!(text.comments.is_empty(), "{:?}", text.comments);
-        assert!(map.is_empty(), "no warnings: {map:?}");
-
-        // An escaped backslash before the bracket leaves the bracket live.
-        let mut map = HashMap::new();
-        let md = r"x \\[anchor](scrivcmt://FN-3)";
-        let text = attach_annotations(md, footnote("FN-3"), Vec::new(), &item, &mut map);
-        assert_eq!(text.content, format!("x \\\\anchor{sup}"));
-        assert!(map.is_empty(), "no warnings: {map:?}");
-
-        // An escaped bracket never opens an anchor, even when what follows
-        // it has the shape of one: the text stays, the footnote has no
-        // place and is kept as an unanchored comment with a warning.
-        let mut map = HashMap::new();
-        let md = r"\[anchor](scrivcmt://FN-4)";
-        let text = attach_annotations(md, footnote("FN-4"), Vec::new(), &item, &mut map);
-        assert_eq!(text.content, md);
-        assert_eq!(text.comments.len(), 1, "{:?}", text.comments);
-        assert!(text.comments[0].body.contains("no place in the text"));
-        assert_eq!(map.len(), 1, "one warning: {map:?}");
-
-        // Second re-review: a bracket inside a code span is literal text.
-        // Monospaced anchor text `a[b` keeps its anchor whole; a code span
-        // that merely looks like an anchor is left alone; an unclosed
-        // backtick is ordinary text.
-        let mut map = HashMap::new();
-        let md = "see [`a[b`](scrivcmt://FN-5) tail";
-        let text = attach_annotations(md, footnote("FN-5"), Vec::new(), &item, &mut map);
-        assert_eq!(text.content, format!("see `a[b`{sup} tail"));
-        assert!(text.comments.is_empty(), "{:?}", text.comments);
-        assert!(map.is_empty(), "no warnings: {map:?}");
-        let mut map = HashMap::new();
-        let md = "`[x](scrivcmt://FN-6)` tail";
-        let text = attach_annotations(md, footnote("FN-6"), Vec::new(), &item, &mut map);
-        assert_eq!(text.content, md);
-        assert_eq!(text.comments.len(), 1, "{:?}", text.comments);
-        assert_eq!(map.len(), 1, "one warning: {map:?}");
-        let mut map = HashMap::new();
-        let md = "[a `b](scrivcmt://FN-7)";
-        let text = attach_annotations(md, footnote("FN-7"), Vec::new(), &item, &mut map);
-        assert_eq!(text.content, format!("a `b{sup}"));
-        assert!(map.is_empty(), "no warnings: {map:?}");
-
-        // Third re-review: an ordinary link is opaque, so a backtick in its
-        // destination never opens a code span across the anchor between two
-        // such links; balanced parentheses and an angle-bracketed
-        // destination are part of the link.
-        let mut map = HashMap::new();
-        let md = "[r](https://e.com/`x) [anchor](scrivcmt://FN-8) [r](https://e.com/`x)";
-        let text = attach_annotations(md, footnote("FN-8"), Vec::new(), &item, &mut map);
-        assert_eq!(
-            text.content,
-            format!("[r](https://e.com/`x) anchor{sup} [r](https://e.com/`x)")
-        );
-        assert!(map.is_empty(), "no warnings: {map:?}");
-        let mut map = HashMap::new();
-        let md = "[a](b(c)`d) [b](<x `y>) [anchor](scrivcmt://FN-9)`";
-        let text = attach_annotations(md, footnote("FN-9"), Vec::new(), &item, &mut map);
-        assert_eq!(
-            text.content,
-            format!("[a](b(c)`d) [b](<x `y>) anchor{sup}`")
-        );
-        assert!(map.is_empty(), "no warnings: {map:?}");
-
-        // Fourth re-review: what is not a link by CommonMark's rules is not
-        // skipped as one. A destination ending in `(` followed by prose is
-        // not a link, so the anchor after it still attaches; a destination
-        // with a quoted title is a link and is skipped whole.
-        let mut map = HashMap::new();
-        let md = "(see [r](https://e.com/s?q=() \"ex\" and [anchor](scrivcmt://FN-10)).";
-        let text = attach_annotations(md, footnote("FN-10"), Vec::new(), &item, &mut map);
-        assert_eq!(
-            text.content,
-            format!("(see [r](https://e.com/s?q=() \"ex\" and anchor{sup}).")
-        );
-        assert!(map.is_empty(), "no warnings: {map:?}");
-        let mut map = HashMap::new();
-        let md = "[r](https://e.com/`x \"t `)\") [anchor](scrivcmt://FN-11)";
-        let text = attach_annotations(md, footnote("FN-11"), Vec::new(), &item, &mut map);
-        assert_eq!(
-            text.content,
-            format!("[r](https://e.com/`x \"t `)\") anchor{sup}")
-        );
-        assert!(map.is_empty(), "no warnings: {map:?}");
-
-        // Fifth re-review: a title never spans a blank line, so an
-        // unfinished destination followed by quoted prose across paragraphs
-        // is not a link and the anchor in the next paragraph attaches; a
-        // destination with a space and a backtick, as Pandoc writes it, is
-        // still one link, and a code span never crosses a blank line.
-        let mut map = HashMap::new();
-        let md = "(see [r](https://e.com/s?q=() \"quoted\n\n[anchor](scrivcmt://FN-12)\") here.";
-        let text = attach_annotations(md, footnote("FN-12"), Vec::new(), &item, &mut map);
-        assert_eq!(
-            text.content,
-            format!("(see [r](https://e.com/s?q=() \"quoted\n\nanchor{sup}\") here.")
-        );
-        assert!(map.is_empty(), "no warnings: {map:?}");
-        let mut map = HashMap::new();
-        let md = "[r](https://e.com/a `b)\n\n[anchor](scrivcmt://FN-13)\n\n[r](https://e.com/a `b)";
-        let text = attach_annotations(md, footnote("FN-13"), Vec::new(), &item, &mut map);
-        assert_eq!(
-            text.content,
-            format!("[r](https://e.com/a `b)\n\nanchor{sup}\n\n[r](https://e.com/a `b)")
-        );
-        assert!(map.is_empty(), "no warnings: {map:?}");
-        let mut map = HashMap::new();
-        let md = "`x\n\n[anchor](scrivcmt://FN-14)`";
-        let text = attach_annotations(md, footnote("FN-14"), Vec::new(), &item, &mut map);
-        assert_eq!(text.content, format!("`x\n\nanchor{sup}`"));
-        assert!(map.is_empty(), "no warnings: {map:?}");
-
-        // Sixth re-review: a space inside balanced parentheses is part of the
-        // destination, as Pandoc reads it, so two such links around an
-        // anchor stay opaque and the anchor attaches.
-        let mut map = HashMap::new();
-        let md = "[r](https://e.com/(a `b)) [anchor](scrivcmt://FN-15) [r](https://e.com/(a `b))";
-        let text = attach_annotations(md, footnote("FN-15"), Vec::new(), &item, &mut map);
-        assert_eq!(
-            text.content,
-            format!("[r](https://e.com/(a `b)) anchor{sup} [r](https://e.com/(a `b))")
-        );
         assert!(map.is_empty(), "no warnings: {map:?}");
     }
 

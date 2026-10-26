@@ -670,11 +670,25 @@ fn render_field(f: &Field) -> String {
     rendered
 }
 
+/// Marks a Scrivener anchor (`scrivcmt://`, `scrivfn://`, `scrivannot://`)
+/// the way the Pandoc filter does, so the importer resolves both paths the
+/// same way (review finding s4-5, seventh repair):
+/// U+E000 scheme ":" id U+E001 text U+E002.
+pub const ANCHOR_OPEN: char = '\u{E000}';
+pub const ANCHOR_SEP: char = '\u{E001}';
+pub const ANCHOR_CLOSE: char = '\u{E002}';
+pub const ANCHOR_SCHEMES: [&str; 3] = ["scrivcmt", "scrivfn", "scrivannot"];
+
 fn render_link(inst: &str, result: &str) -> String {
     let url = inst
         .strip_prefix("HYPERLINK")
         .map(|rest| rest.trim().trim_matches('"').trim())
         .filter(|u| !u.is_empty() && !u.contains(char::is_whitespace));
+    if let Some((scheme, id)) = url.and_then(|u| u.split_once("://")) {
+        if ANCHOR_SCHEMES.contains(&scheme) && !id.is_empty() {
+            return format!("{ANCHOR_OPEN}{scheme}:{id}{ANCHOR_SEP}{result}{ANCHOR_CLOSE}");
+        }
+    }
     match url {
         Some(url) if !result.is_empty() => {
             format!("[{result}]({})", markdown_destination(url))
@@ -751,7 +765,10 @@ Second paragraph with \\'93quotes\\'94.\\\n\
     #[test]
     fn hyperlink_field_becomes_a_markdown_link() {
         let src = "{\\rtf1 see {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://ABC-123\"}}{\\fldrslt this bit}} here}";
-        assert_eq!(plain(src), "see [this bit](scrivcmt://ABC-123) here");
+        assert_eq!(
+            plain(src),
+            "see \u{E000}scrivcmt:ABC-123\u{E001}this bit\u{E002} here"
+        );
     }
 
     /// Review finding s1-2: a document cut off inside a hyperlink field
@@ -760,12 +777,12 @@ Second paragraph with \\'93quotes\\'94.\\\n\
     fn truncated_field_keeps_its_text() {
         assert_eq!(
             plain("{\\rtf1 before {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://X\"}}{\\fldrslt essential text"),
-            "before [essential text](scrivcmt://X)"
+            "before \u{E000}scrivcmt:X\u{E001}essential text\u{E002}"
         );
         // Cut off before the result: the target alone is kept.
         assert_eq!(
             plain("{\\rtf1 before {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://X\"}}"),
-            "before <scrivcmt://X>"
+            "before \u{E000}scrivcmt:X\u{E001}\u{E002}"
         );
     }
 
@@ -786,7 +803,7 @@ Second paragraph with \\'93quotes\\'94.\\\n\
             plain(
                 "{\\rtf1 {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://ABC-123\"}}{\\fldrslt t}}}"
             ),
-            "[t](scrivcmt://ABC-123)"
+            "\u{E000}scrivcmt:ABC-123\u{E001}t\u{E002}"
         );
     }
 
@@ -827,7 +844,7 @@ Second paragraph with \\'93quotes\\'94.\\\n\
         assert_eq!(plain("{\\rtf1 a\\line\\line}"), "a");
         assert_eq!(
             plain("{\\rtf1 {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://ABC-123\"}}{\\fldrslt note\\line}}}"),
-            "[note](scrivcmt://ABC-123)"
+            "\u{E000}scrivcmt:ABC-123\u{E001}note\u{E002}"
         );
         // Second re-review: when text follows the field, the break at the
         // end of the link text still breaks the line, outside the link.
@@ -1047,7 +1064,7 @@ Second paragraph with \\'93quotes\\'94.\\\n\
         // Link text is escaped, the target is not.
         assert_eq!(
             plain("{\\rtf1 {\\field{\\*\\fldinst{HYPERLINK \"scrivcmt://X_1\"}}{\\fldrslt a*b}}}"),
-            "[a\\*b](scrivcmt://X_1)"
+            "\u{E000}scrivcmt:X_1\u{E001}a\\*b\u{E002}"
         );
     }
 
