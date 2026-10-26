@@ -24,7 +24,7 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 | s1-5 | code | Unescaped `)` in a hyperlink target truncates the link (range b5f958b..caf8a5e, codex) | `[x]`  | — (default-branch mode) |
 | s1-6 | code | `\line` breaks render as spaces (range b5f958b..caf8a5e, codex) | `[x]`  | — (default-branch mode) |
 | s2-1 | code | Internal links resolve against predicted paths; duplicate titles redirect them (slice 2 review, codex) | `[x]`  | — (default-branch mode) |
-| s3-1 | code | Opening the Inspector on a selected document can wipe its metadata (slice 3 review, codex) | `[~]`  | — (default-branch mode) |
+| s3-1 | code | Opening the Inspector on a selected document can wipe its metadata (slice 3 review, codex) | `[x]`  | — (default-branch mode) |
 | s3-2 | code | Research roots and attachments bypass the metadata import (slice 3 review, codex) | `[x]`  | — (default-branch mode) |
 | s3-3 | code | An unreadable synopsis file is treated as no synopsis (slice 3 review, codex) | `[x]`  | — (default-branch mode) |
 | s4-1 | code | Non-breaking space before an inline annotation panics the import (slice 4 review, codex) | `[x]`  | — (default-branch mode) |
