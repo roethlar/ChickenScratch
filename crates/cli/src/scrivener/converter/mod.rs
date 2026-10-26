@@ -443,34 +443,12 @@ fn convert_binder_items_inner(
 
     for item in items {
         match item.item_type.as_str() {
-            // Research folder — convert children into research/ instead of manuscript/
-            "ResearchFolder" => {
-                let folder_id = Uuid::new_v4().to_string();
-                let folder_name = item.title.clone().unwrap_or_else(|| "Research".to_string());
-
-                let children = convert_binder_items_inner(
-                    project,
-                    &item.children.items,
-                    scriv_path,
-                    documents,
-                    uuid_to_path,
-                    Some(folder_id.clone()),
-                    "research",
-                    pandoc_path,
-                )?;
-                alias_folder_to_first_text(item, uuid_to_path);
-
-                hierarchy.push(TreeNode::Folder {
-                    id: folder_id,
-                    name: folder_name,
-                    children,
-                });
-            }
-
-            // Draft folder, regular folders, and the Trash: nothing a writer
-            // parked in Scrivener's Trash is dropped (slice 2); its items
-            // land in the project's Trash folder.
-            "DraftFolder" | "Folder" | "TrashFolder" => {
+            // Every folder kind, the Research root and the Trash included:
+            // nothing a writer parked in Scrivener's Trash is dropped
+            // (slice 2), and the Research root carries notes and metadata
+            // like any folder (review finding s3-2). The target folder on
+            // disk was chosen at the root.
+            "DraftFolder" | "Folder" | "TrashFolder" | "ResearchFolder" => {
                 let folder_id = Uuid::new_v4().to_string();
                 let folder_name = item.title.clone().unwrap_or_else(|| "Folder".to_string());
 
@@ -698,6 +676,10 @@ fn convert_binder_items_inner(
                             .clone()
                             .unwrap_or_else(|| Utc::now().to_rfc3339());
 
+                        // An attachment carries side values too; they live
+                        // in its `.meta` sidecar (review finding s3-2).
+                        let side =
+                            side_values(project, scriv_path, item, uuid_to_path, pandoc_path)?;
                         let document = Document {
                             id: doc_id.clone(),
                             name: doc_name.clone(),
@@ -706,6 +688,11 @@ fn convert_binder_items_inner(
                             parent_id: parent_id.clone(),
                             created,
                             modified,
+                            synopsis: side.synopsis,
+                            label: side.label,
+                            status: side.status,
+                            keywords: side.keywords,
+                            fields: side.fields,
                             ..Document::default()
                         };
 
@@ -1596,6 +1583,31 @@ mod tests {
             part,
             &[("notes.rtf", "{\\rtf1\\ansi Part notes.}")],
         );
+        // The Research root has notes; an attachment has a synopsis and notes.
+        let research_root = "C1B2C3D4-0000-4000-8000-000000000005";
+        let scan = "C1B2C3D4-0000-4000-8000-000000000006";
+        write_scriv_files(
+            &scriv_path,
+            research_root,
+            &[("notes.rtf", "{\\rtf1\\ansi Root notes.}")],
+        );
+        write_scriv_files(
+            &scriv_path,
+            scan,
+            &[
+                ("synopsis.txt", "A scanned letter.\n"),
+                ("notes.rtf", "{\\rtf1\\ansi Scan notes.}"),
+            ],
+        );
+        fs::write(
+            scriv_path
+                .join("Files")
+                .join("Data")
+                .join(scan)
+                .join("content.pdf"),
+            b"%PDF sample",
+        )
+        .unwrap();
         write_scriv_files(
             &scriv_path,
             c,
@@ -1632,6 +1644,16 @@ mod tests {
                     <Children>
                         <BinderItem UUID="{c}" Type="Text"><Title>Carol</Title></BinderItem>
                     </Children>
+                </BinderItem>
+            </Children>
+        </BinderItem>
+        <BinderItem UUID="{research_root}" Type="ResearchFolder">
+            <Title>Research</Title>
+            <MetaData><LabelID>7</LabelID></MetaData>
+            <Children>
+                <BinderItem UUID="{scan}" Type="PDF">
+                    <Title>Scan</Title>
+                    <MetaData><LabelID>7</LabelID><FileExtension>pdf</FileExtension></MetaData>
                 </BinderItem>
             </Children>
         </BinderItem>
@@ -1710,6 +1732,35 @@ mod tests {
         assert_eq!(bob.label, None, "the -1 sentinel is no label");
         assert_eq!(bob.status, None);
         assert!(bob.fields.is_empty());
+
+        // Review finding s3-2: the Research root and an attachment carry
+        // their side values too.
+        let research_root = doc("Research");
+        assert_eq!(
+            text(research_root.fields.get("notes")).as_deref(),
+            Some("Root notes.")
+        );
+        assert_eq!(research_root.label.as_deref(), Some("Red"));
+        // The engine lists only `.md` documents on reopen, so the attachment
+        // is checked on the import result and in its sidecar on disk.
+        let scan = report
+            .project
+            .documents
+            .values()
+            .find(|d| d.name == "Scan")
+            .expect("attachment entry");
+        let scan_meta = fs::read_to_string(output_path.join(scan.path.replace(".pdf", ".meta")))
+            .expect("attachment sidecar");
+        assert!(scan_meta.contains("A scanned letter."), "{scan_meta}");
+        assert!(scan_meta.contains("Red"), "{scan_meta}");
+        assert!(scan_meta.contains("Scan notes."), "{scan_meta}");
+        assert!(scan.path.ends_with(".pdf"), "{}", scan.path);
+        assert_eq!(scan.synopsis.as_deref(), Some("A scanned letter."));
+        assert_eq!(scan.label.as_deref(), Some("Red"));
+        assert_eq!(
+            text(scan.fields.get("notes")).as_deref(),
+            Some("Scan notes.")
+        );
 
         // The folder's companion document carries its notes and label.
         let part = doc("Part");
