@@ -112,13 +112,13 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   (`ui/src/components/inspector/metadataSaves.ts`). Slice 5 (Scrivener 2)
   optional, not started. The owner pushed `529d4df` (everything through
   the R1-8 ruling) to both remotes on 2026-10-26; GitHub Validation run
-  `40373870174` was still in progress when last checked. The I2 wording ruling is closed (option A, above).
+  `40373870174` and Tauri Bundles `40373870270` both passed. The I2 wording ruling is closed (option A, above).
 - **Owner 2026-10-25: governance remediation** (`487e775`): three stale
   path references in `.agents/break-it-validation.md` resolved on owner
-  rulings; hygiene lint clean. The pending
-  governance refresh left its files staged but uncommitted; its staged
-  edit to this file had cut three lines mid-sentence (every line that said
-  "unpushed") — restored here with the push claims corrected.
+  rulings; hygiene lint clean. The governance refresh those sessions left
+  staged landed on the owner's go as `6d54f63` (2026-10-26, toolkit-owned
+  files; this file's own refresh edit had been dropped earlier because it
+  cut three lines mid-sentence). Unpushed with `949b13e`.
 - **Phase close-out question remains unanswered** (posed 2026-07-17):
   close hardening and move to the Tauri reference-app phase? An agent
   (Claude Code, 2026-08-29) ran the break-it test; the owner has not used
@@ -203,8 +203,8 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   (125); `cargo check -p chickenscratch-web --features embed-ui` with the
   built `ui/dist`. Tauri crate not compiled on this box (Known drift). Bite
   proof: the editor safety-copy tests fail with the restore and the
-  pagehide write removed. CI ran on the 2026-10-26 push (Validation
-  `40373870174`, in progress when last checked).
+  pagehide write removed. CI passed on the 2026-10-26 push (Validation
+  `40373870174`).
 - **2026-10-25 as of `82ba252`**: GitHub Validation runs `40162108795`
   (`ad44c22`), `40164051106` (`487e775`) and `40164229608` (`82ba252`) all
   succeeded (all jobs, shellcheck step included).
