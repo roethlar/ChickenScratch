@@ -241,6 +241,16 @@ fn emit_run_text(out: &mut Vec<u8>, decoded: &str, after_open_control_word: bool
     for c in decoded.chars() {
         if c.is_ascii() {
             if first && after_open_control_word {
+                if c == ' ' {
+                    // A text space right after the delimiter space would be
+                    // two spaces, and Pandoc 3.11 drops both
+                    // (`before\bin0\'20after` read as `beforeafter`), so the
+                    // space is written as an escape instead (review finding
+                    // s1-3, fourth re-review).
+                    out.extend_from_slice(b"\\u32 ?");
+                    first = false;
+                    continue;
+                }
                 out.push(b' ');
             }
             match c as u8 {
@@ -976,6 +986,16 @@ mod tests {
         let prepared = prep("{\\rtf1\\ansi before\\bin0\\'31after}");
         assert_eq!(prepared, "{\\rtf1\\ansi before\\bin0 1after}");
         assert_reads(&prepared, "before1after");
+        // Fifth re-review: a decoded space right after an open control word
+        // is written as an escape, because Pandoc drops a text space that
+        // follows the delimiter space (`before\bin0  after` → `beforeafter`).
+        let prepared = prep("{\\rtf1\\ansi before\\bin0\\'20after}");
+        assert_eq!(prepared, "{\\rtf1\\ansi before\\bin0\\u32 ?after}");
+        assert_reads(&prepared, "before after");
+        // (Only the first space needs the escape; Pandoc's plain writer
+        // collapses space runs, so the reading is not asserted here.)
+        let prepared = prep("{\\rtf1\\ansi a\\b\\'20\\'20b}");
+        assert_eq!(prepared, "{\\rtf1\\ansi a\\b\\u32 ? b}");
     }
 
     /// Third re-review of s1-3: header declarations are control words, found
