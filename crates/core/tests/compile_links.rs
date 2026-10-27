@@ -750,3 +750,60 @@ fn metadata_keys_named_t_do_not_hide_the_rest() {
         "the heading kept `same` because the nested metadata duplicate counted: {html}"
     );
 }
+
+/// A writer's quoted identifier may itself hold a literal `%`
+/// (`{id="caf%C3%A9"}`): a bare link written the same way still protects
+/// such duplicates and still follows a unique one, beside the decoded case
+/// (review finding s3-1, repair review 2).
+#[test]
+fn literal_percent_identifiers_are_kept_and_followed_too() {
+    if !pandoc_present() {
+        eprintln!("skipping: pandoc not installed");
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    // Duplicated literal identifiers relied on by a bare link: both kept.
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "# One {id=\"caf%C3%A9\"}\n\nBare [b](#caf%C3%A9) and [two](b.md#S1).",
+            ),
+            doc(
+                "manuscript/b.md",
+                "# Two {id=\"caf%C3%A9\"}\n\n## Inner {#S1}\n\nText.",
+            ),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        html.matches("id=\"caf%C3%A9\"").count(),
+        2,
+        "both literal duplicates keep their string: {html}"
+    );
+    assert_eq!(href_of(&html, "b").as_deref(), Some("#caf%C3%A9"));
+
+    // A unique literal identifier: the bare link follows its new name.
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "# One {id=\"caf%C3%A9\"}\n\nBare [b](#caf%C3%A9) and [two](b.md#S1).",
+            ),
+            doc("manuscript/b.md", "## Inner {#S1}\n\nText."),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let b = href_of(&html, "b").unwrap();
+    assert!(
+        ids(&html).contains(b.trim_start_matches('#')),
+        "{b}: {html}"
+    );
+    assert!(element_text(&html, b.trim_start_matches('#'))
+        .unwrap()
+        .contains("One"));
+}

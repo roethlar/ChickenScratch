@@ -727,10 +727,14 @@ impl Analysis {
         for e in &scanned.elements {
             *id_count.entry(e.id.as_str()).or_insert(0) += 1;
         }
+        // A bare fragment names an element either as written or decoded: the
+        // editor percent-encodes `#café`, while a writer's quoted identifier
+        // may itself contain a literal `%` (s3-1 repair reviews).
         let bare_targets: HashSet<String> = scanned
             .links
             .iter()
-            .filter_map(|l| l.target.strip_prefix('#').map(percent_decode))
+            .filter_map(|l| l.target.strip_prefix('#'))
+            .flat_map(|frag| [frag.to_string(), percent_decode(frag)])
             .collect();
 
         let mut resolutions: Vec<Resolved> = Vec::with_capacity(scanned.links.len());
@@ -743,11 +747,12 @@ impl Analysis {
                     Resolved::Text
                 }
                 TargetKind::Bare(id) => {
+                    let raw = link.target.strip_prefix('#').unwrap_or("");
                     let matches: Vec<usize> = scanned
                         .elements
                         .iter()
                         .enumerate()
-                        .filter(|(_, e)| e.id == id)
+                        .filter(|(_, e)| e.id == id || e.id == raw)
                         .map(|(i, _)| i)
                         .collect();
                     if matches.len() == 1 {
