@@ -520,10 +520,18 @@ gap is in scope here, with the design below.
      explicit `{#introduction-1}` beside a generated `introduction-1`,
      R9-3) end with distinct bookmarks, and nothing can collide with a
      document anchor. Every link whose target was a bare `#id` is resolved
-     the way the output would resolve it today, to the first element in
-     document order whose combined identifier is `id`, and rewritten to
-     that element's final identifier, so native navigation keeps exactly
-     the target it has today.
+     the way the output resolves it today and rewritten to that element's
+     final identifier, so native navigation keeps exactly the target it has
+     today. "The way the output resolves it" is not plain document order
+     (R22-1): the writers place footnote contents after the main text, so
+     when a main-text element and a footnote element share `id` the first
+     element in document order *outside any note* wins, and only when no
+     element outside a note carries `id` does the first one inside a note
+     win. Which writer is in use does not change this choice: HTML and EPUB
+     emit notes at the end, DOCX and ODT give duplicate bookmarks the same
+     main-text-first precedence, and LaTeX duplicate labels resolve to the
+     first defined, which is the main text once notes are emitted as
+     `\footnote` bodies after their anchors.
   6. **Destinations every writer emits, placed where the target is.** The
      writer table from round 7, re-run and recorded at the start of the
      slice, decides how a resolved target is materialised: a `Header`
@@ -989,7 +997,11 @@ coding.
       (R12-1); a `[Read](#spot)` whose target heading sits inside a
       footnote is left as the bare `#spot`, the heading gets no `{#S<n>}`,
       and the split output compiles with today's bare-link behaviour and no
-      warning (R21-2); a footnote referenced in chapter one and
+      warning (R21-2), including when another document has a main-text
+      heading `{#spot}` and a separate document link activates the renaming
+      path: the bare link lands on the main-text heading, as today's HTML
+      output does (asserted on the actual destination in HTML and DOCX,
+      R22-1); a footnote referenced in chapter one and
       defined after chapter two stays in chapter one, and the two chapters
       compile to two distinct notes; a reference-style link shared by two
       chapters resolves in both; a link from chapter one to a heading in
@@ -1360,3 +1372,10 @@ coding.
   classification plus the footnote warning) and the splitter still
   qualified links to identifiers inside notes (R21-2: its map excludes
   note contents; such links stay bare and compile as today).
+- 2026-10-27 review round 22 (`plan-4`, `bd0f618`): reopened on one
+  finding; R21-1 closed. Admitted: "first element in document order" for
+  bare links differs from the writers' real destination order when a
+  footnote element and a main-text element share an identifier, because
+  footnotes are emitted after the main text (R22-1: main-text elements
+  take precedence over elements inside notes; fixture asserts the actual
+  destination).

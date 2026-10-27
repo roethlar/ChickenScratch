@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 21 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; twenty-second
-revision committed, round 22 pending
+**Status**: In progress — rounds 1 to 22 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; twenty-third
+revision committed, round 23 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -841,8 +841,37 @@ rather than a resolution; links *from* inside notes are unaffected.
 
 Declined: none.
 
+## Round 22 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17edf-b49b-7862-b7dd-74a17a76de26`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `bd0f61842ee39b0ae54da81fcf3df9593ec40b91` (twenty-second
+  revision)
+- **Base SHA**: `d55fb91f12c3314356218209e100546a83a8c266` (round-21 head)
+- **Dispatched**: 2026-10-27 19:39 UTC; finished 19:43 UTC; exit 0;
+  85,441 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `bd0f618…`; both succeeded. The reviewer confirmed the generated/explicit
+  classification inside paragraphs and Divs on Pandoc 3.11, and compared
+  today's HTML destination for a bare `#spot` (main-text heading, by
+  JSDOM `getElementById`) with the step-5 prototype (footnote heading).
+  Nine core compile tests passed. No repository file changed; no remote
+  contacted.
+- **Verdict**: `reopened` on one finding. Closed: R21-1. Not closed: R21-2
+  (the finding below).
+
+## Round 22 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R22-1 | "First element in document order" for a bare link differs from the writers' destination order when a footnote element and a main-text element share an identifier | MEDIUM | reviewer's Pandoc 3.11 HTML probe | Admitted: main-text elements take precedence over elements inside notes; the fixture asserts the actual destination in HTML and DOCX |
+
+Declined: none.
+
 ## Closeout
 
-Pending: round 22 review of the twenty-second revision (same reviewer,
-fresh session, pins base = round-21 head `d55fb91`, head = the revision
+Pending: round 23 review of the twenty-third revision (same reviewer,
+fresh session, pins base = round-22 head `bd0f618`, head = the revision
 commit).
