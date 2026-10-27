@@ -3,8 +3,8 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 and 2 reopened (2026-10-27); second
-revision committed, round 3 pending
+**Status**: In progress — rounds 1 to 3 reopened (2026-10-27); third
+revision committed, round 4 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -110,7 +110,56 @@ acceptance (orchestrator, 2026-10-27).
 Declined: none. Reviewer note carried into the plan: the zip entry-count
 check must read the EOCD/ZIP64 record the crate actually selects.
 
+## Round 3 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17df5-d49f-7283-9904-c991c6d92c5a`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `fa9a445a9bc8df71b855a093033563c8c9f90aac` (second
+  revision)
+- **Base SHA**: `da9d73ad1c48714e339a8404399f9d0438c93fd0` (round-2 head)
+- **Dispatched**: 2026-10-27 15:23 UTC; finished 15:45 UTC; exit 0;
+  141,420 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `fa9a445…`; both succeeded. The reviewer ran the converter, services
+  and web tests (171 passing), reproduced the Cargo dependency cycle in a
+  scratch workspace, `RENAME_NOREPLACE` versus plain rename on Linux, a
+  valid small-file PAX `size` record, the editor's image loss on a
+  TipTap/Markdown round trip with the locked dependency versions, and
+  Pandoc 3.11 probes for plain-text note bodies, section identifiers,
+  unresolved document links and unfetched project images. macOS and
+  Windows behaviour was read from source, not run. No repository file
+  changed; no remote contacted.
+- **Verdict**: `reopened`. Closed: R1-4, R1-5, R1-6, R2-2, R2-4, R2-5,
+  R2-6, R2-7, R2-8, R2-9, R2-10, R2-12, R2-14. Not closed: R1-1, R1-3,
+  R2-1, R2-3, R2-11, R2-13 (each mapped to a round-3 finding below).
+
+## Round 3 findings and dispositions
+
+Each checked against the working tree or the cited source before
+acceptance (orchestrator, 2026-10-27).
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R3-1 | A worker in `services` called from the converter CLI is a Cargo cycle | HIGH | `crates/services/Cargo.toml` depends on `chikn-converter` | Admitted: worker lives in the converter crate; services supervises |
+| R3-2 | `pre_exec` `RLIMIT_AS` applies to the parent's image; XNU refuses lowering it below current mappings | HIGH | XNU `kern_resource.c` as cited (source reading) | Admitted: the worker sets its own limit after exec; Windows Job Object unchanged |
+| R3-3 | Publication (rename and cleanup of a `.chikn`) outside core breaks I2 | MEDIUM | `docs/INVARIANTS.md` I2; core has no publication API | Admitted: `core::project::publish_imported`; phase check and invariants updated |
+| R3-4 | The plain-rename fallback restores the replacement race | MEDIUM | Linux probe: plain rename replaced an empty folder | Admitted: fail safely, no fallback |
+| R3-5 | A failure after the rename leaves a published project behind a "failed" result | MEDIUM | `reader.rs:426–444` fallible reads | Admitted: read before the commit, rename is the commit, `ImportedButNotOpened` after it |
+| R3-6 | A depth-6 search cannot establish "no marker anywhere" | HIGH | plan text | Admitted: walk the whole entry list |
+| R3-7 | Small files carry PAX `size` records too | MEDIUM | reviewer's five-byte fixture | Admitted: accept when equal to the raw size |
+| R3-8 | `data-body` is plain text; formatted notes flatten | HIGH | `cs-footnotes.lua:51–80`, `FootnoteNode.ts:17`; the Scrivener converter already writes plain-text bodies | Admitted: optional `data-format="markdown"`, backward compatible |
+| R3-9 | Hoisting a `<section id>` wrapper loses its identifier | MEDIUM | Pandoc 3.11 HTML reader | Admitted: anchor span at the heading; map every identifier |
+| R3-10 | Compile leaves document links as literal paths | MEDIUM | `compile.rs:124–153` | Admitted: slice 4, document anchors and link resolution in core compile |
+| R3-11 | The editor has no image node and drops images on save | HIGH | `Editor.tsx:355–384`; reviewer's round trip | Admitted: slice 4, image node and per-shell asset resolver (pre-existing loss, fixed here) |
+| R3-12 | Compile runs Pandoc in the temp folder without a resource path | HIGH | `compile.rs:136–153,190` | Admitted: slice 4, `--resource-path=<project root>` |
+
+Declined: none. Scope note: round 3 moved three engine additions into the
+plan (publication API, compile link and image resolution, Markdown-bodied
+notes); the phase check now says so instead of "no engine change".
+
 ## Closeout
 
-Pending: round 3 review of the second revision (same reviewer, fresh
-session, pins base = round-2 head `da9d73a`, head = the revision commit).
+Pending: round 4 review of the third revision (same reviewer, fresh
+session, pins base = round-3 head `fa9a445`, head = the revision commit).

@@ -27,14 +27,18 @@ past Scrivener on the owner's direction the same day.)
 (2026-10-27, answering the decisions below.)
 
 **Phase check:** [x] Allowed — reference-app feature over the existing
-converter and import services; no format or engine change  [x] Not paused
+converter and import services, plus three small engine additions it needs
+(a project-publication transaction in core, compile resolving links and
+images between included documents, a Markdown-bodied footnote element); no
+format change  [x] Not paused
 
 **Invariants touched:** I2 (uploads are staged in a temporary folder and
 handed to the existing converter and services, which write through core;
-new project-format readers live in the converter crate, never in the UI);
-I6 (a refused or failed import leaves no half-made project and nothing on
-disk: every import builds the project under a temporary name and renames it
-into place only on success, R1-1); I7 untouched.
+new project-format readers live in the converter crate, never in the UI;
+the `.chikn` publication step itself is a core API, R3-3); I6 (a refused or
+failed import leaves no half-made project and nothing on disk: every import
+builds the project under a temporary name and core renames it into place
+only on success, R1-1); I7 untouched.
 
 ---
 
@@ -85,21 +89,28 @@ existing `/api/import-upload` (one document into an open project) stays.
   (7z decodes an *encoded header* inside `Archive::read`; tar reads PAX
   bodies), so no check made from inside the process can run before those
   allocations, and a timed-out `spawn_blocking` task cannot be stopped.
-  `services::unpack::run(archive, dest, limits)` therefore re-invokes the
-  current executable (`std::env::current_exe()`) with a hidden
-  `--unpack-worker` argument that every binary honours first thing in
-  `main` (web server, Tauri shell, converter CLI; `services` provides the
-  one function they call). The parent owns the admission slot (one unpack
-  at a time per process), waits with a 120 s wall clock, kills the child
-  on timeout or on its own cancellation, removes the staging folder, and
-  releases the slot only after the child has exited. The child's memory is
-  capped by the operating system: `setrlimit(RLIMIT_AS, 1 GiB)` in
-  `pre_exec` on Linux and macOS, a Job Object with a 1 GiB process-memory
-  limit on Windows (the `windows` crate is already a Tauri dependency
-  there). The child reports the outcome as one JSON line on stdout; a
-  killed or crashed child is a refusal with "This archive could not be
-  unpacked safely". The in-process checks below are defence in depth, not
-  the only line.
+  `chikn_converter::unpack::run(archive, dest, limits)` therefore
+  re-invokes the current executable (`std::env::current_exe()`) with a
+  hidden `--unpack-worker` argument that every binary honours first thing
+  in `main` (web server, Tauri shell, converter CLI). The worker lives in
+  the converter crate, below `services` (R3-1: `services` already depends
+  on the converter, so a worker in `services` called from the converter CLI
+  would be a dependency cycle); `services` supervises it. The parent owns
+  the admission slot (one unpack at a time per process), waits with a 120 s
+  wall clock, kills the child on timeout or when the HTTP request is
+  cancelled (the request future's drop guard kills and waits), removes the
+  staging folder, and releases the slot only after the child has exited.
+  **The worker limits its own memory after `exec`, before it touches the
+  archive** (R3-2: a limit set in `pre_exec` is applied to the forked
+  parent image, which macOS refuses when the parent already maps more than
+  the limit): on Linux and macOS the worker calls `setrlimit(RLIMIT_AS,
+  1 GiB)` as its first act and refuses to proceed if the call fails; on
+  Windows the parent assigns the child to a Job Object with a 1 GiB
+  process-memory limit before resuming it (the `windows` crate is already a
+  Tauri dependency there). The child reports the outcome as one JSON line
+  on stdout; a killed or crashed child is a refusal with "This archive
+  could not be unpacked safely". The in-process checks below are defence in
+  depth, not the only line.
   - **Entry paths** (R1-4, R2-6, R2-7): the name is split on both `/` and
     `\`. A leading `./` is dropped and a trailing separator marks a
     directory entry (so `Book/`, `./` and `./chapter.md` from ordinary
@@ -125,13 +136,14 @@ existing `/api/import-upload` (one document into an open project) stays.
     or an offset outside the file, is refused; after the parse each
     content coder's dictionary size (LZMA 5-byte properties, LZMA2 1-byte
     code, from the block's coder records) is refused above 256 MiB. Tar: a
-    header-only walk of the stream runs first and refuses any PAX or
-    global extension header (`x`, `g`) that carries a `size` record (so
-    the walk and the `tar` crate cannot disagree about where an entry
-    ends; such records exist only for files over 8 GiB, which the ceiling
-    refuses anyway), any `L`/`K`/`x`/`g` body above 1 MiB, and any declared
-    total above the ceiling; only then does the `tar` crate read it (gzip
-    is streamed twice, which is cheap). Zip: the entry count is read from
+    header-only walk of the stream runs first; it parses PAX and global
+    extension headers (`x`, `g`) itself and accepts a `size` record only
+    when it equals the following member's raw size field (ordinary
+    archivers write such records for small files too, R3-7), refusing a
+    divergent one so the walk and the `tar` crate cannot disagree about
+    where an entry ends; it refuses any `L`/`K`/`x`/`g` body above 1 MiB
+    and any declared total above the ceiling; only then does the `tar`
+    crate read it (gzip is streamed twice, which is cheap). Zip: the entry count is read from
     the end-of-central-directory record actually selected by the crate
     (ZIP64 included) and refused above the ceiling before the directory is
     read. Unpacked bytes including metadata are capped at 4 GiB and entries
@@ -147,8 +159,11 @@ existing `/api/import-upload` (one document into an open project) stays.
      File".
   2. Operating-system droppings (`__MACOSX/`, `.DS_Store`, `Thumbs.db`,
      `desktop.ini`) are ignored everywhere below.
-  3. **Strong markers are discovered first, anywhere in the tree** (to a
-     depth of 6): a `.scrivx` file (Scrivener, root = its folder); later
+  3. **Strong markers are discovered first, anywhere in the tree**, by
+     walking the complete entry list the unpacker already holds (at most
+     50 000 entries, so no depth limit is needed and "no marker anywhere"
+     is a real statement, R3-6): a `.scrivx` file (Scrivener, root = its
+     folder); later
      slices add `nwProject.nwx` (novelWriter), a `MANUSKRIPT` file
      (Manuskript) and `info.json` beside a `text.*` file (TextBundle).
      Exactly one marker → that project with that root, whatever else sits
@@ -164,25 +179,37 @@ existing `/api/import-upload` (one document into an open project) stays.
      import".
   The converter receives `source_root`, never the staging root. Later
   slices add kinds in step 3 only.
-- **One transaction for every project import** (R1-1, R2-1, R2-2):
-  `services::import_project` takes a process-wide lock on the final path,
-  checks that nothing exists there (the web gate's `creatable` only
-  authorises the root: it returns an existing path unchanged, so the
-  service makes the existence check itself; an empty folder, a file, a
-  dangling symlink and an existing project are all refused and never
-  touched), builds the project at `<outputPath>.importing-<random>` beside
-  the final path, and publishes it with a rename that cannot replace an
-  existing entry (`renameat2(RENAME_NOREPLACE)` on Linux, `MoveFileExW`
-  without `REPLACE_EXISTING` on Windows, `renamex_np(RENAME_EXCL)` on
-  macOS; where the call is unavailable, the check under the lock stands
-  alone and the record says so). After the rename the returned `Project`
-  is re-read from the final path so `Project.path`, the write token and
-  the recent-projects entry all name the published folder, never the
-  temporary one. Any error removes the temporary project and the staging
-  folder, so a failed or refused import leaves nothing on disk and the same
-  destination can be tried again. The embedded `.git` moves with the
-  folder; nothing in it records the absolute path. Both existing importers
-  (`import_scrivener`, `import_markdown_folder`) move under this wrapper.
+- **One transaction for every project import** (R1-1, R2-1, R2-2, R3-3,
+  R3-4, R3-5). `services::import_project` owns admission and
+  orchestration: it takes a process-wide lock on the final path, checks
+  that nothing exists there (the web gate's `creatable` only authorises the
+  root: it returns an existing path unchanged, so the service makes the
+  existence check itself; an empty folder, a file, a dangling symlink and
+  an existing project are all refused and never touched), and has the
+  converter build the project at `<outputPath>.importing-<random>` beside
+  the final path. Publication is a core API,
+  `core::project::publish_imported(temp, final) -> Published`, because
+  moving and removing a `.chikn` folder is `.chikn` I/O (I2): it reads the
+  finished project at the temporary path first (every fallible read
+  happens before the commit point), then renames with a call that cannot
+  replace an existing entry (`renameat2(RENAME_NOREPLACE)` on Linux,
+  `MoveFileExW` without `REPLACE_EXISTING` on Windows, `renamex_np(
+  RENAME_EXCL)` on macOS). Where the storage refuses the exclusive rename
+  (`EINVAL`/`ENOTSUP`, some network filesystems), the import fails safely
+  with "This projects folder's storage cannot publish a project safely;
+  choose another folder" and the temporary project is removed; there is no
+  plain-rename fallback (R3-4). The rename is the commit point: after it,
+  `Published` carries the already-read project with its `path` rewritten
+  to the final folder and the write token is re-acquired there; if that
+  re-acquisition fails, the result is a truthful
+  `ImportedButNotOpened { path }` (the project exists and appears on the
+  project screen) rather than a failure that would leave a published
+  project behind a "failed" message (R3-5). Any error *before* the commit
+  point removes the temporary project and the staging folder, so a failed
+  or refused import leaves nothing on disk and the same destination can be
+  tried again. The embedded `.git` moves with the folder; nothing in it
+  records the absolute path. Both existing importers (`import_scrivener`,
+  `import_markdown_folder`) move under this wrapper.
 - **The Markdown-folder importer learns the whole tree** (R1-2): today it
   reads only the top-level files and prints skipped files to stderr. It
   becomes recursive and deterministic (folders → binder folders, entries
@@ -244,12 +271,20 @@ Inside a project, both shells:
   added to the project as attachments the way the Scrivener converter adds
   research files (file beside its `.meta` sidecar, written through core)
   before the staging folder is removed, and the image targets in the text
-  are rewritten to them. A Lua filter on the read side
+  are rewritten to them (stored project-relative, `research/<file>`, the
+  converter's convention). A Lua filter on the read side
   (`crates/services/src/cs-import-notes.lua`, the inverse of core's
-  `cs-footnotes.lua`) turns every Pandoc `Note` into the editor's own
-  footnote element (`<sup class="footnote" data-body="…">●</sup>`), the
-  form the editor edits and compile already understands; no `[^n]` labels
-  are written, so chapters cannot collide when compiled together (today's
+  `cs-footnotes.lua`) turns every Pandoc `Note` into the editor's footnote
+  element. Today that element's `data-body` is plain text, so a note with
+  emphasis, a link or a list would be flattened (R3-8). The element gains
+  an optional `data-format="markdown"` attribute: when present, the body is
+  Markdown (the note's blocks written with `pandoc.write(…, "markdown")`)
+  and compile's `cs-footnotes.lua` reads it with `pandoc.read` instead of
+  treating it as text; when absent, today's plain-text meaning is unchanged,
+  so every existing note keeps its behaviour. The editor's `FootnoteNode`
+  carries the attribute through its parse/render round trip and shows such
+  a body as Markdown source in its editing field. No `[^n]` labels are
+  written, so chapters cannot collide when compiled together (today's
   concatenating compile would merge two imported files' `[^1]` notes).
 - **Split, as an option** (R1-5, R2-10, R2-11, R2-12). After the file is
   picked, a small dialog offers "Split into one document per top-level
@@ -258,13 +293,17 @@ Inside a project, both shells:
   happens in Pandoc's document model: the file is read to Pandoc JSON
   (with the media and note filters above), top-level `Div` wrappers that
   hold a level-one `Header` are hoisted so `<section><h1>` HTML and fenced
-  Divs split like plain headings, and the block list is cut at each
-  level-one `Header` at that level only (headings inside block quotes,
-  lists or notes are not boundaries). Each part is written back with
-  `pandoc -f json -t markdown`. Before writing, a map of heading
-  identifiers → destination document rewrites every `#id` link whose
-  target now lives in another part to the converter's document-link form
-  (`<other-document>.md#id`). Document metadata (`meta`: title, author,
+  Divs split like plain headings; a hoisted wrapper's identifier is not
+  lost: it becomes an empty anchor span `[]{#id}` at the start of the
+  heading it wrapped (R3-9). The block list is cut at each level-one
+  `Header` at that level only (headings inside block quotes, lists or notes
+  are not boundaries). Each part is written back with `pandoc -f json -t
+  markdown`. Before writing, a map of *every* identifier in each part
+  (headers, Divs, Spans, code blocks, images, tables) → destination
+  document rewrites every `#id` link whose target now lives in another part
+  to the converter's document-link form (`<other-document>.md#id`); a link
+  whose target identifier exists nowhere is left as it was. Document
+  metadata (`meta`: title, author,
   date, anything else) is not dropped: title, author and date open the
   "Front matter" document as a heading and lines, and the full metadata is
   kept as custom fields on that document's `.meta` sidecar (when there is
@@ -274,7 +313,44 @@ Inside a project, both shells:
   Off: today's single document, unchanged bytes for Markdown and plain
   text.
 
-### Slice 4 — other writing apps' project formats (one slice each; first pass: free apps only)
+### Slice 4 — what imports create survives the editor and compile
+
+Three gaps the reviews found are not in the importers but in what receives
+their output (R3-8, R3-10, R3-11, R3-12). Without this slice the promises
+above would be broken the first time a writer saved or compiled.
+
+- **Images in the editor** (R3-11). The editor registers no image node, so
+  a Markdown image is dropped the moment a document is saved. Both shells
+  gain an image node (TipTap's `Image`, serialised back to
+  `![alt](path)`), and a resolver that turns a project-relative target
+  (`research/figure.png`) into something the shell can display: the
+  desktop uses Tauri's asset protocol (`convertFileSrc`) on the project
+  folder; the web shell gets `GET /api/asset?project=…&path=…`, gated to
+  files inside the open project (same gate as the other project routes).
+  Imported images therefore display, survive an edit and a save, and
+  reopen. This also fixes the same loss for Markdown a writer brings in
+  today.
+- **Compile finds project images** (R3-12). Core writes the combined
+  manuscript to the system temporary folder and runs Pandoc there, so a
+  project-relative image is "not fetched" and replaced by its description.
+  `compile` passes `--resource-path=<project root>` and the stored
+  project-relative convention is the one it resolves; DOCX/ODT output
+  embeds the image.
+- **Compile resolves links between documents** (R3-10). Links from one
+  document to another (`manuscript/two.md#two`, the converter's form and
+  the split's) stay literal paths in the compiled output. Each compiled
+  section now opens with an empty anchor span named for the document
+  (`[]{#doc-<stem>}`); a link to an included document becomes `#<fragment>`
+  when the fragment exists in the compiled text, else `#doc-<stem>`; a link
+  to a document that is not part of the compile becomes its text alone.
+- **Markdown-bodied footnotes** (R3-8): the `data-format="markdown"`
+  reading in `cs-footnotes.lua` and the attribute round trip in
+  `FootnoteNode`, as described in slice 3.
+
+Core changes stay inside `crates/core/src/core/compile.rs`,
+`cs-footnotes.lua` and the new `publish_imported`; no format change.
+
+### Slice 5 — other writing apps' project formats (one slice each; first pass: free apps only)
 
 Each is a reader in `crates/cli/src/<format>/` producing the same
 `ImportReport` the Scrivener reader produces, plus a detector entry. The
@@ -326,12 +402,14 @@ coding.
 | File / area | Change |
 |-------------|--------|
 | `crates/web/src/project_upload.rs` (new), `app.rs`, `tests/http.rs` | streaming to a temp file, unpack, detector call, handler, own body limit |
-| `crates/cli/src/archive.rs` (new), `detect.rs` (new), `lib.rs`, `Cargo.toml` (+ `zip`, `sevenz-rust2`, `tar`, `flate2`), `Cargo.lock` | `unpack_archive` (format sniffing, header pre-checks, path/kind/size checks), `detect_project` |
-| `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new), `unpack.rs` (new), `cs-import-notes.lua` (new); `crates/web/src/commands.rs`, `main.rs`; `src-tauri/src/commands/*.rs`, `main.rs`; `crates/cli/src/main.rs` | `import_project` (lock, existence check, temporary destination, no-replace rename, re-read), recursive Markdown-folder import with warnings, the format registry with handlers, the unpack worker (`--unpack-worker` honoured by every binary), media extraction and attachment, notes to the editor's form, `.doc` step, model-level `split_headings` |
+| `crates/cli/src/archive.rs` (new), `unpack.rs` (new), `detect.rs` (new), `lib.rs`, `main.rs`, `Cargo.toml` (+ `zip`, `sevenz-rust2`, `tar`, `flate2`), `Cargo.lock` | `unpack_archive` (format sniffing, header pre-checks, path/kind/size checks), the unpack worker (`--unpack-worker`, self-applied memory limit, JSON outcome), `detect_project` |
+| `crates/core/src/core/project/publish.rs` (new), `compile.rs`, `cs-footnotes.lua` | `publish_imported` (read, exclusive rename, no fallback), `--resource-path`, document anchors and link resolution, `data-format="markdown"` note bodies |
+| `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new), `cs-import-notes.lua` (new); `crates/web/src/commands.rs`, `main.rs`, `assets.rs` (new); `src-tauri/src/commands/*.rs`, `main.rs` | `import_project` (lock, existence check, temporary destination, core publication), recursive Markdown-folder import with warnings, the format registry with handlers, worker dispatch honoured first in every `main`, media extraction and attachment, notes to the editor's form with Markdown bodies, `.doc` step, model-level `split_headings`, the gated asset route |
+| `ui/src/components/editor/Editor.tsx`, `ImageNode.ts` (new), `FootnoteNode.ts`, `ui/src/platform.ts` | image node and serialisation, project-asset URL resolver per shell, `data-format` round trip |
 | `ui/src/commands/web.ts`, `io.ts`, `project.ts`, `stores/projectStore.ts`, `ui/src/importFormats.json` (generated) | `importProjectUpload`, `importProject`, `split` flag, shared format and archive suffix lists |
 | `ui/src/components/welcome/ImportProjectDialog.tsx` (new), `Welcome.tsx`, `editor.css`, `platform.ts` | the chooser; desktop archive pick |
 | `ui/src/components/binder/Binder.tsx`, a small `ImportFileOptions` dialog | the split checkbox, wider accept list |
-| `crates/cli/src/{novelwriter,manuskript,textbundle}/` (slice 4, one per slice) | readers + fixtures made in the apps |
+| `crates/cli/src/{novelwriter,manuskript,textbundle}/` (slice 5, one per slice) | readers + fixtures made in the apps |
 | `docs/USER_GUIDE.md`, `docs/plans/README.md`, `.agents/state.md`, `DEVLOG.md` | records |
 
 ## [MODEL] Tests
@@ -351,19 +429,37 @@ coding.
       16 MiB PAX header, and a tar whose PAX `size` record disagrees with
       the raw size are refused; an encrypted 7z and a RAR are refused with
       the "re-save as zip" message.
-- [ ] `crates/services` unpack worker: a 7z with an encoded header that
+- [ ] `crates/cli` unpack worker: a tiny valid archive unpacks through
+      the worker launched from each production executable (converter CLI
+      directly; web server and Tauri binaries through their `main`
+      dispatch, the Tauri one as a plain `cargo test` of the dispatch
+      function where the crate builds); a 7z with an encoded header that
       expands to 2 GiB and a zip declaring ten million entries are refused
       under the worker's memory limit without the parent's memory growing
       (asserted through the child's exit status, not by surviving the
-      allocation in-process); a worker made to sleep past the wall clock is
-      killed, the staging folder is gone and the admission slot is free
-      afterwards; a crashed worker is a refusal, not a hang.
+      allocation in-process); the same two pass/refuse correctly when the
+      parent has first mapped 2 GiB of address space (R3-2); a worker made
+      to sleep past the wall clock is killed, the staging folder is gone
+      and the admission slot is free afterwards; dropping the request
+      future mid-unpack kills the worker; a crashed worker is a refusal,
+      not a hang. Tar: a small file with a matching PAX `size` record
+      unpacks; a divergent record is refused.
 - [ ] `crates/cli` detector, run through conversion: Scrivener at top, one
-      down, beside `__MACOSX/`, and beside a `README.md`; a Markdown tree
-      whose documents are all below the root; two `.scriv` folders, and a
-      `.scriv` nested inside another project's tree → "more than one
-      project"; a real `.docx`, an `.odt` and an `.epub` (zip containers)
-      → the "use Import File" message; a folder of PDFs → not a project.
+      down, beside `__MACOSX/`, beside a `README.md`, and alone eight
+      folders deep under a README; a Markdown tree whose documents are all
+      below the root; two `.scriv` folders, a `.scriv` nested inside
+      another project's tree, and a shallow marker with a second one eight
+      folders deep → "more than one project"; a real `.docx`, an `.odt` and
+      an `.epub` (zip containers) → the "use Import File" message; a folder
+      of PDFs → not a project.
+- [ ] `crates/core` publication: `publish_imported` refuses an existing
+      empty folder created *between* the caller's check and the rename
+      (the temporary project stays, nothing is replaced; Linux CI proves
+      `RENAME_NOREPLACE`); with the exclusive rename forced unsupported it
+      fails safely with the storage message and removes the temporary
+      project; a read error injected before the commit removes the
+      temporary project; a token failure injected after the commit yields
+      `ImportedButNotOpened` with the final path and the project intact.
 - [ ] `crates/services` import transaction: a converter error after the
       project was created leaves nothing at `outputPath` and no staging
       folder, and a second attempt at the same path succeeds; an existing
@@ -377,18 +473,36 @@ coding.
       warnings and the other two import; a tree with no readable file
       fails.
 - [ ] `crates/services` import content: a DOCX with an embedded image
-      imports with the image as an attachment and a working target after
-      the upload is deleted; a DOCX with two footnotes imports as two
-      editor footnote elements and no `[^n]` label; two imported chapters
-      each holding a footnote compile (core) to two distinct notes.
+      imports with the image as an attachment and a project-relative
+      target after the upload is deleted; a DOCX with two footnotes imports
+      as two editor footnote elements and no `[^n]` label; a footnote with
+      emphasis, a link and a list imports with `data-format="markdown"`
+      and compiles (core) to a note with that emphasis, link destination
+      and list; a plain-text note without the attribute compiles exactly
+      as today; two imported chapters each holding a footnote compile to
+      two distinct notes.
+- [ ] `crates/core` compile (slice 4): a project-relative image compiles
+      into DOCX and ODT output as an embedded picture while the test runs
+      from another working directory; a link to an included document's
+      heading becomes a local anchor that exists in the output, a link to
+      the document itself resolves to its anchor, a link to an excluded
+      document becomes its text.
+- [ ] UI editor (slice 4): a document with `![Figure](research/figure.png)`
+      opens, the image node is present, an edit and a save keep the image
+      line byte-for-byte, and the resolver produces the asset URL for each
+      shell; the web asset route refuses a path outside the project; a
+      footnote with `data-format="markdown"` round-trips its attribute and
+      body unchanged through parse and serialise.
 - [ ] `crates/services` split: three top-level headings → three documents
       in order plus front matter; a footnote referenced in chapter one and
       defined after chapter two stays in chapter one, and the two chapters
       compile to two distinct notes; a reference-style link shared by two
       chapters resolves in both; a link from chapter one to a heading in
-      chapter two becomes a document link to chapter two; HTML with two
-      `<section><h1>` blocks and Markdown with headings inside fenced Divs
-      split into two documents; a heading inside a block quote is not a
+      chapter two becomes a document link to chapter two, and a link to a
+      `<section id="part-two">` wrapper's identifier lands on an anchor
+      that exists in the second document; HTML with two `<section><h1>`
+      blocks and Markdown with headings inside fenced Divs split into two
+      documents; a heading inside a block quote is not a
       boundary; a `# ` line inside a fenced code block and a Setext heading
       are treated as the parser says; YAML title, author and date survive
       into Front matter and its sidecar; one heading → whole file and the
@@ -412,7 +526,10 @@ coding.
       on-this-machine choice still works; cancel sends nothing; Import File
       offers every extension in `importFormats.json`, `.doc` included, and
       shows the split checkbox off by default and passes it through.
-- [ ] Slice 4, each: a fixture project converts to the expected tree.
+- [ ] Slice 5, each: a fixture project made in the app converts to the
+      expected tree; the Manuskript fixture holds nested world entries,
+      characters and outline documents; the TextBundle fixture uses
+      `text.markdown`, not `text.md`.
 - [ ] Declared suite (`.agents/repo-guidance.md`), Tauri crate excepted on
       this box (Known drift); CI on push.
 
@@ -436,15 +553,20 @@ coding.
 - **Settled 2026-10-27 — upload shape:** a project uploads as one archive
   (`.zip`, `.7z`, `.tar.gz`/`.tgz`, `.tar`) on every device and in both
   shells; no browser folder picker. The on-this-machine folder path stays.
-- **Settled 2026-10-27 — slice 4 first pass:** only formats a free app can
-  produce for checking: novelWriter, Manuskript, TextBundle (via Zettlr).
-  yWriter deferred; Ulysses library files not read (export instead).
+- **Settled 2026-10-27 — app-format first pass (slice 5):** only formats a
+  free app can produce for checking: novelWriter, Manuskript, TextBundle
+  (via Zettlr). yWriter deferred; Ulysses library files not read (export
+  instead).
 - Taken unless told otherwise: upload limit 512 MiB; unpacked ceiling 4 GiB
   and 50 000 entries; the unpack worker gets 1 GiB of memory and 120 s; 7z
   header above 16 MiB or dictionary above 256 MiB refused; encrypted
   archives refused rather than prompting for a password; the split option
   is off by default and remembered; imported footnotes take the editor's
-  footnote form rather than `[^n]` labels; the
+  footnote form rather than `[^n]` labels, with `data-format="markdown"`
+  for formatted bodies; storage that cannot rename exclusively refuses
+  the import rather than risking a replacement; the engine additions
+  (publication API, compile link and image resolution) are part of this
+  plan; the
   dependencies (`zip` MIT, `sevenz-rust2` Apache-2.0, `tar` and `flate2`
   MIT/Apache-2.0) are licence-compatible with this MIT repository.
 - Settled 2026-10-27: the go ("set the push policy to always, push, then
@@ -496,3 +618,21 @@ coding.
   metadata were lost by the split (R2-10 to R2-12); embedded images were
   never extracted (R2-13); `.doc` had been removed from the only list the
   choosers read (R2-14).
+- 2026-10-27 review round 3 (`plan-4`, `fa9a445`): reopened; R1-4, R1-5,
+  R1-6, R2-2, R2-4 to R2-10, R2-12, R2-14 closed; twelve findings, all
+  admitted after checking: a worker in `services` called from the
+  converter CLI is a Cargo cycle (R3-1: worker moves to the converter
+  crate); a `pre_exec` address-space limit is applied to the parent's
+  image and macOS refuses it (R3-2: the worker limits itself after exec);
+  publication is `.chikn` I/O and belongs in core (R3-3); the plain-rename
+  fallback restored the replacement race (R3-4: fail safely instead); a
+  failure after the rename left a published project behind a "failed"
+  result (R3-5: rename is the commit point, truthful
+  `ImportedButNotOpened`); a depth limit cannot establish "no marker
+  anywhere" (R3-6: walk the whole entry list); small files carry PAX
+  `size` records too (R3-7: accept when equal to the raw size); the
+  footnote element's body is plain text (R3-8: `data-format="markdown"`);
+  hoisting dropped wrapper identifiers (R3-9); compile leaves document
+  links literal (R3-10), the editor drops images on save (R3-11) and
+  compile cannot fetch project images (R3-12): new slice 4 "what imports
+  create survives the editor and compile"; app formats become slice 5.
