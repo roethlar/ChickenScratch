@@ -18,6 +18,16 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 | plan-2 | plan | `docs/plans/PLAN_TREE_REPLACE_EPOCH_GUARD.md` | `[x]`  | n/a (doc review on master) |
 | plan-3 | plan | `docs/plans/PLAN_SCRIVENER_FIDELITY.md` (codex gpt-6-astra xhigh, 5 rounds; I2 wording ruling with owner) | `[x]`  | n/a (doc review on master) |
 | plan-4 | plan | `docs/plans/PLAN_SCRIVENER_UPLOAD.md` (codex gpt-6-astra xhigh, 25 rounds; owner refused a mid-review deferral) | `[x]`  | n/a (doc review on master) |
+| s3-1 | code | Encoded fragments stop resolving after an editor save (range efde2de..13c55fa, codex) | `[ ]`  | — (default-branch mode) |
+| s3-2 | code | Image filenames with spaces or non-ASCII cannot display (range efde2de..13c55fa, codex) | `[ ]`  | — (default-branch mode) |
+| s3-3 | code | The Link validator drops external schemes the stock rule kept, and lets `javascript:` through (range efde2de..13c55fa, codex) | `[ ]`  | — (default-branch mode) |
+| s3-4 | code | Ordinary links inside footnotes are deleted by the origin-agreement rule (range efde2de..13c55fa, codex) | `[ ]`  | — (default-branch mode) |
+| s3-5 | code | Compile warnings never reach the writer (range efde2de..13c55fa, codex) | `[ ]`  | — (default-branch mode) |
+| s3-6 | code | Desktop imports leave the asset handler without an open project (range efde2de..13c55fa, codex) | `[ ]`  | — (default-branch mode) |
+| s3-7 | code | Turning a link into text drops the identifier other links rely on (range efde2de..13c55fa, codex) | `[ ]`  | — (default-branch mode) |
+| s3-8 | code | Metadata is left out of the identifier and link analysis (range efde2de..13c55fa, codex) | `[ ]`  | — (default-branch mode) |
+| s3-9 | code | An intermediate symlink bypasses the hidden-entry guard (range efde2de..13c55fa, codex) | `[ ]`  | — (default-branch mode) |
+| s3-10 | code | A relative/root ambiguity is accepted without the named warning (range efde2de..13c55fa, codex) | `[ ]`  | — (default-branch mode) |
 | s1-1 | code | Fallback skipping deletes the letter after a character control word (range b5f958b..caf8a5e, codex; fix + 2 repairs) | `[x]`  | — (default-branch mode) |
 | s1-2 | code | Truncated hyperlink field loses its buffered text (range b5f958b..caf8a5e, codex) | `[x]`  | — (default-branch mode) |
 | s1-3 | code | Fallback decodes every ANSI byte as Windows-1252 (range b5f958b..caf8a5e, codex) | `[x]`  | — (default-branch mode) |
