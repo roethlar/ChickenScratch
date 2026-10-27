@@ -1098,9 +1098,14 @@ impl Analysis {
                     link_dest[li] = Some(dest);
                 }
                 Resolved::BareUnique(idx) => {
-                    if let Some(id) = &final_id[*idx] {
-                        link_dest[li] = Some(id.clone());
-                    }
+                    // The element's final name, renamed or kept: a link that
+                    // reached a kept element by another spelling of its
+                    // identifier (`#caf%25C3%25A9` to `{id="caf%C3%A9"}`) must
+                    // still be rewritten to it (s3-1 repair review 4).
+                    let dest = final_id[*idx]
+                        .clone()
+                        .unwrap_or_else(|| scanned.elements[*idx].id.clone());
+                    link_dest[li] = Some(dest);
                 }
                 Resolved::Text | Resolved::Leave => {}
             }

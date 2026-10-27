@@ -836,3 +836,38 @@ fn mixed_spellings_of_one_bare_fragment_keep_every_candidate() {
     assert!(ids.contains("caf%C3%A9"), "literal spelling kept: {html}");
     assert_eq!(href_of(&html, "b").as_deref(), Some("#caf%C3%A9"));
 }
+
+/// Beside an ambiguous bare link that keeps both spellings, a second bare
+/// link that reaches the kept literal identifier uniquely (`#caf%25C3%25A9`
+/// decodes to `caf%C3%A9`) is rewritten to that identifier instead of being
+/// left pointing at a spelling no element carries (review finding s3-1,
+/// repair review 4).
+#[test]
+fn a_unique_bare_link_to_a_kept_identifier_is_rewritten_to_it() {
+    if !pandoc_present() {
+        eprintln!("skipping: pandoc not installed");
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "# One {#café}\n\n# Two {id=\"caf%C3%A9\"}\n\nBoth [b](#caf%C3%A9), literal [c](#caf%25C3%25A9) and [two](b.md#S1).",
+            ),
+            doc("manuscript/b.md", "## Inner {#S1}\n\nText."),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let ids = ids(&html);
+    assert!(ids.contains("café") && ids.contains("caf%C3%A9"), "{html}");
+    assert_eq!(href_of(&html, "b").as_deref(), Some("#caf%C3%A9"));
+    let c = href_of(&html, "c").unwrap();
+    assert_eq!(
+        c, "#caf%C3%A9",
+        "the unique link lands on the kept literal identifier: {html}"
+    );
+    assert!(element_text(&html, "caf%C3%A9").unwrap().contains("Two"));
+}
