@@ -656,9 +656,13 @@ Inside a project, both shells:
   `Header` at that level only (headings inside block quotes, lists or notes
   are not boundaries). Each part is written back with `pandoc -f json -t
   <formats::MARKDOWN_WRITER>` (the shared `markdown-raw_attribute`
-  configuration, R5-3). Before writing, a map of *every* identifier in each
-  part (headers, Divs, Spans, code blocks, images, tables) → destination
-  document rewrites every `#id` link to the document-qualified form
+  configuration, R5-3). Before writing, a map of every identifier in each part
+  *outside footnote contents* (headers, Divs, Spans, code blocks, images,
+  tables; an identifier inside a `Note` is not a cross-document target,
+  slice 3 step 4, so the split neither qualifies a link to it nor gives it
+  an `{#S<n>}`, and such a link stays as written, a bare `#id` that
+  compile treats exactly as today, R21-2) → destination document rewrites
+  every other `#id` link to the document-qualified form
   `/<project path>.md#id` (root-anchored, R16-2), whether the target ends
   up in another part or in the same one, so the editor can open the
   document it names and compile can resolve it to that document's element
@@ -927,8 +931,11 @@ coding.
       holding `# Wanted` while B redefines `[^n]` with `# Wrong` does not
       let `a.md#wanted` reach any heading (the only `wanted` is inside a
       note, so it becomes text with the footnote warning, R10-1); a Markdown-bodied note holding
-      `# Generated` and `# Real {#generated}` resolves a link to the
-      explicit one without a duplicate warning (R10-2); a link to a
+      `# Generated` and `# Real {#generated}`, in a paragraph and inside a
+      Div, is classified by the diagnostic parse as one generated and one
+      explicit identifier (no duplicate-identifier warning), and a
+      document-qualified link to `generated` becomes text with the footnote
+      warning because both headings sit inside a note (R10-2, R21-1); a link to a
       heading-first Div lands on the heading with a LaTeX label (R10-3); a
       link to an identified link and to identified inline code each get a
       destination that exists in DOCX, ODT and LaTeX (R10-4); a native footnote defined in document two and
@@ -979,7 +986,10 @@ coding.
       (R10-5); a link to `<span id="spot">` in another chapter is written
       as an `AnchorNode` element before the text, and the whole result
       survives editor save and reopen and compiles to a working link
-      (R12-1); a footnote referenced in chapter one and
+      (R12-1); a `[Read](#spot)` whose target heading sits inside a
+      footnote is left as the bare `#spot`, the heading gets no `{#S<n>}`,
+      and the split output compiles with today's bare-link behaviour and no
+      warning (R21-2); a footnote referenced in chapter one and
       defined after chapter two stays in chapter one, and the two chapters
       compile to two distinct notes; a reference-style link shared by two
       chapters resolves in both; a link from chapter one to a heading in
@@ -1344,3 +1354,9 @@ coding.
   contents are never targets across documents, rules (a) and (b) look
   only outside notes, and such a link becomes text with a warning that
   names the reason; links from inside notes are unaffected.
+- 2026-10-27 review round 21 (`plan-4`, `d55fb91`): reopened on two
+  consistency findings after R20-1 and R19-1 closed: the R10-2 test still
+  expected a link into a note to resolve (R21-1: it now expects
+  classification plus the footnote warning) and the splitter still
+  qualified links to identifiers inside notes (R21-2: its map excludes
+  note contents; such links stay bare and compile as today).

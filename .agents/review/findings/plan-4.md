@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 20 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; twenty-first
-revision committed, round 21 pending
+**Status**: In progress — rounds 1 to 21 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; twenty-second
+revision committed, round 22 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -813,8 +813,36 @@ Declined: none.
 Declined: none. R8-5 is thereby closed as a stated, warned limitation
 rather than a resolution; links *from* inside notes are unaffected.
 
+## Round 21 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17ed9-1d1d-78c2-9e46-5f5c9b2f647b`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `d55fb91f12c3314356218209e100546a83a8c266` (twenty-first
+  revision)
+- **Base SHA**: `39b60a46f183c69c7dd2de101d02d7c8c1997a2e` (round-20 head)
+- **Dispatched**: 2026-10-27 19:32 UTC; finished 19:36 UTC; exit 0;
+  78,457 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `d55fb91…`; both succeeded. The reviewer confirmed on Pandoc 3.11 that
+  rule (a) as worded cannot be met by an element inside a note, decoded
+  Markdown-bodied notes and notes inside Divs included, and ran six core
+  compile tests. No repository file changed; no remote contacted.
+- **Verdict**: `reopened` on two consistency findings. Closed: R20-1,
+  R19-1.
+
+## Round 21 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R21-1 | The R10-2 test still required a link into a note to resolve | MEDIUM | plan text; reviewer's scratch decoder probe | Admitted: the test now expects the diagnostic classification plus the footnote warning |
+| R21-2 | The splitter still qualified links to identifiers inside notes and assigned them `{#S<n>}` | MEDIUM | plan text; reviewer's Pandoc probe | Admitted: the splitter's map excludes note contents; such links stay bare and compile as today |
+
+Declined: none.
+
 ## Closeout
 
-Pending: round 21 review of the twenty-first revision (same reviewer,
-fresh session, pins base = round-20 head `39b60a4`, head = the revision
+Pending: round 22 review of the twenty-second revision (same reviewer,
+fresh session, pins base = round-21 head `d55fb91`, head = the revision
 commit).
