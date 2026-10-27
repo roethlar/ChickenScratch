@@ -39,12 +39,16 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   splitting things by chapter headings can be an option but not
   automatic." Plan redrafted accordingly
   (`docs/plans/PLAN_SCRIVENER_UPLOAD.md`, name kept): Import Project on the
-  project screen (folder pick, zip or server folder; Scrivener and Markdown
-  folders first, open app formats later: TextBundle/TextPack, yWriter,
-  novelWriter, Manuskript recommended), Import File inside a project for
-  every Pandoc reader with an off-by-default heading split. Awaiting the go
-  and the format list. No code changed. Latent bug noted there: `io.rs`
-  maps legacy `.doc` to the Pandoc `docx` reader, which cannot read `.doc`.
+  project screen, Import File inside a project for every Pandoc reader with
+  an off-by-default heading split. Owner rulings 2026-10-27: a project
+  uploads as one archive (zip, 7z, tar.gz) everywhere, no browser folder
+  pick; slice 4's first pass is novelWriter, Manuskript and TextBundle (via
+  Zettlr), yWriter deferred. **Owner go 2026-10-27** ("set the push policy
+  to always, push, then go"). Plan review `plan-4` (codex gpt-6-astra xhigh,
+  disposable clone) round 1 dispatched 2026-10-27; slices start on
+  consensus, each Codex-reviewed before the next. No code changed yet.
+  Latent bug noted there: `io.rs` maps legacy `.doc` to the Pandoc `docx`
+  reader, which cannot read `.doc`.
 - **Scrivener import is not perfected** (owner asked 2026-10-25; checked by
   running `chikn-converter` on the three `samples/*.scriv`, all Scrivener 3
   layout): `Zoe 2.scriv` fails outright, Pandoc's RTF reader rejects one
@@ -168,10 +172,12 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
    review (gpt-6-astra, xhigh) to consensus, then slices 1–4 (RTF prepare +
    fallback, binder placement, metadata + notes, comments + footnotes), each
    Codex-reviewed before the next; slice 5 (Scrivener 2) optional.
-3. **Import anything** (`PLAN_SCRIVENER_UPLOAD.md`): redrafted 2026-10-25,
-   awaiting the owner's go and the slice-4 format list; then slices 1–3
-   (upload door + detector, project from one document, Import button in
-   both shells), then one slice per app format, one commit each.
+3. **Import anything** (`PLAN_SCRIVENER_UPLOAD.md`): owner go 2026-10-27;
+   plan review `plan-4` in progress (`.agents/review/index.md`); then
+   slices 1–3 (archive upload door + detector, Import Project button in
+   both shells, Import File for every Pandoc reader with optional split),
+   then one slice per app format (novelWriter, Manuskript, TextBundle), one
+   commit each, each slice Codex-reviewed.
 3. **Reload safety + phone layout** (`PLAN_RELOAD_SAFETY_MOBILE.md`): every
    slice shipped and pushed 2026-10-25 (`fe0ffbf`). The owner tries it
    (reload mid-typing; phone; Quick note; Add to Home Screen) after
