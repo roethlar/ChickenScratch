@@ -476,13 +476,25 @@ gap is in scope here, with the design below.
      `Figure` in company), so a block-path match also checks the matched
      element's kind, and the blocks inside `Note`s are not part of any
      block path (R10-1).
-  4. **Finding a target, exactly or not at all.** For a link `doc.md#id`:
-     (a) if the section of `doc` holds an element whose *explicit*
-     identifier is `id`, that element is the target (two such elements is a
-     duplicate explicit identifier in that document and gets a named
-     warning); a generated identifier equal to `id` on another element in
-     the section cannot mislead this rule because it is not explicit
-     (R9-1, R9-3); (b) otherwise `doc` is parsed on its own (small
+  4. **Finding a target, exactly or not at all.** Footnote contents are
+     never targets across documents: a rendered note carries no record of
+     which document defined it, a later document's definition of the same
+     label silently replaces an earlier one, and every rule tried for
+     attributing a note to a document has admitted a wrong destination
+     (R8-5, R10-1, R16-3, R17-2, R18-1, R19-1, R20-1); so rules (a) and (b)
+     look only at elements outside `Note` contents (the editor's
+     Markdown-bodied notes included once decoded), and an identifier that
+     exists only inside a note falls to rule (d), whose warning says so
+     ("`<target>` points into a footnote; footnotes cannot be linked to
+     from another document"). Links *from* inside notes are resolved like
+     any other (step 1's agreement rule); only links *into* note contents
+     are refused. For a link `doc.md#id`: (a) if the section of `doc` holds
+     an element, outside any note, whose *explicit* identifier is `id`,
+     that element is the target (two such elements is a duplicate explicit
+     identifier in that document and gets a named warning); a generated
+     identifier equal to `id` on another element in the section cannot
+     mislead this rule because it is not explicit (R9-1, R9-3); (b)
+     otherwise `doc` is parsed on its own (small
      independent runs, at most four at a time, only for documents a link
      needs): if a *block-level* element there (header, Div, code block,
      table, figure) *outside any footnote* carries the generated identifier
@@ -492,24 +504,12 @@ gap is in scope here, with the design below.
      the same block count and order; cross-document reference and footnote
      resolution changes inlines and note contents, never top-level block
      positions, so this match is exact where text or rank matching was not
-     (R8-2, R9-2); note contents are excluded because the combined text may
-     use a later document's definition of the same note label, so the
-     note's blocks can differ from the solo parse (R10-1); (c) otherwise,
-     for an identifier inside a footnote (a note is rendered where it is
-     referenced, not where it is defined), the target is an element with
-     that *explicit* identifier inside `Note` contents anywhere in the
-     combined document, but only with evidence that the note belongs to
-     `doc`: the same explicit identifier must appear inside a `Note` of
-     `doc`'s own diagnostic solo parse (which holds the notes `doc` both
-     defines and references), and exactly one such element may exist in
-     the combined document (R8-5, R19-1: a unique `spot` inside another
-     document's note is not evidence of anything about `doc`; a note `doc`
-     defines but never references itself is absent from its solo parse, so
-     ownership cannot be shown and rule (d) applies); (d) otherwise the link becomes
+     (R8-2, R9-2); (c) there is no rule for identifiers inside notes, for
+     the reasons above; (d) otherwise the link becomes
      its text and compile emits a named warning naming the link and the
      document, so an unresolvable link is reported, never silently kept as
      a dead hyperlink. Inline-level targets (spans, images) are reached only
-     by explicit identifiers, through (a) or (c).
+     by explicit identifiers, through (a).
   5. **Final identifiers are allocated per element, not per name.** Every
      element that carries an identifier in the combined parse, or that a
      link resolved to, receives a fresh final identifier: `d<index>_<n>`
@@ -918,14 +918,15 @@ coding.
       opening with a code block then a paragraph, and a Div holding only
       code, each get their destination before the code (R9-6); a link into
       a heading with an explicit identifier inside B's footnote referenced
-      from A resolves when B also references that note itself, and becomes
-      text with the warning when B only defines it (R8-5, R19-1); A's note
-      linking `b.md#spot` where B has no `spot` and C's note holds an
-      unrelated `{#spot}` becomes text with the warning, as does the
-      variant where C redefines B's note label (R19-1); A's `[^n]` note
+      from A becomes its text with the footnote warning, whether B also
+      references that note or only defines it, whether C redefines the
+      label or holds an unrelated `{#spot}` in a note of its own, and when
+      B references the note twice (R8-5, R19-1, R20-1); an explicit
+      `{#spot}` on a heading outside any note in B still resolves while an
+      identical identifier inside a note of C is ignored; A's `[^n]` note
       holding `# Wanted` while B redefines `[^n]` with `# Wrong` does not
-      let `a.md#wanted` reach the wrong heading (it resolves only through
-      an explicit identifier or becomes text with the warning, R10-1); a Markdown-bodied note holding
+      let `a.md#wanted` reach any heading (the only `wanted` is inside a
+      note, so it becomes text with the footnote warning, R10-1); a Markdown-bodied note holding
       `# Generated` and `# Real {#generated}` resolves a link to the
       explicit one without a duplicate warning (R10-2); a link to a
       heading-first Div lands on the heading with a LaTeX label (R10-3); a
@@ -1337,3 +1338,9 @@ coding.
   identifier must also appear inside a note of the target document's own
   solo parse, and exactly one element may match; otherwise the named
   warning).
+- 2026-10-27 review round 20 (`plan-4`, `39b60a4`): reopened on one
+  finding: a shadowed note definition let an unrelated identifier satisfy
+  both ownership conditions (R20-1). Rule (c) is withdrawn: footnote
+  contents are never targets across documents, rules (a) and (b) look
+  only outside notes, and such a link becomes text with a warning that
+  names the reason; links from inside notes are unaffected.

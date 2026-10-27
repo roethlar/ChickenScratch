@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 19 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; twentieth
-revision committed, round 20 pending
+**Status**: In progress — rounds 1 to 20 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; twenty-first
+revision committed, round 21 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -785,7 +785,36 @@ Declined: none.
 
 Declined: none.
 
+## Round 20 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17ed2-adc5-7900-a79d-ab61393f13b5`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `39b60a46f183c69c7dd2de101d02d7c8c1997a2e` (twentieth
+  revision)
+- **Base SHA**: `c621b650db0b4e469a0834c65673844dac0e5616` (round-19 head)
+- **Dispatched**: 2026-10-27 19:24 UTC; finished 19:29 UTC; exit 0;
+  94,224 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `39b60a4…`; both succeeded. The reviewer built the shadowed-definition
+  case on Pandoc 3.11, checked HTML and DOCX destinations, measured the
+  multiplicity of matching note elements in three shapes, and ran six core
+  compile tests. No repository file changed; no remote contacted.
+- **Verdict**: `reopened` on one finding. Not closed: R19-1 (mapped
+  below).
+
+## Round 20 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R20-1 | A later document's redefinition of B's note label leaves C's unrelated `{#spot}` as the only match while B's solo parse still shows `spot`, so both ownership conditions pass | MEDIUM | reviewer's Pandoc probe | Admitted; rule (c) withdrawn: footnote contents are never targets across documents; rules (a) and (b) look only outside notes; the link becomes text with a warning naming the reason |
+
+Declined: none. R8-5 is thereby closed as a stated, warned limitation
+rather than a resolution; links *from* inside notes are unaffected.
+
 ## Closeout
 
-Pending: round 20 review of the twentieth revision (same reviewer, fresh
-session, pins base = round-19 head `c621b65`, head = the revision commit).
+Pending: round 21 review of the twenty-first revision (same reviewer,
+fresh session, pins base = round-20 head `39b60a4`, head = the revision
+commit).
