@@ -39,6 +39,13 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
     setWarnings(null);
     onClose();
   };
+  // No dismissal while an export runs: the dialog is where its warnings will
+  // appear, and closing it early unmounted the report before it arrived
+  // (s3-5 repair review 2).
+  const dismiss = () => {
+    if (compiling) return;
+    close();
+  };
   // Browser shell: no save dialog to pick the format from, so ask here.
   const web = isWeb();
   const [format, setFormat] = useState("docx");
@@ -49,7 +56,7 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
   }, [open, web]);
   const { dialogRef, onDialogKeyDown } = useModalFocusTrap<HTMLDivElement>(
     open && !!project,
-    onClose,
+    dismiss,
     titleInputRef
   );
 
@@ -127,7 +134,7 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
   };
 
   return (
-    <div className="dialog-overlay" onClick={close}>
+    <div className="dialog-overlay" onClick={dismiss}>
       <div
         ref={dialogRef}
         className="compile-dialog"
@@ -140,7 +147,7 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
       >
         <div className="compile-header">
           <h3 id={titleId}>Compile Manuscript</h3>
-          <button onClick={close} className="compile-close" aria-label="Close compile dialog"><X size={16} /></button>
+          <button onClick={dismiss} disabled={compiling} className="compile-close" aria-label="Close compile dialog"><X size={16} /></button>
         </div>
 
         {warnings ? (
@@ -221,7 +228,7 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
         </div>
 
         <div className="compile-footer">
-          <button className="dialog-btn cancel" onClick={close}>Cancel</button>
+          <button className="dialog-btn cancel" onClick={dismiss} disabled={compiling}>Cancel</button>
           <button className="dialog-btn ok" onClick={handleExport} disabled={compiling}>
             {compiling ? "Compiling..." : "Export"}
           </button>

@@ -114,6 +114,35 @@ describe("compile warnings reach the writer (s3-5)", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("cannot be dismissed while an export runs, so its warnings are never lost", async () => {
+    let settle!: (value: unknown) => void;
+    exportMock.mockImplementationOnce(
+      () => new Promise((resolve) => { settle = resolve; }) as never
+    );
+    const onClose = vi.fn();
+    const { container } = render(<CompileDialog open onClose={onClose} />);
+    await screen.findByLabelText("Format");
+    fireEvent.click(screen.getByText("Export"));
+    await screen.findByText("Compiling...");
+
+    // Every dismissal route is refused until the export settles.
+    fireEvent.click(screen.getByText("Cancel"));
+    fireEvent.click(screen.getByLabelText("Close compile dialog"));
+    fireEvent.click(container.querySelector(".dialog-overlay")!);
+    expect(onClose).not.toHaveBeenCalled();
+
+    settle({
+      blob: new Blob(["<p>hi</p>"], { type: "text/html" }),
+      fileName: "Scratch.html",
+      warnings: ["b.md#gone was not found in manuscript/b.md; the link became text"],
+    });
+    const list = await screen.findByRole("list", { name: "Compile warnings" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Done"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("closes straight away when there are no warnings", async () => {
     const onClose = vi.fn();
     render(<CompileDialog open onClose={onClose} />);
