@@ -279,8 +279,10 @@ mod tests {
     fn unsupported_storage_fails_safely() {
         let dir = TempDir::new().unwrap();
         let (temp, final_path) = staged(dir.path(), "Nas");
+        // Portable stand-in for the storage's EINVAL/ENOTSUP (the test also
+        // compiles on Windows, where CI builds core's tests).
         let unsupported = |_: &Path, _: &Path| -> io::Result<()> {
-            Err(io::Error::from_raw_os_error(libc::EINVAL))
+            Err(io::Error::from(io::ErrorKind::Unsupported))
         };
         let err = publish_with(&temp, &final_path, unsupported, acquire_write_token).unwrap_err();
         assert!(
