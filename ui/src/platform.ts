@@ -11,7 +11,7 @@
  * Together with `commands/transport.ts` this is the only module allowed to
  * import from `@tauri-apps/*` (ESLint `no-restricted-imports`).
  */
-import { isTauri } from "@tauri-apps/api/core";
+import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
@@ -72,6 +72,19 @@ export async function pickSaveFile(options: PickSaveOptions = {}): Promise<strin
     filters: options.filters,
   });
   return typeof picked === "string" ? picked : null;
+}
+
+/**
+ * The URL a shell displays a project file at (`research/figure.png`, as the
+ * document names it). Desktop: the app's own `chikn-asset` scheme, whose
+ * handler checks the open project at request time (the built-in asset
+ * protocol's scope cannot be revoked and re-allowed when a project is
+ * closed and reopened, plan-4 R5-6). Web: the gated `/api/asset` route.
+ */
+export function resolveAssetUrl(projectPath: string, relativePath: string): string {
+  if (isTauri()) return convertFileSrc(relativePath, "chikn-asset");
+  const params = new URLSearchParams({ project: projectPath, path: relativePath });
+  return `/api/asset?${params.toString()}`;
 }
 
 export async function openExternal(url: string): Promise<void> {

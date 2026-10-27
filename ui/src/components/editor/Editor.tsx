@@ -14,6 +14,9 @@ import { Toolbar } from "./Toolbar";
 import { FindReplace } from "./FindReplace";
 import { CommentMark } from "../comments/CommentMark";
 import { FootnoteNode } from "./FootnoteNode";
+import { AnchorNode } from "./AnchorNode";
+import { ImageNode } from "./ImageNode";
+import { classifyDocumentTarget, isAllowedLinkUri } from "./documentLinks";
 import {
   setCurrentEditor,
   setPendingFlush,
@@ -366,12 +369,21 @@ export function Editor() {
       Color,
       Link.configure({
         openOnClick: false,
+        // Links between documents are relative or root-anchored paths
+        // (`two.md#second`, `/manuscript/two.md`); the default rule would
+        // drop them on parse. Only the syntax is checked here, in every
+        // mode: where a click leads is decided when it happens, from the
+        // document that holds it (PLAN_SCRIVENER_UPLOAD slice 3, plan-4
+        // R4-4, R16-4, R17-3).
+        isAllowedUri: (url) => isAllowedLinkUri(url),
         HTMLAttributes: {
           rel: "noopener noreferrer nofollow",
         },
       }),
       CommentMark,
       FootnoteNode,
+      AnchorNode,
+      ImageNode,
       FlowBoundary,
       Markdown.configure({
         html: true,            // allow inline HTML to pass through untouched
@@ -388,6 +400,41 @@ export function Editor() {
       attributes: {
         class: "editor-content",
         spellcheck: "true",
+      },
+      handleDOMEvents: {
+        // A click on a link between documents opens that document. In
+        // Flow mode the editor cannot tell which document a click belongs
+        // to, so a relative target opens only when every document in the
+        // flow resolves it to the same one; otherwise a notice says to
+        // open the document on its own (plan-4 R17-3, R18-1).
+        click: (_view, event) => {
+          const anchor = (event.target as HTMLElement | null)?.closest?.("a[href]");
+          if (!anchor) return false;
+          const href = anchor.getAttribute("href") ?? "";
+          const state = useProjectStore.getState();
+          const project = state.project;
+          if (!project) return false;
+          const docs = Object.values(project.documents);
+          const origins = state.flowDocs
+            ? state.flowDocs
+                .map((fd) => project.documents[fd.docId])
+                .filter((d): d is NonNullable<typeof d> => Boolean(d))
+            : state.activeDoc
+              ? [state.activeDoc]
+              : [];
+          const target = classifyDocumentTarget(href, origins, docs);
+          if (target.kind === "document") {
+            event.preventDefault();
+            state.selectDocument(target.doc.id);
+            return true;
+          }
+          if (target.kind === "ambiguous") {
+            event.preventDefault();
+            toast("Open this document on its own to follow the link", "info");
+            return true;
+          }
+          return false;
+        },
       },
     },
     onUpdate: () => {
