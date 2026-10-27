@@ -3,8 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 7 reopened (2026-10-27); seventh
-revision committed, round 8 pending
+**Status**: In progress — rounds 1 to 7 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; eighth revision
+committed, round 8 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -336,11 +337,25 @@ flagged to the owner.
 | R7-7 | A hundred whole-project parses have no resource bound | HIGH | reviewer's measurement | Admitted; feature deferred |
 | R7-8 | Byte-identical output is not a valid oracle (EPUB UUIDs) | LOW | reviewer's probe | Admitted: unchanged path asserted on Pandoc arguments and normalised structure |
 
-What this plan keeps from the compile work: `--resource-path` for project
-images (verified by the reviewer in round 4), anchor `Span`s and
-`data-format="markdown"` notes in the Lua filter, and one deterministic
-rule that a link whose target is exactly a project document's path
-compiles to its text instead of a dead hyperlink. The reviewer's
+**Owner ruling 2026-10-27, superseding the dispositions above.** The
+owner refused the deferral: "a link resolving to plain text means this
+cannot ship with honest import functionality as a feature since it's
+broken. no." Compile link resolution returns to slice 3 in the eighth
+revision with a design that leaves the Markdown Pandoc parses unchanged:
+R7-1 (no sentinel; provenance by solo block counts, mismatch → named
+warning, content never moved), R7-2 and R7-5 (the combined parse is
+today's text, so definition precedence and title blocks are unchanged),
+R7-3 (bare links are rewritten through the combined identifier they
+already target), R7-4 (targets materialised as identified `Span`s, which
+every writer emits), R7-6 (generated blocks renamed with a `g<n>-` prefix),
+R7-7 (per-document solo parses only, four at a time, no whole-project
+re-parse). A round 8 dispatched against the deferral revision (session
+`01a17e51-354b-7171-a7d3-8a94dc4e0340`, 17:05 UTC) was stopped before a
+verdict when the ruling arrived; it is not counted.
+
+What this plan keeps from the earlier compile work unchanged:
+`--resource-path` for project images (verified by the reviewer in round
+4), anchor `Span`s and `data-format="markdown"` notes in the Lua filter. The reviewer's
 observation that R1-3/R2-3/R4-1/R5-1 are closed only conditionally on
 allocator coverage is now stated in the plan: the bound is claimed only
 with coverage evidence, and a decoder without it is dropped.
@@ -349,5 +364,6 @@ Declined: none.
 
 ## Closeout
 
-Pending: round 8 review of the seventh revision (same reviewer, fresh
-session, pins base = round-7 head `e857033`, head = the revision commit).
+Pending: round 8 review of the eighth revision (same reviewer, fresh
+session, pins base = round-7 head `e857033`, head = the revision commit;
+the stopped dispatch against `0e7ac5f` is not a round).

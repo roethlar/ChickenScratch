@@ -29,7 +29,7 @@ past Scrivener on the owner's direction the same day.)
 **Phase check:** [x] Allowed — reference-app feature over the existing
 converter and import services, plus three small engine additions it needs
 (a project-publication transaction in core, compile finding project images
-and rendering document links as text, a Markdown-bodied footnote element
+and resolving links between documents, a Markdown-bodied footnote element
 and an anchor element understood by compile); no format change
 [x] Not paused
 
@@ -281,13 +281,12 @@ existing `/api/import-upload` (one document into an open project) stays.
 
 ### Slice 3 — what imports create survives the editor and compile (lands before slice 4)
 
-Three gaps the reviews found are not in the importers but in what receives
-their output (R3-8, R3-11, R3-12). Without this slice the promises of
-slice 4 would be broken the first time a writer saved or compiled, so it
-lands first. A fourth gap, compile resolving links between documents, is
-**deferred to its own plan** (see the Decisions section): four review
-rounds showed it touches every project's compiled output and needs a
-design of its own.
+Four gaps the reviews found are not in the importers but in what receives
+their output (R3-8, R3-10, R3-11, R3-12). Without this slice the promises
+of slice 4 would be broken the first time a writer saved or compiled, so it
+lands first. The owner ruled (2026-10-27) that links between documents must
+work in compiled output for the import to ship as a feature, so the fourth
+gap is in scope here, with the design below.
 
 - **Images in the editor** (R3-11, R4-6). The editor registers no image
   node, so a Markdown image is dropped the moment a document is saved. Both
@@ -327,25 +326,84 @@ design of its own.
   `compile` passes `--resource-path=<project root>` and the stored
   project-relative convention is the one it resolves; DOCX/ODT output
   embeds the image.
-- **Document links in compile: text for now, resolution deferred** (R3-10,
-  R4-5, R5-4, R5-5, R6-1 to R6-4, R7-1 to R7-8). The converter already
-  writes links between documents as project-relative paths
-  (`manuscript/two.md#two`), and the split in slice 4 writes the same form;
-  compile today passes them through as hyperlinks to a relative path,
-  which no DOCX or PDF reader can follow. Resolving them inside the
-  compiled document means re-establishing identifiers, provenance and
-  targets across every writer, and the designs tried in review each
-  changed native projects' output in some case (positional matching,
-  per-file scope, sentinel-delimited per-document parses). That work is
-  deferred to a separate plan, `PLAN_COMPILE_DOCUMENT_LINKS.md`, not yet
-  drafted. In this plan, compile's Lua filter does one small, deterministic
-  thing instead: a `Link` whose target, after stripping a leading `./` and
-  percent-decoding, is exactly the project-relative path of a document in
-  the project (with or without a `#fragment`) is replaced by its own text,
-  so the output carries no dead hyperlink. Anything else, including
-  ordinary relative links to resources, is untouched. Native projects
-  without such links compile through the same Markdown-to-output
-  invocation as today.
+- **Compile resolves links between documents, from the parse it already
+  does** (R3-10, R4-5, R5-4, R5-5, R6-1 to R6-4, R7-1 to R7-7; owner
+  ruling 2026-10-27). The converter writes links between documents as
+  project-relative paths (`manuscript/two.md#two`) and the split in slice 4
+  writes the same form; today compile passes them through as hyperlinks to
+  a relative path, which no DOCX or PDF reader can follow. The earlier
+  designs failed because each one changed *what* Pandoc parsed (markers,
+  per-file scope, sentinels); this one changes nothing about the parse and
+  works on its result.
+  1. **Gate.** Compile runs today's combined Markdown through Pandoc to
+     JSON (filters attached, as now). If no `Link` target in that JSON,
+     after stripping a leading `./` and percent-decoding, is exactly the
+     project-relative path of a document in the project (with or without a
+     `#fragment`; exact membership in the document list, excluded documents
+     included, so an ordinary relative link to `research/notes.pdf` is not
+     one), compile continues from the *same Markdown* with today's
+     invocation: no second parse, no renaming, output as today. Native
+     projects without such links never enter the steps below.
+  2. **Provenance by block count, not markers.** Each included document is
+     parsed on its own to JSON (small, independent runs, at most four at a
+     time; the whole-project text is never re-parsed). The combined parse
+     is the concatenation of those documents with the title page and
+     separators between them, and Pandoc yields the same number of
+     top-level blocks for a document whether it is parsed alone or in
+     company: reference and footnote definitions never become blocks, an
+     unresolved reference and a resolved one are both one paragraph, and a
+     note pulled in from another document lives inside an inline. So the
+     combined block list is cut into sections by the solo block counts
+     (title page and separators are known generated blocks). If the counts
+     do not add up, the cause is a document whose unclosed fence or Div
+     runs into the next one, which already garbles today's output; compile
+     then emits a named warning ("document X runs into the next document;
+     links between documents were not resolved") and leaves the links as
+     they are. No content is ever moved or truncated.
+  3. **Identifier map per section.** Within each section the identified
+     elements of the combined blocks are matched to those of the solo
+     blocks in order, skipping anything inside a `Note` (a note resolved
+     from another document can carry a heading the solo parse never saw);
+     identifiers differ only by Pandoc's `-1`, `-2` deduplication suffixes,
+     so the match also checks that the combined identifier equals the solo
+     one or the solo one plus such a suffix, and a mismatch downgrades to
+     the warning of step 2 for that document. This gives, for every
+     element, (document, solo identifier) → combined identifier, which is
+     what the importer's `doc.md#solo-id` links need.
+  4. **Renaming, complete namespace.** Every identifier in the final AST
+     is renamed: `d<index>-<id>` inside section `index`, `g<n>-<id>` on
+     generated blocks (title heading, separators). Two documents' explicit
+     `{#target}` and automatic `introduction` become distinct; a native
+     heading literally called `d0-x` becomes `d0-d0-x`; nothing can collide
+     with a section anchor because every original identifier carries a
+     prefix. Every link whose target was a bare `#id` is rewritten through
+     the *combined* identifier it already pointed at (`#introduction-1` →
+     `#d1-introduction-1`), so native navigation keeps exactly the target it
+     has today.
+  5. **Targets that every writer materialises.** A link that needs a
+     destination gets one that the DOCX, ODT, HTML, EPUB and LaTeX writers
+     all emit (the round-7 writer table: headings and identified `Span`s
+     yield bookmarks or labels everywhere; an identified `Div` is a section
+     in ODT and a code block's identifier is dropped there). So: a header
+     target keeps its identifier; any other targeted element, and every
+     whole-document target (`doc.md`), gets an empty identified `Span`
+     placed at the start of the section's first inline-bearing block (its
+     first paragraph or heading); a document whose first block has no
+     inlines (code block, table) gets an empty `Plain` holding the `Span`
+     before it, which the record notes as the one case that adds an empty
+     paragraph. The slice begins by re-running the writer table on the
+     installed Pandoc and recording it.
+  6. **Rewrite.** `doc.md#solo-id` → `#<renamed combined id>` of the mapped
+     element (or of its materialised `Span`); `doc.md` → the section's
+     `Span`; a link to a document outside the compile → its text alone;
+     everything else untouched. Notes with `data-format="markdown"` are
+     decoded before the walk so links inside them are `Link` nodes resolved
+     like any other. The result goes to the output format with `-f json`
+     and the same options as today.
+  Content is identical to today's for every project: the Markdown Pandoc
+  parses is the same text, so title blocks, duplicate definitions and
+  separators behave as they do now; only identifiers and link targets
+  change, and only for projects that have links between documents.
 - **Markdown-bodied footnotes** (R3-8): the `data-format="markdown"`
   reading in `cs-footnotes.lua` and the attribute round trip in
   `FootnoteNode`, as described in slice 4.
@@ -442,10 +500,9 @@ Inside a project, both shells:
   part (headers, Divs, Spans, code blocks, images, tables) → destination
   document rewrites every `#id` link to the document-qualified form
   `<document>.md#id`, whether the target ends up in another part or in the
-  same one, so the editor can open the document it names and the deferred
-  compile work has an unambiguous target to resolve (R5-4; compile renders
-  such links as their text for now); a link whose target identifier exists
-  nowhere is left as it was. Document
+  same one, so the editor can open the document it names and compile can
+  resolve it to that document's element (R5-4); a link whose target
+  identifier exists nowhere is left as it was. Document
   metadata (`meta`: title, author,
   date, anything else) is not dropped: title, author and date open the
   "Front matter" document as a heading and lines, and the full metadata is
@@ -509,7 +566,7 @@ coding.
 |-------------|--------|
 | `crates/web/src/project_upload.rs` (new), `app.rs`, `tests/http.rs` | streaming to a temp file, unpack, detector call, handler, own body limit |
 | `crates/cli/src/archive.rs` (new), `unpack.rs` (new), `detect.rs` (new), `lib.rs`, `main.rs`, `Cargo.toml` (+ `zip`, `sevenz-rust2`, `tar`, `flate2`), `Cargo.lock` | `unpack_archive` (format sniffing, header pre-checks, path/kind/size checks), the unpack worker (`--unpack-worker`, `BudgetAlloc` counting allocator, per-platform supplementary limits, JSON outcome with peak), `detect_project` |
-| `crates/core/src/core/project/publish.rs` (new), `compile.rs`, `cs-footnotes.lua` | `publish_imported` (read, exclusive rename, no fallback), `--resource-path`, document links rendered as text, anchor elements as `Span`s, `data-format="markdown"` note bodies, entity decoding of the body attribute |
+| `crates/core/src/core/project/publish.rs` (new), `compile.rs`, `cs-footnotes.lua` | `publish_imported` (read, exclusive rename, no fallback), `--resource-path`, document-link resolution (gate, block-count alignment with per-document parses, identifier renaming, target materialisation, rewrite), anchor elements as `Span`s, `data-format="markdown"` note bodies, entity decoding of the body attribute |
 | `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new), `cs-import-notes.lua` (new); `crates/web/src/commands.rs`, `main.rs`, `assets.rs` (new); `src-tauri/src/commands/*.rs`, `main.rs` | `import_project` (lock, existence check, temporary destination, core publication), recursive Markdown-folder import with warnings, the format registry with handlers, worker dispatch honoured first in every `main`, media extraction and attachment, notes to the editor's form with Markdown bodies, `.doc` step, model-level `split_headings`, the gated asset route |
 | `ui/src/components/editor/Editor.tsx`, `ImageNode.ts` (new), `AnchorNode.ts` (new), `FootnoteNode.ts`, `ui/src/platform.ts`; `src-tauri/src/assets.rs` (new), `tauri.conf.json`, `main.rs` | image node and serialisation, anchor node, project-relative links accepted and opened, project-asset URL resolver per shell, `data-format` round trip and entity-encoded body attribute, the `chikn-asset` scheme handler and CSP |
 | `ui/src/commands/web.ts`, `io.ts`, `project.ts`, `stores/projectStore.ts`, `ui/src/importFormats.json` (generated) | `importProjectUpload`, `importProject`, `split` flag, shared format and archive suffix lists |
@@ -599,21 +656,40 @@ coding.
       editor open → second save → compile with its note count, body
       structure and surrounding text intact (the attribute newline
       encoding); a footnote in chapter one whose link targets chapter two
-      is rewritten to the document-qualified form like any other link and
-      compiles to its text; a plain-text note without the attribute
+      is rewritten to the document-qualified form like any other link,
+      compiles to a working link to chapter two and to its text when
+      chapter two is excluded; a plain-text note without the attribute
       compiles exactly as today; two imported chapters each holding a footnote compile to
       two distinct notes.
 - [ ] `crates/core` compile (slice 3): a project-relative image compiles
       into DOCX and ODT output as an embedded picture while the test runs
-      from another working directory; a link to `manuscript/two.md#two`
-      and one to `manuscript/two.md` compile to their text with no
-      hyperlink in DOCX and HTML, a link to `./manuscript/two.md` likewise,
-      while a relative link to `research/notes.pdf` (not a document) and an
-      external `https://` link keep their hyperlinks; an existing sample
-      project and a project with a leading `%` title block compile through
-      the unchanged Markdown invocation (asserted on the Pandoc arguments
-      and on normalised DOCX/HTML structure, not raw bytes: EPUB output
-      embeds a fresh UUID on every run).
+      from another working directory. Links between documents, each
+      asserted on the destination's text in DOCX and HTML (and on the
+      LaTeX label and the ODT bookmark): a link to an included document's
+      heading lands on that heading; a link to the document itself lands at
+      its start; a link to an excluded document becomes its text; two
+      documents each headed `# Introduction` and a link to the second lands
+      on the second, while a native bare `#introduction-1` link still lands
+      where it does today; two documents with explicit `{#target}` resolve
+      separately; a link to a hoisted `<section id="part-two">` anchor (a
+      `Span`) resolves, as does a link into a document with no headings; a
+      link to an identified code block resolves in ODT through its
+      materialised `Span`; a native footnote defined in document two and
+      referenced from document one, with a heading in its body, leaves
+      document one's later heading correctly targeted; a heading literally
+      named `d0-x` does not collide; a document that opens with a code block
+      gets its anchor and the record's one empty paragraph; duplicate
+      reference definitions across documents resolve to the same definition
+      as today; a document with an unclosed code fence produces the named
+      warning, unchanged content and unresolved links, never moved or
+      truncated text; a 100-document project with one link between
+      documents compiles within four concurrent solo parses and a recorded
+      time bound. Unchanged path: an existing sample project, a project
+      with a leading `%` title block and a project with a relative link to
+      `research/notes.pdf` compile through today's Markdown invocation
+      (asserted on the Pandoc arguments and on normalised DOCX/HTML
+      structure, not raw bytes: EPUB output embeds a fresh UUID on every
+      run).
 - [ ] UI editor (slice 3): a document with `![Figure](research/figure.png)`
       opens, the image node is present, an edit and a save keep the image
       line byte-for-byte, and the resolver produces the asset URL for each
@@ -695,8 +771,8 @@ coding.
   instead).
 - Taken unless told otherwise: upload limit 512 MiB; unpacked ceiling 4 GiB
   and 50 000 entries; the unpack worker gets a 1 GiB allocation budget and
-  120 s; compile keeps its single combined parse and renders document
-  links as text; 7z
+  120 s; compile keeps its single combined parse and resolves document
+  links by aligning it with per-document parses; 7z
   header above 16 MiB or dictionary above 256 MiB refused; encrypted
   archives refused rather than prompting for a password; the split option
   is off by default and remembered; imported footnotes take the editor's
@@ -710,12 +786,12 @@ coding.
 - Settled 2026-10-27: the go ("set the push policy to always, push, then
   go"); plan reviewed by Codex gpt-6-astra xhigh before slice 1, slices
   reviewed by the same reviewer (`.agents/review/findings/plan-4.md`).
-- **Deferred 2026-10-27 (orchestrator, flagged to the owner):** compile
-  resolving links between documents into the compiled output. Not part of
-  the owner's request; added under review in round 3, redesigned in rounds
-  4 to 6, and still producing output-changing defects in round 7. It needs
-  its own plan (`PLAN_COMPILE_DOCUMENT_LINKS.md`, not drafted) with its
-  own review. Until then compile renders such links as their text.
+- **Owner ruling 2026-10-27 — links between documents must work in
+  compiled output.** After round 7 the orchestrator proposed deferring
+  compile link resolution to a separate plan and rendering such links as
+  text. The owner refused: "a link resolving to plain text means this
+  cannot ship with honest import functionality as a feature since it's
+  broken. no." The feature stays in slice 3 with the design above.
 
 ## Status
 
@@ -839,3 +915,17 @@ coding.
   renders document links as their text, nothing more. The allocator bound
   is stated as conditional on coverage evidence once the crates are
   locked, as the reviewer asked.
+- 2026-10-27 owner ruling: the deferral is refused ("a link resolving to
+  plain text means this cannot ship with honest import functionality as a
+  feature since it's broken. no"). Round 8, dispatched against the deferral
+  revision, was stopped before a verdict. Compile link resolution is back
+  in slice 3 with a design that changes nothing about what Pandoc parses:
+  gate on document links in the combined JSON; provenance by solo block
+  counts (no markers, no sentinel, no whole-project re-parse; a count
+  mismatch means an unclosed fence, which gets a named warning and
+  unresolved links, never moved content); per-section identifier map by
+  order with notes skipped and suffix-checked; renaming of every
+  identifier with a section or generated prefix; bare links rewritten
+  through the combined identifier they already target; targets
+  materialised as identified `Span`s where a writer would not emit one;
+  rewrite; same options to the output format.
