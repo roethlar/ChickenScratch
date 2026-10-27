@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 15 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; sixteenth
-revision committed, round 16 pending
+**Status**: In progress — rounds 1 to 16 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; seventeenth
+revision committed, round 17 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -657,7 +657,43 @@ and link-resolution tests.
 
 Declined: none.
 
+## Round 16 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17eb0-f357-7002-abe6-b09e51832612`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `cf929479d864bdaefbca74781440601dcc0013a6` (sixteenth
+  revision)
+- **Base SHA**: `8ff3fa2d4c75b6cd71d2de9763997e38aa6b8bba` (round-15 head)
+- **Dispatched**: 2026-10-27 18:48 UTC; finished 18:56 UTC; exit 0;
+  118,325 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `cf92947…`; both succeeded. The reviewer probed current core's path
+  rules (`.markdown`/`.txt`/`.MD` written but not loaded; nested paths and
+  free names load; `a\b.md` and `a/b.md` collide in core's normalised
+  identity; five safe-path tests pass), Pandoc 3.11 (marker-block discard
+  versus unmarked text; note expansion attributing a shared note's link to
+  the rendering section) and the locked TipTap Link in Flow mode (relative
+  links stripped without document context). No repository file changed; no
+  remote contacted.
+- **Verdict**: `reopened` on four findings. Closed: R15-1 to R15-4,
+  R13-1, R14-1, R12-2 (original fixture).
+
+## Round 16 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R16-1 | Mirrored source names with `.markdown`, `.txt` or `.MD` are not loadable document paths; `a\b.md` collides with `a/b.md` | HIGH | `writer.rs:695`, `reader.rs:949`, `fidelity.rs:683` | Admitted: stems kept, extension lowercase `.md`, `source_path` in the sidecar, resolution in source space, archive path grammar applied to folder imports |
+| R16-2 | Relative-first lookup shadows the converter's rootless project-path links | MEDIUM | plan text; converter writes project paths | Admitted: root-anchored `/` notation for converter and split output, relative otherwise, legacy fallback with a named warning |
+| R16-3 | A link inside a shared footnote resolves from the rendering document, not the defining one | MEDIUM | reviewer's Pandoc probe | Admitted: defining document found by a line-start scan for `[^label]:` outside fenced code; last definition wins as in Pandoc |
+| R16-4 | `isAllowedUri` has no document context in Flow mode; relative links stripped | MEDIUM | reviewer's TipTap prototype; `projectStore.ts:166`, `Editor.tsx:468` | Admitted: syntax check at parse time; containment and navigation at click from the enclosing Flow section |
+
+Declined: none. Carried into the plan: the fallback to today's invocation
+on unmarked Markdown is what keeps native output identical (discarding
+marker blocks from the marked parse would not).
+
 ## Closeout
 
-Pending: round 16 review of the sixteenth revision (same reviewer, fresh
-session, pins base = round-15 head `8ff3fa2`, head = the revision commit).
+Pending: round 17 review of the seventeenth revision (same reviewer, fresh
+session, pins base = round-16 head `cf92947`, head = the revision commit).

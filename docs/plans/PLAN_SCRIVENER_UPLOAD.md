@@ -262,17 +262,28 @@ existing `/api/import-upload` (one document into an open project) stays.
   trip of a native Markdown file changes something a writer owns (metadata
   dropped, HTML spans and Divs turned into bracketed syntax the editor
   flattens, smart punctuation altered, shared reference definitions lost,
-  footnotes renumbered), so the folder import rewrites nothing. Instead the
-  documents are placed at paths that mirror the source tree
-  (`part/ch.md` → `manuscript/part/ch.md`; the binder *names* are
-  disambiguated for display, the *paths* never need to be, because two
-  source files cannot share a relative path), every file is copied byte
-  for byte, and the links keep their original relative targets
-  (`two.md#second`, `../intro.md`). Compile (slice 3, step 1) and the
-  editor resolve such a target relative to the document that contains it,
-  so the links work in the compiled output and open the right document in
-  the binder with no change to the text. A link to a file that was not
-  imported stays as written and is named in the warnings.
+  footnotes renumbered), so the folder import rewrites nothing. Instead
+  every file's bytes are copied unchanged to a document path that mirrors
+  the source tree and that core will load (R16-1): the folders are kept,
+  the stem is kept, and the extension becomes lowercase `.md` whatever the
+  source had (`part/Ch.markdown` → `manuscript/part/Ch.md`; core's reader
+  and compile load only lowercase `.md`, so `.markdown`, `.txt` and `.MD`
+  sources would otherwise sit on disk unloaded). Each document's `.meta`
+  sidecar records `source_path: part/Ch.markdown`. Source paths pass the
+  same grammar and case-folded collision registry as archive entries,
+  for archives and for the on-this-machine folder alike (so `a\b.md` and
+  `a/b.md`, or two stems that differ only by extension, are refused up
+  front rather than colliding in core). The binder *names* are
+  disambiguated for display only. Links keep their original relative
+  targets (`two.txt#second`, `../intro.markdown`): compile (slice 3, step
+  1) and the editor resolve a relative target in *source space*, against
+  the `source_path` of every document, relative to the containing
+  document's own `source_path`, and map the hit to its project path; a
+  project without `source_path` fields (native, or converter output)
+  resolves in project-path space. So the links work in the compiled output
+  and open the right document in the binder with no change to the text. A
+  link to a file that was not imported stays as written and is named in
+  the warnings.
 - Route body limit 512 MiB (research folders hold PDFs); over it, 413 and
   the UI points at the on-this-machine folder path, which stays.
 - Answers the tagged `ImportOutcome` above (`Opened` carries `{ project,
@@ -338,11 +349,18 @@ gap is in scope here, with the design below.
   and serialised as that HTML exactly as `FootnoteNode` does) preserves an
   identifier through open, edit and save; compile's Lua turns it into a
   Pandoc `Span` with that identifier so DOCX gets a bookmark. The `Link`
-  extension is configured (`isAllowedUri`) to accept relative targets (no
-  scheme; a path, `..` segments allowed, that resolves inside the project
-  from the open document's folder or from the project root, optionally
-  followed by `#fragment`) instead of discarding them, and clicking such a
-  link opens that document in the binder.
+  extension is configured (`isAllowedUri`) to accept the *syntax* of a
+  relative or root-anchored target (no scheme, no `//`, no control
+  characters; `..` segments allowed) instead of discarding it, so the mark
+  survives parsing in every mode, Flow included, where the editor holds
+  several documents at once and `isAllowedUri` is given no position
+  (R16-4). Containment and navigation are decided at click time, from the
+  containing document: the open document in single-document mode, the
+  enclosing Flow section's document (`FlowBoundary` carries
+  `data-doc-id`) in Flow mode; the target is resolved by the same rule as
+  compile (root-anchored, else relative in source or project space) and
+  must land inside the project, else the click does nothing and the link
+  text is left alone.
 - **Compile finds project images** (R3-12). Core writes the combined
   manuscript to the system temporary folder and runs Pandoc there, so a
   project-relative image is "not fetched" and replaced by its description.
@@ -360,20 +378,35 @@ gap is in scope here, with the design below.
   works on its result.
   1. **Gate.** Compile runs today's combined Markdown through Pandoc to
      JSON (filters attached, as now) and looks at every `Link` target that
-     has no scheme. A target is a *document link* when, after
-     percent-decoding, it names a document of the project (excluded
-     documents included) either relative to the folder of the document
-     that contains the link (`two.md#second` inside `manuscript/one.md` →
-     `manuscript/two.md`; `../research/x.md` likewise, `..` collapsed and
-     never escaping the project root), or, failing that, relative to the
-     project root (`manuscript/two.md`, the converter's and the split's
-     form); exact membership in the document list, so an ordinary relative
-     link to `research/notes.pdf` is not one. Which document contains a
-     link is known from the markers of step 2 (for this first pass compile
-     parses the marked text; if no document link is found the markers'
-     blocks are simply discarded and compile continues with today's
-     invocation on the *unmarked* Markdown: no renaming, output as today).
-     Native projects without document links never enter the steps below.
+     has no scheme. Two notations, told apart by their first character so
+     neither can shadow the other (R16-2): a target beginning with `/` is
+     **root-anchored** (`/manuscript/two.md#S1`), the form the converter
+     and the split write from this plan on (the converter's rewrite of
+     `scrivlnk://` links changes to it in slice 1); any other target is
+     **relative to the document that contains the link**, resolved in
+     source space when that document carries a `source_path` and in
+     project-path space otherwise, `..` collapsed and never escaping the
+     project root, percent-decoded, then matched exactly against the
+     document list (excluded documents included; an ordinary relative link
+     to `research/notes.pdf` is not a document link). Projects converted
+     before this plan carry rootless `manuscript/two.md` links: a relative
+     target that fails to resolve is tried once more from the project root,
+     and when both a relative and a root reading would resolve, the
+     relative one wins and compile emits a named warning naming the link so
+     the writer can anchor it. Which document contains a link is known from
+     the markers of step 2; a link inside a footnote belongs to the document
+     that *defines* the note, not the one that renders it (R16-3): compile
+     learns which document defines each note label from a line-start scan
+     of every document's text for `[^label]:` outside fenced code (a label
+     defined in several documents belongs to the last in compile order, the
+     definition Pandoc uses), and resolves the note's relative links from
+     that document; when the scan finds no definition for a rendered note,
+     the rendering document is used and a failed resolution is reported by
+     name. For this first pass compile parses the marked text; if no
+     document link is found the markers' blocks are simply discarded and
+     compile continues with today's invocation on the *unmarked* Markdown:
+     no renaming, output as today. Native projects without document links
+     never enter the steps below.
   2. **Provenance by document markers in the combined text.** Block
      counting cannot tell documents apart when an empty separator lets two
      lists or two indented code blocks merge (R8-1), so compile marks the
@@ -597,9 +630,10 @@ Inside a project, both shells:
   configuration, R5-3). Before writing, a map of *every* identifier in each
   part (headers, Divs, Spans, code blocks, images, tables) → destination
   document rewrites every `#id` link to the document-qualified form
-  `<document>.md#id`, whether the target ends up in another part or in the
-  same one, so the editor can open the document it names and compile can
-  resolve it to that document's element (R5-4). Every heading such a link
+  `/<project path>.md#id` (root-anchored, R16-2), whether the target ends
+  up in another part or in the same one, so the editor can open the
+  document it names and compile can resolve it to that document's element
+  (R5-4). Every heading such a link
   points at gets an explicit identifier that a generated one can never
   equal, `{#S<n>}` numbered within the document (generated identifiers from
   ASCII text are lowercase, so an uppercase ASCII letter settles it), with
@@ -683,7 +717,7 @@ coding.
 | File / area | Change |
 |-------------|--------|
 | `crates/web/src/project_upload.rs` (new), `app.rs`, `tests/http.rs` | streaming to a temp file, unpack, detector call, handler, own body limit |
-| `crates/cli/src/archive.rs` (new), `unpack.rs` (new), `detect.rs` (new), `lib.rs`, `main.rs`, `Cargo.toml` (+ `zip`, `sevenz-rust2`, `tar`, `flate2`), `Cargo.lock` | `unpack_archive` (format sniffing, header pre-checks, path/kind/size checks), the unpack worker (`--unpack-worker`, `BudgetAlloc` counting allocator, per-platform supplementary limits, JSON outcome with peak), `detect_project` |
+| `crates/cli/src/archive.rs` (new), `unpack.rs` (new), `detect.rs` (new), `lib.rs`, `main.rs`, `scrivener/converter/mod.rs` (root-anchored `scrivlnk` rewrite), `Cargo.toml` (+ `zip`, `sevenz-rust2`, `tar`, `flate2`), `Cargo.lock` | `unpack_archive` (format sniffing, header pre-checks, path/kind/size checks), the unpack worker (`--unpack-worker`, `BudgetAlloc` counting allocator, per-platform supplementary limits, JSON outcome with peak), `detect_project` |
 | `crates/core/src/core/project/publish.rs` (new), `compile.rs`, `cs-footnotes.lua` | `publish_imported` (read, exclusive rename, no fallback), `--resource-path`, document-link resolution (gate, block-count alignment with per-document parses, identifier renaming, target materialisation, rewrite), anchor elements as `Span`s, `data-format="markdown"` note bodies, entity decoding of the body attribute |
 | `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new), `inline_targets.rs` (new), `cs-import-notes.lua` (new); `crates/web/src/commands.rs`, `main.rs`, `assets.rs` (new); `src-tauri/src/commands/*.rs`, `main.rs` | `import_project` (lock, existence check, temporary destination, core publication), recursive Markdown-folder import (byte-exact copies at mirrored paths), the format registry with handlers, worker dispatch honoured first in every `main`, media extraction and attachment, notes to the editor's form with Markdown bodies, `.doc` step, model-level `split_headings`, the gated asset route |
 | `ui/src/components/editor/Editor.tsx`, `ImageNode.ts` (new), `AnchorNode.ts` (new), `FootnoteNode.ts`, `ui/src/platform.ts`; `src-tauri/src/assets.rs` (new), `tauri.conf.json`, `main.rs` | image node and serialisation, anchor node, project-relative links accepted and opened, project-asset URL resolver per shell, `data-format` round trip and entity-encoded body attribute, the `chikn-asset` scheme handler and CSP |
@@ -763,10 +797,16 @@ coding.
       fails; every imported file is byte-identical to its source, including
       one with YAML metadata, smart punctuation, a classed HTML span, a
       shared reference definition and two footnotes (R15-1 to R15-4); the
-      documents sit at paths mirroring the source tree; `one.md` linking to
-      `two.md#second`, a nested `part/ch.md` linking to `../intro.md`, and a
-      link into a file whose binder name was disambiguated all compile to
-      working links and open the right document from the editor (R12-2);
+      documents sit at paths mirroring the source tree with a lowercase
+      `.md` extension, `.markdown`, `.txt` and `.MD` sources included, each
+      loaded by core, listed in `Project.documents`, probing Full and
+      compiling, with `source_path` in its sidecar (R16-1); `a\b.md` beside
+      `a/b.md`, and `ch.md` beside `ch.txt`, are refused before anything is
+      written, from an archive and from an on-this-machine folder alike;
+      `one.md` linking to `two.txt#second`, a nested `part/ch.md` linking to
+      `../intro.markdown`, and a link into a file whose binder name was
+      disambiguated all compile to working links and open the right
+      document from the editor (R12-2);
       two files with distinct footnotes `[^alpha]` and `[^beta]` compile
       to two distinct note bodies (R13-1); a link to a file that was not
       imported is left as written and named in the warnings.
@@ -792,9 +832,17 @@ coding.
       into DOCX and ODT output as an embedded picture while the test runs
       from another working directory. A target relative to the containing
       document (`two.md#second` in `manuscript/one.md`, `../research/x.md`
-      in `manuscript/part/ch.md`) and one relative to the project root
-      (`manuscript/two.md`) are both document links; `../../etc/passwd.md`
-      is not. Links between documents, each
+      in `manuscript/part/ch.md`) and a root-anchored one
+      (`/manuscript/two.md`) are both document links; `../../etc/passwd.md`
+      is not; with both `manuscript/two.md` and `manuscript/manuscript/
+      two.md` present, `/manuscript/two.md` in `manuscript/one.md` reaches
+      the first and the legacy rootless `manuscript/two.md` reaches the
+      second with the named warning (R16-2); a note defined in
+      `manuscript/part/b.md` holding `[t](two.md#target)` and referenced
+      from `manuscript/a.md`, with both `manuscript/two.md` and
+      `manuscript/part/two.md` present, reaches `manuscript/part/two.md`
+      (R16-3); a converter-produced project compiles its links through the
+      root-anchored form. Links between documents, each
       asserted on the destination's text in DOCX and HTML and on a matching
       `\label` in the LaTeX source and a bookmark in ODT: a link to an
       included document's heading lands on that heading; a link to the
@@ -866,7 +914,10 @@ coding.
       again and serialise again (newlines encoded as `&#10;`, decoded on
       read); an anchor element and a link to `manuscript/two.md#two`
       survive open, edit and save byte-for-byte, and clicking the link
-      opens that document; the desktop asset handler (unit test on the
+      opens that document; in Flow mode two sections from different
+      folders each holding `../intro.md` keep both links through save and
+      reopen and each click opens its own section's target (R16-4); the
+      desktop asset handler (unit test on the
       request function with a fake state): serves a file inside the open
       project, refuses a path outside it, refuses everything once the
       project is closed, serves again after reopening, and serves project
@@ -1195,3 +1246,15 @@ coding.
   compile and the editor resolve a link relative to the document that
   contains it; this also retires the rewrite-path repairs of R12-2, R13-1
   and R14-1.
+- 2026-10-27 review round 16 (`plan-4`, `cf92947`): reopened on four
+  findings, all admitted after checking: core loads only lowercase `.md`,
+  so mirrored `.markdown`/`.txt`/`.MD` names would be unloaded (R16-1:
+  stems kept, extension `.md`, `source_path` in the sidecar, resolution in
+  source space, path grammar applied to folders too); relative-first
+  lookup shadows the converter's rootless form (R16-2: root-anchored `/`
+  notation for converter and split, relative otherwise, legacy fallback
+  with a warning); a shared footnote's links resolved from the rendering
+  document (R16-3: the defining document, found by a line-start scan for
+  `[^label]:`); the editor's URI rule had no document context in Flow mode
+  (R16-4: syntax check at parse, containment and navigation at click from
+  the enclosing Flow section).
