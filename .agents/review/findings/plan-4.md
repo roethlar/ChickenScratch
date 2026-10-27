@@ -3,8 +3,8 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 6 reopened (2026-10-27); sixth
-revision committed, round 7 pending
+**Status**: In progress — rounds 1 to 7 reopened (2026-10-27); seventh
+revision committed, round 8 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -295,7 +295,59 @@ allocation returns an error rather than aborting (the parent treats every
 unsuccessful outcome alike); allocator coverage is evidenced by a counter
 test once the crates are locked.
 
+## Round 7 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17e43-024d-7a22-929d-f6e8ac3620f4`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `e8570337752bead322ed622c8bd1f412bb513846` (sixth
+  revision)
+- **Base SHA**: `c042cc56bf41b1479e0e8233f378d9c456be4290` (round-6 head)
+- **Dispatched**: 2026-10-27 16:48 UTC; finished 16:59 UTC; exit 0;
+  88,671 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `e857033…`; both succeeded. The reviewer ran Pandoc 3.11 probes of the
+  sentinel inside unclosed Divs and code fences, duplicate reference and
+  footnote definitions under reordering, auto-deduplicated fragments, each
+  writer's treatment of identified Divs and code blocks (DOCX, HTML, EPUB,
+  LaTeX, ODT), the `%` title block with a generated title page, generated
+  separator identifiers, a 100-document parse (0.73 s, 277 MiB) and EPUB
+  byte-instability. No repository file changed; no remote contacted.
+- **Verdict**: `reopened`. Closed: R4-5, R6-1. Not closed: R2-11, R3-10,
+  R5-5, R6-2, R6-3, R6-4 (all in the compile link design).
+
+## Round 7 findings and dispositions
+
+Each checked against the cited probe before disposition (orchestrator,
+2026-10-27). All eight are admitted; seven are closed by removing the
+compile link-resolution feature from this plan rather than by a further
+redesign, a scope decision recorded in the plan's Decisions section and
+flagged to the owner.
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R7-1 | The sentinel lands inside an unclosed Div or a code fence closed by appended text | HIGH | reviewer's Pandoc probe | Admitted; feature deferred |
+| R7-2 | Moving a document first changes which duplicate definition wins | MEDIUM | reviewer's Pandoc probe | Admitted; feature deferred |
+| R7-3 | Native `#introduction-1` links lose their target under renaming | MEDIUM | reasoning on the design | Admitted; feature deferred |
+| R7-4 | ODT drops a code block's identifier and renders an identified Div as a section | MEDIUM | reviewer's writer table | Admitted; feature deferred (anchor `Span`s, which ODT does bookmark, stay for the editor's anchors) |
+| R7-5 | The first document's `%` lines change meaning when the generated title page is on | MEDIUM | `compile.rs:108–121` | Admitted; feature deferred |
+| R7-6 | Generated title and separator blocks escape the identifier namespace | MEDIUM | reviewer's DOCX bookmarks | Admitted; feature deferred |
+| R7-7 | A hundred whole-project parses have no resource bound | HIGH | reviewer's measurement | Admitted; feature deferred |
+| R7-8 | Byte-identical output is not a valid oracle (EPUB UUIDs) | LOW | reviewer's probe | Admitted: unchanged path asserted on Pandoc arguments and normalised structure |
+
+What this plan keeps from the compile work: `--resource-path` for project
+images (verified by the reviewer in round 4), anchor `Span`s and
+`data-format="markdown"` notes in the Lua filter, and one deterministic
+rule that a link whose target is exactly a project document's path
+compiles to its text instead of a dead hyperlink. The reviewer's
+observation that R1-3/R2-3/R4-1/R5-1 are closed only conditionally on
+allocator coverage is now stated in the plan: the bound is claimed only
+with coverage evidence, and a decoder without it is dropped.
+
+Declined: none.
+
 ## Closeout
 
-Pending: round 7 review of the sixth revision (same reviewer, fresh
-session, pins base = round-6 head `c042cc5`, head = the revision commit).
+Pending: round 8 review of the seventh revision (same reviewer, fresh
+session, pins base = round-7 head `e857033`, head = the revision commit).
