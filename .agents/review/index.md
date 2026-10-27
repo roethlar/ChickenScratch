@@ -22,7 +22,7 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 | s3-1 | code | Encoded fragments stop resolving after an editor save (range efde2de..13c55fa, codex) | `[~]`  | — (default-branch mode) |
 | s3-2 | code | Image filenames with spaces or non-ASCII cannot display (range efde2de..13c55fa, codex) | `[x]`  | — (default-branch mode) |
 | s3-3 | code | The Link validator drops external schemes the stock rule kept, and lets `javascript:` through (range efde2de..13c55fa, codex) | `[x]`  | — (default-branch mode) |
-| s3-4 | code | Ordinary links inside footnotes are deleted by the origin-agreement rule (range efde2de..13c55fa, codex) | `[~]`  | — (default-branch mode) |
+| s3-4 | code | Ordinary links inside footnotes are deleted by the origin-agreement rule (range efde2de..13c55fa, codex) | `[x]`  | — (default-branch mode) |
 | s3-5 | code | Compile warnings never reach the writer (range efde2de..13c55fa, codex) | `[~]`  | — (default-branch mode) |
 | s3-6 | code | Desktop imports leave the asset handler without an open project (range efde2de..13c55fa, codex) | `[~]`  | — (default-branch mode) |
 | s3-7 | code | Turning a link into text drops the identifier other links rely on (range efde2de..13c55fa, codex) | `[~]`  | — (default-branch mode) |
