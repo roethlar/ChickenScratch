@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 9 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; tenth revision
-committed, round 10 pending
+**Status**: In progress — rounds 1 to 10 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; eleventh
+revision committed, round 11 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -449,7 +449,51 @@ Each checked against the cited probe before acceptance (orchestrator,
 
 Declined: none.
 
+## Round 10 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17e78-1252-7e63-8e4a-9d9a42369098`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `ae6e5689666e4f8be129387934554296e7fb96a4` (tenth
+  revision)
+- **Base SHA**: `1b9fdcd2020b668a975c14a567a9a96f553c422f` (round-9 head)
+- **Dispatched**: 2026-10-27 17:46 UTC; finished 17:56 UTC; exit 0;
+  90,180 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `ae6e568…`; both succeeded. The reviewer probed on Pandoc 3.11: the
+  `-auto_identifiers` diagnostic parse keeps node structure under all 32
+  combinations of the attribute-related extensions and leaves explicit
+  identifiers on every element kind; solo and combined block positions for
+  headings survive reference links, reference images and note references
+  (a lone reference image changes `Para` to `Figure`); `{#S1}` survives the
+  Markdown reader, the `markdown-raw_attribute` writer, two editor
+  edit/save cycles and gives destinations in DOCX, ODT, HTML, EPUB and
+  LaTeX; generated identifiers from non-ASCII text can carry uppercase
+  letters (mathematical capitals), ASCII ones cannot; Pandoc writes `d0-0`
+  into DOCX bookmark names unchanged (Word navigation not verified). No
+  repository file changed; no remote contacted.
+- **Verdict**: `reopened`. Closed: R8-2, R9-1 to R9-6. Not closed: R2-11,
+  R3-10, R6-2 (mapped to the findings below).
+
+## Round 10 findings and dispositions
+
+Each checked against the cited probe before acceptance (orchestrator,
+2026-10-27).
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R10-1 | A block path into a footnote reaches a later document's redefinition of that note | MEDIUM | reviewer's Pandoc probe | Admitted: notes excluded from block paths; kind of the matched element checked |
+| R10-2 | The diagnostic reader options do not reach `pandoc.read` of Markdown-bodied notes | MEDIUM | reviewer's filter adaptation | Admitted: the filter mirrors `PANDOC_READER_OPTIONS.extensions` in nested reads |
+| R10-3 | A heading-first Div places its span inside the heading: LaTeX `\hypertarget` without `\label` | MEDIUM | reviewer's LaTeX output | Admitted: a final rule redirects any in-heading destination to the heading |
+| R10-4 | Identified links and inline code have no destination rule; hyperlinks without bookmarks | MEDIUM | reviewer's DOCX/ODT/LaTeX output | Admitted: an identified `Span` immediately before any such inline target |
+| R10-5 | `S<n>` can collide with an existing explicit `{#S1}` in the part | MEDIUM | reasoning on the writer's output | Admitted: every identifier in the part, notes included, is reserved before allocation |
+
+Declined: none. Carried into the plan: final identifiers use underscores
+(`d0_0`) to match Word's bookmark naming rules; the uppercase argument is
+stated for ASCII only.
+
 ## Closeout
 
-Pending: round 10 review of the tenth revision (same reviewer, fresh
-session, pins base = round-9 head `1b9fdcd`, head = the revision commit).
+Pending: round 11 review of the eleventh revision (same reviewer, fresh
+session, pins base = round-10 head `ae6e568`, head = the revision commit).

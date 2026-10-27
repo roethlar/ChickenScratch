@@ -376,9 +376,20 @@ gap is in scope here, with the design below.
      them). Compile recovers the distinction with one more parse of the
      same marked text, `-auto_identifiers` added: it has the same block and
      inline structure, and an element whose identifier is non-empty there
-     is explicit. Likewise each document's solo parse, when needed, runs
-     with the same reader options as its position in the combined text
-     (title-block rule above), so its block structure equals its section's.
+     is explicit. The same must hold inside the editor's Markdown-bodied
+     footnotes, which the Lua filter decodes with `pandoc.read(body,
+     "markdown")`: in the diagnostic run the filter reads them with the
+     outer run's reader extensions (`PANDOC_READER_OPTIONS.extensions`,
+     which carries the `-auto_identifiers` setting), so a generated heading
+     identifier inside a note is empty there too and cannot pose as an
+     explicit one (R10-2). Likewise each document's solo parse, when needed,
+     runs with the same reader options as its position in the combined text
+     (title-block rule above), so its block count and order equal its
+     section's; a block's kind may differ where a reference resolves only
+     in the combined text (a lone reference image is a `Para` alone and a
+     `Figure` in company), so a block-path match also checks the matched
+     element's kind, and the blocks inside `Note`s are not part of any
+     block path (R10-1).
   4. **Finding a target, exactly or not at all.** For a link `doc.md#id`:
      (a) if the section of `doc` holds an element whose *explicit*
      identifier is `id`, that element is the target (two such elements is a
@@ -388,12 +399,16 @@ gap is in scope here, with the design below.
      (R9-1, R9-3); (b) otherwise `doc` is parsed on its own (small
      independent runs, at most four at a time, only for documents a link
      needs): if a *block-level* element there (header, Div, code block,
-     table, figure) carries the generated identifier `id`, its block path
-     (the sequence of block indices from the document's top level down to
-     it) names the same element in the section, because the two parses of
-     the same text have identical block structure; cross-document reference
-     and footnote resolution changes inlines, never blocks, so this match
-     is exact where text or rank matching was not (R8-2, R9-2); (c)
+     table, figure) *outside any footnote* carries the generated identifier
+     `id`, its block path (the sequence of block indices from the document's
+     top level down to it, never descending into a `Note`) names the same
+     element in the section, because the two parses of the same text have
+     the same block count and order; cross-document reference and footnote
+     resolution changes inlines and note contents, never top-level block
+     positions, so this match is exact where text or rank matching was not
+     (R8-2, R9-2); note contents are excluded because the combined text may
+     use a later document's definition of the same note label, so the
+     note's blocks can differ from the solo parse (R10-1); (c)
      otherwise, for an identifier inside a footnote (a note is rendered
      where it is referenced, not where it is defined), an element with that
      *explicit* identifier inside `Note` contents anywhere in the combined
@@ -404,9 +419,11 @@ gap is in scope here, with the design below.
      by explicit identifiers, through (a) or (c).
   5. **Final identifiers are allocated per element, not per name.** Every
      element that carries an identifier in the combined parse, or that a
-     link resolved to, receives a fresh final identifier: `d<index>-<n>`
-     for the n-th such element of document `index`, `g<n>-<m>` on generated
-     blocks; so two elements that Pandoc left with the same string (an
+     link resolved to, receives a fresh final identifier: `d<index>_<n>`
+     for the n-th such element of document `index`, `g<n>_<m>` on generated
+     blocks (letters, digits and underscores only, the form Word documents
+     accept for bookmark names; Pandoc writes identifiers into bookmarks
+     unchanged); so two elements that Pandoc left with the same string (an
      explicit `{#introduction-1}` beside a generated `introduction-1`,
      R9-3) end with distinct bookmarks, and nothing can collide with a
      document anchor. Every link whose target was a bare `#id` is resolved
@@ -418,18 +435,22 @@ gap is in scope here, with the design below.
      writer table from round 7, re-run and recorded at the start of the
      slice, decides how a resolved target is materialised: a `Header`
      target uses its own final identifier (bookmark in DOCX and ODT, `id`
-     in HTML and EPUB, `\label` in LaTeX); a `Span` that sits inside a
-     heading is redirected to that heading's identifier, since LaTeX gives a
-     span there a `\hypertarget` but no `\label` (R8-3, R9-5); a `Span`
-     elsewhere is used where it stands; a `Div` target gets its destination
-     at its real beginning: a `Span` as the first inline of its first block
-     when that block has inlines, otherwise an empty `Plain` holding the
-     `Span` before that block (R9-6); a code block, table, figure, raw block
-     or rule target gets the same `Plain`+`Span` immediately before it (the
-     one case that adds an empty paragraph in DOCX and ODT, recorded); an
-     inline image target gets the `Span` immediately before it. Nothing is
-     ever moved to the start of the document (R8-4). A whole-document link
-     (`doc.md`) targets the section's first block by the same table.
+     in HTML and EPUB, `\label` in LaTeX); a `Span` elsewhere than a
+     heading is used where it stands; any other inline target (image, link,
+     inline code) gets an empty identified `Span` immediately before it,
+     since the writers emit no bookmark for those elements (R10-4); a `Div`
+     target gets its destination at its real beginning: a `Span` as the
+     first inline of its first block when that block has inlines, otherwise
+     an empty `Plain` holding the `Span` before that block (R9-6); a code
+     block, table, figure, raw block or rule target gets the same
+     `Plain`+`Span` immediately before it (the one case that adds an empty
+     paragraph in DOCX and ODT, recorded). Then one rule applies last, to
+     every destination however it was chosen: **a destination that would
+     sit inside a heading becomes that heading's own identifier**, because
+     LaTeX gives a span inside a heading a `\hypertarget` but no `\label`
+     (R8-3, R9-5, and a heading-first Div, R10-3). Nothing is ever moved to
+     the start of the document (R8-4). A whole-document link (`doc.md`)
+     targets the section's first block by the same table.
   7. **Rewrite.** `doc.md#id` → `#<final identifier of the resolved
      destination>`; `doc.md` → the section's destination; a link to a
      document outside the compile → its text alone; everything else
@@ -541,9 +562,11 @@ Inside a project, both shells:
   same one, so the editor can open the document it names and compile can
   resolve it to that document's element (R5-4). Every heading such a link
   points at gets an explicit identifier that a generated one can never
-  equal, `{#S<n>}` numbered within the document (generated identifiers are
-  lowercase, so an uppercase letter settles it), and the link is written to
-  that identifier; because it differs from the generated one, the Markdown
+  equal, `{#S<n>}` numbered within the document (generated identifiers from
+  ASCII text are lowercase, so an uppercase ASCII letter settles it), with
+  `n` chosen so that the identifier is not already present anywhere in the
+  part, footnote bodies included (every identifier in the part's model is
+  reserved first, R10-5), and the link is written to that identifier; because it differs from the generated one, the Markdown
   writer emits the attribute (R9-4: an attribute equal to the generated
   identifier is omitted), and the slice's tests read the written Markdown to
   prove it is there. A hoisted wrapper's identifier (`<section
@@ -732,7 +755,10 @@ coding.
       definition carrying `{#linkid}` in B used from A does not disturb A's
       targets; two documents with explicit `{#target}` resolve separately;
       the split's `{#S1}` heading is found by explicit identifier and the
-      written Markdown of the split contains the attribute (R9-4); a link to
+      written Markdown of the split contains the attribute (R9-4); a part
+      that already contains `[anchor]{#S1}` gets its linked heading a
+      different `S<n>` and both resolve after an editor save and compile
+      (R10-5); a link to
       a hoisted `<section id="part-two">` wrapper lands on its heading with
       a LaTeX `\label` (R9-5); a link to an identified table in the middle
       of a document lands there (never at the document's start, R8-4), as
@@ -741,7 +767,15 @@ coding.
       opening with a code block then a paragraph, and a Div holding only
       code, each get their destination before the code (R9-6); a link into
       a heading with an explicit identifier inside B's footnote referenced
-      from A resolves (R8-5); a native footnote defined in document two and
+      from A resolves (R8-5); A's `[^n]` note holding `# Wanted` while B
+      redefines `[^n]` with `# Wrong` does not let `a.md#wanted` reach the
+      wrong heading (it resolves only through an explicit identifier or
+      becomes text with the warning, R10-1); a Markdown-bodied note holding
+      `# Generated` and `# Real {#generated}` resolves a link to the
+      explicit one without a duplicate warning (R10-2); a link to a
+      heading-first Div lands on the heading with a LaTeX label (R10-3); a
+      link to an identified link and to identified inline code each get a
+      destination that exists in DOCX, ODT and LaTeX (R10-4); a native footnote defined in document two and
       referenced from document one, with a heading in its body, leaves
       document one's later heading correctly targeted; a heading literally
       named `d0-x` does not collide with the first document's anchor and a
@@ -1038,3 +1072,19 @@ coding.
   beginning; the split writes `{#S<n>}` identifiers (never equal to a
   generated one, so always emitted) and folds wrapper identifiers into the
   heading.
+- 2026-10-27 review round 10 (`plan-4`, `ae6e568`): reopened; R8-2 and
+  R9-1 to R9-6 closed; five findings, all admitted after checking: block
+  paths into footnotes can reach a later document's redefinition of the
+  note (R10-1: notes excluded from block paths, kind checked); the
+  diagnostic parse did not reach Markdown-bodied notes (R10-2: the filter
+  mirrors the outer reader extensions); a heading-first Div put its span
+  inside the heading (R10-3: one last rule redirects any in-heading
+  destination to the heading); identified links and inline code had no
+  destination rule (R10-4: span before them); `S<n>` could collide with an
+  existing explicit identifier (R10-5: reserve every identifier in the
+  part first). Final identifiers use underscores for Word's bookmark
+  rules. The reviewer confirmed the diagnostic parse keeps structure under
+  all 32 extension combinations, `{#S1}` survives reader, writer, editor
+  and all five writers, and generated identifiers from ASCII text are
+  lowercase (non-ASCII capitals can appear, which the `S<n>` form does not
+  rely on).
