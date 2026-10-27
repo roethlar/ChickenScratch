@@ -79,68 +79,110 @@ existing `/api/import-upload` (one document into an open project) stays.
   function in the converter crate (`crates/cli/src/archive.rs`, shared with
   the desktop so both shells accept the same formats): `zip` (deflate),
   `sevenz-rust2` (the maintained fork of `sevenz-rust`; 7z, LZMA/LZMA2,
-  unencrypted), `tar` + `flate2` (tar and tar.gz). Everything the archive
-  says about itself is checked before it is believed:
-  - **Entry paths** (R1-4): the name is split on both `/` and `\`; every
-    piece must be non-empty, not `.` or `..`, free of control characters
-    and of `:`, `*`, `?`, `"`, `<`, `>`, `|`, not ending in a dot or
-    space, and not a Windows device name (`CON`, `PRN`, `AUX`, `NUL`,
-    `COM1`–`COM9`, `LPT1`–`LPT9`, with or without an extension). The
-    pieces are joined under the staging folder ourselves, never by pushing
-    the raw name (a `C:` prefix or a leading `\` would replace the base).
-    Two entries whose normalised paths collide case-insensitively are
-    refused, so the result is the same on Linux and Windows and nothing is
-    overwritten.
+  unencrypted), `tar` + `flate2` (tar and tar.gz).
+- **Unpacking runs in a worker process the caller can kill** (R2-3, R2-5).
+  The decoders allocate from header fields before any entry is yielded
+  (7z decodes an *encoded header* inside `Archive::read`; tar reads PAX
+  bodies), so no check made from inside the process can run before those
+  allocations, and a timed-out `spawn_blocking` task cannot be stopped.
+  `services::unpack::run(archive, dest, limits)` therefore re-invokes the
+  current executable (`std::env::current_exe()`) with a hidden
+  `--unpack-worker` argument that every binary honours first thing in
+  `main` (web server, Tauri shell, converter CLI; `services` provides the
+  one function they call). The parent owns the admission slot (one unpack
+  at a time per process), waits with a 120 s wall clock, kills the child
+  on timeout or on its own cancellation, removes the staging folder, and
+  releases the slot only after the child has exited. The child's memory is
+  capped by the operating system: `setrlimit(RLIMIT_AS, 1 GiB)` in
+  `pre_exec` on Linux and macOS, a Job Object with a 1 GiB process-memory
+  limit on Windows (the `windows` crate is already a Tauri dependency
+  there). The child reports the outcome as one JSON line on stdout; a
+  killed or crashed child is a refusal with "This archive could not be
+  unpacked safely". The in-process checks below are defence in depth, not
+  the only line.
+  - **Entry paths** (R1-4, R2-6, R2-7): the name is split on both `/` and
+    `\`. A leading `./` is dropped and a trailing separator marks a
+    directory entry (so `Book/`, `./` and `./chapter.md` from ordinary
+    archivers are accepted). After that, every piece must be non-empty, not
+    `.` or `..`, free of control characters and of `:`, `*`, `?`, `"`, `<`,
+    `>`, `|`, not ending in a dot or space, and not a Windows device name
+    (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`, with or
+    without an extension). The pieces are joined under the staging folder
+    ourselves, never by pushing the raw name (a `C:` prefix or a leading
+    `\` would replace the base). A case-folded registry of every path
+    *and every ancestor directory*, explicit or implied, refuses two
+    spellings of the same name (`A/one.md` beside `a/two.md`) and a file
+    and a directory of the same name, so the result is the same on Linux
+    and Windows and nothing is overwritten.
   - **Entry kinds**: only files and directories. Tar entry types for
     symbolic links, hard links, devices and FIFOs are refused; zip entries
     whose Unix mode (external attributes) says symlink are refused; 7z
     entries with the Unix-extension attribute and a symlink mode, or the
-    Windows reparse-point attribute, are refused (7z has no hard links).
-  - **Decoder allocations** (R1-3): the crates allocate from header fields
-    before any entry is yielded, so counting extracted bytes is not enough.
-    7z: the 32-byte signature header is read first; `NextHeaderSize` above
-    16 MiB, or an offset outside the file, is refused before the crate
-    parses anything; after the parse, each coder's dictionary size (LZMA
-    5-byte properties, LZMA2 1-byte code) is read from the archive's
-    folder/coder records and refused above 256 MiB (7-Zip's "ultra" preset
-    uses 64 MiB). Tar: a header-only walk of the stream (512-byte headers,
-    sizes from the size field) runs first and refuses any long-name, PAX or
-    global-header entry (`L`, `K`, `x`, `g`) above 1 MiB and any declared
-    total above the ceiling; only then does the `tar` crate read it (gzip is
-    streamed twice, which is cheap). Zip: the central directory is read by
-    the crate, but the entry count is capped first from the end-of-central-
-    directory record. Unpacked bytes including metadata are capped at 4 GiB
-    and entries at 50 000; one unpack runs at a time per process; a 120 s
-    wall-clock bound aborts a slow decoder. The 512 MiB body limit bounds
-    the compressed input. If `sevenz-rust2` turns out not to expose the
-    coder records, the dictionary check reads them from the header bytes
-    ourselves; it is not dropped.
+    Windows reparse-point attribute, are refused (7z has no hard links);
+    7z anti-items are refused.
+  - **Header sanity** (R1-3, R2-4): 7z: the 32-byte signature header is
+    read before the crate parses anything; `NextHeaderSize` above 16 MiB,
+    or an offset outside the file, is refused; after the parse each
+    content coder's dictionary size (LZMA 5-byte properties, LZMA2 1-byte
+    code, from the block's coder records) is refused above 256 MiB. Tar: a
+    header-only walk of the stream runs first and refuses any PAX or
+    global extension header (`x`, `g`) that carries a `size` record (so
+    the walk and the `tar` crate cannot disagree about where an entry
+    ends; such records exist only for files over 8 GiB, which the ceiling
+    refuses anyway), any `L`/`K`/`x`/`g` body above 1 MiB, and any declared
+    total above the ceiling; only then does the `tar` crate read it (gzip
+    is streamed twice, which is cheap). Zip: the entry count is read from
+    the end-of-central-directory record actually selected by the crate
+    (ZIP64 included) and refused above the ceiling before the directory is
+    read. Unpacked bytes including metadata are capped at 4 GiB and entries
+    at 50 000. The 512 MiB body limit bounds the compressed input.
   - Any failure removes the staging folder and answers 400 with nothing
     written.
-- **Detection** (R1-6, R1-12; `chikn_converter::detect_project(staged_root)
-  -> Detected { kind, source_root }`, shared with the desktop). Before
-  anything else, a zip that is really a document container is recognised
-  (`[Content_Types].xml` → Word/OOXML; a `mimetype` entry naming
-  OpenDocument or EPUB) and answered 400 "Documents go into a project: open
-  or create one, then use Import File". Then operating-system droppings
-  (`__MACOSX/`, `.DS_Store`, `Thumbs.db`, `desktop.ini`) are ignored and a
-  single remaining top-level folder is entered, repeatedly, so
-  `Corn.scriv/` beside `__MACOSX/` still resolves to `Corn.scriv`. A
-  `.scrivx` in the resolved root → Scrivener with that root; otherwise a
-  tree holding `.md`/`.markdown`/`.txt` files → Markdown folder; two or
-  more candidate projects → 400 "This archive holds more than one
-  project"; anything else → 400 "This is not a project ChickenScratch can
-  import". The converter receives `source_root`, never the staging root.
-  Later slices add kinds here only.
-- **One transaction for every project import** (R1-1):
-  `services::import_project` builds the project at
-  `<outputPath>.importing-<random>` beside the final path, and renames it
-  to `outputPath` only when the converter returned; any error removes the
-  temporary project and the staging folder, so a failed or refused import
-  leaves nothing on disk and the same destination can be tried again. A
-  destination that already exists is refused up front (`creatable`) and is
-  never touched or removed. Both existing importers (`import_scrivener`,
-  `import_markdown_folder`) move under this wrapper.
+- **Detection** (R1-6, R1-12, R2-8; `chikn_converter::detect_project(
+  staged_root) -> Detected { kind, source_root }`, shared with the
+  desktop). In order:
+  1. A zip that is really a document container (`[Content_Types].xml` →
+     Word/OOXML; a `mimetype` entry naming OpenDocument or EPUB) → 400
+     "Documents go into a project: open or create one, then use Import
+     File".
+  2. Operating-system droppings (`__MACOSX/`, `.DS_Store`, `Thumbs.db`,
+     `desktop.ini`) are ignored everywhere below.
+  3. **Strong markers are discovered first, anywhere in the tree** (to a
+     depth of 6): a `.scrivx` file (Scrivener, root = its folder); later
+     slices add `nwProject.nwx` (novelWriter), a `MANUSKRIPT` file
+     (Manuskript) and `info.json` beside a `text.*` file (TextBundle).
+     Exactly one marker → that project with that root, whatever else sits
+     beside it (`Corn.scriv/` next to a `README.md` still imports the
+     Scrivener project). Two or more markers, nested or siblings → 400
+     "This archive holds more than one project" (slice 4 defines the one
+     exception: a folder holding only TextBundles is one project).
+  4. Only when no marker exists anywhere: a tree holding `.md`/
+     `.markdown`/`.txt` files → Markdown folder, rooted at the single
+     meaningful top-level folder if there is one, else at the staging
+     root.
+  5. Anything else → 400 "This is not a project ChickenScratch can
+     import".
+  The converter receives `source_root`, never the staging root. Later
+  slices add kinds in step 3 only.
+- **One transaction for every project import** (R1-1, R2-1, R2-2):
+  `services::import_project` takes a process-wide lock on the final path,
+  checks that nothing exists there (the web gate's `creatable` only
+  authorises the root: it returns an existing path unchanged, so the
+  service makes the existence check itself; an empty folder, a file, a
+  dangling symlink and an existing project are all refused and never
+  touched), builds the project at `<outputPath>.importing-<random>` beside
+  the final path, and publishes it with a rename that cannot replace an
+  existing entry (`renameat2(RENAME_NOREPLACE)` on Linux, `MoveFileExW`
+  without `REPLACE_EXISTING` on Windows, `renamex_np(RENAME_EXCL)` on
+  macOS; where the call is unavailable, the check under the lock stands
+  alone and the record says so). After the rename the returned `Project`
+  is re-read from the final path so `Project.path`, the write token and
+  the recent-projects entry all name the published folder, never the
+  temporary one. Any error removes the temporary project and the staging
+  folder, so a failed or refused import leaves nothing on disk and the same
+  destination can be tried again. The embedded `.git` moves with the
+  folder; nothing in it records the absolute path. Both existing importers
+  (`import_scrivener`, `import_markdown_folder`) move under this wrapper.
 - **The Markdown-folder importer learns the whole tree** (R1-2): today it
   reads only the top-level files and prints skipped files to stderr. It
   becomes recursive and deterministic (folders → binder folders, entries
@@ -176,8 +218,9 @@ existing `/api/import-upload` (one document into an open project) stays.
 
 Inside a project, both shells:
 
-- **One registry of import formats** (R1-7), `crates/services/src/
-  formats.rs`: filename extension → Pandoc reader, used by the services'
+- **One registry of import formats** (R1-7, R2-14), `crates/services/src/
+  formats.rs`: filename extension → handler, where a handler is either a
+  Pandoc reader name or a preprocessing step. It drives the services'
   validation, the web upload route and both choosers (the UI reads a
   generated `ui/src/importFormats.json`; a services test asserts the file
   equals the registry, so the three lists cannot drift). Today's 15 UI
@@ -186,28 +229,50 @@ Inside a project, both shells:
   real extensions rather than reader names: `.typ` (typst), `.dj` (djot),
   `.wiki`/`.mediawiki` (mediawiki), `.adoc`/`.asciidoc` (asciidoc; the
   installed Pandoc 3.11 lists the reader), `.dbk` (docbook), `.creole`,
-  `.t2t`, `.opml`,
-  `.ipynb`, `.man`, `.muse`, `.pod`, `.csv`/`.tsv` (as tables). Ambiguous
-  `.xml` and extension-less DokuWiki pages stay out. `.doc` leaves the
-  accepted list and takes the LibreOffice step below.
+  `.t2t`, `.opml`, `.ipynb`, `.man`, `.muse`, `.pod`, `.csv`/`.tsv` (as
+  tables). Ambiguous `.xml` and extension-less DokuWiki pages stay out.
+  `.doc` stays selectable in both shells with the preprocessing handler
+  below, so the LibreOffice step and the save-as message are reachable.
 - **Legacy `.doc` is not readable by Pandoc** (today `io.rs` maps `doc` to
   the `docx` reader, which fails on a real `.doc` with a confusing error).
   With LibreOffice on the machine, `soffice --headless --convert-to docx`
   runs first; without it, the message is "Save it as .docx first". Apple
   Pages gets the same message.
-- **Split, as an option.** After the file is picked, a small dialog offers
-  "Split into one document per top-level heading" (checkbox, off by
-  default, remembered in settings under Writing). On: `import_file` gains a
-  `split_headings: bool`, and the split happens in Pandoc's own document
-  model, not on the Markdown text (R1-5): the file is read to Pandoc JSON,
-  the block list is cut at each level-one `Header`, and each part is
-  written back with `pandoc -f json -t markdown`. Footnotes are inline
-  `Note` elements in that model and reference links are already resolved,
-  so each chapter carries its own notes and link targets; a `#` line inside
-  a code fence or a Setext heading is whatever the parser says it is. One
-  binder document per heading named by it, in order, text before the first
-  heading as "Front matter"; a file with fewer than two such headings
-  imports whole with a one-line notice. Off: today's single document.
+- **Every Pandoc import keeps its pictures and its notes** (R2-9, R2-13;
+  split or not). The Pandoc read runs with `--extract-media=<staging>/
+  media`, so images embedded in a DOCX, ODT or EPUB land as files; they are
+  added to the project as attachments the way the Scrivener converter adds
+  research files (file beside its `.meta` sidecar, written through core)
+  before the staging folder is removed, and the image targets in the text
+  are rewritten to them. A Lua filter on the read side
+  (`crates/services/src/cs-import-notes.lua`, the inverse of core's
+  `cs-footnotes.lua`) turns every Pandoc `Note` into the editor's own
+  footnote element (`<sup class="footnote" data-body="…">●</sup>`), the
+  form the editor edits and compile already understands; no `[^n]` labels
+  are written, so chapters cannot collide when compiled together (today's
+  concatenating compile would merge two imported files' `[^1]` notes).
+- **Split, as an option** (R1-5, R2-10, R2-11, R2-12). After the file is
+  picked, a small dialog offers "Split into one document per top-level
+  heading" (checkbox, off by default, remembered in settings under
+  Writing). On: `import_file` gains a `split_headings: bool`, and the split
+  happens in Pandoc's document model: the file is read to Pandoc JSON
+  (with the media and note filters above), top-level `Div` wrappers that
+  hold a level-one `Header` are hoisted so `<section><h1>` HTML and fenced
+  Divs split like plain headings, and the block list is cut at each
+  level-one `Header` at that level only (headings inside block quotes,
+  lists or notes are not boundaries). Each part is written back with
+  `pandoc -f json -t markdown`. Before writing, a map of heading
+  identifiers → destination document rewrites every `#id` link whose
+  target now lives in another part to the converter's document-link form
+  (`<other-document>.md#id`). Document metadata (`meta`: title, author,
+  date, anything else) is not dropped: title, author and date open the
+  "Front matter" document as a heading and lines, and the full metadata is
+  kept as custom fields on that document's `.meta` sidecar (when there is
+  no text before the first heading, Front matter holds the metadata
+  alone). One binder document per heading named by it, in order; a file
+  with fewer than two such headings imports whole with a one-line notice.
+  Off: today's single document, unchanged bytes for Markdown and plain
+  text.
 
 ### Slice 4 — other writing apps' project formats (one slice each; first pass: free apps only)
 
@@ -262,7 +327,7 @@ coding.
 |-------------|--------|
 | `crates/web/src/project_upload.rs` (new), `app.rs`, `tests/http.rs` | streaming to a temp file, unpack, detector call, handler, own body limit |
 | `crates/cli/src/archive.rs` (new), `detect.rs` (new), `lib.rs`, `Cargo.toml` (+ `zip`, `sevenz-rust2`, `tar`, `flate2`), `Cargo.lock` | `unpack_archive` (format sniffing, header pre-checks, path/kind/size checks), `detect_project` |
-| `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new); `crates/web/src/commands.rs`; `src-tauri/src/commands/*.rs` | `import_project` (temporary destination + rename, kind dispatch), recursive Markdown-folder import with warnings, the format registry, `.doc` step, AST `split_headings` |
+| `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new), `unpack.rs` (new), `cs-import-notes.lua` (new); `crates/web/src/commands.rs`, `main.rs`; `src-tauri/src/commands/*.rs`, `main.rs`; `crates/cli/src/main.rs` | `import_project` (lock, existence check, temporary destination, no-replace rename, re-read), recursive Markdown-folder import with warnings, the format registry with handlers, the unpack worker (`--unpack-worker` honoured by every binary), media extraction and attachment, notes to the editor's form, `.doc` step, model-level `split_headings` |
 | `ui/src/commands/web.ts`, `io.ts`, `project.ts`, `stores/projectStore.ts`, `ui/src/importFormats.json` (generated) | `importProjectUpload`, `importProject`, `split` flag, shared format and archive suffix lists |
 | `ui/src/components/welcome/ImportProjectDialog.tsx` (new), `Welcome.tsx`, `editor.css`, `platform.ts` | the chooser; desktop archive pick |
 | `ui/src/components/binder/Binder.tsx`, a small `ImportFileOptions` dialog | the split checkbox, wider accept list |
@@ -272,54 +337,81 @@ coding.
 ## [MODEL] Tests
 
 - [ ] `crates/cli` archive: each of zip, 7z, tar.gz, tgz and tar unpacks a
-      two-file fixture to the same tree; sniffing ignores a wrong
+      two-file fixture to the same tree; fixtures made by ordinary
+      archivers (`zip -r`, `tar -C Book -czf … .`, `7z a`) with `Book/`,
+      `./` and `./chapter.md` entries unpack; sniffing ignores a wrong
       extension; entries named with `..`, a leading `/` or `\`, a `C:`
-      prefix, control characters, a trailing dot, a device name, or two
-      names differing only in case are refused and nothing is left on disk;
-      tar symlink, hard-link and device entries, a zip symlink and a 7z
-      symlink are refused; the size and entry-count ceilings stop a small
-      expansion bomb; a 7z whose signature header declares a 100 MiB
-      header, a 7z with a 1 GiB dictionary, and a tar with a 16 MiB PAX
-      header are refused before any large allocation (asserted with a
-      memory ceiling on the test process); an encrypted 7z and a RAR are
-      refused with the "re-save as zip" message; a single top-level folder
-      is entered.
+      prefix, an interior `.`, control characters, a trailing dot, a device
+      name, two names differing only in case, `A/one.md` beside `a/two.md`,
+      or a file and a folder of one name are refused and nothing is left on
+      disk; tar symlink, hard-link and device entries, a zip symlink, a 7z
+      symlink and a 7z anti-item are refused; the size and entry-count
+      ceilings stop a small expansion bomb; a 7z whose signature header
+      declares a 100 MiB header, a 7z with a 1 GiB dictionary, a tar with a
+      16 MiB PAX header, and a tar whose PAX `size` record disagrees with
+      the raw size are refused; an encrypted 7z and a RAR are refused with
+      the "re-save as zip" message.
+- [ ] `crates/services` unpack worker: a 7z with an encoded header that
+      expands to 2 GiB and a zip declaring ten million entries are refused
+      under the worker's memory limit without the parent's memory growing
+      (asserted through the child's exit status, not by surviving the
+      allocation in-process); a worker made to sleep past the wall clock is
+      killed, the staging folder is gone and the admission slot is free
+      afterwards; a crashed worker is a refusal, not a hang.
 - [ ] `crates/cli` detector, run through conversion: Scrivener at top, one
-      down, and beside `__MACOSX/`; a Markdown tree whose documents are all
-      below the root; two `.scriv` folders → "more than one project"; a real
-      `.docx`, an `.odt` and an `.epub` (zip containers) → the "use Import
-      File" message; a folder of PDFs → not a project.
+      down, beside `__MACOSX/`, and beside a `README.md`; a Markdown tree
+      whose documents are all below the root; two `.scriv` folders, and a
+      `.scriv` nested inside another project's tree → "more than one
+      project"; a real `.docx`, an `.odt` and an `.epub` (zip containers)
+      → the "use Import File" message; a folder of PDFs → not a project.
 - [ ] `crates/services` import transaction: a converter error after the
       project was created leaves nothing at `outputPath` and no staging
       folder, and a second attempt at the same path succeeds; an existing
-      destination is refused and left byte-for-byte untouched. Markdown
-      folder: nested folders become binder folders in sorted order;
-      duplicate names are disambiguated; one unreadable file among three is
-      reported in the warnings and the other two import; a tree with no
-      readable file fails.
+      empty folder, an existing file, a dangling symlink and an existing
+      project at `outputPath` are each refused and left byte-for-byte
+      untouched; after a successful import the returned `Project.path`
+      names the final folder, no `.importing-*` entry remains, and the
+      project can be opened, edited and a revision saved. Markdown folder:
+      nested folders become binder folders in sorted order; duplicate names
+      are disambiguated; one unreadable file among three is reported in the
+      warnings and the other two import; a tree with no readable file
+      fails.
+- [ ] `crates/services` import content: a DOCX with an embedded image
+      imports with the image as an attachment and a working target after
+      the upload is deleted; a DOCX with two footnotes imports as two
+      editor footnote elements and no `[^n]` label; two imported chapters
+      each holding a footnote compile (core) to two distinct notes.
 - [ ] `crates/services` split: three top-level headings → three documents
       in order plus front matter; a footnote referenced in chapter one and
-      defined after chapter two stays in chapter one; a reference-style
-      link shared by two chapters resolves in both; a `# ` line inside a
-      fenced code block and a Setext heading are treated as the parser
-      says; one heading → whole file and the notice; split off → one
-      document; `.doc` without LibreOffice → the save-as message. Format
-      registry: every extension maps to a reader Pandoc lists; `.html`
-      converts a heading and emphasis to Markdown; `ui/src/importFormats.
-      json` equals the registry.
+      defined after chapter two stays in chapter one, and the two chapters
+      compile to two distinct notes; a reference-style link shared by two
+      chapters resolves in both; a link from chapter one to a heading in
+      chapter two becomes a document link to chapter two; HTML with two
+      `<section><h1>` blocks and Markdown with headings inside fenced Divs
+      split into two documents; a heading inside a block quote is not a
+      boundary; a `# ` line inside a fenced code block and a Setext heading
+      are treated as the parser says; YAML title, author and date survive
+      into Front matter and its sidecar; one heading → whole file and the
+      notice; split off → one document with unchanged bytes for Markdown;
+      `.doc` without LibreOffice → the save-as message, through both
+      shells' accepted lists. Format registry: every Pandoc-handled
+      extension maps to a reader Pandoc lists; `.html` converts a heading
+      and emphasis to Markdown; `ui/src/importFormats.json` equals the
+      registry.
 - [ ] `crates/web/tests/http.rs`: zip-slip → 400, nothing written; a lone
       Markdown document → 400 with the "use Import File" message; a real
       `.docx` → the same message; an unknown file → 400 with the "upload an
-      archive" message; `outputPath` outside the root → 403; a Markdown
-      tar.gz → 200 with the documents and warnings; a `.scriv` zip → 200
-      (Pandoc cases skip with a printed line where Pandoc is absent, which
-      is CI).
+      archive" message; `outputPath` outside the root → 403; `outputPath`
+      naming an existing empty folder → 409 and the folder untouched; a
+      Markdown tar.gz → 200 with the documents and warnings; a `.scriv`
+      zip → 200 (Pandoc cases skip with a printed line where Pandoc is
+      absent, which is CI).
 - [ ] UI: the chooser renders its two choices and accepts every suffix in
       the shared list, `.tgz` and `.tar` included; an archive pick asks for
       a name and posts the one file to `<root>/<name>.chikn`; the
       on-this-machine choice still works; cancel sends nothing; Import File
-      offers every extension in `importFormats.json` and shows the split
-      checkbox off by default and passes it through.
+      offers every extension in `importFormats.json`, `.doc` included, and
+      shows the split checkbox off by default and passes it through.
 - [ ] Slice 4, each: a fixture project converts to the expected tree.
 - [ ] Declared suite (`.agents/repo-guidance.md`), Tauri crate excepted on
       this box (Known drift); CI on push.
@@ -348,9 +440,11 @@ coding.
   produce for checking: novelWriter, Manuskript, TextBundle (via Zettlr).
   yWriter deferred; Ulysses library files not read (export instead).
 - Taken unless told otherwise: upload limit 512 MiB; unpacked ceiling 4 GiB
-  and 50 000 entries; 7z header above 16 MiB or dictionary above 256 MiB
-  refused; encrypted archives refused rather than prompting for a
-  password; the split option is off by default and remembered; the
+  and 50 000 entries; the unpack worker gets 1 GiB of memory and 120 s; 7z
+  header above 16 MiB or dictionary above 256 MiB refused; encrypted
+  archives refused rather than prompting for a password; the split option
+  is off by default and remembered; imported footnotes take the editor's
+  footnote form rather than `[^n]` labels; the
   dependencies (`zip` MIT, `sevenz-rust2` Apache-2.0, `tar` and `flate2`
   MIT/Apache-2.0) are licence-compatible with this MIT repository.
 - Settled 2026-10-27: the go ("set the push policy to always, push, then
@@ -385,3 +479,20 @@ coding.
   (R1-9); Manuskript's world is OPML (R1-10); TextBundle's text file is
   `text.*` (R1-11); a `.docx` is a zip and needs the document message
   (R1-12); the iPhone Safari claim was out of date (R1-13).
+- 2026-10-27 review round 2 (`plan-4`, `da9d73a`): reopened; R1-2, R1-7
+  to R1-13 closed, R1-1, R1-3 to R1-6 not yet, fourteen findings, all
+  admitted after checking: the web gate's `creatable` returns an existing
+  path and a plain rename replaces an empty folder (R2-1); the returned
+  project kept the temporary path (R2-2); 7z decodes encoded headers and
+  tar reads PAX bodies before any in-process check, and a timed-out
+  blocking task cannot be stopped (R2-3, R2-5: unpacking moves into a
+  killable worker process with an OS memory limit); a PAX `size` record
+  lets the pre-walk and the crate disagree (R2-4); `Book/` and `./`
+  entries were refused (R2-6); implied ancestor directories escaped the
+  collision check (R2-7); a nested project beside a README fell to the
+  Markdown fallback (R2-8); per-chapter `[^1]` labels collide at compile
+  (R2-9: notes become the editor's footnote elements on import);
+  section-wrapped headings, cross-chapter fragment links and document
+  metadata were lost by the split (R2-10 to R2-12); embedded images were
+  never extracted (R2-13); `.doc` had been removed from the only list the
+  choosers read (R2-14).

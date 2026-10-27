@@ -3,8 +3,8 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — round 1 reopened (2026-10-27); revision committed,
-round 2 pending
+**Status**: In progress — rounds 1 and 2 reopened (2026-10-27); second
+revision committed, round 3 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -63,7 +63,54 @@ Declined: none. Reviewer notes carried into the plan: licence compatibility
 (all MIT or Apache-2.0); 7z symlink detection must come from the entry
 attributes, hard links do not exist in 7z.
 
+## Round 2 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17de2-8741-7d11-90eb-122406480b55`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `da9d73ad1c48714e339a8404399f9d0438c93fd0` (first
+  revision)
+- **Base SHA**: `4b30022787067e5c8652d323e8ca0e8874baf69c` (round-1 head)
+- **Dispatched**: 2026-10-27 15:02 UTC; finished 15:17 UTC; exit 0;
+  196,601 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `da9d73a…`; both succeeded. The reviewer reproduced a plain rename
+  replacing an empty destination folder, built a tar whose PAX `size`
+  record hid 2 MiB from a raw header walk, and ran Pandoc 3.11 probes for
+  the footnote-label collision, section-wrapped headings, dropped metadata
+  and missing DOCX media. It could not build a zip runtime probe offline
+  (`typed-path` missing) and did not run the producing apps or the full
+  suite. No repository file changed; no remote contacted.
+- **Verdict**: `reopened`. Closed: R1-2, R1-7, R1-8, R1-9, R1-10, R1-11,
+  R1-12, R1-13. Not closed: R1-1, R1-3, R1-4, R1-5, R1-6 (reasons below).
+
+## Round 2 findings and dispositions
+
+Each checked against the working tree or the cited source before
+acceptance (orchestrator, 2026-10-27).
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R2-1 | `creatable` returns an existing path; a plain rename replaces an empty folder | MEDIUM | `gate.rs:106` falls through to `existing` | Admitted: service-level lock + existence check, no-replace rename (`RENAME_NOREPLACE` / `MoveFileExW` / `RENAME_EXCL`) |
+| R2-2 | Returned `Project.path` names the temporary folder | HIGH | `writer.rs:195` sets the path at creation; `projectStore.ts:105` stores it | Admitted: re-read the project from the final path after the rename |
+| R2-3 | 7z decodes encoded headers inside `Archive::read` before any check | HIGH | `sevenz-rust2` reader source as cited | Admitted: unpacking moves into a killable worker process with an OS memory limit; header checks stay as defence in depth |
+| R2-4 | A PAX `size` record makes the pre-walk and `tar` disagree | HIGH | `tar` 0.4.46 `archive.rs:335`; reviewer's differential fixture | Admitted: PAX/global headers carrying `size` are refused |
+| R2-5 | A timed-out `spawn_blocking` task cannot be stopped | HIGH | `upload.rs:83` pattern; Tokio docs | Admitted: the worker process is killed by the parent, which keeps the admission slot until exit |
+| R2-6 | The grammar refused `Book/`, `./` and `./chapter.md` | HIGH | reviewer-generated archives | Admitted: trailing separator = directory entry, leading `./` dropped |
+| R2-7 | Implied ancestor directories escape the collision check | MEDIUM | reasoning on case-folding | Admitted: registry of every ancestor, file/dir conflicts refused |
+| R2-8 | A nested project beside a README falls to the Markdown fallback | HIGH | plan text | Admitted: markers discovered first anywhere to depth 6, ambiguity refused, fallback only when no marker exists |
+| R2-9 | Per-chapter `[^1]` labels collide when compile concatenates | HIGH | `compile.rs:124` joins sections as text | Admitted: imported notes become the editor's footnote elements (Lua filter), no labels written |
+| R2-10 | Section-wrapped headings are not top-level `Header`s | MEDIUM | Pandoc 3.11 HTML reader | Admitted: hoist top-level Divs holding a level-one header |
+| R2-11 | Cross-chapter `#id` links keep pointing into the wrong document | MEDIUM | reasoning | Admitted: identifier map, rewrite to the converter's document-link form |
+| R2-12 | The non-standalone Markdown writer drops `meta` | MEDIUM | Pandoc 3.11 | Admitted: title/author/date into Front matter, full metadata into its sidecar |
+| R2-13 | Embedded DOCX images are never extracted | HIGH | `io.rs:177` runs Pandoc without `--extract-media` | Admitted: `--extract-media`, attachments through core, targets rewritten (split or not) |
+| R2-14 | `.doc` was removed from the one list both choosers read | MEDIUM | plan text | Admitted: registry entries are handlers; `.doc` keeps a preprocessing handler |
+
+Declined: none. Reviewer note carried into the plan: the zip entry-count
+check must read the EOCD/ZIP64 record the crate actually selects.
+
 ## Closeout
 
-Pending: round 2 review of the revised plan (same reviewer, fresh session,
-pins base = round-1 head `4b30022`, head = the revision commit).
+Pending: round 3 review of the second revision (same reviewer, fresh
+session, pins base = round-2 head `da9d73a`, head = the revision commit).
