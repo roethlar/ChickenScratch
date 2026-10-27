@@ -268,10 +268,16 @@ existing `/api/import-upload` (one document into an open project) stays.
   syntax inside code is untouched. Because that round trip renumbers a
   file's footnotes to `[^1]`, `[^2]`, two files' notes would collide when
   compile concatenates them (R13-1); so, after the link rewrite and before
-  writing, the same note filter Import File uses (`cs-import-notes.lua`,
-  slice 4's description, landed with this slice) turns every `Note` into
-  the editor's footnote element with an entity-encoded body, and a file
-  whose links needed no rewrite is still copied byte for byte.
+  writing, two shared steps that Import File also uses run on the file's
+  model, both landed with this slice: the inline-target normalisation
+  (slice 4's description; every identified span, link or image, and every
+  existing anchor element, which Pandoc's writer would otherwise turn back
+  into `[]{#spot .anchor}` and the editor would then flatten, is written as
+  the editor's anchor element `<span class="anchor" id="…"></span>` before
+  the element, R14-1), then the note filter (`cs-import-notes.lua`), which
+  turns every `Note` into the editor's footnote element with an
+  entity-encoded body. A file whose links needed no rewrite is still copied
+  byte for byte.
 - Route body limit 512 MiB (research folders hold PDFs); over it, 413 and
   the UI points at the on-this-machine folder path, which stays.
 - Answers the tagged `ImportOutcome` above (`Opened` carries `{ project,
@@ -676,7 +682,7 @@ coding.
 | `crates/web/src/project_upload.rs` (new), `app.rs`, `tests/http.rs` | streaming to a temp file, unpack, detector call, handler, own body limit |
 | `crates/cli/src/archive.rs` (new), `unpack.rs` (new), `detect.rs` (new), `lib.rs`, `main.rs`, `Cargo.toml` (+ `zip`, `sevenz-rust2`, `tar`, `flate2`), `Cargo.lock` | `unpack_archive` (format sniffing, header pre-checks, path/kind/size checks), the unpack worker (`--unpack-worker`, `BudgetAlloc` counting allocator, per-platform supplementary limits, JSON outcome with peak), `detect_project` |
 | `crates/core/src/core/project/publish.rs` (new), `compile.rs`, `cs-footnotes.lua` | `publish_imported` (read, exclusive rename, no fallback), `--resource-path`, document-link resolution (gate, block-count alignment with per-document parses, identifier renaming, target materialisation, rewrite), anchor elements as `Span`s, `data-format="markdown"` note bodies, entity decoding of the body attribute |
-| `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new), `cs-import-notes.lua` (new, lands with slice 1); `crates/web/src/commands.rs`, `main.rs`, `assets.rs` (new); `src-tauri/src/commands/*.rs`, `main.rs` | `import_project` (lock, existence check, temporary destination, core publication), recursive Markdown-folder import with link rewrite and note conversion, the format registry with handlers, worker dispatch honoured first in every `main`, media extraction and attachment, notes to the editor's form with Markdown bodies, `.doc` step, model-level `split_headings`, the gated asset route |
+| `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new), `inline_targets.rs` (new, lands with slice 1), `cs-import-notes.lua` (new, lands with slice 1); `crates/web/src/commands.rs`, `main.rs`, `assets.rs` (new); `src-tauri/src/commands/*.rs`, `main.rs` | `import_project` (lock, existence check, temporary destination, core publication), recursive Markdown-folder import with link rewrite, anchor normalisation and note conversion, the format registry with handlers, worker dispatch honoured first in every `main`, media extraction and attachment, notes to the editor's form with Markdown bodies, `.doc` step, model-level `split_headings`, the gated asset route |
 | `ui/src/components/editor/Editor.tsx`, `ImageNode.ts` (new), `AnchorNode.ts` (new), `FootnoteNode.ts`, `ui/src/platform.ts`; `src-tauri/src/assets.rs` (new), `tauri.conf.json`, `main.rs` | image node and serialisation, anchor node, project-relative links accepted and opened, project-asset URL resolver per shell, `data-format` round trip and entity-encoded body attribute, the `chikn-asset` scheme handler and CSP |
 | `ui/src/commands/web.ts`, `io.ts`, `project.ts`, `stores/projectStore.ts`, `ui/src/importFormats.json` (generated) | `importProjectUpload`, `importProject`, `split` flag, shared format and archive suffix lists |
 | `ui/src/components/welcome/ImportProjectDialog.tsx` (new), `Welcome.tsx`, `editor.css`, `platform.ts` | the chooser; desktop archive pick |
@@ -757,8 +763,12 @@ coding.
       not imported is left as written and named in the warnings (R12-2);
       two files with distinct footnotes `[^alpha]` and `[^beta]` and links
       needing rewrite import, survive an editor save and reopen, and
-      compile to two distinct note bodies (R13-1); a file with no link to
-      rewrite is byte-identical after import.
+      compile to two distinct note bodies (R13-1); `one.md` linking to
+      `two.md#spot` where `two.md` holds `<span class="anchor"
+      id="spot"></span>` (and, in a second case, `[here]{#spot}`) and has a
+      link of its own to rewrite imports, survives an editor save and
+      reopen, and compiles to a working link (R14-1); a file with no link
+      to rewrite is byte-identical after import.
 - [ ] `crates/services` import content: a DOCX with an embedded image
       imports with the image as an attachment and a project-relative
       target after the upload is deleted; a DOCX with two footnotes imports
@@ -1164,3 +1174,9 @@ coding.
   so two files' notes collide at compile (R13-1: the shared note filter
   runs after the rewrite, and the landing order becomes 3, 1, 2, 4, 5 so
   the editor and compile already keep those elements when slice 1 lands).
+- 2026-10-27 review round 14 (`plan-4`, `1a51d3a`): reopened on one
+  finding; R13-1 closed, landing order confirmed free of later-slice
+  dependencies. Admitted: the folder import's rewrite wrote anchors back
+  as `[]{#spot .anchor}`, which the editor flattens (R14-1: the shared
+  inline-target normalisation runs in the folder path too, landed with
+  slice 1).

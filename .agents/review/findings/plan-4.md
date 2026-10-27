@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 13 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; fourteenth
-revision committed, round 14 pending
+**Status**: In progress — rounds 1 to 14 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; fifteenth
+revision committed, round 15 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -591,7 +591,36 @@ join the section-start fixtures.
 
 Declined: none.
 
+## Round 14 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17e9f-2ff8-7e52-a539-1504e38f38c7`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `1a51d3aefb40158a952dc386f919179a151c9bf2` (fourteenth
+  revision)
+- **Base SHA**: `5c8770391ed12f6cf8b2510c5b763195e6c29dcc` (round-13 head)
+- **Dispatched**: 2026-10-27 18:28 UTC; finished 18:34 UTC; exit 0;
+  87,299 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `1a51d3a…`; both succeeded. The reviewer reproduced the footnote
+  collision without conversion and its absence with it, through two editor
+  cycles and all five writers; confirmed the no-rewrite branch byte-exact;
+  checked every listed test against the landing order 3, 1, 2, 4, 5 (no
+  later-slice dependency); and found the anchor round-trip failure below
+  with a scratch prototype on the locked editor. No repository file
+  changed; no remote contacted.
+- **Verdict**: `reopened` on one finding. Closed: R13-1.
+
+## Round 14 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R14-1 | The folder import's rewrite writes an anchor element back as `[]{#spot .anchor}`, which the editor flattens on save | MEDIUM | reviewer's editor probe | Admitted: the shared inline-target normalisation runs in the folder path before note encoding, landed with slice 1 |
+
+Declined: none.
+
 ## Closeout
 
-Pending: round 14 review of the fourteenth revision (same reviewer, fresh
-session, pins base = round-13 head `5c87703`, head = the revision commit).
+Pending: round 15 review of the fifteenth revision (same reviewer, fresh
+session, pins base = round-14 head `1a51d3a`, head = the revision commit).
