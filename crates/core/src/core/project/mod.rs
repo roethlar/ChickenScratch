@@ -7,6 +7,7 @@ pub mod deletion;
 pub mod fidelity;
 pub mod format;
 pub mod hierarchy;
+pub mod publish;
 pub mod reader;
 pub(crate) mod safe_path;
 pub mod writer;
