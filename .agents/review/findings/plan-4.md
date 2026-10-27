@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 18 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; nineteenth
-revision committed, round 19 pending
+**Status**: In progress — rounds 1 to 19 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; twentieth
+revision committed, round 20 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -759,7 +759,33 @@ Declined: none.
 
 Declined: none.
 
+## Round 19 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17ecb-ddc0-7181-a73c-81f835196895`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `c621b650db0b4e469a0834c65673844dac0e5616` (nineteenth
+  revision)
+- **Base SHA**: `b5c3b4a530933cffe35790730e72334a8a499ca4` (round-18 head)
+- **Dispatched**: 2026-10-27 19:17 UTC; finished 19:23 UTC; exit 0;
+  107,051 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `c621b65…`; both succeeded. The reviewer read the whole plan end to end,
+  ran six core compile tests (passing), and probed the step-4(c) lookup
+  on Pandoc 3.11 output in HTML and DOCX for the wrong-document case
+  below. No repository file changed; no remote contacted.
+- **Verdict**: `reopened` on one finding. Closed: R18-1, R17-2, R16-3.
+
+## Round 19 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R19-1 | Step 4(c) searched notes anywhere in the combined document, so an unrelated unique `{#spot}` in C's note satisfied `b.md#spot` | MEDIUM | reviewer's Pandoc probe | Admitted: the identifier must also appear inside a note of the target document's own solo parse, and exactly one element may match; otherwise the named warning |
+
+Declined: none.
+
 ## Closeout
 
-Pending: round 19 review of the nineteenth revision (same reviewer, fresh
-session, pins base = round-18 head `b5c3b4a`, head = the revision commit).
+Pending: round 20 review of the twentieth revision (same reviewer, fresh
+session, pins base = round-19 head `c621b65`, head = the revision commit).

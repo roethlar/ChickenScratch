@@ -494,11 +494,18 @@ gap is in scope here, with the design below.
      positions, so this match is exact where text or rank matching was not
      (R8-2, R9-2); note contents are excluded because the combined text may
      use a later document's definition of the same note label, so the
-     note's blocks can differ from the solo parse (R10-1); (c)
-     otherwise, for an identifier inside a footnote (a note is rendered
-     where it is referenced, not where it is defined), an element with that
-     *explicit* identifier inside `Note` contents anywhere in the combined
-     document, unique, is the target (R8-5); (d) otherwise the link becomes
+     note's blocks can differ from the solo parse (R10-1); (c) otherwise,
+     for an identifier inside a footnote (a note is rendered where it is
+     referenced, not where it is defined), the target is an element with
+     that *explicit* identifier inside `Note` contents anywhere in the
+     combined document, but only with evidence that the note belongs to
+     `doc`: the same explicit identifier must appear inside a `Note` of
+     `doc`'s own diagnostic solo parse (which holds the notes `doc` both
+     defines and references), and exactly one such element may exist in
+     the combined document (R8-5, R19-1: a unique `spot` inside another
+     document's note is not evidence of anything about `doc`; a note `doc`
+     defines but never references itself is absent from its solo parse, so
+     ownership cannot be shown and rule (d) applies); (d) otherwise the link becomes
      its text and compile emits a named warning naming the link and the
      document, so an unresolvable link is reported, never silently kept as
      a dead hyperlink. Inline-level targets (spans, images) are reached only
@@ -911,10 +918,14 @@ coding.
       opening with a code block then a paragraph, and a Div holding only
       code, each get their destination before the code (R9-6); a link into
       a heading with an explicit identifier inside B's footnote referenced
-      from A resolves (R8-5); A's `[^n]` note holding `# Wanted` while B
-      redefines `[^n]` with `# Wrong` does not let `a.md#wanted` reach the
-      wrong heading (it resolves only through an explicit identifier or
-      becomes text with the warning, R10-1); a Markdown-bodied note holding
+      from A resolves when B also references that note itself, and becomes
+      text with the warning when B only defines it (R8-5, R19-1); A's note
+      linking `b.md#spot` where B has no `spot` and C's note holds an
+      unrelated `{#spot}` becomes text with the warning, as does the
+      variant where C redefines B's note label (R19-1); A's `[^n]` note
+      holding `# Wanted` while B redefines `[^n]` with `# Wrong` does not
+      let `a.md#wanted` reach the wrong heading (it resolves only through
+      an explicit identifier or becomes text with the warning, R10-1); a Markdown-bodied note holding
       `# Generated` and `# Real {#generated}` resolves a link to the
       explicit one without a duplicate warning (R10-2); a link to a
       heading-first Div lands on the heading with a LaTeX label (R10-3); a
@@ -1318,3 +1329,11 @@ coding.
   missing (R18-1: every document is an origin, a failing or disagreeing
   one triggers the warning, identities are compared before fragments; the
   Flow rule is stated the same way).
+- 2026-10-27 review round 19 (`plan-4`, `c621b65`): reopened on one
+  finding after an end-to-end read; R18-1, R17-2 and R16-3 closed.
+  Admitted: the search for an explicit identifier inside notes ran over
+  the whole combined document, so an unrelated unique `{#spot}` in
+  another document's note was accepted for `b.md#spot` (R19-1: the
+  identifier must also appear inside a note of the target document's own
+  solo parse, and exactly one element may match; otherwise the named
+  warning).
