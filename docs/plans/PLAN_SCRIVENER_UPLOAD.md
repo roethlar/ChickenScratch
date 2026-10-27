@@ -354,8 +354,14 @@ gap is in scope here, with the design below.
      unresolved reference and a resolved one are both one paragraph, and a
      note pulled in from another document lives inside an inline. So the
      combined block list is cut into sections by the solo block counts
-     (title page and separators are known generated blocks). If the counts
-     do not add up, the cause is a document whose unclosed fence or Div
+     (title page and separators are known generated blocks). One parser
+     rule depends on position and is mirrored: a `%` title block counts as
+     metadata only at the very start of the text, so the solo parse of a
+     document runs with `pandoc_title_block` disabled unless that document
+     is first in the compile and no title page is generated (probed on
+     Pandoc 3.11: `% Title` lines are one paragraph after a separator, zero
+     blocks alone; YAML blocks are metadata in both positions). If the
+     counts do not add up, the cause is a document whose unclosed fence or Div
      runs into the next one, which already garbles today's output; compile
      then emits a named warning ("document X runs into the next document;
      links between documents were not resolved") and leaves the links as
@@ -682,7 +688,9 @@ coding.
       reference definitions across documents resolve to the same definition
       as today; a document with an unclosed code fence produces the named
       warning, unchanged content and unresolved links, never moved or
-      truncated text; a 100-document project with one link between
+      truncated text; a later document beginning with `% Title` lines, and
+      a first document beginning with them under both title-page settings,
+      align and resolve; a 100-document project with one link between
       documents compiles within four concurrent solo parses and a recorded
       time bound. Unchanged path: an existing sample project, a project
       with a leading `%` title block and a project with a relative link to
