@@ -73,7 +73,12 @@ fn read_within(root: &Path, pieces: &[String]) -> Result<Vec<u8>, AssetRefusal> 
         let name = CString::new(piece.as_bytes()).map_err(|_| AssetRefusal::BadPath)?;
         let last = i + 1 == pieces.len();
         let mut flags = libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
-        if !last {
+        if last {
+            // A named pipe with no writer would block the open before its
+            // type can be rejected; O_NONBLOCK makes it return at once, and
+            // a regular file ignores the flag (s3-9 repair review 2).
+            flags |= libc::O_NONBLOCK;
+        } else {
             flags |= libc::O_DIRECTORY;
         }
         // SAFETY: `dir` is an open directory handle owned by this function and
@@ -349,6 +354,33 @@ mod tests {
         // The decoy must have been reachable at least sometimes, or the
         // test proved nothing about the race.
         assert!(served > 0, "the decoy was never served");
+    }
+
+    /// A named pipe inside the project is refused as not-a-file instead of
+    /// waiting for a writer that never comes (s3-9 repair review 2).
+    #[cfg(unix)]
+    #[test]
+    fn a_named_pipe_is_not_found_rather_than_waited_on() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let (_dir, root) = project();
+        let pipe = root.join("research").join("pipe.png");
+        let c_path = CString::new(pipe.as_os_str().as_bytes()).unwrap();
+        // SAFETY: a NUL-terminated path inside a fresh temporary folder.
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+
+        let (tx, rx) = mpsc::channel();
+        let worker_root = root.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(serve_project_asset(&worker_root, "research/pipe.png"));
+        });
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(result) => assert_eq!(result, Err(AssetRefusal::NotFound)),
+            Err(_) => panic!("the request waited on the pipe instead of refusing it"),
+        }
     }
 
     #[test]
