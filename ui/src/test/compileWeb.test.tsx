@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 
 /**
  * Compile dialog in the browser shell (plan slice 4a): a format picker
@@ -86,27 +86,42 @@ describe("Compile dialog in the browser shell", () => {
 });
 
 describe("compile warnings reach the writer (s3-5)", () => {
-  it("shows the server's compile warnings after a web export", async () => {
+  it("keeps every warning on screen until the writer is done", async () => {
+    const reported = Array.from(
+      { length: 40 },
+      (_, i) => `b.md#nowhere-${i} was not found in manuscript/b.md; the link became text`
+    );
     exportMock.mockResolvedValueOnce({
       blob: new Blob(["<p>hi</p>"], { type: "text/html" }),
       fileName: "Scratch.html",
-      warnings: ["b.md#nowhere was not found in manuscript/b.md; the link became text"],
+      warnings: reported,
     } as never);
-    render(<CompileDialog open onClose={vi.fn()} />);
+    const onClose = vi.fn();
+    render(<CompileDialog open onClose={onClose} />);
     await screen.findByLabelText("Format");
     fireEvent.click(screen.getByText("Export"));
     await waitFor(() => expect(downloadMock).toHaveBeenCalled());
-    expect(toastMock).toHaveBeenCalledWith(
-      "Export finished with 1 warning:\nb.md#nowhere was not found in manuscript/b.md; the link became text",
-      "info"
-    );
+
+    const list = await screen.findByRole("list", { name: "Compile warnings" });
+    expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual(reported);
+    expect(screen.getByRole("status").textContent).toContain("40 warnings");
+    // Nothing fades away: no toast carried them, and the dialog is still open.
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Format")).toBeNull();
+
+    fireEvent.click(screen.getByText("Done"));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("stays quiet when there are no warnings", async () => {
-    render(<CompileDialog open onClose={vi.fn()} />);
+  it("closes straight away when there are no warnings", async () => {
+    const onClose = vi.fn();
+    render(<CompileDialog open onClose={onClose} />);
     await screen.findByLabelText("Format");
     fireEvent.click(screen.getByText("Export"));
     await waitFor(() => expect(downloadMock).toHaveBeenCalled());
     expect(toastMock).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("list", { name: "Compile warnings" })).toBeNull();
   });
 });

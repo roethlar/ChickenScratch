@@ -5,7 +5,7 @@ import { compileProject, getCompileFormats } from "../../commands/io";
 import { pickSaveFile } from "../../platform";
 import { isWeb } from "../../commands/transport";
 import { exportManuscript, downloadBlob } from "../../commands/web";
-import { toast, toastSuccess, toastError } from "../shared/Toast";
+import { toastSuccess, toastError } from "../shared/Toast";
 import { flushPendingEditorSave } from "../editor/editorRef";
 import { useModalFocusTrap } from "../shared/Dialog";
 import { exportDefaultPath } from "../../utils/exportPath";
@@ -13,17 +13,6 @@ import { exportDefaultPath } from "../../utils/exportPath";
 interface CompileDialogProps {
   open: boolean;
   onClose: () => void;
-}
-
-/**
- * Compile's warnings name the links between documents that became text and
- * why; the export succeeded, so they are shown as information after it
- * (PLAN_SCRIVENER_UPLOAD slice 3, review finding s3-5).
- */
-function reportCompileWarnings(warnings: string[] | undefined): void {
-  if (!warnings || warnings.length === 0) return;
-  const noun = warnings.length === 1 ? "warning" : "warnings";
-  toast(`Export finished with ${warnings.length} ${noun}:\n${warnings.join("\n")}`, "info");
 }
 
 export function CompileDialog({ open, onClose }: CompileDialogProps) {
@@ -40,6 +29,16 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
   const [titlePage, setTitlePage] = useState(true);
   const [manuscriptFormat, setManuscriptFormat] = useState(false);
   const [compiling, setCompiling] = useState(false);
+  // Compile's warnings name what it could not do as written (a link between
+  // documents that became text, and why). The export succeeded, so they are
+  // shown here, scrollable, until the writer has read them: a toast lost
+  // anything above the viewport and vanished after a few seconds
+  // (PLAN_SCRIVENER_UPLOAD slice 3, review finding s3-5 and its repair review).
+  const [warnings, setWarnings] = useState<string[] | null>(null);
+  const close = () => {
+    setWarnings(null);
+    onClose();
+  };
   // Browser shell: no save dialog to pick the format from, so ask here.
   const web = isWeb();
   const [format, setFormat] = useState("docx");
@@ -64,6 +63,15 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
 
   if (!open || !project) return null;
 
+  /** Close straight away, or stay open with the warnings when there are any. */
+  const finish = (reported: string[] | undefined) => {
+    if (reported && reported.length > 0) {
+      setWarnings(reported);
+    } else {
+      close();
+    }
+  };
+
   const handleExportWeb = async () => {
     setCompiling(true);
     try {
@@ -79,8 +87,7 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
       });
       downloadBlob(blob, fileName);
       toastSuccess("Export ready: " + fileName);
-      reportCompileWarnings(warnings);
-      onClose();
+      finish(warnings);
     } catch (e) {
       toastError("Export failed: " + e);
     }
@@ -112,8 +119,7 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
         manuscriptFormat,
       });
       toastSuccess("Export complete: " + outputPath);
-      reportCompileWarnings(warnings);
-      onClose();
+      finish(warnings);
     } catch (e) {
       toastError("Export failed: " + e);
     }
@@ -121,7 +127,7 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
   };
 
   return (
-    <div className="dialog-overlay" onClick={onClose}>
+    <div className="dialog-overlay" onClick={close}>
       <div
         ref={dialogRef}
         className="compile-dialog"
@@ -134,9 +140,28 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
       >
         <div className="compile-header">
           <h3 id={titleId}>Compile Manuscript</h3>
-          <button onClick={onClose} className="compile-close" aria-label="Close compile dialog"><X size={16} /></button>
+          <button onClick={close} className="compile-close" aria-label="Close compile dialog"><X size={16} /></button>
         </div>
 
+        {warnings ? (
+          <>
+            <div className="compile-body">
+              <p className="compile-warnings-summary" role="status">
+                The export finished. Compile reported {warnings.length}{" "}
+                {warnings.length === 1 ? "warning" : "warnings"}; each line names what it could not do as written.
+              </p>
+              <ul className="compile-warnings" aria-label="Compile warnings">
+                {warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="compile-footer">
+              <button className="dialog-btn ok" onClick={close}>Done</button>
+            </div>
+          </>
+        ) : (
+        <>
         <div className="compile-body">
           <div className="compile-field">
             <label htmlFor={titleFieldId}>Title</label>
@@ -196,11 +221,13 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
         </div>
 
         <div className="compile-footer">
-          <button className="dialog-btn cancel" onClick={onClose}>Cancel</button>
+          <button className="dialog-btn cancel" onClick={close}>Cancel</button>
           <button className="dialog-btn ok" onClick={handleExport} disabled={compiling}>
             {compiling ? "Compiling..." : "Export"}
           </button>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
