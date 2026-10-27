@@ -50,10 +50,16 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   proposal to defer compiled document links ("a link resolving to plain
   text means this cannot ship with honest import functionality as a
   feature since it's broken. no") and the feature stayed in. Slices land
-  in the order 3, 1, 2, 4, 5, each Codex-reviewed before the next. Slice 3
-  (editor image and anchor nodes, Markdown-bodied footnotes, compile
-  images and document links, project publication API) is next; no code
-  changed yet.
+  in the order 3, 1, 2, 4, 5, each Codex-reviewed before the next.
+  **Slice 3 landed 2026-10-27** in six commits (`c671882` compile
+  `--resource-path`; `722f563` Markdown-bodied footnotes and the anchor
+  reading; `d77d677` core `publish_imported`; `9d32fa8` compile resolves
+  links between documents, `compile_links.rs`; `2b6f7a8` editor image and
+  anchor nodes, link acceptance and click handling; `a1e9ca2` project
+  pictures served by both shells, desktop `chikn-asset` scheme with
+  open-project state). Every commit carries a bite proof. The Tauri crate
+  is not built on this machine (webkit2gtk absent); CI compiles it. Its
+  Codex defect review is the next step; slice 1 follows.
   Latent bug noted there: `io.rs` maps legacy `.doc` to the Pandoc `docx`
   reader, which cannot read `.doc`.
 - **Scrivener import is not perfected** (owner asked 2026-10-25; checked by
@@ -181,9 +187,7 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
    Codex-reviewed before the next; slice 5 (Scrivener 2) optional.
 3. **Import anything** (`PLAN_SCRIVENER_UPLOAD.md`): owner go 2026-10-27;
    plan accepted (`plan-4`, 25 rounds). Landing order 3, 1, 2, 4, 5:
-   slice 3 (editor and compile keep what imports create: images, anchors,
-   Markdown-bodied footnotes, document links in compiled output, core
-   publication API), then 1 (archive upload door, unpack worker,
+   slice 3 landed (`efde2de..a1e9ca2`, Codex review pending), then 1 (archive upload door, unpack worker,
    detection, transaction), 2 (Import Project button in both shells), 4
    (Import File for every Pandoc reader with optional split), 5 (one slice
    per app format: novelWriter, Manuskript, TextBundle); each slice

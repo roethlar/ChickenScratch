@@ -1430,3 +1430,11 @@ coding.
   findings; 200 alias-placement checks across 100 writer outputs, the
   reservation rule and the duplicate fixtures all confirmed. Implementation
   begins in the landing order 3, 1, 2, 4, 5.
+- 2026-10-27: slice 3 landed (`efde2de..a1e9ca2`, six commits, one concern
+  each, bite proofs recorded in the commit messages). Differences from the
+  plan text, all narrower than planned: the anchor element needs no Lua
+  work because Pandoc's Markdown reader already reads an HTML span as an
+  identified Span; a swallowed marker falls back to today's unmarked
+  invocation (no stray comment line in the output); the desktop keeps the
+  open project in a small shared state set by load/create and cleared by a
+  new `close_project` command. Codex defect review next.
