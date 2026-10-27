@@ -1,0 +1,57 @@
+> File renamed 2026-10-27: this Scrivener-import slice-3 finding was recorded as `s3-3`; the upload plan's slice 3 (`docs/plans/PLAN_SCRIVENER_UPLOAD.md`) reused that id and its intake overwrote this file in `27d4aaf`. Restored from `06968a2` under `scriv-s3-3`; the fix commits' messages still say `s3-3`.
+
+# scriv-s3-3: An unreadable synopsis file is treated as no synopsis
+
+**Severity**: MEDIUM — content is omitted with no indication to the writer
+**Status**: Verified — accepted 2026-10-26 01:20 UTC
+**Branch**: — (default-branch mode)
+**Commit**: `ca0dc94`
+
+Source: Reviewer (generation): codex / gpt-6-astra / xhigh / frontier (owner-named pair)
+Range: c46f8b5^..c46f8b5 (slice 3), codex-cli 0.164.0, 2026-10-25 23:50 UTC.
+
+## Evidence
+`crates/cli/src/scrivener/converter/mod.rs` `side_values`:
+`fs::read_to_string(&synopsis_path).ok()` discards every error, including
+a permissions failure, as if the file were absent.
+
+## Predicted observable failure
+A mode-000 `synopsis.txt` imports with `synopsis=None` and no warning.
+
+## Approach
+`NotFound` is absence; any other read error is reported in the import
+warnings with the item's name, and the import goes on.
+
+## Files changed
+- `crates/cli/src/scrivener/converter/mod.rs`
+
+## Guard proof
+`cargo test -p chikn-converter --lib -- unreadable_synopsis_is_reported`
+(unix): a mode-000 `synopsis.txt` imports with no synopsis and a warning
+naming the document. With every read error treated as absence again the
+test fails; restored, it passes.
+
+## Coder dispute
+None.
+
+## Known gaps
+None.
+
+## Reviewer comments
+Reviewer: codex / gpt-6-astra / xhigh / frontier
+Harness: codex-cli 0.164.0 (CLI transport; disposable clone under /tmp)
+Reviewed: ca0dc94932e21a51973926b271b5ec20aff18834
+Base: f0478ca (parent)
+guard_confirmed: true (1 passed at head; with the former `.ok()` put back
+  the guard fails with an empty warnings list; restored passes; 70
+  converter tests, 10 supplementary synopsis scenarios — missing,
+  readable, blank, invalid UTF-8, directory, permission denied, XML
+  fallback, persisted results — clippy, fmt and diff checks clean)
+Verdict: accepted — 2026-10-26 01:20 UTC
+Comments: the fix closes the reported failure; an unreadable synopsis
+produces a warning naming the document and the import continues. No
+candidate defects or adjacent regressions.
+
+## Closeout
+Verified on `master` at `ca0dc94`; unpushed (push follows
+`.agents/push-policy.md`).

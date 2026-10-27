@@ -1,0 +1,91 @@
+> File renamed 2026-10-27: this Scrivener-import slice-3 finding was recorded as `s3-2`; the upload plan's slice 3 (`docs/plans/PLAN_SCRIVENER_UPLOAD.md`) reused that id and its intake overwrote this file in `27d4aaf`. Restored from `06968a2` under `scriv-s3-2`; the fix commits' messages still say `s3-2`.
+
+# scriv-s3-2: Research roots and attachments bypass the metadata import
+
+**Severity**: MEDIUM — a writer's notes, synopsis, label or status on a Research folder or an attachment vanish without a warning
+**Status**: Verified — accepted 2026-10-26 02:20 UTC
+**Branch**: — (default-branch mode)
+**Commit**: `2ac1856`
+
+Source: Reviewer (generation): codex / gpt-6-astra / xhigh / frontier (owner-named pair)
+Range: c46f8b5^..c46f8b5 (slice 3), codex-cli 0.164.0, 2026-10-25 23:50 UTC.
+
+## Evidence
+`crates/cli/src/scrivener/converter/mod.rs`: only the Draft/ordinary/Trash
+folder arm and the Text arm call `side_values`; the `ResearchFolder` arm
+and the attachment (PDF/image) arm do not.
+
+## Predicted observable failure
+A Research root carrying notes reopens with no companion document; a PDF
+with a synopsis and label imports with `label=None`, `synopsis=None`,
+`fields={}`. No warnings.
+
+## Approach
+The Research root goes through the same folder path as every other folder
+(companion document when it has text or side values); attachments carry
+their side values on their own document entry, whose `.meta` sidecar the
+writer already emits (see `research/sample-story-ms.meta` in the Corn
+sample).
+
+## Files changed
+- `crates/cli/src/scrivener/converter/mod.rs`
+
+## Guard proof
+`cargo test -p chikn-converter --lib -- metadata_and_notes_arrive_on_the_document`
+now also asserts the Research root's companion document carries its notes
+and label and a PDF carries its synopsis, label and notes. With the
+attachment side values replaced by defaults the test fails; restored, it
+passes; clippy clean. Repair guard:
+`same_title_root_and_attachment_keep_separate_sidecars` fails with the
+`.md`-only collision check put back; restored, it passes.
+
+## Coder dispute
+None.
+
+## Known gaps
+The engine's reader lists only `.md` documents when a project reopens, so
+an attachment's metadata is persisted in its `.meta` sidecar (as the test
+checks on disk) but is not shown in the app until the reader exposes
+attachments; pre-existing, not changed here.
+
+## Reviewer comments
+Reviewer: codex / gpt-6-astra / xhigh / frontier
+Harness: codex-cli 0.164.0 (CLI transport; disposable clone under /tmp)
+Reviewed: f0478ca52d8b0e7d42b43e4630812fa1f0bffb02
+Base: 1735790 (parent)
+guard_confirmed: true (1 passed at head; attachment side values replaced
+  with defaults → fails on missing attachment metadata; fix removed →
+  fails `document Research missing`; restored passes; 69 tests; fmt,
+  clippy and whitespace clean)
+Verdict: reopened — 2026-10-26 01:05 UTC
+Comments: MEDIUM a Research companion can overwrite attachment metadata:
+a Research root titled "Research" with notes containing a PDF also titled
+"Research" yields `research/research.md` and `research/research.pdf`,
+both using `research/research.meta`; the allocator checks `.md` collisions
+without reserving attachment sidecars. Reproduced in both directions (the
+PDF's notes and identity lost; or the root's metadata lost and reopening
+failing with a hierarchy/document-ID mismatch), `warnings: []` each time.
+Suggested: allocate against content and sidecar paths across extensions,
+with a matching-title regression test.
+
+**Disposition: ADMITTED.** Repair: one `unique_stem` allocator reserves a
+`<folder>/<slug>` stem against every document path under any extension
+and is used wherever a file is named (folder companions, text documents,
+attachments). Guard: `same_title_root_and_attachment_keep_separate_sidecars`
+(distinct stems, each sidecar holding only its own values, clean reopen).
+
+Reviewer: codex / gpt-6-astra / xhigh / frontier (repair-delta review)
+Reviewed: 2ac1856bb23169a1d739aaa02770dcc9645a9b2f
+Base: 25df959 (parent)
+guard_confirmed: true (both guards pass at head; attachment or
+  Research-root defaults fail the original guard; the exact pre-repair
+  production code fails the new guard on the shared sidecar; restored
+  passes; ten binder-order variants over mixed extensions, suffix
+  collisions, metadata identity, attachment bytes, links and reopening;
+  75 converter tests, fmt, clippy and whitespace clean)
+Verdict: accepted — 2026-10-26 02:20 UTC
+Comments: the repair preserves the original metadata fix and closes the
+shared-sidecar regression. No candidate defects in scope.
+
+## Closeout
+Accepted at `2ac1856` after one repair (fix `f0478ca`). Verified on `master`; unpushed (push follows `.agents/push-policy.md`).

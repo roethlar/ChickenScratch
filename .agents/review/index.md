@@ -9,6 +9,7 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 - `[x]` Verified / accepted
 - `[!]` Contested — awaiting owner adjudication
 - `[-]` Declined at intake
+- Ids are unique across plans: when a later plan reuses slice numbers, prefix its ids with the plan's short name. The upload plan's slice 3 reused `s3-` and overwrote three closed Scrivener-import records, restored as `scriv-s3-1..3` (2026-10-27).
 
 ## Items
 
@@ -35,9 +36,9 @@ Per-item detail: see `.agents/review/findings/<id>.md`.
 | s1-5 | code | Unescaped `)` in a hyperlink target truncates the link (range b5f958b..caf8a5e, codex) | `[x]`  | — (default-branch mode) |
 | s1-6 | code | `\line` breaks render as spaces (range b5f958b..caf8a5e, codex) | `[x]`  | — (default-branch mode) |
 | s2-1 | code | Internal links resolve against predicted paths; duplicate titles redirect them (slice 2 review, codex) | `[x]`  | — (default-branch mode) |
-| s3-1 | code | Opening the Inspector on a selected document can wipe its metadata (slice 3 review, codex) | `[x]`  | — (default-branch mode) |
-| s3-2 | code | Research roots and attachments bypass the metadata import (slice 3 review, codex) | `[x]`  | — (default-branch mode) |
-| s3-3 | code | An unreadable synopsis file is treated as no synopsis (slice 3 review, codex) | `[x]`  | — (default-branch mode) |
+| scriv-s3-1 | code | Opening the Inspector on a selected document can wipe its metadata (slice 3 review, codex) | `[x]`  | — (default-branch mode) |
+| scriv-s3-2 | code | Research roots and attachments bypass the metadata import (slice 3 review, codex) | `[x]`  | — (default-branch mode) |
+| scriv-s3-3 | code | An unreadable synopsis file is treated as no synopsis (slice 3 review, codex) | `[x]`  | — (default-branch mode) |
 | s4-1 | code | Non-breaking space before an inline annotation panics the import (slice 4 review, codex) | `[x]`  | — (default-branch mode) |
 | s4-2 | code | Two inline annotations at a paragraph start panic the import (slice 4 review, codex) | `[x]`  | — (default-branch mode) |
 | s4-3 | code | Literal inline-note text decoded twice, braces and backslashes lost (slice 4 review, codex) | `[x]`  | — (default-branch mode) |
