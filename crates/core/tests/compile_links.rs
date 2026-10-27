@@ -459,3 +459,38 @@ fn a_swallowed_marker_warns_and_leaves_links_alone() {
     );
     assert!(!html.contains("chikn:"), "no marker text in today's output");
 }
+
+/// The editor percent-encodes a non-ASCII fragment on save; Pandoc's
+/// identifier is the decoded form (review finding s3-1).
+#[test]
+fn percent_encoded_fragments_resolve_like_their_decoded_form() {
+    if !pandoc_present() {
+        eprintln!("skipping: pandoc not installed");
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "Go to [cafe](b.md#caf%C3%A9) and the bare [local](#caf%C3%A9-here).\n\n# Café here",
+            ),
+            doc("manuscript/b.md", "# Café\n\nText."),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let ids = ids(&html);
+    let cafe = href_of(&html, "cafe").unwrap();
+    assert!(ids.contains(cafe.trim_start_matches('#')), "{cafe}");
+    assert!(element_text(&html, cafe.trim_start_matches('#'))
+        .unwrap()
+        .contains("Café"));
+    // The bare link to a unique element follows that element's new name.
+    let local = href_of(&html, "local").unwrap();
+    assert!(ids.contains(local.trim_start_matches('#')), "{local}");
+    assert!(element_text(&html, local.trim_start_matches('#'))
+        .unwrap()
+        .contains("Café here"));
+}
