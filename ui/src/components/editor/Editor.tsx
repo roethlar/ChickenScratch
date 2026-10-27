@@ -16,7 +16,7 @@ import { CommentMark } from "../comments/CommentMark";
 import { FootnoteNode } from "./FootnoteNode";
 import { AnchorNode } from "./AnchorNode";
 import { ImageNode } from "./ImageNode";
-import { classifyDocumentTarget, isAllowedLinkUri } from "./documentLinks";
+import { classifyDocumentTarget, isDocumentPathSyntax } from "./documentLinks";
 import {
   setCurrentEditor,
   setPendingFlush,
@@ -371,11 +371,12 @@ export function Editor() {
         openOnClick: false,
         // Links between documents are relative or root-anchored paths
         // (`two.md#second`, `/manuscript/two.md`); the default rule would
-        // drop them on parse. Only the syntax is checked here, in every
-        // mode: where a click leads is decided when it happens, from the
-        // document that holds it (PLAN_SCRIVENER_UPLOAD slice 3, plan-4
-        // R4-4, R16-4, R17-3).
-        isAllowedUri: (url) => isAllowedLinkUri(url),
+        // drop them on parse. The stock rule stays in force for everything
+        // with a scheme; only the scheme-less path syntax is added. Where a
+        // click leads is decided when it happens, from the document that
+        // holds it (PLAN_SCRIVENER_UPLOAD slice 3, plan-4 R4-4, R16-4,
+        // R17-3; review finding s3-3).
+        isAllowedUri: (url, ctx) => ctx.defaultValidate(url) || isDocumentPathSyntax(url),
         HTMLAttributes: {
           rel: "noopener noreferrer nofollow",
         },

@@ -34,7 +34,7 @@ vi.mock("../components/shared/Dialog", () => ({
 import { Editor } from "../components/editor/Editor";
 import { getCurrentEditor, getEditorMarkdown } from "../components/editor/editorRef";
 import { footnoteElement } from "../components/editor/FootnoteNode";
-import { classifyDocumentTarget, isAllowedLinkUri, normalisePath } from "../components/editor/documentLinks";
+import { classifyDocumentTarget, isDocumentPathSyntax, normalisePath } from "../components/editor/documentLinks";
 import { useProjectStore } from "../stores/projectStore";
 import { resetBarrierForTests } from "../commands/barrier";
 import type { Document, Project } from "../types";
@@ -178,14 +178,16 @@ describe("document link rules", () => {
     doc("x", "research/x.md", ""),
   ];
 
-  it("accepts relative and root paths as link syntax, refuses junk", () => {
-    expect(isAllowedLinkUri("two.md#second")).toBe(true);
-    expect(isAllowedLinkUri("/manuscript/two.md")).toBe(true);
-    expect(isAllowedLinkUri("../intro.md")).toBe(true);
-    expect(isAllowedLinkUri("https://example.com")).toBe(true);
-    expect(isAllowedLinkUri("javascript:alert(1)")).toBe(false);
-    expect(isAllowedLinkUri("//evil.example")).toBe(false);
-    expect(isAllowedLinkUri("bad\u0001path")).toBe(false);
+  it("adds only scheme-less path syntax to the stock link rule", () => {
+    expect(isDocumentPathSyntax("two.md#second")).toBe(true);
+    expect(isDocumentPathSyntax("/manuscript/two.md")).toBe(true);
+    expect(isDocumentPathSyntax("../intro.md")).toBe(true);
+    // Anything with a scheme is the stock rule's business, never this one's.
+    expect(isDocumentPathSyntax("https://example.com")).toBe(false);
+    expect(isDocumentPathSyntax("javascript:alert(1)")).toBe(false);
+    expect(isDocumentPathSyntax(" javascript:alert(1)")).toBe(false);
+    expect(isDocumentPathSyntax("//evil.example")).toBe(false);
+    expect(isDocumentPathSyntax("bad\u0001path")).toBe(false);
   });
 
   it("resolves relative, root-anchored and legacy targets like compile", () => {
@@ -260,5 +262,16 @@ describe("image paths with spaces or non-ASCII (s3-2)", () => {
     const out = getEditorMarkdown(getCurrentEditor()!);
     expect(out).toContain("![Picture](research/my%20image.png)");
     expect(out).toContain("![Accent](research/caf%C3%A9.png)");
+  });
+});
+
+describe("external links keep the stock validation (s3-3)", () => {
+  it("keeps an ftp link and refuses a javascript href the stock rule refused", async () => {
+    const md = "Get the [file](ftp://example.com/file) and [page](https://example.com).";
+    expect(await roundTrip(md)).toBe(md);
+    const hostile = 'Click <a href=" javascript:alert(1)">here</a> now.';
+    const out = await roundTrip(hostile);
+    expect(out).not.toContain("javascript:");
+    expect(out).toContain("here");
   });
 });

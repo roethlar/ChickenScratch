@@ -27,11 +27,19 @@ export type DocumentTarget =
   | { kind: "ambiguous" }
   | { kind: "none" };
 
-/** Syntax the Link mark may carry: an ordinary URL or a relative/root path. */
-export function isAllowedLinkUri(uri: string): boolean {
-  if (!uri || hasControlCharacter(uri)) return false;
-  if (uri.startsWith("//")) return false;
-  if (hasScheme(uri)) return /^(https?|mailto|tel):/i.test(uri);
+/**
+ * The document-path syntax the Link mark accepts in addition to what
+ * TipTap's own validation already allows: a relative or root-anchored path
+ * with no scheme at all. Composed with the stock rule by the editor
+ * (`defaultValidate(url) || isDocumentPathSyntax(url)`), so every external
+ * link the stock rule kept (ftp, custom schemes) is still kept and nothing
+ * with a scheme sneaks in through this branch (review finding s3-3).
+ */
+export function isDocumentPathSyntax(uri: string): boolean {
+  const value = uri.trim();
+  if (!value || hasControlCharacter(value)) return false;
+  if (value.startsWith("//")) return false;
+  if (hasScheme(value)) return false;
   return true;
 }
 
