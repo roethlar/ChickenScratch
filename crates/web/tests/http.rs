@@ -948,3 +948,163 @@ async fn releasing_the_lease_frees_the_project_for_the_next_session() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
+
+/// A download's headers carry only a warning count and a report id, however
+/// many warnings the compile produced; the report itself comes from
+/// `/api/compile-report` (s3-5 repair review: a 200-warning header overflowed
+/// Node's 16 KiB header limit behind the Vite proxy and failed the download).
+#[tokio::test]
+async fn export_warnings_arrive_by_report_not_by_header() {
+    let h = harness();
+    let project = ok(
+        &h.app,
+        "create_project",
+        json!({ "name": "Scratch", "path": path_str(&h.root) }),
+    )
+    .await;
+    let project_path = project["path"].as_str().unwrap().to_string();
+    let manuscript_id = project["hierarchy"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["name"] == json!("Manuscript"))
+        .and_then(|n| n["id"].as_str())
+        .expect("manuscript folder")
+        .to_string();
+    let doc_id = |project: &Value, name: &str| -> String {
+        project["documents"]
+            .as_object()
+            .unwrap()
+            .values()
+            .find(|d| d["name"] == json!(name))
+            .map(|d| d["id"].as_str().unwrap().to_string())
+            .unwrap()
+    };
+    // "Opening" is the target; "Links" points at it 200 times with fragments
+    // that do not exist, so every link becomes text with a warning.
+    let with_opening = ok(
+        &h.app,
+        "create_document",
+        json!({ "projectPath": project_path, "name": "Opening", "parentId": manuscript_id }),
+    )
+    .await;
+    ok(
+        &h.app,
+        "update_document_content",
+        json!({ "projectPath": project_path, "docId": doc_id(&with_opening, "Opening"), "content": "# Opening\n\nText." }),
+    )
+    .await;
+    let with_links = ok(
+        &h.app,
+        "create_document",
+        json!({ "projectPath": project_path, "name": "Links", "parentId": manuscript_id }),
+    )
+    .await;
+    let opening_file = markdown_file_containing(Path::new(&project_path), "opening")
+        .expect("Opening's Markdown file inside the project");
+    let content: String = (0..200)
+        .map(|i| format!("[link {i}](/{opening_file}#missing-{i})\n\n"))
+        .collect();
+    ok(
+        &h.app,
+        "update_document_content",
+        json!({ "projectPath": project_path, "docId": doc_id(&with_links, "Links"), "content": content }),
+    )
+    .await;
+
+    let res = h
+        .app
+        .clone()
+        .oneshot(
+            Request::post("/api/export")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({ "projectPath": project_path, "format": "html" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = res.status();
+    let headers = res.headers().clone();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    if status != StatusCode::OK {
+        // No Pandoc on this machine: the plain refusal, as the other export test checks.
+        assert_eq!(
+            status,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{}",
+            String::from_utf8_lossy(&bytes)
+        );
+        eprintln!("skipping the warning-report checks: pandoc not installed");
+        return;
+    }
+    for (name, value) in headers.iter() {
+        assert!(value.len() <= 256, "{name}: {} bytes", value.len());
+    }
+    let count: usize = headers["x-cs-compile-warnings"]
+        .to_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(count, 200);
+    let id = headers["x-cs-compile-report"].to_str().unwrap().to_string();
+
+    let (status, body, _) = call(
+        &h.app,
+        Request::get(format!("/api/compile-report?id={id}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let report = body.as_array().unwrap();
+    assert_eq!(report.len(), 200);
+    assert!(report
+        .iter()
+        .all(|w| w.as_str().unwrap().contains("missing-")));
+
+    // A report nobody stored says so plainly.
+    let (status, body, _) = call(
+        &h.app,
+        Request::get("/api/compile-report?id=999999")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(body.as_str().unwrap().contains("export again"), "{body}");
+}
+
+/// The project-relative path (forward slashes) of the first `.md` file whose
+/// name contains `stem`, searching the whole project.
+fn markdown_file_containing(root: &Path, stem: &str) -> Option<String> {
+    fn walk(dir: &Path, stem: &str, found: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, stem, found);
+            } else if path.extension().is_some_and(|e| e == "md")
+                && path
+                    .file_stem()
+                    .is_some_and(|s| s.to_string_lossy().to_lowercase().contains(stem))
+            {
+                found.push(path);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    walk(root, stem, &mut found);
+    found.sort();
+    found.first().map(|p| {
+        p.strip_prefix(root)
+            .unwrap()
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/")
+    })
+}

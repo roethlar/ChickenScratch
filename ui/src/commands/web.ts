@@ -62,18 +62,29 @@ export async function exportManuscript(req: ExportRequest): Promise<ExportResult
   return {
     blob: await res.blob(),
     fileName,
-    warnings: decodeWarnings(res.headers.get("X-CS-Compile-Warnings")),
+    warnings: await fetchCompileWarnings(res.headers),
   };
 }
 
-/** The server's percent-encoded JSON array of compile warnings (s3-5). */
-export function decodeWarnings(header: string | null): string[] {
-  if (!header) return [];
+/**
+ * The download's headers say only how many warnings the compile produced
+ * and which stored report holds them; the report itself is fetched here so
+ * no header grows with the manuscript (s3-5 and its repair review). A
+ * report that cannot be fetched still leaves the writer one line saying so.
+ */
+export async function fetchCompileWarnings(
+  headers: Pick<Headers, "get">
+): Promise<string[]> {
+  const count = Number(headers.get("X-CS-Compile-Warnings") ?? "0");
+  if (!Number.isFinite(count) || count <= 0) return [];
+  const noun = count === 1 ? "warning" : "warnings";
+  const id = headers.get("X-CS-Compile-Report");
+  if (!id) return [`The export reported ${count} ${noun}, but no report came back with it.`];
   try {
-    const parsed: unknown = JSON.parse(decodeURIComponent(header));
-    return Array.isArray(parsed) ? parsed.filter((w): w is string => typeof w === "string") : [];
-  } catch {
-    return [];
+    const report = await webGet<unknown>(`/api/compile-report?id=${encodeURIComponent(id)}`);
+    return Array.isArray(report) ? report.filter((w): w is string => typeof w === "string") : [];
+  } catch (e) {
+    return [`The export reported ${count} ${noun}, but the report could not be fetched: ${e}`];
   }
 }
 

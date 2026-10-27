@@ -3,13 +3,22 @@
 //! browser has no such dialog, so the server compiles into a temporary folder
 //! (deleted after the response is built) and never writes under the projects
 //! root.
+//!
+//! Compile's warnings (links between documents that became text, and why)
+//! cannot ride in the download's body, and a header is the wrong place for an
+//! unbounded list: a 200-warning report overflowed Node's 16 KiB header limit
+//! behind the Vite proxy and turned a successful compile into a failed
+//! download (repair review of finding s3-5). The headers therefore carry only
+//! a count and a report id, and the UI fetches the report itself from
+//! `GET /api/compile-report?id=<id>`.
 
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 
 use axum::{
     body::Body,
-    extract::State,
-    http::{header, HeaderValue, StatusCode},
+    extract::{Query, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -108,64 +117,121 @@ pub async fn export(
     .map_err(|_| CmdError::Internal)??;
 
     let disposition = format!("attachment; filename=\"{file_name}\"");
-    Ok((
-        StatusCode::OK,
-        [
-            (
-                header::CONTENT_TYPE,
-                HeaderValue::from_static(content_type(&args.format)),
-            ),
-            (
-                header::CONTENT_DISPOSITION,
-                HeaderValue::from_str(&disposition)
-                    .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
-            ),
-            (
-                // The body is the file, so compile's warnings travel in a
-                // header the UI reads after the download (review finding
-                // s3-5).
-                WARNINGS_HEADER,
-                HeaderValue::from_str(&warnings_header(&warnings))
-                    .unwrap_or_else(|_| HeaderValue::from_static("%5B%5D")),
-            ),
-        ],
-        Body::from(bytes),
-    )
-        .into_response())
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(content_type(&args.format)),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&disposition)
+            .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
+    );
+    headers.insert(WARNINGS_HEADER, HeaderValue::from(warnings.len()));
+    if !warnings.is_empty() {
+        let id = state.reports.store(warnings);
+        headers.insert(REPORT_HEADER, HeaderValue::from(id));
+    }
+    Ok((StatusCode::OK, headers, Body::from(bytes)).into_response())
 }
 
-/// Compile's warnings, as a JSON array percent-encoded so any text fits a
-/// header's visible-ASCII rule. The UI decodes it with `decodeURIComponent`.
+/// How many warnings the compile produced, as a decimal. Always present on a
+/// successful export; the only thing about warnings the download's headers
+/// say besides the report id.
 pub const WARNINGS_HEADER: header::HeaderName =
     header::HeaderName::from_static("x-cs-compile-warnings");
 
-pub fn warnings_header(warnings: &[String]) -> String {
-    let json = serde_json::to_string(warnings).unwrap_or_else(|_| "[]".to_string());
-    let mut out = String::with_capacity(json.len());
-    for byte in json.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(byte as char)
-            }
-            _ => out.push_str(&format!("%{byte:02X}")),
+/// The id of the stored report, present when the count is above zero.
+pub const REPORT_HEADER: header::HeaderName =
+    header::HeaderName::from_static("x-cs-compile-report");
+
+/// Reports the newest `KEPT` exports left behind, in memory, for the UI to
+/// fetch after its download. One per process, shared through `AppState`.
+#[derive(Default)]
+pub struct CompileReports {
+    inner: Mutex<Reports>,
+}
+
+#[derive(Default)]
+struct Reports {
+    next_id: u64,
+    kept: VecDeque<(u64, Vec<String>)>,
+}
+
+/// Enough for every tab of a small group to fetch its report before the
+/// list rolls over; a report is a few kilobytes at most.
+const KEPT: usize = 32;
+
+impl CompileReports {
+    /// Keep one export's warnings; the returned id names them.
+    pub fn store(&self, warnings: Vec<String>) -> u64 {
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        inner.next_id += 1;
+        let id = inner.next_id;
+        inner.kept.push_back((id, warnings));
+        while inner.kept.len() > KEPT {
+            inner.kept.pop_front();
         }
+        id
     }
-    out
+
+    /// The warnings stored under `id`, if they have not rolled off yet.
+    pub fn get(&self, id: u64) -> Option<Vec<String>> {
+        let inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        inner
+            .kept
+            .iter()
+            .find(|(kept_id, _)| *kept_id == id)
+            .map(|(_, warnings)| warnings.clone())
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ReportQuery {
+    id: u64,
+}
+
+/// `GET /api/compile-report?id=<id>`: one recent export's warnings as a JSON
+/// array, or 404 once it has rolled off.
+pub async fn compile_report(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<ReportQuery>,
+) -> Response {
+    match state.reports.get(q.id) {
+        Some(warnings) => Json(warnings).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json("That compile report is no longer available; export again to see its warnings"),
+        )
+            .into_response(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{download_name, warnings_header};
+    use super::{download_name, CompileReports, KEPT};
 
-    /// Any warning text, non-ASCII included, becomes a visible-ASCII header
-    /// value that decodes back to the JSON array (s3-5).
+    /// Reports are found by id until newer ones push them out (s3-5 repair).
     #[test]
-    fn warnings_travel_as_a_percent_encoded_json_array() {
-        assert_eq!(warnings_header(&[]), "%5B%5D");
-        let value = warnings_header(&["b.md#café was not found; the link became text".to_string()]);
-        assert!(value.bytes().all(|b| b.is_ascii_graphic()), "{value}");
-        assert!(value.contains("%C3%A9"), "{value}");
-        assert!(value.starts_with("%5B%22b.md%23caf"), "{value}");
+    fn reports_are_kept_until_newer_ones_roll_them_off() {
+        let reports = CompileReports::default();
+        assert_eq!(reports.get(1), None);
+        let first = reports.store(vec!["b.md#café was not found".to_string()]);
+        assert_eq!(
+            reports.get(first).as_deref(),
+            Some(&["b.md#café was not found".to_string()][..])
+        );
+        let mut last = first;
+        for n in 0..KEPT {
+            last = reports.store(vec![format!("warning {n}")]);
+        }
+        assert_ne!(last, first);
+        assert_eq!(reports.get(first), None, "the oldest report rolled off");
+        assert_eq!(
+            reports.get(last).unwrap(),
+            vec![format!("warning {}", KEPT - 1)]
+        );
+        assert_eq!(reports.get(last + 1), None);
     }
 
     #[test]

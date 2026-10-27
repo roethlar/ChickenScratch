@@ -30,6 +30,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/projects", get(projects::list))
         .route("/info", get(projects::info))
         .route("/export", post(export::export))
+        // The warnings of a recent export, by the id its download named.
+        .route("/compile-report", get(export::compile_report))
         .route("/import-upload", post(upload::import_upload))
         .route("/fs/dirs", get(fs_browse::dirs))
         // A project's own file, for the pictures documents show (slice 3).

@@ -5,6 +5,7 @@ use tokio::sync::broadcast;
 use chickenscratch_services::{AiStreamRegistry, ProjectTokens, ProjectWriteLocks};
 
 use crate::events::{self, SseEvent};
+use crate::export::CompileReports;
 use crate::gate::Gate;
 use crate::lease::Leases;
 use crate::static_ui::UiSource;
@@ -28,6 +29,9 @@ pub struct AppState {
     pub events: broadcast::Sender<SseEvent>,
     /// Single-writer lease per project for browser sessions.
     pub leases: Leases,
+    /// Recent exports' compile warnings, fetched by the UI after a download
+    /// (`GET /api/compile-report`).
+    pub reports: CompileReports,
 }
 
 impl AppState {
@@ -61,6 +65,7 @@ impl AppState {
             ai_registry: AiStreamRegistry::default(),
             events: events::channel(),
             leases: Leases::default(),
+            reports: CompileReports::default(),
         })
     }
 }
