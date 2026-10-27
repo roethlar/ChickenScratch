@@ -3,8 +3,8 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 5 reopened (2026-10-27); fifth
-revision committed, round 6 pending
+**Status**: In progress — rounds 1 to 6 reopened (2026-10-27); sixth
+revision committed, round 7 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -250,7 +250,52 @@ acceptance (orchestrator, 2026-10-27).
 Declined: none. Reviewer note carried into the plan: the store assertion
 for `PublishedNotOpened` belongs with slice 2.
 
+## Round 6 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17e30-183e-7523-a4ee-309510cbf117`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `c042cc56bf41b1479e0e8233f378d9c456be4290` (fifth
+  revision)
+- **Base SHA**: `5ca2e2f54aa8d56243fb0b0efab1f71a53dace41` (round-5 head)
+- **Dispatched**: 2026-10-27 16:27 UTC; finished 16:42 UTC; exit 0;
+  154,541 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `c042cc5…`; both succeeded. The reviewer compiled a Rust probe of the
+  counting allocator (infallible allocation aborts, `try_reserve` errors,
+  disarmed mode passes), ran three editor parse/save cycles on an
+  entity-encoded two-paragraph footnote with the locked dependencies, and
+  ran Pandoc 3.11 probes: a cross-document native footnote shifting header
+  positions, a `Span` anchor absent from header lists, duplicate explicit
+  `{#target}` identifiers and a `doc-0` collision in DOCX bookmarks, a
+  marker before a `%` title block, and Div/code-block/heading-span
+  bookmark behaviour in DOCX. It noted that `Cargo.lock` does not yet hold
+  the archive crates, so allocator coverage of the eventual decoder graph
+  is not certifiable before they are added. No repository file changed; no
+  remote contacted.
+- **Verdict**: `reopened`. Closed: R1-3, R2-3, R2-13, R3-11, R4-1, R4-3,
+  R4-6, R5-1, R5-2, R5-3, R5-4, R5-6. Not closed: R2-11, R3-10, R4-5, R5-5
+  (each mapped to a round-6 finding below).
+
+## Round 6 findings and dispositions
+
+Each checked against the working tree or the cited source before
+acceptance (orchestrator, 2026-10-27).
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R6-1 | A note defined in another document brings a heading into this one; header positions diverge between solo and combined parses | MEDIUM | reviewer's Pandoc 3.11 probe | Admitted: positional matching abandoned; each document parsed in its own run with the others appended behind a sentinel, giving exact provenance |
+| R6-2 | The map covered headers only; the split's `Span` anchors and heading-less documents have no entry | MEDIUM | plan text | Admitted: every identified element is renamed and resolvable |
+| R6-3 | Explicit duplicate identifiers survive the combined parse; `doc-0` collides with a native heading | MEDIUM | reviewer's DOCX bookmark probe | Admitted: all identifiers renamed `d<index>-<id>`, documents wrapped in `d<index>` Divs |
+| R6-4 | A marker before the first document turns a `%` title block into text | MEDIUM | reviewer's Pandoc 3.11 probe | Admitted: no markers in the source; compile is unchanged unless document-qualified links exist; later documents parsed with the title block disabled |
+
+Declined: none. Reviewer notes carried into the plan: a rejected fallible
+allocation returns an error rather than aborting (the parent treats every
+unsuccessful outcome alike); allocator coverage is evidenced by a counter
+test once the crates are locked.
+
 ## Closeout
 
-Pending: round 6 review of the fifth revision (same reviewer, fresh
-session, pins base = round-5 head `5ca2e2f`, head = the revision commit).
+Pending: round 7 review of the sixth revision (same reviewer, fresh
+session, pins base = round-6 head `c042cc5`, head = the revision commit).

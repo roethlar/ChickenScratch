@@ -108,9 +108,12 @@ existing `/api/import-upload` (one document into an open project) stays.
   the system allocator (`chikn_converter::unpack::BudgetAlloc`): a budget
   of 1 GiB is armed as the worker's first act, every allocation adds its
   size to an atomic counter, every free subtracts it, and an allocation
-  that would cross the budget returns null, which Rust turns into
-  `handle_alloc_error` and an abort; the parent reads the abort as a
-  refusal. Outside worker mode the budget is disarmed and the wrapper is a
+  that would cross the budget returns null: an infallible allocation then
+  aborts through `handle_alloc_error`, a fallible one (`try_reserve`)
+  returns an error the decoder surfaces; the parent treats every
+  unsuccessful child outcome alike and removes the staging folder. Once the
+  archive crates are locked, a test shows the counter moving while each
+  decoder runs, as evidence that their allocations reach the wrapper. Outside worker mode the budget is disarmed and the wrapper is a
   pass-through, so the application's own memory use is unaffected. The
   budget is enforced *before* the allocation happens, so there is no
   overshoot window and no sampling gap. Supplementary, per platform: Linux
@@ -316,42 +319,56 @@ lands first.
   `compile` passes `--resource-path=<project root>` and the stored
   project-relative convention is the one it resolves; DOCX/ODT output
   embeds the image.
-- **Compile resolves document-qualified links, without changing what
-  native projects get today** (R3-10, R4-5, R5-4, R5-5). Links from one
-  document to another (`manuscript/two.md#two`, the converter's form and
-  the split's) stay literal paths in the compiled output, and a global
-  fragment lookup would land on the first `#introduction` of two. Pandoc's
-  `--file-scope` would fix that but breaks two things native projects rely
-  on: a reference definition (`[book]: https://…`) in another document
-  stops resolving, and a bare `[later](#later)` to another document's
-  heading is rewritten to a prefixed anchor that does not exist. Compile
-  therefore keeps today's single combined parse, with these additions:
-  1. Each included document is also parsed on its own to JSON (one Pandoc
-     run per document, `-f markdown -t json`, with the same filters), to
-     learn the identifiers Pandoc gives its headers in isolation.
-  2. The combined document opens each section with an anchor element
-     (`<span class="anchor" id="doc-<index>"></span>`, index = position in
-     the compile order, so same-named files in different folders cannot
-     collide).
-  3. A compile Lua filter walks the combined AST section by section. Pandoc
-     assigns identifiers in document order, so the k-th header of section
-     d in the combined parse is the k-th header of document d's solo parse;
-     that positional match gives a (document, solo identifier) → combined
-     identifier map without re-implementing Pandoc's identifier rules.
-     Every link whose target is `<document>.md#id` becomes `#<combined
-     id>`; `<document>.md` alone becomes `#doc-<index>`; a link to a
-     document outside the compile becomes its text alone. Bare `#id` links
-     and reference definitions keep today's global behaviour, untouched.
-  4. Notes are decoded (the `data-format="markdown"` reading) in that same
-     combined filter before the link walk, so links inside notes are real
-     `Link` nodes and are resolved by the section they sit in (R5-4);
-     imported notes carry document-qualified links by construction.
-  A native project with no imports compiles to the same output as before,
-  including a reference definition used from another document and a bare
-  fragment link across documents (regression fixtures, not just the Corn
-  sample); the anchor elements add no paragraphs to DOCX (the filter emits
-  them as empty `Span`s inside the first block, never as blocks of their
-  own).
+- **Compile resolves document-qualified links, and leaves every other
+  project exactly as it is** (R3-10, R4-5, R5-4, R5-5, R6-1 to R6-4).
+  Document-qualified links (`manuscript/two.md#two`, `manuscript/two.md`)
+  are what the converter and the split write; native projects almost never
+  contain them. Compile therefore:
+  1. Runs today's combined parse first, to JSON. If no `Link` target in it
+     names a project document (`*.md` or `*.md#…` relative to the project),
+     compile proceeds exactly as today from that parse: no markers, no
+     renaming, no second parse, so native output is byte-for-byte unchanged
+     (R5-5, R6-4), including a leading `%` title block, cross-document
+     reference definitions and bare fragment links.
+  2. Otherwise each included document d is parsed **in its own run with the
+     other documents appended after it** behind a sentinel block
+     (`<!-- chikn-rest -->` on its own line between blank lines, a
+     `RawBlock` Pandoc's writers drop), and only the blocks before the
+     sentinel are kept. Document d's identifiers are therefore exactly the
+     ones its own solo parse (and the importer) gave it, while reference
+     definitions and footnote definitions living in other documents still
+     resolve, because Pandoc sees them in the same parse. Provenance is
+     exact: every kept block belongs to d (R6-1, no positional guessing).
+     The first document keeps `pandoc_title_block` enabled as today; later
+     documents are parsed with it disabled, so a `%` line that is text in
+     today's combined parse stays text. The runs are independent and run
+     in parallel; they happen only for projects that need them.
+  3. The kept block lists are joined in compile order (title page and
+     separators as blocks) and every identifier in document d, on whatever
+     element carries one (headers, Divs, Spans, code blocks, images,
+     tables, figures), is renamed `d<index>-<id>`; explicit duplicates
+     across documents (`{#target}` twice) and automatic ones (`#
+     introduction` twice) become distinct without re-implementing Pandoc's
+     identifier rules (R6-3). Each document's blocks are wrapped in a
+     `Div` with identifier `d<index>` (a Div adds no paragraph; the DOCX,
+     ODT, HTML and LaTeX writers turn an identified Div into a bookmark or
+     target; slice 3 verifies this on each format first). A native
+     identifier can no longer collide with a document anchor, because
+     native identifiers all carry the `d<index>-` prefix.
+  4. Links are then rewritten by lookup, never by position: `doc.md#id` →
+     `#d<idx(doc)>-id` when document doc has an element with identifier
+     `id` (any element kind, R6-2), `doc.md` → `#d<idx(doc)>`, a link to a
+     document outside the compile → its text alone; a bare `#id` resolves
+     the way Pandoc and Word would have resolved it in the combined output,
+     to the first element in document order carrying `id`, now under its
+     renamed identifier (so native cross-document fragment links keep
+     working). Notes with `data-format="markdown"` are decoded before this
+     walk, so links inside them are `Link` nodes resolved like any other.
+  The result goes to the output format with `-f json`. A project with no
+  document-qualified links never enters steps 2 to 4 (regression fixtures
+  on an existing sample, on a leading `%` title block, on a reference
+  definition used from another document and on a bare fragment link
+  across documents all assert byte-identical output against today's path).
 - **Markdown-bodied footnotes** (R3-8): the `data-format="markdown"`
   reading in `cs-footnotes.lua` and the attribute round trip in
   `FootnoteNode`, as described in slice 4.
@@ -610,19 +627,27 @@ coding.
       two distinct notes.
 - [ ] `crates/core` compile (slice 3): a project-relative image compiles
       into DOCX and ODT output as an embedded picture while the test runs
-      from another working directory; a link to an included document's
-      heading becomes a local anchor that exists in the output, a link to
-      the document itself resolves to its anchor, a link to an excluded
-      document becomes its text; two included documents each headed
-      `# Introduction` keep two distinct anchors and a link to the second
-      lands on the second (asserted on the destination's text, not on the
-      existence of some anchor); two such documents whose Markdown-bodied
+      from another working directory. Document-qualified links: a link to
+      an included document's heading becomes a local anchor that exists in
+      the output, a link to the document itself resolves to its Div
+      bookmark (checked in DOCX, ODT, HTML and the LaTeX source), a link to
+      an excluded document becomes its text; two included documents each
+      headed `# Introduction` keep two distinct anchors and a link to the
+      second lands on the second (asserted on the destination's text, not
+      on the existence of some anchor); two documents with explicit
+      `{#target}` identifiers resolve separately; a link to a hoisted
+      `<section id="part-two">` anchor (a `Span`) resolves, and so does a
+      link into a document that has no headings at all; a native footnote
+      defined in document two and referenced from document one, whose body
+      holds a heading, does not disturb a link to document one's later
+      heading; a native heading literally named `d0` does not collide with
+      the first document's anchor; two documents whose Markdown-bodied
       notes each link to their own `two.md#introduction` resolve to their
-      own heading; native fixtures: a reference definition in document two
-      used from document one still resolves, a bare `[later](#later)` to
-      document two's heading still works, and an existing sample project
-      compiles to the same DOCX structure as before the change (no added
-      empty paragraphs).
+      own heading. Unchanged-path fixtures (no document-qualified links):
+      an existing sample project, a project whose first document opens with
+      a `%` title block, a reference definition in document two used from
+      document one, and a bare `[later](#later)` to document two's heading
+      each compile to output byte-identical with today's path.
 - [ ] UI editor (slice 3): a document with `![Figure](research/figure.png)`
       opens, the image node is present, an edit and a save keep the image
       line byte-for-byte, and the resolver produces the asset URL for each
@@ -813,3 +838,16 @@ coding.
   solo parses matched by position); Tauri's asset scope cannot be revoked
   and re-allowed (R5-6: an app-owned `chikn-asset` scheme handler that
   checks the open project per request).
+- 2026-10-27 review round 6 (`plan-4`, `c042cc5`): reopened; R1-3, R2-3,
+  R2-13, R3-11, R4-1, R4-3, R4-6, R5-1, R5-2, R5-3, R5-4, R5-6 closed; four
+  findings, all in the compile link design and all admitted: header
+  positions are not stable provenance when a note defined elsewhere brings
+  a heading into a document (R6-1); the map covered headers only, not the
+  anchors the split creates (R6-2); explicit duplicate identifiers and a
+  native `doc-0` collide (R6-3); a marker before the first document breaks
+  a `%` title block (R6-4). Redesign: compile is unchanged unless the
+  combined parse contains document-qualified links; then each document is
+  parsed in its own run with the others appended behind a sentinel (exact
+  provenance, references still resolve), every identifier is renamed with
+  a document prefix, documents are wrapped in identified Divs, and links
+  are resolved by lookup on any element kind.
