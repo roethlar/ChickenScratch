@@ -27,6 +27,16 @@ export async function saveProject(project: Project): Promise<Project> {
   return mutatingInvoke("save_project", { project });
 }
 
+/**
+ * Tells the backend no project is open: the desktop's `chikn-asset` scheme
+ * then refuses to serve any project file until the next load (the web shell
+ * answers the same command as a no-op). Best effort; closing never waits
+ * on it.
+ */
+export async function closeProject(): Promise<void> {
+  return invoke("close_project");
+}
+
 /** A finished import plus problems that did not stop it. */
 export interface ImportedProject {
   project: Project;

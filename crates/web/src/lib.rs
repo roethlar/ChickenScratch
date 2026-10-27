@@ -10,6 +10,7 @@
 //! on (localhost, or a private VPN) is the only lock — the owner's choice.
 
 pub mod app;
+pub mod assets;
 pub mod commands;
 pub mod config;
 pub mod events;

@@ -5,9 +5,12 @@ use chickenscratch_services::project::*;
 use chickenscratch_services::ChiknError;
 use chickenscratch_services::Project;
 use chickenscratch_services::{ProjectTokens, ProjectWriteLocks};
+use std::path::PathBuf;
 #[cfg(target_os = "macos")]
 use std::process::Command;
 use tauri::State;
+
+use crate::assets::OpenProject;
 
 #[tauri::command]
 pub fn create_project(
@@ -15,8 +18,12 @@ pub fn create_project(
     path: String,
     write_locks: State<'_, ProjectWriteLocks>,
     tokens: State<'_, ProjectTokens>,
+    open: State<'_, OpenProject>,
 ) -> Result<Project, ChiknError> {
-    svc::create_project(name, path, &write_locks, &tokens)
+    let project = svc::create_project(name, path, &write_locks, &tokens)?;
+    // The `chikn-asset` scheme serves pictures from the open project only.
+    open.set(Some(PathBuf::from(&project.path)));
+    Ok(project)
 }
 
 #[tauri::command]
@@ -24,8 +31,20 @@ pub fn load_project(
     path: String,
     write_locks: State<'_, ProjectWriteLocks>,
     tokens: State<'_, ProjectTokens>,
+    open: State<'_, OpenProject>,
 ) -> Result<LoadedProject, ChiknError> {
-    svc::load_project(path, &write_locks, &tokens)
+    let loaded = svc::load_project(path, &write_locks, &tokens)?;
+    open.set(Some(PathBuf::from(&loaded.project.path)));
+    Ok(loaded)
+}
+
+/// The UI closed its project: from now on the `chikn-asset` scheme refuses
+/// every request until another project is loaded (PLAN_SCRIVENER_UPLOAD
+/// slice 3, plan-4 R5-6). The web shell accepts the same command as a no-op.
+#[tauri::command]
+pub fn close_project(open: State<'_, OpenProject>) -> Result<(), ChiknError> {
+    open.set(None);
+    Ok(())
 }
 
 #[tauri::command]

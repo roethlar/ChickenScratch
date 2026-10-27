@@ -8,6 +8,7 @@
 //! any UI framework dependency.
 
 pub mod ai;
+pub mod assets;
 pub mod document;
 pub mod git;
 pub mod io;

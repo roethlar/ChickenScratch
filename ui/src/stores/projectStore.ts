@@ -116,6 +116,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   closeProject: () => {
+    // The desktop serves pictures from the open project only; tell it there
+    // is none now (PLAN_SCRIVENER_UPLOAD slice 3).
+    projectCmd.closeProject().catch(() => {});
     set({
       project: null,
       readOnly: false,

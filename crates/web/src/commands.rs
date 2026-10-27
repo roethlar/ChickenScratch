@@ -271,6 +271,10 @@ async fn dispatch(st: Arc<AppState>, name: &str, body: Bytes) -> Result<Response
             .await?
         }
         "pick_scriv_folder" => return Err(not_in_web("The Scrivener folder picker")),
+        // The desktop clears its open-project state for the `chikn-asset`
+        // scheme; the web shell gates every asset request by project path
+        // instead, so there is nothing to clear (slice 3).
+        "close_project" => run(st, body, |_: NoArgs, _| Ok(())).await?,
 
         // ── document ─────────────────────────────────────────────────
         "get_document" => {
@@ -939,6 +943,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "import_scrivener",
     "update_project_metadata",
     "pick_scriv_folder",
+    "close_project",
     "get_document",
     "update_document_content",
     "update_document_metadata",

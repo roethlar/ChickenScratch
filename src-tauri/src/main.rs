@@ -1,8 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod assets;
 mod commands;
 
 use commands::{ai, document, git, io, project, search, settings, templates, threads};
+use tauri::Manager;
 
 fn main() {
     // Work around WebKitGTK DMA-BUF renderer crash on Wayland
@@ -17,11 +19,19 @@ fn main() {
         .manage(commands::ProjectWriteLocks::default())
         .manage(commands::ProjectTokens::default())
         .manage(ai::AiStreamRegistry::default())
+        .manage(assets::OpenProject::default())
+        // Pictures documents show, served from the open project only; the
+        // UI builds the URLs with `convertFileSrc(path, "chikn-asset")`.
+        .register_uri_scheme_protocol("chikn-asset", |ctx, request| {
+            let open = ctx.app_handle().state::<assets::OpenProject>().current();
+            assets::respond(open, &request)
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             project::create_project,
             project::load_project,
+            project::close_project,
             project::save_project,
             project::import_scrivener,
             project::update_project_metadata,

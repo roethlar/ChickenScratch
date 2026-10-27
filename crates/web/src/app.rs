@@ -9,7 +9,8 @@ use axum::{
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    commands, events, export, fs_browse, lease, projects, state::AppState, static_ui, upload,
+    assets, commands, events, export, fs_browse, lease, projects, state::AppState, static_ui,
+    upload,
 };
 
 /// 50 MiB: the same cap the desktop's bounded Pandoc runs use.
@@ -31,6 +32,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/export", post(export::export))
         .route("/import-upload", post(upload::import_upload))
         .route("/fs/dirs", get(fs_browse::dirs))
+        // A project's own file, for the pictures documents show (slice 3).
+        .route("/asset", get(assets::asset))
         .route("/events", get(events::stream))
         // Whole projects travel in one body (save_project) and uploads
         // can be large documents; axum's 2 MiB default is too small.
