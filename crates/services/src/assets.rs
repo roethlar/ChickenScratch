@@ -39,22 +39,37 @@ pub fn serve_project_asset(project_root: &Path, relative: &str) -> Result<Asset,
     let root = project_root
         .canonicalize()
         .map_err(|_| AssetRefusal::NotFound)?;
-    // Refuse a symlink anywhere on the way: the canonical path must still
-    // sit under the canonical root and every component must be a plain
-    // directory or the final regular file.
-    let meta = fs::symlink_metadata(&target).map_err(|_| AssetRefusal::NotFound)?;
-    if meta.file_type().is_symlink() {
-        return Err(AssetRefusal::Outside);
+    // Walk down one component at a time and refuse a symlink anywhere on
+    // the way, not only at the end: a visible folder link pointing at a
+    // hidden folder would otherwise serve its contents through the alias
+    // (review finding s3-9).
+    let mut cur = root.clone();
+    let pieces: Vec<_> = target
+        .strip_prefix(project_root)
+        .map_err(|_| AssetRefusal::BadPath)?
+        .components()
+        .collect();
+    for (i, piece) in pieces.iter().enumerate() {
+        cur.push(piece);
+        let meta = fs::symlink_metadata(&cur).map_err(|_| AssetRefusal::NotFound)?;
+        if meta.file_type().is_symlink() {
+            return Err(AssetRefusal::Outside);
+        }
+        let last = i + 1 == pieces.len();
+        if last {
+            if !meta.is_file() {
+                return Err(AssetRefusal::NotFound);
+            }
+            if meta.len() > MAX_ASSET_BYTES {
+                return Err(AssetRefusal::TooLarge);
+            }
+        } else if !meta.is_dir() {
+            return Err(AssetRefusal::NotFound);
+        }
     }
-    if !meta.is_file() {
-        return Err(AssetRefusal::NotFound);
-    }
-    let canonical = target.canonicalize().map_err(|_| AssetRefusal::NotFound)?;
+    let canonical = cur.canonicalize().map_err(|_| AssetRefusal::NotFound)?;
     if !canonical.starts_with(&root) {
         return Err(AssetRefusal::Outside);
-    }
-    if meta.len() > MAX_ASSET_BYTES {
-        return Err(AssetRefusal::TooLarge);
     }
     let bytes = fs::read(&canonical).map_err(|_| AssetRefusal::NotFound)?;
     Ok(Asset {
@@ -167,6 +182,25 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    /// A visible folder symlink inside the project aliasing `.git` (or any
+    /// folder) must not serve what the direct path refuses (s3-9).
+    #[cfg(unix)]
+    #[test]
+    fn refuses_a_symlinked_folder_on_the_way() {
+        let (_dir, root) = project();
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::write(root.join(".git").join("config"), b"[core]").unwrap();
+        std::os::unix::fs::symlink(root.join(".git"), root.join("alias")).unwrap();
+        assert_eq!(
+            serve_project_asset(&root, "alias/config"),
+            Err(AssetRefusal::Outside)
+        );
+        assert_eq!(
+            serve_project_asset(&root, ".git/config"),
+            Err(AssetRefusal::BadPath)
+        );
     }
 
     #[cfg(unix)]
