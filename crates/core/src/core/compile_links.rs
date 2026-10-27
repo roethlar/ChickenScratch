@@ -533,6 +533,26 @@ fn classify(link: &LinkNode, origin: Option<&KnownDoc>, docs: &[KnownDoc]) -> Ta
     }
 }
 
+/// A rootless target that reads as a document both relative to its own
+/// document (the reading that won) and from the project root (the form
+/// projects converted before this plan carry) names two different
+/// documents: the writer is told, so the link can be anchored (plan-4
+/// R16-2, review finding s3-10).
+fn legacy_root_ambiguity(link: &LinkNode, resolved: &str, docs: &[KnownDoc]) -> Option<String> {
+    let target = link.target.as_str();
+    if link.in_note || target.starts_with('/') || target.starts_with('#') || has_scheme(target) {
+        return None;
+    }
+    let path_part = target.split('#').next().unwrap_or(target);
+    let root = resolve_root(&percent_decode(path_part), docs)?;
+    if root == resolved {
+        return None;
+    }
+    Some(format!(
+        "{target} was read relative to its document as {resolved}, but also names {root} from the project root; anchor it as /{resolved} or /{root}"
+    ))
+}
+
 // ── Public entry: does the combined parse hold document links? ──────────────
 
 /// The gate (step 1): true when any link in the marked parse is a document
@@ -694,6 +714,9 @@ impl Analysis {
                     }
                 }
                 TargetKind::Document { path, fragment } => {
+                    if let Some(warning) = legacy_root_ambiguity(link, &path, &self.docs) {
+                        report.warnings.push(warning);
+                    }
                     let Some(sec) = self.section_of_path(&path) else {
                         // A document outside the compile: its text alone.
                         resolutions.push(Resolved::Text);

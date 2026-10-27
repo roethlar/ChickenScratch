@@ -528,3 +528,40 @@ fn ordinary_links_inside_footnotes_are_left_alone() {
     );
     assert!(href_of(&html, "two").is_some_and(|h| h.starts_with('#')));
 }
+
+/// A rootless target that names one document relative to its own and
+/// another from the project root resolves relatively, as the plan says, and
+/// the writer is warned about the competing reading (review finding s3-10).
+#[test]
+fn a_relative_root_ambiguity_resolves_relatively_and_warns() {
+    if !pandoc_present() {
+        eprintln!("skipping: pandoc not installed");
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    let p = project(
+        dir.path(),
+        &[
+            doc("manuscript/a.md", "See [b](manuscript/b.md)."),
+            doc("manuscript/b.md", "Root b."),
+            doc("manuscript/manuscript/b.md", "Nested b."),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    let href = href_of(&html, "b").unwrap();
+    let target = href.trim_start_matches('#');
+    // The relative reading wins: the destination sits in the nested b.
+    let dest = html.find(&format!("id=\"{target}\"")).unwrap();
+    let nested = html.find("Nested b.").unwrap();
+    let root = html.find("Root b.").unwrap();
+    assert!(
+        dest > root && dest <= nested + 20,
+        "destination is the nested document: {html}"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("manuscript/b.md") && w.contains("project root")),
+        "{warnings:?}"
+    );
+}
