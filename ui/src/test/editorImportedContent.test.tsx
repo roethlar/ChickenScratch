@@ -231,3 +231,34 @@ describe("document link rules", () => {
     });
   });
 });
+
+describe("image paths with spaces or non-ASCII (s3-2)", () => {
+  it("decodes the Markdown URI once before building the asset URL", async () => {
+    const md = "![Picture](<research/my image.png>)\n\n![Accent](research/caf%C3%A9.png)";
+    const p = project([doc("doc-one", "manuscript/one.md", md)]);
+    open(p, "doc-one");
+    // Queries scoped to this render: an earlier test's editor may still be
+    // mounted in the shared document.
+    const { container } = render(<Editor />);
+    // Only the document's images: ProseMirror adds its own separator imgs
+    // beside inline nodes.
+    const images = () => Array.from(container.querySelectorAll(".editor-content img[data-path]"));
+    await waitFor(() => expect(images().length).toBe(2));
+    expect(images().map((i) => i.getAttribute("data-path"))).toEqual([
+      "research/my%20image.png",
+      "research/caf%C3%A9.png",
+    ]);
+    const [spaced, accented] = images();
+    // URLSearchParams writes a space as `+`, which the server decodes to a
+    // space: the file `my image.png` is what gets looked up.
+    expect(spaced.getAttribute("src")).toBe("/api/asset?project=%2Fp&path=research%2Fmy+image.png");
+    expect(accented.getAttribute("src")).toBe(
+      "/api/asset?project=%2Fp&path=research%2Fcaf%C3%A9.png"
+    );
+    // The Markdown URI itself is what the document keeps.
+    expect(spaced.getAttribute("data-path")).toBe("research/my%20image.png");
+    const out = getEditorMarkdown(getCurrentEditor()!);
+    expect(out).toContain("![Picture](research/my%20image.png)");
+    expect(out).toContain("![Accent](research/caf%C3%A9.png)");
+  });
+});

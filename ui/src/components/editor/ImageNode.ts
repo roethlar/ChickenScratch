@@ -14,6 +14,15 @@ import { resolveAssetUrl } from "../../platform";
  * `chikn-asset` scheme, the web shell's `/api/asset` route (see
  * `platform.ts`). An absolute `http(s)` or `data:` source is shown as it is.
  */
+/** A Markdown link destination as a local path: percent-escapes undone once. */
+export function decodeMarkdownPath(uri: string): string {
+  try {
+    return decodeURIComponent(uri);
+  } catch {
+    return uri;
+  }
+}
+
 export const ImageNode = Image.extend({
   addAttributes() {
     return {
@@ -28,7 +37,13 @@ export const ImageNode = Image.extend({
           if (!path) return {};
           if (/^(https?:|data:|blob:)/i.test(path)) return { src: path };
           const projectPath = useProjectStore.getState().project?.path ?? "";
-          return { src: resolveAssetUrl(projectPath, path), "data-path": path };
+          // The attribute holds the Markdown URI (`research/my%20image.png`);
+          // the file on disk is the decoded path, and the shell URL encodes
+          // it once itself (review finding s3-2).
+          return {
+            src: resolveAssetUrl(projectPath, decodeMarkdownPath(path)),
+            "data-path": path,
+          };
         },
       },
     };
