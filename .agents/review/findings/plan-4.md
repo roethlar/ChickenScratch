@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 24 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; twenty-fifth
-revision committed, round 25 pending
+**Status**: Verified — accepted round 25 (2026-10-27, `027b75b`);
+twenty-five rounds, every finding checked before disposition; the
+deferral proposed after round 7 was refused by the owner and reversed
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -935,8 +935,34 @@ Declined: none.
 
 Declined: none.
 
+## Round 25 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17ef2-ca0e-7163-9e27-38e435fb4d3f`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `027b75bf9b2a26defab0a0887d3d3d6a7f0df79a` (twenty-fifth
+  revision)
+- **Base SHA**: `1d4334afea4d02505859f8900dc12730823771a1` (round-24 head)
+- **Dispatched**: 2026-10-27 20:00 UTC; finished 20:05 UTC; exit 0;
+  90,997 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `027b75b…`; both succeeded. The reviewer ran 200 alias-placement checks
+  across 100 writer outputs on Pandoc 3.11 with today's `cs-footnotes.lua`
+  (both document orders, blank and default separators, heading-only
+  sections, adjacent headings, headings inside Divs; every alias stayed in
+  its heading's EPUB chapter), confirmed the literal kept identifier
+  `d0_1` survives all three allocation categories and that removing the
+  reservation reproduces collisions, and confirmed the main-text/footnote
+  duplicate fixtures preserve bare-link destinations in all five writers.
+  Twelve core tests passed. No repository file changed; no remote
+  contacted.
+- **Verdict**: `accepted`, no findings. Closed: R24-1 to R24-3, R23-1,
+  R22-1, R21-2. Every finding from rounds 1 to 24 is closed.
+
 ## Closeout
 
-Pending: round 25 review of the twenty-fifth revision (same reviewer,
-fresh session, pins base = round-24 head `1d4334a`, head = the revision
-commit).
+Accepted at `027b75b` on 2026-10-27 after twenty-five rounds (one stopped
+dispatch against the refused deferral not counted). Implementation begins
+in the plan's landing order 3, 1, 2, 4, 5, each slice Codex-reviewed before
+the next, per the owner's go.

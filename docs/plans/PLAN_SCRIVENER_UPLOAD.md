@@ -1426,3 +1426,7 @@ coding.
   all five writers); the fixture asked a link into a footnote to resolve
   (R24-3: it becomes text with the warning; two main-text duplicates test
   qualification).
+- 2026-10-27 review round 25 (`plan-4`, `027b75b`): **accepted**, no
+  findings; 200 alias-placement checks across 100 writer outputs, the
+  reservation rule and the duplicate fixtures all confirmed. Implementation
+  begins in the landing order 3, 1, 2, 4, 5.

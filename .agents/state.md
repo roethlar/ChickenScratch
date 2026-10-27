@@ -45,8 +45,15 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   pick; slice 4's first pass is novelWriter, Manuskript and TextBundle (via
   Zettlr), yWriter deferred. **Owner go 2026-10-27** ("set the push policy
   to always, push, then go"). Plan review `plan-4` (codex gpt-6-astra xhigh,
-  disposable clone) round 1 dispatched 2026-10-27; slices start on
-  consensus, each Codex-reviewed before the next. No code changed yet.
+  disposable clone): **accepted 2026-10-27 at `027b75b` after 25 rounds**
+  (`.agents/review/findings/plan-4.md`); the owner refused a mid-review
+  proposal to defer compiled document links ("a link resolving to plain
+  text means this cannot ship with honest import functionality as a
+  feature since it's broken. no") and the feature stayed in. Slices land
+  in the order 3, 1, 2, 4, 5, each Codex-reviewed before the next. Slice 3
+  (editor image and anchor nodes, Markdown-bodied footnotes, compile
+  images and document links, project publication API) is next; no code
+  changed yet.
   Latent bug noted there: `io.rs` maps legacy `.doc` to the Pandoc `docx`
   reader, which cannot read `.doc`.
 - **Scrivener import is not perfected** (owner asked 2026-10-25; checked by
@@ -173,11 +180,14 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
    fallback, binder placement, metadata + notes, comments + footnotes), each
    Codex-reviewed before the next; slice 5 (Scrivener 2) optional.
 3. **Import anything** (`PLAN_SCRIVENER_UPLOAD.md`): owner go 2026-10-27;
-   plan review `plan-4` in progress (`.agents/review/index.md`); then
-   slices 1–3 (archive upload door + detector, Import Project button in
-   both shells, Import File for every Pandoc reader with optional split),
-   then one slice per app format (novelWriter, Manuskript, TextBundle), one
-   commit each, each slice Codex-reviewed.
+   plan accepted (`plan-4`, 25 rounds). Landing order 3, 1, 2, 4, 5:
+   slice 3 (editor and compile keep what imports create: images, anchors,
+   Markdown-bodied footnotes, document links in compiled output, core
+   publication API), then 1 (archive upload door, unpack worker,
+   detection, transaction), 2 (Import Project button in both shells), 4
+   (Import File for every Pandoc reader with optional split), 5 (one slice
+   per app format: novelWriter, Manuskript, TextBundle); each slice
+   Codex-reviewed before the next.
 3. **Reload safety + phone layout** (`PLAN_RELOAD_SAFETY_MOBILE.md`): every
    slice shipped and pushed 2026-10-25 (`fe0ffbf`). The owner tries it
    (reload mid-typing; phone; Quick note; Add to Home Screen) after
