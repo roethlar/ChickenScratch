@@ -64,10 +64,20 @@ pub fn import_scrivener(
     tokens: State<'_, ProjectTokens>,
     open: State<'_, OpenProject>,
 ) -> Result<ImportedProject, ChiknError> {
-    let imported = svc::import_scrivener(scriv_path, output_path, &write_locks, &tokens)?;
-    // The UI opens the imported project straight from this result, without
-    // a `load_project` call: the asset scheme must know it is open too
-    // (review finding s3-6).
+    import_and_open(&open, || {
+        svc::import_scrivener(scriv_path, output_path, &write_locks, &tokens)
+    })
+}
+
+/// Run an import and, when it succeeds, make its project the open one. The
+/// UI opens the imported project straight from this result, without a
+/// `load_project` call, so the `chikn-asset` scheme must learn of it here
+/// (review finding s3-6). A failed import leaves whatever was open alone.
+fn import_and_open(
+    open: &OpenProject,
+    import: impl FnOnce() -> Result<ImportedProject, ChiknError>,
+) -> Result<ImportedProject, ChiknError> {
+    let imported = import()?;
     open.set(Some(PathBuf::from(&imported.project.path)));
     Ok(imported)
 }
@@ -129,5 +139,43 @@ pub fn pick_scriv_folder() -> Result<Option<String>, ChiknError> {
             .set_title("Select Scrivener Project")
             .pick_folder();
         Ok(folder.map(|p| p.to_string_lossy().to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn imported(path: &str) -> ImportedProject {
+        let project: Project = serde_json::from_value(serde_json::json!({
+            "id": "p1",
+            "name": "Novel",
+            "path": path,
+            "hierarchy": [],
+            "documents": {},
+            "created": "",
+            "modified": ""
+        }))
+        .expect("a minimal project deserializes");
+        ImportedProject {
+            project,
+            warnings: Vec::new(),
+        }
+    }
+
+    /// A successful import becomes the open project for the asset scheme; a
+    /// failed one leaves the previous project open (review finding s3-6).
+    #[test]
+    fn a_successful_import_opens_its_project_for_the_asset_scheme() {
+        let open = OpenProject::default();
+        open.set(Some(PathBuf::from("/before/Old.chikn")));
+
+        let failed = import_and_open(&open, || Err(ChiknError::Unknown("no pandoc".to_string())));
+        assert!(failed.is_err());
+        assert_eq!(open.current(), Some(PathBuf::from("/before/Old.chikn")));
+
+        let result = import_and_open(&open, || Ok(imported("/after/Novel.chikn")));
+        assert_eq!(result.unwrap().project.path, "/after/Novel.chikn");
+        assert_eq!(open.current(), Some(PathBuf::from("/after/Novel.chikn")));
     }
 }
