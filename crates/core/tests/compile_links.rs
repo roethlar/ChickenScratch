@@ -604,3 +604,46 @@ fn a_link_turned_into_text_keeps_the_identifier_other_links_use() {
         .unwrap()
         .contains("target"));
 }
+
+/// Identifiers and links in metadata (a `%` title block) take part: a title
+/// span and a body heading sharing `same` with a bare link keep both
+/// strings, and a document link found only in the title fires the gate
+/// (review finding s3-8).
+#[test]
+fn metadata_identifiers_and_links_take_part() {
+    if !pandoc_present() {
+        eprintln!("skipping: pandoc not installed");
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "% [Title]{#same}\n\n# Head {#same}\n\nBare [b](#same) and [two](b.md#S1).",
+            ),
+            doc("manuscript/b.md", "# Two {#S1}"),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        html.matches("id=\"same\"").count(),
+        2,
+        "both `same` kept: {html}"
+    );
+    assert_eq!(href_of(&html, "b").as_deref(), Some("#same"));
+
+    let p = project(
+        dir.path(),
+        &[
+            doc("manuscript/a.md", "% See [two](/manuscript/b.md)\n\nBody."),
+            doc("manuscript/b.md", "Second."),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let two = href_of(&html, "two").unwrap();
+    assert!(ids(&html).contains(two.trim_start_matches('#')), "{two}");
+}

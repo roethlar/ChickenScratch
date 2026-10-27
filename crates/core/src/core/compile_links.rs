@@ -141,6 +141,9 @@ fn sections(
 enum Step {
     Key(&'static str),
     Idx(usize),
+    /// A key of the document's `meta` map (or a nested MetaMap), whose names
+    /// are the writer's own.
+    MetaKey(String),
 }
 
 fn get<'a>(root: &'a Value, path: &[Step]) -> Option<&'a Value> {
@@ -149,6 +152,7 @@ fn get<'a>(root: &'a Value, path: &[Step]) -> Option<&'a Value> {
         cur = match step {
             Step::Key(k) => cur.get(*k)?,
             Step::Idx(i) => cur.get(*i)?,
+            Step::MetaKey(k) => cur.get(k.as_str())?,
         };
     }
     Some(cur)
@@ -160,6 +164,7 @@ fn get_mut<'a>(root: &'a mut Value, path: &[Step]) -> Option<&'a mut Value> {
         cur = match step {
             Step::Key(k) => cur.get_mut(*k)?,
             Step::Idx(i) => cur.get_mut(*i)?,
+            Step::MetaKey(k) => cur.get_mut(k.as_str())?,
         };
     }
     Some(cur)
@@ -249,6 +254,24 @@ fn scan(root_c: &Value, root_d: &Value, secs: &[Section], nonce: &str) -> Scan {
         let mut bpath = Some(vec![i - section_start]);
         visit(bc, bd, &mut path, &mut bpath, &mut ctx, &mut out);
     }
+    // Metadata (a `%` title block, YAML) holds inlines too: an identifier
+    // there takes part in the duplicate count and a document link there
+    // fires the gate. Generated content, outside every section (review
+    // finding s3-8).
+    let mut meta_ctx = Ctx {
+        section: None,
+        in_note: false,
+        inside_header: None,
+    };
+    let mut meta_path = vec![Step::Key("meta")];
+    visit(
+        &root_c["meta"],
+        &root_d["meta"],
+        &mut meta_path,
+        &mut None,
+        &mut meta_ctx,
+        &mut out,
+    );
     out
 }
 
@@ -277,6 +300,17 @@ fn visit(
         }
         Value::Object(map) => {
             let kind = map.get("t").and_then(Value::as_str).unwrap_or("");
+            if !map.contains_key("t") {
+                // A map of metadata entries (the document's `meta`, a
+                // MetaMap's content): every value is a MetaValue.
+                for (key, value) in map {
+                    let d_value = d.get(key).unwrap_or(&Value::Null);
+                    path.push(Step::MetaKey(key.clone()));
+                    visit(value, d_value, path, &mut None, ctx, out);
+                    path.pop();
+                }
+                return;
+            }
             if let Some(ap) = attr_path(kind) {
                 let id = get(c, ap)
                     .and_then(|a| a[0].as_str())
@@ -1209,7 +1243,7 @@ fn split_last(path: &[Step]) -> (Vec<Step>, usize) {
     let (last, parent) = path.split_last().expect("a node path is never empty");
     let index = match last {
         Step::Idx(i) => *i,
-        Step::Key(_) => 0,
+        Step::Key(_) | Step::MetaKey(_) => 0,
     };
     (parent.to_vec(), index)
 }
