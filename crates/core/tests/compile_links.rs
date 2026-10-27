@@ -565,3 +565,42 @@ fn a_relative_root_ambiguity_resolves_relatively_and_warns() {
         "{warnings:?}"
     );
 }
+
+/// A link that becomes text keeps its own identifier: another link that
+/// pointed at it still has a destination (review finding s3-7).
+#[test]
+fn a_link_turned_into_text_keeps_the_identifier_other_links_use() {
+    if !pandoc_present() {
+        eprintln!("skipping: pandoc not installed");
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "See [target](/manuscript/c.md){#anchor} and jump [back](#anchor).",
+            ),
+            Doc {
+                path: "manuscript/c.md",
+                content: "Excluded.",
+                include: false,
+                source_path: None,
+            },
+        ],
+    );
+    let (html, _warnings) = compile_html(&p, dir.path());
+    assert!(
+        href_of(&html, "target").is_none(),
+        "the excluded link is text"
+    );
+    let back = href_of(&html, "back").unwrap();
+    assert!(
+        ids(&html).contains(back.trim_start_matches('#')),
+        "the bare link's destination exists: {back}"
+    );
+    assert!(element_text(&html, back.trim_start_matches('#'))
+        .unwrap()
+        .contains("target"));
+}

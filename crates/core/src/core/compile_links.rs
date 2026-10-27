@@ -1071,11 +1071,14 @@ impl Analysis {
         for (li, link) in scanned.links.iter().enumerate() {
             match (&resolutions[li], &link_dest[li]) {
                 (Resolved::Text, _) => {
-                    // The link becomes its inlines: replace the Link node by a
-                    // Span without attributes holding them.
+                    // The link becomes its inlines: a Span holding them, with
+                    // the Link's own attributes kept (its identifier, already
+                    // renamed above, may be the destination of another link,
+                    // review finding s3-7).
                     if let Some(node) = get_mut(&mut self.root, &link.path) {
+                        let attr = node["c"][0].clone();
                         let inlines = node["c"][1].clone();
-                        *node = json!({"t": "Span", "c": [["", [], []], inlines]});
+                        *node = json!({"t": "Span", "c": [attr, inlines]});
                     }
                 }
                 (_, Some(dest)) => {
