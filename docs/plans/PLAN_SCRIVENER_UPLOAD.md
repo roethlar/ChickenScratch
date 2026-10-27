@@ -344,72 +344,94 @@ gap is in scope here, with the design below.
      one), compile continues from the *same Markdown* with today's
      invocation: no second parse, no renaming, output as today. Native
      projects without such links never enter the steps below.
-  2. **Provenance by block count, not markers.** Each included document is
-     parsed on its own to JSON (small, independent runs, at most four at a
-     time; the whole-project text is never re-parsed). The combined parse
-     is the concatenation of those documents with the title page and
-     separators between them, and Pandoc yields the same number of
-     top-level blocks for a document whether it is parsed alone or in
-     company: reference and footnote definitions never become blocks, an
-     unresolved reference and a resolved one are both one paragraph, and a
-     note pulled in from another document lives inside an inline. So the
-     combined block list is cut into sections by the solo block counts
-     (title page and separators are known generated blocks). One parser
-     rule depends on position and is mirrored: a `%` title block counts as
-     metadata only at the very start of the text, so the solo parse of a
-     document runs with `pandoc_title_block` disabled unless that document
-     is first in the compile and no title page is generated (probed on
-     Pandoc 3.11: `% Title` lines are one paragraph after a separator, zero
-     blocks alone; YAML blocks are metadata in both positions). If the
-     counts do not add up, the cause is a document whose unclosed fence or Div
-     runs into the next one, which already garbles today's output; compile
-     then emits a named warning ("document X runs into the next document;
-     links between documents were not resolved") and leaves the links as
-     they are. No content is ever moved or truncated.
-  3. **Identifier map per section.** Within each section the identified
-     elements of the combined blocks are matched to those of the solo
-     blocks in order, skipping anything inside a `Note` (a note resolved
-     from another document can carry a heading the solo parse never saw);
-     identifiers differ only by Pandoc's `-1`, `-2` deduplication suffixes,
-     so the match also checks that the combined identifier equals the solo
-     one or the solo one plus such a suffix, and a mismatch downgrades to
-     the warning of step 2 for that document. This gives, for every
-     element, (document, solo identifier) → combined identifier, which is
-     what the importer's `doc.md#solo-id` links need.
+  2. **Provenance by document markers in the combined text.** Block
+     counting cannot tell documents apart when an empty separator lets two
+     lists or two indented code blocks merge (R8-1), so compile marks the
+     text itself: before and after each document's Markdown it writes an
+     HTML comment on its own line between blank lines,
+     `<!-- chikn:begin <index> <nonce> -->` and `<!-- chikn:end <index>
+     <nonce> -->` (one random nonce per compile run, so no literal comment
+     in a document can impersonate a marker). Pandoc reads each as a
+     top-level `RawBlock html`, which the filter removes and which every
+     non-HTML writer would drop anyway; title page and separators lie
+     outside begin/end pairs and are generated blocks. Two exceptions keep
+     today's parse intact: the first document gets no begin marker when no
+     title page is generated (its `%` title block must stay at the very
+     start, R6-4), and the markers are only written when the gate of step 1
+     fired, so projects without links between documents compile from
+     unmarked text as today. A marker swallowed by an unclosed fence or Div
+     (which already garbles today's output by swallowing the next document)
+     is detected as a missing or out-of-order marker; compile then emits a
+     named warning ("document X runs into the next document; links between
+     documents were not resolved"), leaves links as they are and keeps the
+     content, the stray comment line inside that code block included. Two
+     lists or code blocks that today merge across an empty separator stay
+     separate when markers are present, which the record notes as the one
+     content difference, confined to projects with links between
+     documents.
+  3. **Finding a target: by identifier, then by text, never by position.**
+     For a link `doc.md#id`: (a) if document `doc`'s section holds exactly
+     one element, outside `Note` contents, whose identifier is `id`
+     (explicit identifiers are never renamed by Pandoc; an automatic one is
+     unchanged unless an earlier document used it), that is the target;
+     (b) otherwise `doc` is parsed on its own (small independent runs, at
+     most four at a time, only for documents that need it) to find the
+     element the importer or writer saw as `id`; its kind and its
+     stringified text, and its rank among same-kind, same-text elements in
+     that solo parse, pick the matching element in the section (so B's two
+     `# Introduction` headings map to `introduction-1` and `introduction-2`
+     by text and rank, not by suffix arithmetic, and a `Link` or `Figure`
+     that cross-document reference resolution added to the combined parse
+     cannot shift the match, R8-2); (c) otherwise, for an identifier
+     inside a footnote (a note is rendered where it is referenced, not
+     where it is defined), the element with that explicit identifier is
+     searched inside `Note` contents across the whole document, and a
+     unique hit is the target (R8-5); (d) otherwise the link becomes its
+     text and compile emits a named warning naming the link and the
+     document, so an unresolvable link is reported, never silently kept
+     as a dead hyperlink. The split (slice 4) writes an explicit `{#id}`
+     attribute on every heading it links to, so its links always resolve
+     by rule (a).
   4. **Renaming, complete namespace.** Every identifier in the final AST
-     is renamed: `d<index>-<id>` inside section `index`, `g<n>-<id>` on
+     is renamed: `d<index>-<id>` inside document `index`, `g<n>-<id>` on
      generated blocks (title heading, separators). Two documents' explicit
      `{#target}` and automatic `introduction` become distinct; a native
      heading literally called `d0-x` becomes `d0-d0-x`; nothing can collide
-     with a section anchor because every original identifier carries a
+     with a document anchor because every original identifier carries a
      prefix. Every link whose target was a bare `#id` is rewritten through
      the *combined* identifier it already pointed at (`#introduction-1` →
      `#d1-introduction-1`), so native navigation keeps exactly the target it
      has today.
-  5. **Targets that every writer materialises.** A link that needs a
-     destination gets one that the DOCX, ODT, HTML, EPUB and LaTeX writers
-     all emit (the round-7 writer table: headings and identified `Span`s
-     yield bookmarks or labels everywhere; an identified `Div` is a section
-     in ODT and a code block's identifier is dropped there). So: a header
-     target keeps its identifier; any other targeted element, and every
-     whole-document target (`doc.md`), gets an empty identified `Span`
-     placed at the start of the section's first inline-bearing block (its
-     first paragraph or heading); a document whose first block has no
-     inlines (code block, table) gets an empty `Plain` holding the `Span`
-     before it, which the record notes as the one case that adds an empty
-     paragraph. The slice begins by re-running the writer table on the
-     installed Pandoc and recording it.
-  6. **Rewrite.** `doc.md#solo-id` → `#<renamed combined id>` of the mapped
-     element (or of its materialised `Span`); `doc.md` → the section's
-     `Span`; a link to a document outside the compile → its text alone;
-     everything else untouched. Notes with `data-format="markdown"` are
-     decoded before the walk so links inside them are `Link` nodes resolved
-     like any other. The result goes to the output format with `-f json`
-     and the same options as today.
-  Content is identical to today's for every project: the Markdown Pandoc
-  parses is the same text, so title blocks, duplicate definitions and
-  separators behave as they do now; only identifiers and link targets
-  change, and only for projects that have links between documents.
+  5. **Destinations every writer emits, placed where the target is.** The
+     writer table from round 7, re-run and recorded at the start of the
+     slice, decides how a resolved target is materialised: a `Header`
+     target uses its own identifier (bookmark in DOCX and ODT, `id` in
+     HTML and EPUB, `\label` in LaTeX; a `Span` inside a heading gives
+     LaTeX a `\hypertarget` but no `\label`, so it is never used there,
+     R8-3); a `Span` target is used where it stands; a `Div` target gets an
+     empty identified `Span` as the first inline of its first
+     inline-bearing block (ODT renders an identified Div as a section, not a
+     bookmark); a code block, table, figure, raw block or rule target gets
+     an empty `Plain` holding the `Span` immediately before it (the one
+     case that adds an empty paragraph in DOCX and ODT, recorded); an
+     inline image target gets the `Span` immediately before it. Nothing is
+     ever moved to the start of the document (R8-4). A whole-document link
+     (`doc.md`) targets the section's first block by the same table: the
+     heading's own identifier when the document opens with a heading, a
+     `Span` at the start of an opening paragraph, a `Plain`+`Span` before
+     anything else.
+  6. **Rewrite.** `doc.md#id` → `#<renamed identifier of the resolved
+     destination>`; `doc.md` → the section's destination; a link to a
+     document outside the compile → its text alone; everything else
+     untouched. Notes with `data-format="markdown"` are decoded before the
+     walk so links inside them are `Link` nodes resolved like any other.
+     The result goes to the output format with `-f json` and the same
+     options as today.
+  For projects without links between documents nothing changes. For
+  projects with them, the Markdown Pandoc parses is today's text plus the
+  marker comments, so title blocks, duplicate definitions and separators
+  behave as they do now; identifiers and link targets change, and the one
+  merge-across-empty-separator difference above is recorded.
 - **Markdown-bodied footnotes** (R3-8): the `data-format="markdown"`
   reading in `cs-footnotes.lua` and the attribute round trip in
   `FootnoteNode`, as described in slice 4.
@@ -507,8 +529,10 @@ Inside a project, both shells:
   document rewrites every `#id` link to the document-qualified form
   `<document>.md#id`, whether the target ends up in another part or in the
   same one, so the editor can open the document it names and compile can
-  resolve it to that document's element (R5-4); a link whose target
-  identifier exists nowhere is left as it was. Document
+  resolve it to that document's element (R5-4), and every heading such a
+  link points at gets an explicit `{#id}` attribute so compile finds it by
+  identifier alone; a link whose target identifier exists nowhere is left
+  as it was. Document
   metadata (`meta`: title, author,
   date, anything else) is not dropped: title, author and date open the
   "Front matter" document as a heading and lines, and the full metadata is
@@ -670,34 +694,46 @@ coding.
 - [ ] `crates/core` compile (slice 3): a project-relative image compiles
       into DOCX and ODT output as an embedded picture while the test runs
       from another working directory. Links between documents, each
-      asserted on the destination's text in DOCX and HTML (and on the
-      LaTeX label and the ODT bookmark): a link to an included document's
-      heading lands on that heading; a link to the document itself lands at
-      its start; a link to an excluded document becomes its text; two
-      documents each headed `# Introduction` and a link to the second lands
-      on the second, while a native bare `#introduction-1` link still lands
-      where it does today; two documents with explicit `{#target}` resolve
-      separately; a link to a hoisted `<section id="part-two">` anchor (a
-      `Span`) resolves, as does a link into a document with no headings; a
-      link to an identified code block resolves in ODT through its
-      materialised `Span`; a native footnote defined in document two and
+      asserted on the destination's text in DOCX and HTML and on a matching
+      `\label` in the LaTeX source and a bookmark in ODT: a link to an
+      included document's heading lands on that heading; a link to the
+      document itself lands at its start for a document opening with a
+      heading (the heading's own label), with a paragraph, and with a code
+      block (the recorded empty paragraph); a link to an excluded document
+      becomes its text; two documents each headed `# Introduction` and a
+      link to the second lands on the second, while a native bare
+      `#introduction-1` link still lands where it does today; document B
+      with two `# Introduction` headings after A has one resolves
+      `b.md#introduction` and `b.md#introduction-1` to B's first and second
+      (R8-2); a reference definition carrying `{#linkid}` in B used from A
+      does not disturb A's targets; two documents with explicit `{#target}`
+      resolve separately; a link to a hoisted `<section id="part-two">`
+      anchor (a `Span`) resolves at its own position, as does a link to an
+      identified table in the middle of a document (never at the document's
+      start, R8-4) and a link into a document with no headings; a link to
+      an identified code block resolves in ODT through its materialised
+      `Span`; a link into a heading inside B's footnote referenced from A
+      resolves (R8-5); a native footnote defined in document two and
       referenced from document one, with a heading in its body, leaves
       document one's later heading correctly targeted; a heading literally
-      named `d0-x` does not collide; a document that opens with a code block
-      gets its anchor and the record's one empty paragraph; duplicate
-      reference definitions across documents resolve to the same definition
-      as today; a document with an unclosed code fence produces the named
-      warning, unchanged content and unresolved links, never moved or
-      truncated text; a later document beginning with `% Title` lines, and
-      a first document beginning with them under both title-page settings,
-      align and resolve; a 100-document project with one link between
-      documents compiles within four concurrent solo parses and a recorded
-      time bound. Unchanged path: an existing sample project, a project
-      with a leading `%` title block and a project with a relative link to
-      `research/notes.pdf` compile through today's Markdown invocation
-      (asserted on the Pandoc arguments and on normalised DOCX/HTML
-      structure, not raw bytes: EPUB output embeds a fresh UUID on every
-      run).
+      named `d0-x` does not collide with the first document's anchor and a
+      heading named `section` does not collide with a separator; duplicate
+      reference definitions and duplicate footnote definitions across
+      documents resolve as today; an unresolvable `b.md#nowhere` becomes its
+      text with the named warning; a document with a fence closed only in
+      the next document produces the named warning, unchanged content and
+      unresolved links, never moved or truncated text; with an empty
+      separator, two adjacent lists stay two lists and the record's note
+      applies; a later document beginning with `% Title` lines, and a
+      first document beginning with them under both title-page settings,
+      resolve and keep today's text; a 100-document project with one link
+      between documents compiles within four concurrent solo parses and a
+      recorded time bound. Unchanged path: an existing sample project, a
+      project with a leading `%` title block and a project with a relative
+      link to `research/notes.pdf` compile through today's Markdown
+      invocation with no markers (asserted on the Pandoc arguments and on
+      normalised DOCX/HTML structure, not raw bytes: EPUB output embeds a
+      fresh UUID on every run).
 - [ ] UI editor (slice 3): a document with `![Figure](research/figure.png)`
       opens, the image node is present, an edit and a save keep the image
       line byte-for-byte, and the resolver produces the asset URL for each
@@ -937,3 +973,21 @@ coding.
   through the combined identifier they already target; targets
   materialised as identified `Span`s where a writer would not emit one;
   rewrite; same options to the output format.
+- 2026-10-27 review round 8 (`plan-4`, `81f17bb`): reopened; R7-1 to R7-8,
+  R5-5, R6-3, R6-4 closed; five findings, all admitted after checking:
+  an empty separator lets adjacent lists merge, breaking block counts
+  (R8-1); solo and combined identifier sequences are neither one-to-one
+  nor suffix-related when a document has two same-named headings or a
+  cross-document reference adds an identified `Link` (R8-2); a `Span`
+  inside a heading gives LaTeX no `\label` (R8-3); materialised
+  destinations were placed at the document's start (R8-4); identifiers
+  inside notes had no mapping (R8-5). Redesign: provenance by per-run
+  nonce'd begin/end comment markers written only when the gate fires (no
+  marker before an unprefixed first document); targets found by identifier
+  in the section, then by kind, text and rank from a solo parse, then by
+  explicit identifier inside notes, else text with a named warning;
+  destinations materialised at the target by a per-writer table, headings
+  by their own identifier; the split writes explicit `{#id}` on linked
+  headings. The reviewer's 138 boundary probes, writer table, gate check
+  against core's document paths and option-preservation check are recorded
+  in `plan-4`.

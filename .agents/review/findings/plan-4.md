@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 7 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; eighth revision
-committed, round 8 pending
+**Status**: In progress — rounds 1 to 8 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; ninth revision
+committed, round 9 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -362,8 +362,54 @@ with coverage evidence, and a decoder without it is dropped.
 
 Declined: none.
 
+## Round 8 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17e58-2e49-70d1-be96-909d6847f9c7`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `81f17bbb57e3695c945a5f5a6e29704927f8292c` (eighth
+  revision; `0ff3ad6` reinstated the feature on the owner's ruling,
+  `81f17bb` added the title-block mirror)
+- **Base SHA**: `e8570337752bead322ed622c8bd1f412bb513846` (round-7 head;
+  the refused `0e7ac5f` was reviewed by a stopped dispatch and is not a
+  round)
+- **Dispatched**: 2026-10-27 17:11 UTC; finished 17:26 UTC; exit 0;
+  136,927 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `81f17bb…`; both succeeded. The reviewer ran 138 block-boundary probes
+  on Pandoc 3.11 (every requested ending and start, default/blank/rule
+  separators, title page on and off), a writer-destination table (DOCX,
+  ODT, HTML, EPUB, LaTeX for `Span`s in headings, paragraphs and standalone
+  `Plain`s before tables, code, raw blocks, rules and Divs), the gate
+  against core's loaded `Document.path` values and the converter's link
+  form, option preservation through a JSON-mediated second run (metadata,
+  `--standalone`, LaTeX variables, footnotes, reference docs), and a
+  100-document timing (0.95 s combined, 22 s of solo parses at four
+  concurrent). No TeX engine for PDF rendering. No repository file
+  changed; no remote contacted.
+- **Verdict**: `reopened`. Closed: R7-1 to R7-8, R5-5, R6-3, R6-4. Not
+  closed: R2-11, R3-10, R6-2 (mapped to the findings below).
+
+## Round 8 findings and dispositions
+
+Each checked against the cited probe before acceptance (orchestrator,
+2026-10-27).
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R8-1 | With an empty separator adjacent lists or code blocks merge, so block counts do not add up for valid documents | MEDIUM | reviewer's probe on compile's exact concatenation | Admitted: provenance by nonce'd begin/end comment markers written only when the gate fires; the merge difference is recorded |
+| R8-2 | Solo and combined identifier sequences are not one-to-one (two same-named headings; a `{#linkid}` reference definition adds a `Link`) | MEDIUM | reviewer's Pandoc probes | Admitted: lookup by identifier in the section, then by kind, text and rank from the solo parse; the split writes explicit `{#id}` on linked headings |
+| R8-3 | A `Span` inside a heading gives LaTeX `\hypertarget` but no `\label` | MEDIUM | reviewer's LaTeX output | Admitted: heading targets use the heading's own identifier |
+| R8-4 | Materialised destinations were placed at the document's start | MEDIUM | plan text | Admitted: destinations placed at the target by a per-writer table; section start only for whole-document links |
+| R8-5 | Identifiers inside notes were excluded from the map but renamed | MEDIUM | reviewer's fixture | Admitted: explicit identifiers inside notes searched across the document as the third rule |
+
+Declined: none. Reviewer notes carried into the plan: the fence fixture
+needs a closing fence in a later document (an unmatched opener alone is
+text); duplicate footnote definitions and a `section`-named heading join
+the fixtures; the gate uses loaded document paths, not identifiers.
+
 ## Closeout
 
-Pending: round 8 review of the eighth revision (same reviewer, fresh
-session, pins base = round-7 head `e857033`, head = the revision commit;
-the stopped dispatch against `0e7ac5f` is not a round).
+Pending: round 9 review of the ninth revision (same reviewer, fresh
+session, pins base = round-8 head `81f17bb`, head = the revision commit).
