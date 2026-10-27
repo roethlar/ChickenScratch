@@ -377,12 +377,13 @@ gap is in scope here, with the design below.
      same marked text, `-auto_identifiers` added: it has the same block and
      inline structure, and an element whose identifier is non-empty there
      is explicit. The same must hold inside the editor's Markdown-bodied
-     footnotes, which the Lua filter decodes with `pandoc.read(body,
-     "markdown")`: in the diagnostic run the filter reads them with the
-     outer run's reader extensions (`PANDOC_READER_OPTIONS.extensions`,
-     which carries the `-auto_identifiers` setting), so a generated heading
-     identifier inside a note is empty there too and cannot pose as an
-     explicit one (R10-2). Likewise each document's solo parse, when needed,
+     footnotes, which the Lua filter decodes with `pandoc.read`: in the
+     diagnostic run the filter reads them with the outer run's reader
+     extensions, passed in the format table (`pandoc.read(body, { format =
+     "markdown", extensions = PANDOC_READER_OPTIONS.extensions })`; the
+     reader-options third argument does not switch automatic identifiers
+     off, probed in round 11), so a generated heading identifier inside a
+     note is empty there too and cannot pose as an explicit one (R10-2). Likewise each document's solo parse, when needed,
      runs with the same reader options as its position in the combined text
      (title-block rule above), so its block count and order equal its
      section's; a block's kind may differ where a reference resolves only
@@ -450,7 +451,15 @@ gap is in scope here, with the design below.
      LaTeX gives a span inside a heading a `\hypertarget` but no `\label`
      (R8-3, R9-5, and a heading-first Div, R10-3). Nothing is ever moved to
      the start of the document (R8-4). A whole-document link (`doc.md`)
-     targets the section's first block by the same table.
+     targets the start of its section by a rule that covers every section
+     (R11-1): a first block that carries inlines directly (`Header`, `Para`,
+     `Plain`) takes the heading's identifier or a `Span` as its first
+     inline; any other first block (list, block quote, definition list,
+     line block, table, code, raw block, rule, Div) gets an empty `Plain`
+     holding the `Span` inserted before it; a section with no blocks at all
+     (a document holding only reference definitions, which core still
+     includes because its source is not blank) gets that `Plain`+`Span` as
+     its only block, so the link lands where the document would have been.
   7. **Rewrite.** `doc.md#id` → `#<final identifier of the resolved
      destination>`; `doc.md` → the section's destination; a link to a
      document outside the compile → its text alone; everything else
@@ -740,8 +749,10 @@ coding.
       `\label` in the LaTeX source and a bookmark in ODT: a link to an
       included document's heading lands on that heading; a link to the
       document itself lands at its start for a document opening with a
-      heading (the heading's own label), with a paragraph, and with a code
-      block (the recorded empty paragraph); a link to an excluded document
+      heading (the heading's own label), with a paragraph, with a code
+      block (the recorded empty paragraph), with a bullet list, with a
+      block quote, and for a document holding only reference definitions
+      (R11-1), in all five writers; a link to an excluded document
       becomes its text; two documents each headed `# Introduction` and a
       link to the second lands on the second, while a native bare
       `#introduction-1` link still lands where it does today; document B
@@ -1088,3 +1099,11 @@ coding.
   and all five writers, and generated identifiers from ASCII text are
   lowercase (non-ASCII capitals can appear, which the `S<n>` form does not
   rely on).
+- 2026-10-27 review round 11 (`plan-4`, `0a329ba`): reopened on one
+  finding; R10-1 to R10-5 and R2-11 closed; the reviewer read slice 3 end
+  to end and found one undefined input: a whole-document link to a section
+  opening with a list, quote, definition list or line block, or to a
+  section with no blocks (R11-1: the section-start rule is now total, with
+  `Plain`+`Span` before any first block without direct inlines and as the
+  only block of an empty section). The `pandoc.read` call form that
+  honours the diagnostic extensions is recorded.

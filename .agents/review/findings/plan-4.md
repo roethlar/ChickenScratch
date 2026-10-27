@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 10 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; eleventh
-revision committed, round 11 pending
+**Status**: In progress — rounds 1 to 11 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; twelfth
+revision committed, round 12 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -493,7 +493,41 @@ Declined: none. Carried into the plan: final identifiers use underscores
 (`d0_0`) to match Word's bookmark naming rules; the uppercase argument is
 stated for ASCII only.
 
+## Round 11 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17e84-4c7d-7902-9a3b-d8ed4266e3a9`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `0a329baf908d09af1e5d309b4e195ed132038386` (eleventh
+  revision)
+- **Base SHA**: `ae6e5689666e4f8be129387934554296e7fb96a4` (round-10 head)
+- **Dispatched**: 2026-10-27 17:59 UTC; finished 18:06 UTC; exit 0;
+  73,024 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `0a329ba…`; both succeeded. The reviewer probed on Pandoc 3.11: the Lua
+  `pandoc.read` form that honours `-auto_identifiers` (format table with
+  `extensions`; the reader-options argument does not); block paths outside
+  notes identical across 13 fixtures (reference-image `Figure`, definition
+  lists, tables, lists, quotes, three nested Divs); heading redirects for
+  heading-first Divs, spans, links and code in LaTeX, DOCX and ODT;
+  adjacent-span destinations and `d0_0` identifiers in all five writers;
+  `S<n>` reservation against identifiers inside notes. It read slice 3 end
+  to end for contradictions. No repository file changed; no remote
+  contacted.
+- **Verdict**: `reopened` on one finding. Closed: R10-1 to R10-5, R2-11.
+  Not closed: R3-10, R6-2 (both the finding below).
+
+## Round 11 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R11-1 | A whole-document link to a section opening with a list, quote, definition list or line block, or to an empty section, has no destination rule | MEDIUM | reviewer's Pandoc probe; core includes definitions-only documents | Admitted: the section-start rule is total (`Plain`+`Span` before any first block without direct inlines; as the only block of an empty section) |
+
+Declined: none. Carried into the plan: the working `pandoc.read` call
+form.
+
 ## Closeout
 
-Pending: round 11 review of the eleventh revision (same reviewer, fresh
-session, pins base = round-10 head `ae6e568`, head = the revision commit).
+Pending: round 12 review of the twelfth revision (same reviewer, fresh
+session, pins base = round-11 head `0a329ba`, head = the revision commit).
