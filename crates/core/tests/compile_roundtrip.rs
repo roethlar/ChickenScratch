@@ -46,6 +46,9 @@ fn compile_html_uses_ordering_title_page_separator_and_pandoc_args() {
     );
     assert!(output.contains("Second ordered section\n\n\n***\n\nFirst ordered section"));
     assert!(!output.contains("Excluded section"));
+    // A project without links between documents compiles from the plain
+    // text: no document markers reach the output run (compile_links).
+    assert!(!output.contains("chikn:begin"), "{output}");
 
     let args = fs::read_to_string(&args_path).unwrap();
     assert_arg_pair(&args, "-f", "markdown");

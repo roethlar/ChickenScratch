@@ -3,13 +3,23 @@
 //! Walks the hierarchy in order, concatenates markdown content,
 //! then uses Pandoc to convert to the target format.
 
+use crate::core::compile_links::{self, Gate, KnownDoc, SectionDoc};
 use crate::core::project::reader;
 use crate::models::{Project, TreeNode};
 use crate::utils::error::ChiknError;
 use crate::utils::process::{output_bounded, PANDOC_OUTPUT_LIMIT_BYTES, PANDOC_TIMEOUT};
+use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// What compile has to say about the output besides producing it: the
+/// named warnings of the document-link resolution (PLAN_SCRIVENER_UPLOAD
+/// slice 3). Empty for a project without links between documents.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct CompileReport {
+    pub warnings: Vec<String>,
+}
 
 /// Supported output formats
 pub const FORMATS: &[(&str, &str)] = &[
@@ -60,6 +70,19 @@ pub fn compile(
     author: Option<&str>,
     options: Option<CompileOptions>,
 ) -> Result<(), ChiknError> {
+    compile_with_report(project_path, output_path, format, title, author, options).map(|_| ())
+}
+
+/// [`compile`], also returning the warnings the document-link resolution
+/// produced (links that became text, and why).
+pub fn compile_with_report(
+    project_path: &Path,
+    output_path: &Path,
+    format: &str,
+    title: Option<&str>,
+    author: Option<&str>,
+    options: Option<CompileOptions>,
+) -> Result<CompileReport, ChiknError> {
     // Repairs-disabled read: compiling is a pure export and must never
     // mutate the project folder (a Degraded project can be exported too).
     let project = reader::read_project_readonly(project_path)?;
@@ -83,14 +106,11 @@ pub fn compile(
     let doc_author = author.or(project.metadata.author.as_deref());
 
     // Collect manuscript sections in order, respecting compile_order
-    let mut ordered_docs: Vec<(i32, usize, String)> = Vec::new(); // (compile_order, hierarchy_index, content)
+    let mut ordered_docs: Vec<(i32, usize, SectionDoc)> = Vec::new(); // (compile_order, hierarchy_index, document)
     let mut idx = 0;
     collect_ordered_sections(&project.hierarchy, &project, &mut ordered_docs, &mut idx);
     ordered_docs.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-    let sections: Vec<String> = ordered_docs
-        .into_iter()
-        .map(|(_, _, content)| content)
-        .collect();
+    let sections: Vec<SectionDoc> = ordered_docs.into_iter().map(|(_, _, doc)| doc).collect();
 
     if sections.is_empty() {
         return Err(ChiknError::InvalidFormat(
@@ -98,46 +118,79 @@ pub fn compile(
         ));
     }
 
+    // Every document of the project, included or not: a link to an excluded
+    // document is still a document link (it becomes its text).
+    let all_docs: Vec<KnownDoc> = project
+        .documents
+        .values()
+        .map(|doc| KnownDoc {
+            path: doc.path.clone(),
+            source_path: source_path_of(doc),
+        })
+        .collect();
+
     // Calculate approximate word count for title page
-    let word_count: usize = sections.iter().map(|s| s.split_whitespace().count()).sum();
+    let word_count: usize = sections
+        .iter()
+        .map(|s| s.content.split_whitespace().count())
+        .sum();
 
-    // Build the markdown document
-    let mut md = String::new();
+    // Build the markdown document. `markers` adds the per-document begin/end
+    // comments the link resolution needs (compile_links); the plain text is
+    // what every project without links between documents compiles from.
+    let build = |markers: Option<&str>| -> String {
+        let mut md = String::new();
 
-    // Title page: rendered as simple centered markdown
-    if opts.include_title_page {
-        if let Some(a) = doc_author {
-            md.push_str(&format!("{}\n\n", a));
+        // Title page: rendered as simple centered markdown
+        if opts.include_title_page {
+            if let Some(a) = doc_author {
+                md.push_str(&format!("{}\n\n", a));
+            }
+            md.push_str(&format!(
+                "Approx. {} words\n\n",
+                ((word_count + 50) / 100) * 100
+            ));
+            md.push_str(&format!("# {}\n\n", doc_title));
+            if let Some(a) = doc_author {
+                md.push_str(&format!("by {}\n\n", a));
+            }
+            // Page break before first section
+            md.push_str("\\newpage\n\n");
         }
-        md.push_str(&format!(
-            "Approx. {} words\n\n",
-            ((word_count + 50) / 100) * 100
-        ));
-        md.push_str(&format!("# {}\n\n", doc_title));
-        if let Some(a) = doc_author {
-            md.push_str(&format!("by {}\n\n", a));
-        }
-        // Page break before first section
-        md.push_str("\\newpage\n\n");
-    }
 
-    // Join sections with markdown separator. The editor's footnote elements
-    // are converted by the Lua filter inside Pandoc, not here.
-    for (i, section) in sections.iter().enumerate() {
-        md.push_str(section);
-        if !section.ends_with('\n') {
-            md.push('\n');
+        // Join sections with markdown separator. The editor's footnote
+        // elements are converted by the Lua filter inside Pandoc, not here.
+        for (i, section) in sections.iter().enumerate() {
+            if let Some(nonce) = markers {
+                // No begin marker before the first document when nothing
+                // precedes it: its `%` title block must stay at the very
+                // start of the text (plan-4 R6-4).
+                if i > 0 || opts.include_title_page {
+                    md.push_str(&compile_links::begin_marker(i, nonce));
+                    md.push_str("\n\n");
+                }
+            }
+            md.push_str(&section.content);
+            if !section.content.ends_with('\n') {
+                md.push('\n');
+            }
+            if let Some(nonce) = markers {
+                md.push('\n');
+                md.push_str(&compile_links::end_marker(i, nonce));
+                md.push('\n');
+            }
+            if i < sections.len() - 1 {
+                md.push_str(&format!("\n\n{}\n\n", separator));
+            }
         }
-        if i < sections.len() - 1 {
-            md.push_str(&format!("\n\n{}\n\n", separator));
-        }
-    }
+        md
+    };
+    let md = build(None);
 
     let temp_dir = std::env::temp_dir();
     let run_id = uuid::Uuid::new_v4();
     let temp_md = temp_dir.join(format!("compile_{run_id}.md"));
     let temp_filter = temp_dir.join(format!("compile_{run_id}.lua"));
-    fs::write(&temp_md, &md)?;
     fs::write(&temp_filter, FOOTNOTE_FILTER)?;
 
     let pandoc_bin = opts
@@ -145,12 +198,88 @@ pub fn compile(
         .as_deref()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or("pandoc");
+
+    // ── Links between documents (compile_links) ─────────────────────────
+    // Parse the marked text to JSON; if it holds no document link, compile
+    // continues from the unmarked text exactly as before.
+    let mut report = CompileReport::default();
+    let nonce = run_id.simple().to_string();
+    let marked_md = temp_dir.join(format!("compile_{run_id}.marked.md"));
+    fs::write(&marked_md, build(Some(&nonce)))?;
+    let marked_json = pandoc_json(pandoc_bin, "markdown", &marked_md, Some(&temp_filter));
+    let _ = fs::remove_file(&marked_md);
+    let mut resolved_json: Option<PathBuf> = None;
+    match marked_json {
+        Err(err) => {
+            // The marked parse failing is not a reason to fail the export:
+            // fall back to today's path and say so.
+            report
+                .warnings
+                .push(format!("links between documents were not resolved: {err}"));
+        }
+        Ok(json) => match compile_links::gate(
+            json,
+            sections.clone(),
+            all_docs,
+            opts.include_title_page,
+            &nonce,
+        ) {
+            Gate::NoDocumentLinks => {}
+            Gate::MarkersBroken { warning } => report.warnings.push(warning),
+            Gate::Resolve(analysis) => {
+                let diag_md = temp_dir.join(format!("compile_{run_id}.diag.md"));
+                fs::write(&diag_md, build(Some(&nonce)))?;
+                let diagnostic = pandoc_json(
+                    pandoc_bin,
+                    "markdown-auto_identifiers",
+                    &diag_md,
+                    Some(&temp_filter),
+                )?;
+                let _ = fs::remove_file(&diag_md);
+                let analysis = analysis.with_diagnostic(diagnostic);
+                let mut solo: HashMap<usize, serde_json::Value> = HashMap::new();
+                for sec in analysis.documents_needing_solo_parse() {
+                    let solo_md = temp_dir.join(format!("compile_{run_id}.solo{sec}.md"));
+                    fs::write(&solo_md, &sections[sec].content)?;
+                    // Reader options mirror the document's position in the
+                    // combined text: only a first document that nothing
+                    // precedes keeps the `%` title block (plan-4 R7-5).
+                    let from = if sec == 0 && !opts.include_title_page {
+                        "markdown"
+                    } else {
+                        "markdown-pandoc_title_block"
+                    };
+                    let parsed = pandoc_json(pandoc_bin, from, &solo_md, Some(&temp_filter))?;
+                    let _ = fs::remove_file(&solo_md);
+                    solo.insert(sec, parsed);
+                }
+                let (document, links) = analysis.resolve(&solo);
+                report.warnings.extend(links.warnings);
+                let json_path = temp_dir.join(format!("compile_{run_id}.json"));
+                let bytes = serde_json::to_vec(&document).map_err(|e| {
+                    ChiknError::Unknown(format!("resolved document could not be written: {e}"))
+                })?;
+                fs::write(&json_path, bytes)?;
+                resolved_json = Some(json_path);
+            }
+        },
+    }
+
     let mut cmd = Command::new(pandoc_bin);
-    cmd.arg("-f").arg("markdown");
+    match &resolved_json {
+        Some(_) => {
+            // Already parsed and filtered: the output run reads the document.
+            cmd.arg("-f").arg("json");
+        }
+        None => {
+            fs::write(&temp_md, &md)?;
+            cmd.arg("-f").arg("markdown");
+            cmd.arg("--lua-filter").arg(&temp_filter);
+        }
+    }
     cmd.arg("-t").arg(pandoc_format(format));
     cmd.arg("-o").arg(output_path);
     cmd.arg("--standalone");
-    cmd.arg("--lua-filter").arg(&temp_filter);
     // Images are stored project-relative (`research/figure.png`, the
     // converter's convention). Pandoc resolves a relative image against its
     // resource path, which defaults to the working directory; the combined
@@ -194,13 +323,19 @@ pub fn compile(
     // tracked separately; for now, DOCX/ODT/HTML use Pandoc's built-in
     // defaults and the settings are documented as PDF-effective only.
 
-    cmd.arg(&temp_md);
+    match &resolved_json {
+        Some(path) => cmd.arg(path),
+        None => cmd.arg(&temp_md),
+    };
 
     let output = output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES)
         .map_err(|e| ChiknError::Unknown(format!("Failed to run Pandoc: {}", e)))?;
 
     let _ = fs::remove_file(&temp_md);
     let _ = fs::remove_file(&temp_filter);
+    if let Some(path) = &resolved_json {
+        let _ = fs::remove_file(path);
+    }
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -210,14 +345,48 @@ pub fn compile(
         )));
     }
 
-    Ok(())
+    Ok(report)
+}
+
+/// Run Pandoc on `input` to JSON and parse it.
+fn pandoc_json(
+    pandoc_bin: &str,
+    from: &str,
+    input: &Path,
+    filter: Option<&Path>,
+) -> Result<serde_json::Value, ChiknError> {
+    let mut cmd = Command::new(pandoc_bin);
+    cmd.arg("-f").arg(from).arg("-t").arg("json");
+    if let Some(filter) = filter {
+        cmd.arg("--lua-filter").arg(filter);
+    }
+    cmd.arg(input);
+    let output = output_bounded(&mut cmd, PANDOC_TIMEOUT, PANDOC_OUTPUT_LIMIT_BYTES)
+        .map_err(|e| ChiknError::Unknown(format!("Failed to run Pandoc: {}", e)))?;
+    if !output.status.success() {
+        return Err(ChiknError::Unknown(format!(
+            "Pandoc parse failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    serde_json::from_slice(&output.stdout)
+        .map_err(|e| ChiknError::Unknown(format!("Pandoc JSON could not be read: {e}")))
+}
+
+/// The folder import's record of where a document came from
+/// (`fields.source_path`), when the sidecar carries one.
+fn source_path_of(doc: &crate::models::Document) -> Option<String> {
+    doc.fields
+        .get("source_path")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 /// Collect sections with compile_order for sorting.
 fn collect_ordered_sections(
     nodes: &[TreeNode],
     project: &Project,
-    sections: &mut Vec<(i32, usize, String)>,
+    sections: &mut Vec<(i32, usize, SectionDoc)>,
     idx: &mut usize,
 ) {
     for node in nodes {
@@ -226,7 +395,15 @@ fn collect_ordered_sections(
                 if path.starts_with("manuscript/") && path.ends_with(".md") {
                     if let Some(doc) = project.documents.get(id) {
                         if doc.include_in_compile && !doc.content.trim().is_empty() {
-                            sections.push((doc.compile_order, *idx, doc.content.clone()));
+                            sections.push((
+                                doc.compile_order,
+                                *idx,
+                                SectionDoc {
+                                    path: doc.path.clone(),
+                                    source_path: source_path_of(doc),
+                                    content: doc.content.clone(),
+                                },
+                            ));
                             *idx += 1;
                         }
                     }
