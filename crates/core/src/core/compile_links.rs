@@ -500,28 +500,28 @@ fn classify(link: &LinkNode, origin: Option<&KnownDoc>, docs: &[KnownDoc]) -> Ta
         };
     }
     if link.in_note {
-        // Every document is a possible origin; all must agree.
-        let mut agreed: Option<String> = None;
-        for origin in docs {
-            match resolve_from(origin, &decoded, docs) {
-                Some(hit) => match &agreed {
-                    None => agreed = Some(hit),
-                    Some(prev) if *prev == hit => {}
-                    Some(_) => return TargetKind::Refused(format!(
-                        "footnote link {target} could be read from more than one document; anchor it as /<path>"
-                    )),
-                },
-                None => {
-                    return TargetKind::Refused(format!(
-                        "footnote link {target} could be read from more than one document; anchor it as /<path>"
-                    ))
-                }
-            }
+        // Every document is a possible origin. A target no origin resolves
+        // to a document is not a document link at all (an attachment, a
+        // relative resource) and stays untouched (review finding s3-4);
+        // one that some origins resolve must be resolved by all of them to
+        // the same document, else it is refused (plan-4 R18-1).
+        let hits: Vec<Option<String>> = docs
+            .iter()
+            .map(|origin| resolve_from(origin, &decoded, docs))
+            .collect();
+        if hits.iter().all(|hit| hit.is_none()) {
+            return TargetKind::Other;
         }
-        return match agreed {
-            Some(path) => TargetKind::Document { path, fragment },
-            None => TargetKind::Other,
-        };
+        let first = hits.first().cloned().flatten();
+        if first.is_some() && hits.iter().all(|hit| *hit == first) {
+            return TargetKind::Document {
+                path: first.expect("checked"),
+                fragment,
+            };
+        }
+        return TargetKind::Refused(format!(
+            "footnote link {target} could be read from more than one document; anchor it as /<path>"
+        ));
     }
     let Some(origin) = origin else {
         return TargetKind::Other;

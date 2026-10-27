@@ -494,3 +494,37 @@ fn percent_encoded_fragments_resolve_like_their_decoded_form() {
         .unwrap()
         .contains("Café here"));
 }
+
+/// A footnote link that no document resolves to a document (an attachment)
+/// is not a document link and stays exactly as written, even while another
+/// link fires the resolution (review finding s3-4).
+#[test]
+fn ordinary_links_inside_footnotes_are_left_alone() {
+    if !pandoc_present() {
+        eprintln!("skipping: pandoc not installed");
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "Body[^n] and [two](b.md#S1).\n\n[^n]: See the [appendix](research/notes.pdf) and [site](https://example.com).",
+            ),
+            doc("manuscript/b.md", "# Two {#S1}"),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        href_of(&html, "appendix").as_deref(),
+        Some("research/notes.pdf"),
+        "an attachment link inside a note is untouched"
+    );
+    assert_eq!(
+        href_of(&html, "site").as_deref(),
+        Some("https://example.com")
+    );
+    assert!(href_of(&html, "two").is_some_and(|h| h.starts_with('#')));
+}
