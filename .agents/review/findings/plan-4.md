@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 17 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; eighteenth
-revision committed, round 18 pending
+**Status**: In progress — rounds 1 to 18 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; nineteenth
+revision committed, round 19 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -729,7 +729,37 @@ marker blocks from the marked parse would not).
 
 Declined: none.
 
+## Round 18 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17ec6-11bb-7653-b574-7d69949071ab`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `b5c3b4a530933cffe35790730e72334a8a499ca4` (eighteenth
+  revision)
+- **Base SHA**: `250401e5efd019ff7a74bd30e1ac6afbfdc3df95` (round-17 head)
+- **Dispatched**: 2026-10-27 19:11 UTC; finished 19:15 UTC; exit 0;
+  105,224 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `b5c3b4a…`; both succeeded. The reviewer evaluated the agreement rule
+  against native, `source_path` and mixed projects on Pandoc 3.11 output,
+  checked core's file layout (one `.meta` per document including
+  attachments; `threads.yaml` at the root; app files under `settings/`),
+  and confirmed with a locked TipTap probe that a click handler receives
+  the original relative href under `openOnClick: false`. No repository
+  file changed; no remote contacted.
+- **Verdict**: `reopened` on one finding. Closed: R17-1, R17-3, R17-4,
+  R16-4. Not closed: R17-2, R16-3 (the finding below).
+
+## Round 18 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R18-1 | Discarding origins that fail to resolve lets the referencing document's `two.md` pass as agreement when the defining document's sibling is missing | MEDIUM | reviewer's evaluation of the rule on three project shapes | Admitted: every document is an origin; a failing, escaping or disagreeing origin triggers the named warning; identities compared before fragments; Flow stated the same way |
+
+Declined: none.
+
 ## Closeout
 
-Pending: round 18 review of the eighteenth revision (same reviewer, fresh
-session, pins base = round-17 head `250401e`, head = the revision commit).
+Pending: round 19 review of the nineteenth revision (same reviewer, fresh
+session, pins base = round-18 head `b5c3b4a`, head = the revision commit).

@@ -369,8 +369,11 @@ gap is in scope here, with the design below.
   a root-anchored target always resolves; a relative target resolves only
   when every document in the flow resolves it to the same document;
   otherwise the click shows "Open this document on its own to follow the
-  link" and changes nothing. In every case a target that would leave the
-  project does nothing and the link text is left alone.
+  link" and changes nothing; "every document in the flow" is taken as
+  every possible origin, each resolving from its own folder in source or
+  project space, and one failing or disagreeing origin is enough for the
+  notice (R18-1). In every case a target that would leave the project does
+  nothing and the link text is left alone.
 - **Compile finds project images** (R3-12). Core writes the combined
   manuscript to the system temporary folder and runs Pandoc there, so a
   project-relative image is "not fetched" and replaced by its description.
@@ -409,12 +412,19 @@ gap is in scope here, with the design below.
      is referenced, its JSON `Note` carries no label, and no scan of the
      text can tell reliably which document's definition it used (R16-3,
      R17-2). So a *relative* link inside a note is resolved only when
-     every document folder from which it resolves at all yields the same
-     document; when two folders would yield different documents (a
-     `two.md` beside the referencing document and another beside the
-     defining one) the link becomes its text and compile emits a named
-     warning suggesting a root-anchored target. A root-anchored link inside
-     a note needs no provenance and always resolves. For this first pass compile parses the marked text; if no
+     **every document in the project**, taken as the possible origin,
+     resolves it to one and the same document: each document resolves the
+     target from its own folder, in source space when it carries a
+     `source_path` and in project-path space otherwise, and the resulting
+     document identities are compared before any fragment is considered;
+     if any origin fails to resolve, escapes the project, or yields a
+     different document, the link becomes its text and compile emits the
+     named warning "footnote link <target> could be read from more than one
+     document; anchor it as /<path>" (R18-1: an origin that fails is not
+     dropped from the comparison, so a `two.md` beside the referencing
+     document cannot pose as the one beside the defining document when
+     the latter is missing). A root-anchored link inside a note needs no
+     provenance and always resolves. For this first pass compile parses the marked text; if no
      document link is found the markers' blocks are simply discarded and
      compile continues with today's invocation on the *unmarked* Markdown:
      no renaming, output as today. Native projects without document links
@@ -857,8 +867,15 @@ coding.
       `manuscript/part/b.md` holding `[t](two.md#target)` and referenced
       from `manuscript/a.md`, with both `manuscript/two.md` and
       `manuscript/part/two.md` present, becomes its text with the named
-      warning, and the same note with only one `two.md` anywhere resolves
-      to it, as does a root-anchored target inside a note (R16-3, R17-2); a handwritten project whose links use the
+      warning; the same note when `manuscript/part/two.md` is absent and
+      `manuscript/two.md` holds an unrelated `{#target}` also becomes its
+      text with the warning (a failing origin counts, R18-1); a project
+      mixing documents with and without `source_path` resolves each origin
+      in its own space; two candidates of which only one holds the
+      fragment still warn, because identities are compared before
+      fragments; a note whose relative target resolves identically from
+      every document resolves, as does a root-anchored target inside a
+      note (R16-3, R17-2); a handwritten project whose links use the
       root-anchored form resolves them (the converter's own output is
       asserted in slice 1, R17-4). Links between documents, each
       asserted on the destination's text in DOCX and HTML and on a matching
@@ -1294,3 +1311,10 @@ coding.
   `fields.source_path` survives write, read and revision restore with
   fidelity Full, and that `/manuscript/two.md#S1` survives reader, writer
   and two editor cycles.
+- 2026-10-27 review round 18 (`plan-4`, `b5c3b4a`): reopened on one
+  finding; R17-1, R17-3, R17-4 and R16-4 closed. Admitted: dropping
+  origins that fail to resolve let a `two.md` beside the referencing
+  document pass as agreement when the defining document's sibling was
+  missing (R18-1: every document is an origin, a failing or disagreeing
+  one triggers the warning, identities are compared before fragments; the
+  Flow rule is stated the same way).
