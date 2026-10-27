@@ -807,3 +807,32 @@ fn literal_percent_identifiers_are_kept_and_followed_too() {
         .unwrap()
         .contains("One"));
 }
+
+/// One element carries `{#café}` and another `{id="caf%C3%A9"}`: a bare
+/// `#caf%C3%A9` link names both spellings at once, so it is left as written
+/// and both identifiers keep their strings (review finding s3-1, repair
+/// review 3).
+#[test]
+fn mixed_spellings_of_one_bare_fragment_keep_every_candidate() {
+    if !pandoc_present() {
+        eprintln!("skipping: pandoc not installed");
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "# One {#café}\n\n# Two {id=\"caf%C3%A9\"}\n\nBare [b](#caf%C3%A9) and [two](b.md#S1).",
+            ),
+            doc("manuscript/b.md", "## Inner {#S1}\n\nText."),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let ids = ids(&html);
+    assert!(ids.contains("café"), "decoded spelling kept: {html}");
+    assert!(ids.contains("caf%C3%A9"), "literal spelling kept: {html}");
+    assert_eq!(href_of(&html, "b").as_deref(), Some("#caf%C3%A9"));
+}

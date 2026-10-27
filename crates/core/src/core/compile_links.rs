@@ -737,6 +737,11 @@ impl Analysis {
             .flat_map(|frag| [frag.to_string(), percent_decode(frag)])
             .collect();
 
+        // Identifiers a bare link names by more than one spelling at once
+        // (one `{#café}`, one `{id="caf%C3%A9"}`): the link is left as
+        // written, so every candidate must keep its string (s3-1 repair
+        // review 3).
+        let mut ambiguous_bare: HashSet<String> = HashSet::new();
         let mut resolutions: Vec<Resolved> = Vec::with_capacity(scanned.links.len());
         for link in &scanned.links {
             let origin = link.section.map(|s| self.known(s));
@@ -758,6 +763,9 @@ impl Analysis {
                     if matches.len() == 1 {
                         Resolved::BareUnique(matches[0])
                     } else {
+                        for &m in &matches {
+                            ambiguous_bare.insert(scanned.elements[m].id.clone());
+                        }
                         Resolved::Leave
                     }
                 }
@@ -821,13 +829,15 @@ impl Analysis {
         }
 
         // ── Step 5: identifiers ──────────────────────────────────────────
-        // Kept: duplicated strings that a bare link relies on.
+        // Kept: duplicated strings that a bare link relies on, and every
+        // candidate of a bare link that matched by more than one spelling.
         let kept: HashSet<String> = scanned
             .elements
             .iter()
             .filter(|e| {
-                id_count.get(e.id.as_str()).copied().unwrap_or(0) >= 2
-                    && bare_targets.contains(&e.id)
+                (id_count.get(e.id.as_str()).copied().unwrap_or(0) >= 2
+                    && bare_targets.contains(&e.id))
+                    || ambiguous_bare.contains(&e.id)
             })
             .map(|e| e.id.clone())
             .collect();
