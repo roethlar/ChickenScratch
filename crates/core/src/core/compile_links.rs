@@ -881,6 +881,17 @@ impl Analysis {
         // The id a resolved link will point at.
         let mut link_dest: Vec<Option<String>> = vec![None; scanned.links.len()];
         let mut section_dest: HashMap<usize, String> = HashMap::new();
+        // A bare link that reached a kept element by another spelling of its
+        // identifier gets the element's alias, as a document link would: the
+        // kept string itself may be one a browser matches before decoding
+        // when `café` and `caf%C3%A9` are both kept (s3-1 repair review 5).
+        let resolutions: Vec<Resolved> = resolutions
+            .into_iter()
+            .map(|r| match r {
+                Resolved::BareUnique(idx) if final_id[idx].is_none() => Resolved::Element(idx),
+                other => other,
+            })
+            .collect();
         let mut element_dest: HashMap<usize, String> = HashMap::new();
 
         let header_own_or_alias =
@@ -1098,14 +1109,12 @@ impl Analysis {
                     link_dest[li] = Some(dest);
                 }
                 Resolved::BareUnique(idx) => {
-                    // The element's final name, renamed or kept: a link that
-                    // reached a kept element by another spelling of its
-                    // identifier (`#caf%25C3%25A9` to `{id="caf%C3%A9"}`) must
-                    // still be rewritten to it (s3-1 repair review 4).
-                    let dest = final_id[*idx]
-                        .clone()
-                        .unwrap_or_else(|| scanned.elements[*idx].id.clone());
-                    link_dest[li] = Some(dest);
+                    // A renamed element: the link follows the new name. A
+                    // kept one was turned into `Element` above and took an
+                    // alias.
+                    if let Some(id) = &final_id[*idx] {
+                        link_dest[li] = Some(id.clone());
+                    }
                 }
                 Resolved::Text | Resolved::Leave => {}
             }

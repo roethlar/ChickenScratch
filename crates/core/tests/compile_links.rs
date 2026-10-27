@@ -865,9 +865,65 @@ fn a_unique_bare_link_to_a_kept_identifier_is_rewritten_to_it() {
     assert!(ids.contains("café") && ids.contains("caf%C3%A9"), "{html}");
     assert_eq!(href_of(&html, "b").as_deref(), Some("#caf%C3%A9"));
     let c = href_of(&html, "c").unwrap();
-    assert_eq!(
-        c, "#caf%C3%A9",
-        "the unique link lands on the kept literal identifier: {html}"
+    assert!(
+        follows_heading(&html, c.trim_start_matches('#'), "Two"),
+        "the unique link lands on the kept literal identifier's heading: {c} in {html}"
     );
-    assert!(element_text(&html, "caf%C3%A9").unwrap().contains("Two"));
+}
+
+/// Whether `id` is carried by the `<h1>` whose text contains `text`, or sits
+/// right after it with no other heading in between (a kept heading's alias).
+fn follows_heading(html: &str, id: &str, text: &str) -> bool {
+    let Some(pos) = html.find(&format!("id=\"{id}\"")) else {
+        return false;
+    };
+    let Some(open) = html[..pos].rfind("<h1") else {
+        return false;
+    };
+    let Some(close) = html[open..].find("</h1>") else {
+        return false;
+    };
+    html[open..open + close].contains(text)
+}
+
+/// With `café` and `caf%C3%A9` both kept, a browser may match either
+/// spelling of `#caf%C3%A9` before decoding, so a bare link that resolves
+/// uniquely to one of them must not point at a kept string: it gets that
+/// element's alias, like a document link (review finding s3-1, repair
+/// review 5).
+#[test]
+fn unique_links_to_kept_identifiers_get_an_unambiguous_alias() {
+    if !pandoc_present() {
+        eprintln!("skipping: pandoc not installed");
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "# One {#café}\n\n# Two {id=\"caf%C3%A9\"}\n\nBoth [b](#caf%C3%A9), literal [c](#caf%25C3%25A9), lower [d](#caf%c3%a9) and [two](b.md#S1).",
+            ),
+            doc("manuscript/b.md", "## Inner {#S1}\n\nText."),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let ids = ids(&html);
+    assert!(ids.contains("café") && ids.contains("caf%C3%A9"), "{html}");
+    assert_eq!(href_of(&html, "b").as_deref(), Some("#caf%C3%A9"));
+    for (link, heading) in [("c", "Two"), ("d", "One")] {
+        let href = href_of(&html, link).unwrap();
+        let id = href.trim_start_matches('#');
+        assert!(ids.contains(id), "{link} → {href}: {html}");
+        assert!(
+            id != "café" && id != "caf%C3%A9",
+            "{link} must not point at a spelling a browser could confuse: {href}"
+        );
+        assert!(
+            follows_heading(&html, id, heading),
+            "{link} → {href} should reach {heading}: {html}"
+        );
+    }
 }
