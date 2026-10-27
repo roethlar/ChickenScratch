@@ -69,10 +69,10 @@ app runs on still goes in through the existing folder picker, untouched.
 ## [MODEL] Approach
 
 **Order of landing: 3, 1, 2, 4, 5.** Slice 3 (what the editor and compile
-must keep) lands first, because slice 1's Markdown-folder import and slice
-4's Import File both write footnote elements and anchor elements that slice
-3 teaches the editor and compile to preserve; with that order no slice's
-tests depend on a later one (R13-1).
+must keep) lands first: slice 1's imports produce links between documents
+that slice 3 teaches compile to resolve, and slice 4's Import File writes
+footnote and anchor elements that slice 3 teaches the editor and compile to
+preserve; with that order no slice's tests depend on a later one (R13-1).
 
 ### Slice 1 — the project door on the server
 
@@ -257,27 +257,22 @@ existing `/api/import-upload` (one document into an open project) stays.
   sorted by name, duplicate document names disambiguated by suffix) and
   returns an `ImportReport` whose warnings name every skipped file, so the
   browser shows them; a tree with no readable document fails the import.
-  Links between the folder's files are kept working (R12-2): destination
-  paths are allocated for every file first, then each file's links are
-  resolved relative to that file's position in the source tree and
-  rewritten through the source → destination map to the project-relative
-  form compile resolves (`manuscript/two.md#second`), fragments kept;
-  a link to a file that was not imported is left as it was and named in
-  the warnings. The rewrite happens in Pandoc's model (read to JSON,
-  rewrite `Link` targets, write with `formats::MARKDOWN_WRITER`) so link
-  syntax inside code is untouched. Because that round trip renumbers a
-  file's footnotes to `[^1]`, `[^2]`, two files' notes would collide when
-  compile concatenates them (R13-1); so, after the link rewrite and before
-  writing, two shared steps that Import File also uses run on the file's
-  model, both landed with this slice: the inline-target normalisation
-  (slice 4's description; every identified span, link or image, and every
-  existing anchor element, which Pandoc's writer would otherwise turn back
-  into `[]{#spot .anchor}` and the editor would then flatten, is written as
-  the editor's anchor element `<span class="anchor" id="…"></span>` before
-  the element, R14-1), then the note filter (`cs-import-notes.lua`), which
-  turns every `Note` into the editor's footnote element with an
-  entity-encoded body. A file whose links needed no rewrite is still copied
-  byte for byte.
+  Links between the folder's files are kept working **without touching
+  the files** (R12-2, R13-1, R14-1, R15-1 to R15-4): every Pandoc round
+  trip of a native Markdown file changes something a writer owns (metadata
+  dropped, HTML spans and Divs turned into bracketed syntax the editor
+  flattens, smart punctuation altered, shared reference definitions lost,
+  footnotes renumbered), so the folder import rewrites nothing. Instead the
+  documents are placed at paths that mirror the source tree
+  (`part/ch.md` → `manuscript/part/ch.md`; the binder *names* are
+  disambiguated for display, the *paths* never need to be, because two
+  source files cannot share a relative path), every file is copied byte
+  for byte, and the links keep their original relative targets
+  (`two.md#second`, `../intro.md`). Compile (slice 3, step 1) and the
+  editor resolve such a target relative to the document that contains it,
+  so the links work in the compiled output and open the right document in
+  the binder with no change to the text. A link to a file that was not
+  imported stays as written and is named in the warnings.
 - Route body limit 512 MiB (research folders hold PDFs); over it, 413 and
   the UI points at the on-this-machine folder path, which stays.
 - Answers the tagged `ImportOutcome` above (`Opened` carries `{ project,
@@ -343,10 +338,11 @@ gap is in scope here, with the design below.
   and serialised as that HTML exactly as `FootnoteNode` does) preserves an
   identifier through open, edit and save; compile's Lua turns it into a
   Pandoc `Span` with that identifier so DOCX gets a bookmark. The `Link`
-  extension is configured (`isAllowedUri`) to accept project-relative
-  targets (no scheme, no `..`, a `.md` path optionally followed by
-  `#fragment`) instead of discarding them, and clicking such a link opens
-  that document in the binder.
+  extension is configured (`isAllowedUri`) to accept relative targets (no
+  scheme; a path, `..` segments allowed, that resolves inside the project
+  from the open document's folder or from the project root, optionally
+  followed by `#fragment`) instead of discarding them, and clicking such a
+  link opens that document in the binder.
 - **Compile finds project images** (R3-12). Core writes the combined
   manuscript to the system temporary folder and runs Pandoc there, so a
   project-relative image is "not fetched" and replaced by its description.
@@ -363,14 +359,21 @@ gap is in scope here, with the design below.
   per-file scope, sentinels); this one changes nothing about the parse and
   works on its result.
   1. **Gate.** Compile runs today's combined Markdown through Pandoc to
-     JSON (filters attached, as now). If no `Link` target in that JSON,
-     after stripping a leading `./` and percent-decoding, is exactly the
-     project-relative path of a document in the project (with or without a
-     `#fragment`; exact membership in the document list, excluded documents
-     included, so an ordinary relative link to `research/notes.pdf` is not
-     one), compile continues from the *same Markdown* with today's
-     invocation: no second parse, no renaming, output as today. Native
-     projects without such links never enter the steps below.
+     JSON (filters attached, as now) and looks at every `Link` target that
+     has no scheme. A target is a *document link* when, after
+     percent-decoding, it names a document of the project (excluded
+     documents included) either relative to the folder of the document
+     that contains the link (`two.md#second` inside `manuscript/one.md` →
+     `manuscript/two.md`; `../research/x.md` likewise, `..` collapsed and
+     never escaping the project root), or, failing that, relative to the
+     project root (`manuscript/two.md`, the converter's and the split's
+     form); exact membership in the document list, so an ordinary relative
+     link to `research/notes.pdf` is not one. Which document contains a
+     link is known from the markers of step 2 (for this first pass compile
+     parses the marked text; if no document link is found the markers'
+     blocks are simply discarded and compile continues with today's
+     invocation on the *unmarked* Markdown: no renaming, output as today).
+     Native projects without document links never enter the steps below.
   2. **Provenance by document markers in the combined text.** Block
      counting cannot tell documents apart when an empty separator lets two
      lists or two indented code blocks merge (R8-1), so compile marks the
@@ -682,7 +685,7 @@ coding.
 | `crates/web/src/project_upload.rs` (new), `app.rs`, `tests/http.rs` | streaming to a temp file, unpack, detector call, handler, own body limit |
 | `crates/cli/src/archive.rs` (new), `unpack.rs` (new), `detect.rs` (new), `lib.rs`, `main.rs`, `Cargo.toml` (+ `zip`, `sevenz-rust2`, `tar`, `flate2`), `Cargo.lock` | `unpack_archive` (format sniffing, header pre-checks, path/kind/size checks), the unpack worker (`--unpack-worker`, `BudgetAlloc` counting allocator, per-platform supplementary limits, JSON outcome with peak), `detect_project` |
 | `crates/core/src/core/project/publish.rs` (new), `compile.rs`, `cs-footnotes.lua` | `publish_imported` (read, exclusive rename, no fallback), `--resource-path`, document-link resolution (gate, block-count alignment with per-document parses, identifier renaming, target materialisation, rewrite), anchor elements as `Span`s, `data-format="markdown"` note bodies, entity decoding of the body attribute |
-| `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new), `inline_targets.rs` (new, lands with slice 1), `cs-import-notes.lua` (new, lands with slice 1); `crates/web/src/commands.rs`, `main.rs`, `assets.rs` (new); `src-tauri/src/commands/*.rs`, `main.rs` | `import_project` (lock, existence check, temporary destination, core publication), recursive Markdown-folder import with link rewrite, anchor normalisation and note conversion, the format registry with handlers, worker dispatch honoured first in every `main`, media extraction and attachment, notes to the editor's form with Markdown bodies, `.doc` step, model-level `split_headings`, the gated asset route |
+| `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new), `inline_targets.rs` (new), `cs-import-notes.lua` (new); `crates/web/src/commands.rs`, `main.rs`, `assets.rs` (new); `src-tauri/src/commands/*.rs`, `main.rs` | `import_project` (lock, existence check, temporary destination, core publication), recursive Markdown-folder import (byte-exact copies at mirrored paths), the format registry with handlers, worker dispatch honoured first in every `main`, media extraction and attachment, notes to the editor's form with Markdown bodies, `.doc` step, model-level `split_headings`, the gated asset route |
 | `ui/src/components/editor/Editor.tsx`, `ImageNode.ts` (new), `AnchorNode.ts` (new), `FootnoteNode.ts`, `ui/src/platform.ts`; `src-tauri/src/assets.rs` (new), `tauri.conf.json`, `main.rs` | image node and serialisation, anchor node, project-relative links accepted and opened, project-asset URL resolver per shell, `data-format` round trip and entity-encoded body attribute, the `chikn-asset` scheme handler and CSP |
 | `ui/src/commands/web.ts`, `io.ts`, `project.ts`, `stores/projectStore.ts`, `ui/src/importFormats.json` (generated) | `importProjectUpload`, `importProject`, `split` flag, shared format and archive suffix lists |
 | `ui/src/components/welcome/ImportProjectDialog.tsx` (new), `Welcome.tsx`, `editor.css`, `platform.ts` | the chooser; desktop archive pick |
@@ -757,18 +760,16 @@ coding.
       nested folders become binder folders in sorted order; duplicate names
       are disambiguated; one unreadable file among three is reported in the
       warnings and the other two import; a tree with no readable file
-      fails; `one.md` linking to `two.md#second`, a nested `part/ch.md`
-      linking to `../intro.md`, and a link into a disambiguated file all
-      compile to working links after import, and a link to a file that was
-      not imported is left as written and named in the warnings (R12-2);
-      two files with distinct footnotes `[^alpha]` and `[^beta]` and links
-      needing rewrite import, survive an editor save and reopen, and
-      compile to two distinct note bodies (R13-1); `one.md` linking to
-      `two.md#spot` where `two.md` holds `<span class="anchor"
-      id="spot"></span>` (and, in a second case, `[here]{#spot}`) and has a
-      link of its own to rewrite imports, survives an editor save and
-      reopen, and compiles to a working link (R14-1); a file with no link
-      to rewrite is byte-identical after import.
+      fails; every imported file is byte-identical to its source, including
+      one with YAML metadata, smart punctuation, a classed HTML span, a
+      shared reference definition and two footnotes (R15-1 to R15-4); the
+      documents sit at paths mirroring the source tree; `one.md` linking to
+      `two.md#second`, a nested `part/ch.md` linking to `../intro.md`, and a
+      link into a file whose binder name was disambiguated all compile to
+      working links and open the right document from the editor (R12-2);
+      two files with distinct footnotes `[^alpha]` and `[^beta]` compile
+      to two distinct note bodies (R13-1); a link to a file that was not
+      imported is left as written and named in the warnings.
 - [ ] `crates/services` import content: a DOCX with an embedded image
       imports with the image as an attachment and a project-relative
       target after the upload is deleted; a DOCX with two footnotes imports
@@ -789,7 +790,11 @@ coding.
       two distinct notes.
 - [ ] `crates/core` compile (slice 3): a project-relative image compiles
       into DOCX and ODT output as an embedded picture while the test runs
-      from another working directory. Links between documents, each
+      from another working directory. A target relative to the containing
+      document (`two.md#second` in `manuscript/one.md`, `../research/x.md`
+      in `manuscript/part/ch.md`) and one relative to the project root
+      (`manuscript/two.md`) are both document links; `../../etc/passwd.md`
+      is not. Links between documents, each
       asserted on the destination's text in DOCX and HTML and on a matching
       `\label` in the LaTeX source and a bookmark in ODT: a link to an
       included document's heading lands on that heading; a link to the
@@ -1180,3 +1185,13 @@ coding.
   as `[]{#spot .anchor}`, which the editor flattens (R14-1: the shared
   inline-target normalisation runs in the folder path too, landed with
   slice 1).
+- 2026-10-27 review round 15 (`plan-4`, `8ff3fa2`): reopened on four
+  findings, all consequences of round-tripping native Markdown through
+  Pandoc in the folder import: metadata dropped (R15-1), HTML spans and
+  Divs turned into bracketed syntax (R15-2), smart punctuation altered
+  (R15-3), shared reference definitions lost (R15-4). All admitted, and the
+  cause removed rather than patched: the folder import rewrites nothing.
+  Files are copied byte for byte at paths that mirror the source tree, and
+  compile and the editor resolve a link relative to the document that
+  contains it; this also retires the rewrite-path repairs of R12-2, R13-1
+  and R14-1.

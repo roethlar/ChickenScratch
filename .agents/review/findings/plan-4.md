@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 14 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; fifteenth
-revision committed, round 15 pending
+**Status**: In progress — rounds 1 to 15 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; sixteenth
+revision committed, round 16 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -620,7 +620,44 @@ Declined: none.
 
 Declined: none.
 
+## Round 15 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17ea6-0879-78d0-a271-40b7be70d592`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `8ff3fa2d4c75b6cd71d2de9763997e38aa6b8bba` (fifteenth
+  revision)
+- **Base SHA**: `1a51d3aefb40158a952dc386f919179a151c9bf2` (round-14 head)
+- **Dispatched**: 2026-10-27 18:36 UTC; finished 18:45 UTC; exit 0;
+  97,692 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `8ff3fa2…`; both succeeded. The reviewer ran 20 destination checks on
+  the anchor normalisation (passed) and probed the folder rewrite path on
+  Pandoc 3.11 and the locked editor for metadata, classed spans and HTML
+  Divs, smart punctuation and shared reference definitions (all altered or
+  lost). No repository file changed; no remote contacted.
+- **Verdict**: `reopened` on four findings. Closed: R14-1.
+
+## Round 15 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R15-1 | The rewrite's non-standalone Markdown write drops YAML and title-block metadata | HIGH | reviewer's probe | Admitted; cause removed: the folder import rewrites nothing |
+| R15-2 | Classed spans and HTML Divs become bracketed syntax the editor flattens | MEDIUM | reviewer's probe | Admitted; cause removed |
+| R15-3 | Smart punctuation is not round-trip stable | MEDIUM | reviewer's probe | Admitted; cause removed |
+| R15-4 | Per-file parsing drops shared reference definitions and escapes unresolved references | MEDIUM | reviewer's probe | Admitted; cause removed |
+
+Disposition in full: the Markdown-folder import copies every file byte for
+byte at a path mirroring the source tree, and compile and the editor
+resolve link targets relative to the containing document (then to the
+project root). The rewrite-path repairs recorded for R12-2, R13-1 and
+R14-1 are retired with the rewrite; their fixtures stay as byte-identity
+and link-resolution tests.
+
+Declined: none.
+
 ## Closeout
 
-Pending: round 15 review of the fifteenth revision (same reviewer, fresh
-session, pins base = round-14 head `1a51d3a`, head = the revision commit).
+Pending: round 16 review of the sixteenth revision (same reviewer, fresh
+session, pins base = round-15 head `8ff3fa2`, head = the revision commit).
