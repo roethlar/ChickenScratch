@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 8 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; ninth revision
-committed, round 9 pending
+**Status**: In progress — rounds 1 to 9 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; tenth revision
+committed, round 10 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -409,7 +409,47 @@ needs a closing fence in a later document (an unmatched opener alone is
 text); duplicate footnote definitions and a `section`-named heading join
 the fixtures; the gate uses loaded document paths, not identifiers.
 
+## Round 9 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17e69-f87e-7061-8e54-5870e511ad95`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `1b9fdcd2020b668a975c14a567a9a96f553c422f` (ninth
+  revision)
+- **Base SHA**: `81f17bbb57e3695c945a5f5a6e29704927f8292c` (round-8 head)
+- **Dispatched**: 2026-10-27 17:30 UTC; finished 17:41 UTC; exit 0;
+  107,422 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `1b9fdcd…`; both succeeded. The reviewer re-ran the 138 boundary cases
+  plus 30 new ones with the comment markers (markers arrive as top-level
+  `RawBlock html` on every valid boundary; ordinary comments neither
+  swallow nor impersonate them; adjacent lists and indented code blocks
+  separate as the plan says; crossing fences and Divs are detected), ran
+  the editor round trip on literal `{#id}` attributes (preserved), and
+  reproduced the six findings below on Pandoc 3.11 and in DOCX, ODT, HTML
+  and LaTeX output. No TeX engine. No repository file changed; no remote
+  contacted.
+- **Verdict**: `reopened`. Closed: R8-1, R8-3, R8-4, R8-5. Not closed:
+  R8-2, R2-11, R3-10, R6-2 (mapped to the findings below).
+
+## Round 9 findings and dispositions
+
+Each checked against the cited probe before acceptance (orchestrator,
+2026-10-27).
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R9-1 | Identifier equality picks B's first heading for `b.md#introduction-1` once A shifted the suffixes | MEDIUM | reviewer's Pandoc probe | Admitted: explicit identifiers (known from a `-auto_identifiers` parse) resolve exactly; generated ones by block path from a solo parse |
+| R9-2 | Text-and-rank matching breaks when `# Intro[^n]` resolves in the combined parse | MEDIUM | reviewer's Pandoc probe | Admitted: block path, which reference resolution cannot shift |
+| R9-3 | Explicit `{#introduction-1}` beside a generated `introduction-1` yields duplicate bookmarks after prefixing | MEDIUM | reviewer's DOCX/ODT/HTML/LaTeX output | Admitted: final identifiers allocated per element, not per name |
+| R9-4 | The Markdown writer omits an explicit identifier equal to the generated one | MEDIUM | reviewer's Pandoc probe | Admitted: the split writes `{#S<n>}` (uppercase, never a generated form), so the attribute is always emitted; tests read the written Markdown |
+| R9-5 | A hoisted anchor span inside a heading has no LaTeX label | MEDIUM | reviewer's LaTeX output | Admitted: wrapper identifiers folded into the heading's `{#S<n>}`; spans inside headings redirect to the heading |
+| R9-6 | A Div's "first inline-bearing block" skips opening code; a code-only Div has none | MEDIUM | reviewer's ODT output | Admitted: destination at the Div's real beginning, `Plain`+`Span` before a block without inlines |
+
+Declined: none.
+
 ## Closeout
 
-Pending: round 9 review of the ninth revision (same reviewer, fresh
-session, pins base = round-8 head `81f17bb`, head = the revision commit).
+Pending: round 10 review of the tenth revision (same reviewer, fresh
+session, pins base = round-9 head `1b9fdcd`, head = the revision commit).
