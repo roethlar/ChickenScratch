@@ -100,17 +100,28 @@ existing `/api/import-upload` (one document into an open project) stays.
   wall clock, kills the child on timeout or when the HTTP request is
   cancelled (the request future's drop guard kills and waits), removes the
   staging folder, and releases the slot only after the child has exited.
-  **The worker limits its own memory after `exec`, before it touches the
-  archive** (R3-2: a limit set in `pre_exec` is applied to the forked
-  parent image, which macOS refuses when the parent already maps more than
-  the limit): on Linux and macOS the worker calls `setrlimit(RLIMIT_AS,
-  1 GiB)` as its first act and refuses to proceed if the call fails; on
-  Windows the parent assigns the child to a Job Object with a 1 GiB
-  process-memory limit before resuming it (the `windows` crate is already a
-  Tauri dependency there). The child reports the outcome as one JSON line
-  on stdout; a killed or crashed child is a refusal with "This archive
-  could not be unpacked safely". The in-process checks below are defence in
-  depth, not the only line.
+  **The worker's memory is bounded per platform, by what each platform can
+  actually enforce** (R3-2, R4-1). Linux: the worker calls
+  `setrlimit(RLIMIT_AS, 1 GiB)` as its first act after `exec` (its own
+  baseline is a few tens of MiB) and refuses to proceed if the call fails.
+  macOS: `RLIMIT_AS` cannot be used at all (every process maps the 6 GiB
+  shared region, and XNU refuses a limit below the current map size), so
+  the bound is a **parent-side watchdog**: the parent samples the child's
+  resident size every 250 ms (`proc_pidinfo`, the same call `ps` uses) and
+  kills it above 1 GiB; the watchdog runs on Linux too as a second line.
+  Windows: the parent creates the child suspended through `CreateProcessW`
+  (the `windows` crate, already a Tauri dependency; stable `std::process`
+  cannot hand back the primary thread), assigns it to a Job Object with a
+  1 GiB process-memory limit, then resumes it. Every binary performs the
+  worker dispatch in a plain synchronous `main` before any runtime starts
+  (the web server's `#[tokio::main]` becomes an explicit runtime built
+  after the dispatch). The child reports the outcome as one JSON line on
+  stdout; a killed or crashed child is a refusal with "This archive could
+  not be unpacked safely". The in-process checks below are defence in
+  depth, not the only line. macOS and Windows behaviour cannot be run on
+  the development machine (Linux); the slice is not called done until the
+  worker has unpacked a real archive and refused a bomb on each, in CI's
+  Tauri Bundles jobs or by the owner, and the record says which.
   - **Entry paths** (R1-4, R2-6, R2-7): the name is split on both `/` and
     `\`. A leading `./` is dropped and a trailing separator marks a
     directory entry (so `Book/`, `./` and `./chapter.md` from ordinary
@@ -202,9 +213,17 @@ existing `/api/import-upload` (one document into an open project) stays.
   `Published` carries the already-read project with its `path` rewritten
   to the final folder and the write token is re-acquired there; if that
   re-acquisition fails, the result is a truthful
-  `ImportedButNotOpened { path }` (the project exists and appears on the
-  project screen) rather than a failure that would leave a published
-  project behind a "failed" message (R3-5). Any error *before* the commit
+  `PublishedNotOpened { path, reason }` rather than a failure that would
+  leave a published project behind a "failed" message (R3-5). That outcome
+  is a **tagged result all the way to the screen** (R4-2):
+  `services::ImportOutcome = Opened { project, warnings } |
+  PublishedNotOpened { path, reason, warnings }`, carried as a tagged JSON
+  object by the web route and the Tauri command, and handled by one store
+  function in the UI: `Opened` runs today's settle code; `PublishedNotOpened`
+  opens no editor, adds the path to recent projects so the project is
+  reachable from the project screen, and shows "Imported to <path>, but it
+  could not be opened: <reason>. Open it from the project list." No layer
+  reaches into `project.name` on that branch. Any error *before* the commit
   point removes the temporary project and the staging folder, so a failed
   or refused import leaves nothing on disk and the same destination can be
   tried again. The embedded `.git` moves with the folder; nothing in it
@@ -218,7 +237,8 @@ existing `/api/import-upload` (one document into an open project) stays.
   browser shows them; a tree with no readable document fails the import.
 - Route body limit 512 MiB (research folders hold PDFs); over it, 413 and
   the UI points at the on-this-machine folder path, which stays.
-- Answers `{ project, warnings }` like `import_scrivener`.
+- Answers the tagged `ImportOutcome` above (`Opened` carries `{ project,
+  warnings }` like `import_scrivener` today).
 
 ### Slice 2 — the Import button, both shells
 
@@ -233,15 +253,83 @@ existing `/api/import-upload` (one document into an open project) stays.
   `unpack_archive`; the detector then runs on the unpacked folder exactly as
   on the server. Then the name prompt as today, then the import; the
   chooser shows "Uploading <size>…" while a browser upload runs.
-- Store: `importProject` replaces `importScrivener`, same settle code (open
-  the new project, surface warnings).
+- Store: `importProject` replaces `importScrivener`; it switches on the
+  tagged outcome (`Opened` → today's settle code: open the new project,
+  surface warnings; `PublishedNotOpened` → recents entry and the message
+  above, nothing opened).
 - User guide: the Scrivener section becomes "Importing a project"; the
   browser section's "Import uploads" bullet and the phone subsection say
   "compress the project folder, then upload the archive" with the three
   how-to lines; troubleshooting covers "too large", "not a project" and
   "not an archive we read" (encrypted or RAR archives: re-save as zip).
 
-### Slice 3 — Import File reads everything Pandoc reads, split optional
+### Slice 3 — what imports create survives the editor and compile (lands before slice 4)
+
+Three gaps the reviews found are not in the importers but in what receives
+their output (R3-8, R3-10, R3-11, R3-12). Without this slice the promises
+of slice 4 would be broken the first time a writer saved or compiled, so it
+lands first.
+
+- **Images in the editor** (R3-11, R4-6). The editor registers no image
+  node, so a Markdown image is dropped the moment a document is saved. Both
+  shells gain an image node (`@tiptap/extension-image`, serialised back to
+  `![alt](path)` by `tiptap-markdown`), and a resolver that turns a
+  project-relative target (`research/figure.png`) into something the shell
+  can display. Desktop: Tauri's asset protocol is enabled in
+  `tauri.conf.json` (`app.security.assetProtocol.enable`), its scope is
+  granted at runtime to the open project's folder only
+  (`asset_protocol_scope().allow_directory`, revoked when the project
+  closes), the CSP `img-src` lists `asset:` and both `http://asset.
+  localhost` and `https://asset.localhost`, and the resolver uses
+  `convertFileSrc`. Web: `GET /api/asset?project=…&path=…`, gated to files
+  inside the open project (same gate as the other project routes).
+  Imported images therefore display, survive an edit and a save, and
+  reopen. This also fixes the same loss for Markdown a writer brings in
+  today. The desktop part is verified in the built shell (CI's Tauri
+  Bundles or the owner), since this machine does not build the Tauri crate.
+- **Anchors and document links the editor keeps** (R4-4). A new
+  `AnchorNode` (inline atom, `<span class="anchor" id="…"></span>`, parsed
+  and serialised as that HTML exactly as `FootnoteNode` does) preserves an
+  identifier through open, edit and save; compile's Lua turns it into a
+  Pandoc `Span` with that identifier so DOCX gets a bookmark. The `Link`
+  extension is configured (`isAllowedUri`) to accept project-relative
+  targets (no scheme, no `..`, a `.md` path optionally followed by
+  `#fragment`) instead of discarding them, and clicking such a link opens
+  that document in the binder.
+- **Compile finds project images** (R3-12). Core writes the combined
+  manuscript to the system temporary folder and runs Pandoc there, so a
+  project-relative image is "not fetched" and replaced by its description.
+  `compile` passes `--resource-path=<project root>` and the stored
+  project-relative convention is the one it resolves; DOCX/ODT output
+  embeds the image.
+- **Compile resolves links between documents, per document** (R3-10,
+  R4-5). Links from one document to another (`manuscript/two.md#two`, the
+  converter's form and the split's) stay literal paths in the compiled
+  output, and a global fragment lookup would land on the first `#
+  introduction` of two. Compile therefore stops concatenating text: each
+  included document is written under its project-relative path inside the
+  temporary compile folder (title page and separators as further files)
+  and Pandoc is run with `--file-scope`, which parses each file on its own,
+  prefixes every identifier with its file name so two documents' `#
+  introduction` stay distinct, and adjusts links to other files'
+  identifiers (`manuscript/two.md#two`) to the prefixed internal anchor.
+  Slice 3's first task is to confirm that behaviour on the installed
+  Pandoc 3.11 against links to a file, to a file's fragment, and to a file
+  not included in the compile; whatever `--file-scope` does not do, the
+  compile Lua filter does with the same per-file prefixes, and a link to a
+  document outside the compile becomes its text alone. A native project
+  with no imports compiles to the same output as before (regression test
+  on an existing sample).
+- **Markdown-bodied footnotes** (R3-8): the `data-format="markdown"`
+  reading in `cs-footnotes.lua` and the attribute round trip in
+  `FootnoteNode`, as described in slice 4.
+
+Core changes stay inside `crates/core/src/core/compile.rs`,
+`cs-footnotes.lua` and the new `publish_imported`; no format change. This
+slice lands **before** Import File (R4-8): slice 4's acceptance tests run
+imported content through this editor and this compile.
+
+### Slice 4 — Import File reads everything Pandoc reads, split optional
 
 Inside a project, both shells:
 
@@ -272,10 +360,18 @@ Inside a project, both shells:
   research files (file beside its `.meta` sidecar, written through core)
   before the staging folder is removed, and the image targets in the text
   are rewritten to them (stored project-relative, `research/<file>`, the
-  converter's convention). A Lua filter on the read side
+  converter's convention). **Order of work inside Pandoc's model** (R4-7):
+  media targets, identifiers and links are mapped and rewritten first,
+  while notes are still `Note` nodes whose links the walk can see; only
+  then does the note filter run. That filter
   (`crates/services/src/cs-import-notes.lua`, the inverse of core's
   `cs-footnotes.lua`) turns every Pandoc `Note` into the editor's footnote
-  element. Today that element's `data-body` is plain text, so a note with
+  element, emitted exactly as Pandoc's Markdown reader would produce it
+  from the editor's own file: three inlines, `RawInline("<sup class=
+  \"footnote\" data-body=\"…\">")`, `Str("●")`, `RawInline("</sup>")`,
+  so compile's filter finds the closing tag it expects. The Markdown writer
+  runs as `markdown-raw_attribute` so raw HTML is written literally rather
+  than as `` `…`{=html} ``, which the editor would show as code (R4-3). Today that element's `data-body` is plain text, so a note with
   emphasis, a link or a list would be flattened (R3-8). The element gains
   an optional `data-format="markdown"` attribute: when present, the body is
   Markdown (the note's blocks written with `pandoc.write(…, "markdown")`)
@@ -294,8 +390,11 @@ Inside a project, both shells:
   (with the media and note filters above), top-level `Div` wrappers that
   hold a level-one `Header` are hoisted so `<section><h1>` HTML and fenced
   Divs split like plain headings; a hoisted wrapper's identifier is not
-  lost: it becomes an empty anchor span `[]{#id}` at the start of the
-  heading it wrapped (R3-9). The block list is cut at each level-one
+  lost: it becomes an anchor element at the start of the heading it
+  wrapped, in the form the editor keeps (`<span class="anchor"
+  id="part-two"></span>`, the `AnchorNode` of slice 3; a bracketed
+  `[]{#id}` span would be flattened to visible text on the editor's next
+  save, R3-9, R4-4). The block list is cut at each level-one
   `Header` at that level only (headings inside block quotes, lists or notes
   are not boundaries). Each part is written back with `pandoc -f json -t
   markdown`. Before writing, a map of *every* identifier in each part
@@ -312,43 +411,6 @@ Inside a project, both shells:
   with fewer than two such headings imports whole with a one-line notice.
   Off: today's single document, unchanged bytes for Markdown and plain
   text.
-
-### Slice 4 — what imports create survives the editor and compile
-
-Three gaps the reviews found are not in the importers but in what receives
-their output (R3-8, R3-10, R3-11, R3-12). Without this slice the promises
-above would be broken the first time a writer saved or compiled.
-
-- **Images in the editor** (R3-11). The editor registers no image node, so
-  a Markdown image is dropped the moment a document is saved. Both shells
-  gain an image node (TipTap's `Image`, serialised back to
-  `![alt](path)`), and a resolver that turns a project-relative target
-  (`research/figure.png`) into something the shell can display: the
-  desktop uses Tauri's asset protocol (`convertFileSrc`) on the project
-  folder; the web shell gets `GET /api/asset?project=…&path=…`, gated to
-  files inside the open project (same gate as the other project routes).
-  Imported images therefore display, survive an edit and a save, and
-  reopen. This also fixes the same loss for Markdown a writer brings in
-  today.
-- **Compile finds project images** (R3-12). Core writes the combined
-  manuscript to the system temporary folder and runs Pandoc there, so a
-  project-relative image is "not fetched" and replaced by its description.
-  `compile` passes `--resource-path=<project root>` and the stored
-  project-relative convention is the one it resolves; DOCX/ODT output
-  embeds the image.
-- **Compile resolves links between documents** (R3-10). Links from one
-  document to another (`manuscript/two.md#two`, the converter's form and
-  the split's) stay literal paths in the compiled output. Each compiled
-  section now opens with an empty anchor span named for the document
-  (`[]{#doc-<stem>}`); a link to an included document becomes `#<fragment>`
-  when the fragment exists in the compiled text, else `#doc-<stem>`; a link
-  to a document that is not part of the compile becomes its text alone.
-- **Markdown-bodied footnotes** (R3-8): the `data-format="markdown"`
-  reading in `cs-footnotes.lua` and the attribute round trip in
-  `FootnoteNode`, as described in slice 3.
-
-Core changes stay inside `crates/core/src/core/compile.rs`,
-`cs-footnotes.lua` and the new `publish_imported`; no format change.
 
 ### Slice 5 — other writing apps' project formats (one slice each; first pass: free apps only)
 
@@ -467,7 +529,10 @@ coding.
       project at `outputPath` are each refused and left byte-for-byte
       untouched; after a successful import the returned `Project.path`
       names the final folder, no `.importing-*` entry remains, and the
-      project can be opened, edited and a revision saved. Markdown folder:
+      project can be opened, edited and a revision saved; with the
+      post-commit token failure injected, the web route answers the tagged
+      `PublishedNotOpened` and the UI store (mocked command) adds the path
+      to recents, opens nothing and shows the message. Markdown folder:
       nested folders become binder folders in sorted order; duplicate names
       are disambiguated; one unreadable file among three is reported in the
       warnings and the other two import; a tree with no readable file
@@ -475,24 +540,37 @@ coding.
 - [ ] `crates/services` import content: a DOCX with an embedded image
       imports with the image as an attachment and a project-relative
       target after the upload is deleted; a DOCX with two footnotes imports
-      as two editor footnote elements and no `[^n]` label; a footnote with
-      emphasis, a link and a list imports with `data-format="markdown"`
-      and compiles (core) to a note with that emphasis, link destination
-      and list; a plain-text note without the attribute compiles exactly
+      as two editor footnote elements and no `[^n]` label, and the
+      importer's actual Markdown output, saved through the editor, still
+      compiles to two notes (no `` `…`{=html} `` code spans); a footnote
+      with emphasis, a link and a list imports with
+      `data-format="markdown"` and compiles (core) to a note with that
+      emphasis, link destination and list; a footnote in chapter one whose
+      link targets chapter two is rewritten like any other link and
+      compiles correctly with chapter two excluded; a plain-text note without the attribute compiles exactly
       as today; two imported chapters each holding a footnote compile to
       two distinct notes.
-- [ ] `crates/core` compile (slice 4): a project-relative image compiles
+- [ ] `crates/core` compile (slice 3): a project-relative image compiles
       into DOCX and ODT output as an embedded picture while the test runs
       from another working directory; a link to an included document's
       heading becomes a local anchor that exists in the output, a link to
       the document itself resolves to its anchor, a link to an excluded
-      document becomes its text.
-- [ ] UI editor (slice 4): a document with `![Figure](research/figure.png)`
+      document becomes its text; two included documents each headed
+      `# Introduction` keep two distinct anchors and a link to the second
+      lands on the second (asserted on the destination's text, not on the
+      existence of some anchor); an existing sample project compiles to the
+      same DOCX structure as before the change (no added empty paragraphs).
+- [ ] UI editor (slice 3): a document with `![Figure](research/figure.png)`
       opens, the image node is present, an edit and a save keep the image
       line byte-for-byte, and the resolver produces the asset URL for each
       shell; the web asset route refuses a path outside the project; a
       footnote with `data-format="markdown"` round-trips its attribute and
-      body unchanged through parse and serialise.
+      body unchanged through parse and serialise; an anchor element and a
+      link to `manuscript/two.md#two` survive open, edit and save
+      byte-for-byte, and clicking the link opens that document; the Tauri
+      asset scope is granted for the open project and refused for a path
+      outside it (unit test on the scope call; display verified in the
+      built shell).
 - [ ] `crates/services` split: three top-level headings → three documents
       in order plus front matter; a footnote referenced in chapter one and
       defined after chapter two stays in chapter one, and the two chapters
@@ -636,3 +714,18 @@ coding.
   links literal (R3-10), the editor drops images on save (R3-11) and
   compile cannot fetch project images (R3-12): new slice 4 "what imports
   create survives the editor and compile"; app formats become slice 5.
+- 2026-10-27 review round 4 (`plan-4`, `20ffe17`): reopened; R2-1, R3-1,
+  R3-3, R3-4, R3-6, R3-7, R3-8, R3-12 closed; eight findings, all
+  admitted after checking: `RLIMIT_AS` is unusable on macOS because of the
+  6 GiB shared region (R4-1: parent-side watchdog there, Job Object on
+  Windows via `CreateProcessW`, sync `main` dispatch); the
+  not-opened outcome had no shell contract (R4-2: tagged `ImportOutcome`
+  to the store); Pandoc's Markdown writer emits raw HTML as
+  `` `…`{=html} `` (R4-3: `markdown-raw_attribute`, three-inline element);
+  the editor flattens `[]{#id}` and discards relative links (R4-4:
+  `AnchorNode`, `Link` accepts project-relative targets); a global
+  fragment lookup lands on the wrong document (R4-5: per-file compile with
+  `--file-scope`); the desktop asset protocol is not enabled (R4-6);
+  encoding notes before the link walk hides their links (R4-7: notes
+  encoded last); slice 3's tests needed slice 4 (R4-8: the consumer slice
+  is now slice 3 and lands first).

@@ -3,8 +3,8 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 3 reopened (2026-10-27); third
-revision committed, round 4 pending
+**Status**: In progress — rounds 1 to 4 reopened (2026-10-27); fourth
+revision committed, round 5 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -159,7 +159,54 @@ Declined: none. Scope note: round 3 moved three engine additions into the
 plan (publication API, compile link and image resolution, Markdown-bodied
 notes); the phase check now says so instead of "no engine change".
 
+## Round 4 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17e0e-5484-7f30-bd0c-efc176e0805b`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `20ffe17496b60e8f8fa9756d2ca0d8a582c09cd4` (third
+  revision)
+- **Base SHA**: `fa9a445a9bc8df71b855a093033563c8c9f90aac` (round-3 head)
+- **Dispatched**: 2026-10-27 15:50 UTC; finished 16:07 UTC; exit 0;
+  181,564 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `20ffe17…`; both succeeded. The reviewer ran Pandoc 3.11 probes
+  (`--resource-path` embedding the image in DOCX and ODT from another
+  directory; the Markdown writer's `` `…`{=html} `` output for a raw
+  footnote element; duplicate heading identifiers across concatenated
+  documents), locked-editor round trips (`[]{#id}` flattened, a relative
+  `.md#` link dropped, an empty identified span discarded), the PAX
+  fixtures and a Linux `RENAME_NOREPLACE` probe. macOS limits were read
+  from XNU source; the Tauri shell and the proposed Image dependency were
+  not built. No repository file changed; no remote contacted.
+- **Verdict**: `reopened`. Closed: R2-1, R3-1, R3-3, R3-4, R3-6, R3-7,
+  R3-8, R3-12. Not closed: R1-1, R1-3, R2-3, R2-11, R2-13, R3-2, R3-5,
+  R3-9, R3-10, R3-11 (each mapped to a round-4 finding below).
+
+## Round 4 findings and dispositions
+
+Each checked against the working tree or the cited source before
+acceptance (orchestrator, 2026-10-27).
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R4-1 | A fresh macOS worker maps the 6 GiB shared region, so `RLIMIT_AS` 1 GiB is refused | HIGH | XNU `shared_region.h`, `vm_map.c` as cited (source reading) | Admitted: Linux `RLIMIT_AS` + watchdog, macOS parent-side RSS watchdog, Windows Job Object via `CreateProcessW`; dispatch in a sync `main`; macOS/Windows runs required before done |
+| R4-2 | `ImportedButNotOpened` contradicted the `{ project, warnings }` contract and the store's settle code | MEDIUM | `projectStore.ts:105` reads `project.name` | Admitted: tagged `ImportOutcome` through services, both transports and the store |
+| R4-3 | The Markdown writer emits a raw-HTML inline as `` `…`{=html} `` | HIGH | Pandoc 3.11 probe | Admitted: `markdown-raw_attribute`; element emitted as three inlines as the reader would produce |
+| R4-4 | The editor flattens `[]{#id}`, drops relative `.md#` links and empty identified spans | MEDIUM | reviewer's locked-dependency round trips; `Editor.tsx:356` Link config | Admitted: `AnchorNode`; `Link.isAllowedUri` accepts project-relative targets; click opens the document |
+| R4-5 | A global fragment lookup lands on the first of two `#introduction`s; `doc-<stem>` collides across folders | MEDIUM | Pandoc identifier disambiguation `introduction-1` | Admitted: per-file compile with `--file-scope` (verified first thing in the slice; Lua fallback) |
+| R4-6 | The desktop asset protocol is not enabled and the CSP lists only one origin | MEDIUM | `tauri.conf.json:21`, `Cargo.toml:17` | Admitted: enable, runtime scope per open project, both origins in CSP; verified in the built shell |
+| R4-7 | Encoding notes before the link walk hides their links from the rewrite | MEDIUM | filter order as written | Admitted: media/identifier/link rewriting first, note encoding last |
+| R4-8 | Slice 3's acceptance criteria needed slice 4 | MEDIUM | plan text | Admitted: the consumer slice becomes slice 3 and lands first; Import File is slice 4 |
+
+Declined: none. Reviewer notes carried into the plan: stable
+`std::process` cannot provide the primary-thread handle needed to assign a
+Job Object before resume, so the Windows launch uses `CreateProcessW`
+directly; final-path token re-acquisition is necessary and recents use the
+returned path; no other persisted creation-path dependency was found.
+
 ## Closeout
 
-Pending: round 4 review of the third revision (same reviewer, fresh
-session, pins base = round-3 head `fa9a445`, head = the revision commit).
+Pending: round 5 review of the fourth revision (same reviewer, fresh
+session, pins base = round-4 head `20ffe17`, head = the revision commit).
