@@ -251,6 +251,15 @@ existing `/api/import-upload` (one document into an open project) stays.
   sorted by name, duplicate document names disambiguated by suffix) and
   returns an `ImportReport` whose warnings name every skipped file, so the
   browser shows them; a tree with no readable document fails the import.
+  Links between the folder's files are kept working (R12-2): destination
+  paths are allocated for every file first, then each file's links are
+  resolved relative to that file's position in the source tree and
+  rewritten through the source → destination map to the project-relative
+  form compile resolves (`manuscript/two.md#second`), fragments kept;
+  a link to a file that was not imported is left as it was and named in
+  the warnings. The rewrite happens in Pandoc's model (read to JSON,
+  rewrite `Link` targets, write with `formats::MARKDOWN_WRITER`) so link
+  syntax inside code is untouched.
 - Route body limit 512 MiB (research folders hold PDFs); over it, 413 and
   the UI points at the on-this-machine folder path, which stays.
 - Answers the tagged `ImportOutcome` above (`Opened` carries `{ project,
@@ -582,8 +591,15 @@ Inside a project, both shells:
   id="part-two">`) is folded into the same scheme: links to the wrapper and
   to its heading both go to the heading's `{#S<n>}`, so no anchor span is
   placed inside a heading, where LaTeX would give it no label (R9-5); the
-  `AnchorNode` stays for anchors that stand on their own. A link whose
-  target identifier exists nowhere is left as it was. Document
+  `AnchorNode` stays for anchors that stand on their own. Any other
+  identified inline that a link in some part points at (a bracketed span
+  `[text]{#spot}`, an identified link or image) is written in the form the
+  editor keeps (R12-1): an `AnchorNode` element (`<span class="anchor"
+  id="spot"></span>`) immediately before the element, which itself loses
+  the identifier (the editor would flatten `[text]{#spot}` to visible
+  brackets on its first save); the anchor's identifier is reserved like
+  any other. A link whose target identifier exists nowhere is left as it
+  was. Document
   metadata (`meta`: title, author,
   date, anything else) is not dropped: title, author and date open the
   "Front matter" document as a heading and lines, and the full metadata is
@@ -723,7 +739,10 @@ coding.
       nested folders become binder folders in sorted order; duplicate names
       are disambiguated; one unreadable file among three is reported in the
       warnings and the other two import; a tree with no readable file
-      fails.
+      fails; `one.md` linking to `two.md#second`, a nested `part/ch.md`
+      linking to `../intro.md`, and a link into a disambiguated file all
+      compile to working links after import, and a link to a file that was
+      not imported is left as written and named in the warnings (R12-2).
 - [ ] `crates/services` import content: a DOCX with an embedded image
       imports with the image as an attachment and a project-relative
       target after the upload is deleted; a DOCX with two footnotes imports
@@ -751,8 +770,9 @@ coding.
       document itself lands at its start for a document opening with a
       heading (the heading's own label), with a paragraph, with a code
       block (the recorded empty paragraph), with a bullet list, with a
-      block quote, and for a document holding only reference definitions
-      (R11-1), in all five writers; a link to an excluded document
+      block quote, with a definition list, with a line block, and for a
+      document holding only reference definitions (R11-1), in all five
+      writers; a link to an excluded document
       becomes its text; two documents each headed `# Introduction` and a
       link to the second lands on the second, while a native bare
       `#introduction-1` link still lands where it does today; document B
@@ -765,11 +785,10 @@ coding.
       link to the explicit one lands on the second (R9-3); a reference
       definition carrying `{#linkid}` in B used from A does not disturb A's
       targets; two documents with explicit `{#target}` resolve separately;
-      the split's `{#S1}` heading is found by explicit identifier and the
-      written Markdown of the split contains the attribute (R9-4); a part
-      that already contains `[anchor]{#S1}` gets its linked heading a
-      different `S<n>` and both resolve after an editor save and compile
-      (R10-5); a link to
+      a handwritten heading `# Two {#S1}` is found by explicit identifier
+      and a handwritten `[x]{#S2}` beside a generated `s2`-free heading
+      resolves separately (the splitter's own output is tested in slice 4,
+      R12-3); a link to
       a hoisted `<section id="part-two">` wrapper lands on its heading with
       a LaTeX `\label` (R9-5); a link to an identified table in the middle
       of a document lands there (never at the document's start, R8-4), as
@@ -823,7 +842,13 @@ coding.
       B's files after switching from A (display verified in the built
       shell).
 - [ ] `crates/services` split: three top-level headings → three documents
-      in order plus front matter; a footnote referenced in chapter one and
+      in order plus front matter; the written Markdown of a linked heading
+      contains its `{#S<n>}` attribute (R9-4) and a part that already
+      contains `[anchor]{#S1}` gets its linked heading a different `S<n>`
+      (R10-5); a link to `<span id="spot">` in another chapter is written
+      as an `AnchorNode` element before the text, and the whole result
+      survives editor save and reopen and compiles to a working link
+      (R12-1); a footnote referenced in chapter one and
       defined after chapter two stays in chapter one, and the two chapters
       compile to two distinct notes; a reference-style link shared by two
       chapters resolves in both; a link from chapter one to a heading in
@@ -1107,3 +1132,13 @@ coding.
   `Plain`+`Span` before any first block without direct inlines and as the
   only block of an empty section). The `pandoc.read` call form that
   honours the diagnostic extensions is recorded.
+- 2026-10-27 review round 12 (`plan-4`, `92eca42`): reopened on three
+  import-side findings after an end-to-end read; R11-1, R3-10 and R6-2
+  closed, all 25 destination probes passed. Admitted: the split wrote
+  bracketed spans the editor flattens on save (R12-1: identified inlines a
+  link points at are written as `AnchorNode` elements); the Markdown-folder
+  import copied links between files unchanged, so they failed compile's
+  gate (R12-2: source → destination remap in Pandoc's model); slice 3's
+  tests named splitter behaviour (R12-3: moved to slice 4, handwritten
+  fixtures stay in slice 3). Definition lists and line blocks join the
+  section-start fixtures.

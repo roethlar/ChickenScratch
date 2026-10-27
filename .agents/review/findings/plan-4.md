@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 11 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; twelfth
-revision committed, round 12 pending
+**Status**: In progress — rounds 1 to 12 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; thirteenth
+revision committed, round 13 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -527,7 +527,41 @@ stated for ASCII only.
 Declined: none. Carried into the plan: the working `pandoc.read` call
 form.
 
+## Round 12 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17e8c-f1ad-78e2-b213-a307b3072862`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `92eca42d8ff785357cb0f9259ead2eb7760bd4ef` (twelfth
+  revision)
+- **Base SHA**: `0a329baf908d09af1e5d309b4e195ed132038386` (round-11 head)
+- **Dispatched**: 2026-10-27 18:08 UTC; finished 18:17 UTC; exit 0;
+  142,864 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `92eca42…`; both succeeded. The reviewer ran 25 destination probes on
+  Pandoc 3.11 (`Plain`+`Span` before a list, block quote, definition list,
+  line block and as an empty section's only block, in DOCX, ODT, HTML,
+  EPUB and LaTeX; all passed, all failed with the destination removed),
+  confirmed the revised `pandoc.read` form, ran the locked editor on a
+  bracketed span (flattened to `\[…\]{#spot}`), and read the whole plan
+  end to end, all five slices. No repository file changed; no remote
+  contacted.
+- **Verdict**: `reopened` on three findings. Closed: R11-1, R3-10, R6-2
+  (the compile design has no open finding).
+
+## Round 12 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R12-1 | The split writes `[text]{#spot}` for identified spans; the editor flattens it to visible brackets on save | MEDIUM | reviewer's editor probe with the locked dependencies | Admitted: identified inlines a link points at are written as `AnchorNode` elements before the element |
+| R12-2 | The Markdown-folder import copies links between files unchanged; `two.md#second` fails compile's exact-path gate | MEDIUM | `io.rs:271`; reviewer's DOCX relationship probe | Admitted: destination paths allocated first, links resolved relative to each source file and rewritten in Pandoc's model |
+| R12-3 | Slice 3's tests named the splitter's writer and allocation, which slice 4 implements | MEDIUM | plan text | Admitted: handwritten fixtures stay in slice 3; splitter assertions move to slice 4 |
+
+Declined: none. Carried into the plan: definition lists and line blocks
+join the section-start fixtures.
+
 ## Closeout
 
-Pending: round 12 review of the twelfth revision (same reviewer, fresh
-session, pins base = round-11 head `0a329ba`, head = the revision commit).
+Pending: round 13 review of the thirteenth revision (same reviewer, fresh
+session, pins base = round-12 head `92eca42`, head = the revision commit).
