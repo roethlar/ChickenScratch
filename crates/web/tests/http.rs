@@ -330,7 +330,8 @@ async fn every_tauri_command_name_is_in_the_table() {
             "{name} is missing from the command table"
         );
     }
-    assert_eq!(chickenscratch_web::commands::COMMAND_NAMES.len(), 75);
+    // 75 before PLAN_SCRIVENER_UPLOAD slice 3 added `close_project`.
+    assert_eq!(chickenscratch_web::commands::COMMAND_NAMES.len(), 76);
 }
 
 #[tokio::test]
