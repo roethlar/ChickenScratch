@@ -151,6 +151,13 @@ pub fn compile(
     cmd.arg("-o").arg(output_path);
     cmd.arg("--standalone");
     cmd.arg("--lua-filter").arg(&temp_filter);
+    // Images are stored project-relative (`research/figure.png`, the
+    // converter's convention). Pandoc resolves a relative image against its
+    // resource path, which defaults to the working directory; the combined
+    // manuscript lives in the system temp folder, so without this every
+    // project image was "not fetched" and replaced by its description
+    // (PLAN_SCRIVENER_UPLOAD slice 3, review finding plan-4 R3-12).
+    cmd.arg("--resource-path").arg(project_path);
 
     if let Some(t) = title {
         cmd.arg("--metadata").arg(format!("title={}", t));

@@ -63,6 +63,86 @@ fn compile_html_uses_ordering_title_page_separator_and_pandoc_args() {
         .map(|pair| pair[1].to_string())
         .expect("--lua-filter argument");
     assert!(filter.ends_with(".lua"), "{filter}");
+    // Project images are stored project-relative, so Pandoc must look for
+    // them in the project folder, not in the temp folder holding the
+    // combined manuscript (PLAN_SCRIVENER_UPLOAD slice 3, plan-4 R3-12).
+    assert_arg_pair(&args, "--resource-path", &project_path.to_string_lossy());
+}
+
+/// A project-relative image compiles into the output as an embedded picture
+/// even though the test runs from the crate directory and Pandoc from the
+/// temp folder: neither is the project folder, so only `--resource-path`
+/// can find `research/figure.png`. Skipped (with a printed line) where
+/// Pandoc is absent, which is CI.
+#[test]
+fn compile_embeds_project_relative_images_in_docx_and_odt() {
+    if !pandoc_present() {
+        eprintln!(
+            "skipping compile_embeds_project_relative_images_in_docx_and_odt: pandoc not installed"
+        );
+        return;
+    }
+    let temp_dir = TempDir::new().unwrap();
+    let project_path = create_image_project(temp_dir.path());
+
+    for (format, media_entry) in [("docx", "word/media/"), ("odt", "Pictures/")] {
+        let output_path = temp_dir.path().join(format!("figure.{format}"));
+        compile(&project_path, &output_path, format, None, None, None).unwrap();
+        // Both formats are zip containers; entry names sit in the central
+        // directory as plain bytes, so the picture's presence is visible
+        // without a zip reader.
+        let bytes = fs::read(&output_path).unwrap();
+        let listing = String::from_utf8_lossy(&bytes);
+        assert!(
+            listing.contains(media_entry),
+            "{format}: no {media_entry} entry; the image was not embedded"
+        );
+    }
+}
+
+/// One manuscript document showing `research/figure.png`, plus the file.
+fn create_image_project(root: &Path) -> PathBuf {
+    let project_path = root.join(format!("ImageFixture-{}.chikn", uuid::Uuid::new_v4()));
+    let mut project = create_project(&project_path, "Image Fixture").unwrap();
+    let token = acquire_write_token(&project_path).unwrap();
+    let doc = Document {
+        id: "doc-figure".to_string(),
+        name: "Figure".to_string(),
+        path: "manuscript/figure.md".to_string(),
+        content: "Before.\n\n![A figure](research/figure.png)\n\nAfter.\n".to_string(),
+        created: "2026-01-01T00:00:00Z".to_string(),
+        modified: "2026-01-01T00:00:00Z".to_string(),
+        ..Default::default()
+    };
+    project.documents.insert(doc.id.clone(), doc.clone());
+    project.hierarchy.push(TreeNode::Document {
+        id: doc.id.clone(),
+        name: doc.name.clone(),
+        path: doc.path.clone(),
+    });
+    token
+        .with_write_permit(&project_path, |permit| write_project(&mut project, permit))
+        .unwrap();
+    // A 1x1 PNG, the smallest valid picture Pandoc will embed.
+    const PNG_1X1: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    fs::write(project_path.join("research").join("figure.png"), PNG_1X1).unwrap();
+    project_path
+}
+
+fn pandoc_present() -> bool {
+    std::process::Command::new("pandoc")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 #[test]
