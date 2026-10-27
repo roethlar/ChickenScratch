@@ -270,10 +270,15 @@ existing `/api/import-upload` (one document into an open project) stays.
   and compile load only lowercase `.md`, so `.markdown`, `.txt` and `.MD`
   sources would otherwise sit on disk unloaded). Each document's `.meta`
   sidecar records `source_path: part/Ch.markdown`. Source paths pass the
-  same grammar and case-folded collision registry as archive entries,
-  for archives and for the on-this-machine folder alike (so `a\b.md` and
-  `a/b.md`, or two stems that differ only by extension, are refused up
-  front rather than colliding in core). The binder *names* are
+  same grammar as archive entries, and the import then allocates the
+  **complete destination namespace** before writing anything: every
+  document file, every `.meta` sidecar core will create beside it, and
+  every ancestor folder, in one case-folded registry; any two entries that
+  coincide (`a\b.md` and `a/b.md`; `ch.md` and `ch.txt`; a source folder
+  `a.meta/` beside a source file `a.txt`, whose sidecar core would place
+  at `a.meta`, R17-1) are refused up front with a message naming both
+  sources, for archives and for the on-this-machine folder alike, rather
+  than failing inside core. The binder *names* are
   disambiguated for display only. Links keep their original relative
   targets (`two.txt#second`, `../intro.markdown`): compile (slice 3, step
   1) and the editor resolve a relative target in *source space*, against
@@ -354,13 +359,18 @@ gap is in scope here, with the design below.
   characters; `..` segments allowed) instead of discarding it, so the mark
   survives parsing in every mode, Flow included, where the editor holds
   several documents at once and `isAllowedUri` is given no position
-  (R16-4). Containment and navigation are decided at click time, from the
-  containing document: the open document in single-document mode, the
-  enclosing Flow section's document (`FlowBoundary` carries
-  `data-doc-id`) in Flow mode; the target is resolved by the same rule as
-  compile (root-anchored, else relative in source or project space) and
-  must land inside the project, else the click does nothing and the link
-  text is left alone.
+  (R16-4). Containment and navigation are decided at click time. In
+  single-document mode the containing document is the open one and the
+  target is resolved by the same rule as compile (root-anchored, else
+  relative in source or project space) and must land inside the project.
+  In Flow mode the editor holds several documents and its boundary markers
+  do not survive the Markdown round trip as positions a click could
+  consult (R17-3), so Flow uses the same agreement rule as compile's notes:
+  a root-anchored target always resolves; a relative target resolves only
+  when every document in the flow resolves it to the same document;
+  otherwise the click shows "Open this document on its own to follow the
+  link" and changes nothing. In every case a target that would leave the
+  project does nothing and the link text is left alone.
 - **Compile finds project images** (R3-12). Core writes the combined
   manuscript to the system temporary folder and runs Pandoc there, so a
   project-relative image is "not fetched" and replaced by its description.
@@ -394,15 +404,17 @@ gap is in scope here, with the design below.
      and when both a relative and a root reading would resolve, the
      relative one wins and compile emits a named warning naming the link so
      the writer can anchor it. Which document contains a link is known from
-     the markers of step 2; a link inside a footnote belongs to the document
-     that *defines* the note, not the one that renders it (R16-3): compile
-     learns which document defines each note label from a line-start scan
-     of every document's text for `[^label]:` outside fenced code (a label
-     defined in several documents belongs to the last in compile order, the
-     definition Pandoc uses), and resolves the note's relative links from
-     that document; when the scan finds no definition for a rendered note,
-     the rendering document is used and a failed resolution is reported by
-     name. For this first pass compile parses the marked text; if no
+     the markers of step 2. A link inside a footnote is the one case where
+     the containing document is not known: Pandoc renders a note where it
+     is referenced, its JSON `Note` carries no label, and no scan of the
+     text can tell reliably which document's definition it used (R16-3,
+     R17-2). So a *relative* link inside a note is resolved only when
+     every document folder from which it resolves at all yields the same
+     document; when two folders would yield different documents (a
+     `two.md` beside the referencing document and another beside the
+     defining one) the link becomes its text and compile emits a named
+     warning suggesting a root-anchored target. A root-anchored link inside
+     a note needs no provenance and always resolves. For this first pass compile parses the marked text; if no
      document link is found the markers' blocks are simply discarded and
      compile continues with today's invocation on the *unmarked* Markdown:
      no renaming, output as today. Native projects without document links
@@ -806,7 +818,11 @@ coding.
       `one.md` linking to `two.txt#second`, a nested `part/ch.md` linking to
       `../intro.markdown`, and a link into a file whose binder name was
       disambiguated all compile to working links and open the right
-      document from the editor (R12-2);
+      document from the editor (R12-2); a source tree with `a.txt` beside a
+      folder `a.meta/` is refused by name before anything is written
+      (R17-1); the converter writes root-anchored `scrivlnk` targets, its
+      existing link assertions are updated to that form, and a converted
+      sample compiles its links (R17-4);
       two files with distinct footnotes `[^alpha]` and `[^beta]` compile
       to two distinct note bodies (R13-1); a link to a file that was not
       imported is left as written and named in the warnings.
@@ -840,9 +856,11 @@ coding.
       second with the named warning (R16-2); a note defined in
       `manuscript/part/b.md` holding `[t](two.md#target)` and referenced
       from `manuscript/a.md`, with both `manuscript/two.md` and
-      `manuscript/part/two.md` present, reaches `manuscript/part/two.md`
-      (R16-3); a converter-produced project compiles its links through the
-      root-anchored form. Links between documents, each
+      `manuscript/part/two.md` present, becomes its text with the named
+      warning, and the same note with only one `two.md` anywhere resolves
+      to it, as does a root-anchored target inside a note (R16-3, R17-2); a handwritten project whose links use the
+      root-anchored form resolves them (the converter's own output is
+      asserted in slice 1, R17-4). Links between documents, each
       asserted on the destination's text in DOCX and HTML and on a matching
       `\label` in the LaTeX source and a bookmark in ODT: a link to an
       included document's heading lands on that heading; a link to the
@@ -914,9 +932,11 @@ coding.
       again and serialise again (newlines encoded as `&#10;`, decoded on
       read); an anchor element and a link to `manuscript/two.md#two`
       survive open, edit and save byte-for-byte, and clicking the link
-      opens that document; in Flow mode two sections from different
+      opens that document; in Flow mode two documents from different
       folders each holding `../intro.md` keep both links through save and
-      reopen and each click opens its own section's target (R16-4); the
+      reopen, a click resolves when both folders agree on the target and
+      shows the open-on-its-own notice when they do not, and a
+      root-anchored link always opens its document (R16-4, R17-3); the
       desktop asset handler (unit test on the
       request function with a fake state): serves a file inside the open
       project, refuses a path outside it, refuses everything once the
@@ -1258,3 +1278,19 @@ coding.
   `[^label]:`); the editor's URI rule had no document context in Flow mode
   (R16-4: syntax check at parse, containment and navigation at click from
   the enclosing Flow section).
+- 2026-10-27 review round 17 (`plan-4`, `250401e`): reopened on four
+  findings, all admitted after checking: a source folder `a.meta/` beside
+  `a.txt` collides with the sidecar core creates (R17-1: the whole
+  destination namespace, sidecars and ancestors included, is allocated
+  and checked first); a line-start scan cannot establish which document
+  defines a note and Pandoc's `Note` carries no label (R17-2: a relative
+  link inside a note resolves only when every candidate folder agrees,
+  else text with a named warning; root-anchored links always resolve);
+  Flow's boundary markers do not survive the editor round trip as
+  positions (R17-3: Flow uses the same agreement rule and otherwise
+  shows an open-on-its-own notice); the converter's root-anchored output
+  was asserted in slice 3 before slice 1 changes it (R17-4: moved to
+  slice 1, handwritten fixtures stay in slice 3). The reviewer confirmed
+  `fields.source_path` survives write, read and revision restore with
+  fidelity Full, and that `/manuscript/two.md#S1` survives reader, writer
+  and two editor cycles.

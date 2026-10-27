@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 16 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; seventeenth
-revision committed, round 17 pending
+**Status**: In progress — rounds 1 to 17 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; eighteenth
+revision committed, round 18 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -693,7 +693,43 @@ Declined: none. Carried into the plan: the fallback to today's invocation
 on unmarked Markdown is what keeps native output identical (discarding
 marker blocks from the marked parse would not).
 
+## Round 17 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17ebc-ae5c-7b30-8dd5-33aae2d99b16`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `250401e5efd019ff7a74bd30e1ac6afbfdc3df95` (seventeenth
+  revision)
+- **Base SHA**: `cf929479d864bdaefbca74781440601dcc0013a6` (round-16 head)
+- **Dispatched**: 2026-10-27 19:00 UTC; finished 19:09 UTC; exit 0;
+  115,809 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `250401e…`; both succeeded. The reviewer ran 76 converter tests, six
+  core field tests and the Corn write guard (all passing), probed core for
+  `fields.source_path` persistence (survives write, read and revision
+  restore, fidelity Full) and for the `a.meta/` sidecar collision, probed
+  Pandoc 3.11 for the footnote-definition scan (lazy continuation and
+  three-space indents disagree with the reader; `Note` JSON carries no
+  label) and for root-anchored links (kept by reader, writer and two
+  editor cycles), and probed the locked editor's Flow loading (boundary
+  comments discarded; no position-to-document mapping). No repository
+  file changed; no remote contacted.
+- **Verdict**: `reopened` on four findings. Closed: R16-1 (original
+  failures), R16-2. Not closed: R16-3, R16-4 (mapped below).
+
+## Round 17 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R17-1 | A source folder `a.meta/` beside `a.txt` collides with the sidecar core creates for `a.md` | MEDIUM | `writer.rs:804`; reviewer's core probe | Admitted: the complete destination namespace (files, sidecars, ancestors) is allocated and checked before writing |
+| R17-2 | The line-start scan assigns a note to the wrong document on lazy continuation or indentation, and `Note` JSON has no label to associate | MEDIUM | reviewer's Pandoc 3.11 table | Admitted: scan dropped; a relative link inside a note resolves only when every candidate folder agrees, else text with a named warning; root-anchored links always resolve |
+| R17-3 | `FlowBoundary` is a divider widget, not a wrapper, and the comments are discarded on load; no click position maps to a document | MEDIUM | `FlowBoundary.ts:36`, `Editor.tsx:495`; reviewer's editor probe | Admitted: Flow uses the agreement rule; otherwise an open-on-its-own notice |
+| R17-4 | Slice 3 asserted converter output in the root-anchored form before slice 1 changes the converter | MEDIUM | `converter/mod.rs:1268` and its tests at 2285, 2290 | Admitted: converter assertions move to slice 1; slice 3 keeps handwritten fixtures |
+
+Declined: none.
+
 ## Closeout
 
-Pending: round 17 review of the seventeenth revision (same reviewer, fresh
-session, pins base = round-16 head `cf92947`, head = the revision commit).
+Pending: round 18 review of the eighteenth revision (same reviewer, fresh
+session, pins base = round-17 head `250401e`, head = the revision commit).
