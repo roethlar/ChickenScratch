@@ -264,15 +264,29 @@ fn scan(root_c: &Value, root_d: &Value, secs: &[Section], nonce: &str) -> Scan {
         inside_header: None,
     };
     let mut meta_path = vec![Step::Key("meta")];
-    visit(
+    visit_meta_map(
         &root_c["meta"],
         &root_d["meta"],
         &mut meta_path,
-        &mut None,
         &mut meta_ctx,
         &mut out,
     );
     out
+}
+
+/// A map of metadata entries (the document's `meta`, or a `MetaMap`'s
+/// content): every value is a MetaValue, whatever its key. The map is known
+/// from its position, never guessed from its keys: a writer's own key named
+/// `t` once made the walk mistake the map for a tagged node and skip the
+/// rest of the metadata (review finding s3-8, repair review).
+fn visit_meta_map(c: &Value, d: &Value, path: &mut Vec<Step>, ctx: &mut Ctx, out: &mut Scan) {
+    let Some(map) = c.as_object() else { return };
+    for (key, value) in map {
+        let d_value = d.get(key).unwrap_or(&Value::Null);
+        path.push(Step::MetaKey(key.clone()));
+        visit(value, d_value, path, &mut None, ctx, out);
+        path.pop();
+    }
 }
 
 fn visit(
@@ -300,15 +314,10 @@ fn visit(
         }
         Value::Object(map) => {
             let kind = map.get("t").and_then(Value::as_str).unwrap_or("");
-            if !map.contains_key("t") {
-                // A map of metadata entries (the document's `meta`, a
-                // MetaMap's content): every value is a MetaValue.
-                for (key, value) in map {
-                    let d_value = d.get(key).unwrap_or(&Value::Null);
-                    path.push(Step::MetaKey(key.clone()));
-                    visit(value, d_value, path, &mut None, ctx, out);
-                    path.pop();
-                }
+            if kind == "MetaMap" {
+                path.push(Step::Key("c"));
+                visit_meta_map(&c["c"], &d["c"], path, ctx, out);
+                path.pop();
                 return;
             }
             if let Some(ap) = attr_path(kind) {

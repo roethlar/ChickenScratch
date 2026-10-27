@@ -684,3 +684,69 @@ fn encoded_bare_links_keep_duplicated_identifiers() {
         "the bare link is left as written"
     );
 }
+
+/// A writer's own metadata key named `t`, at the root or inside a nested
+/// map, must not stop the metadata walk: identifiers and links elsewhere in
+/// the metadata still take part (review finding s3-8, repair review).
+#[test]
+fn metadata_keys_named_t_do_not_hide_the_rest() {
+    if !pandoc_present() {
+        eprintln!("skipping: pandoc not installed");
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    // Root-level `t` beside a title carrying a duplicated identifier.
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "---\ntitle: \"[Title]{#same}\"\nt: auxiliary value\n---\n\n# Head {#same}\n\nBare [b](#same) and [two](b.md#S1).",
+            ),
+            doc("manuscript/b.md", "# Two {#S1}"),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        html.matches("id=\"same\"").count(),
+        2,
+        "both `same` kept despite a `t` key: {html}"
+    );
+    assert_eq!(href_of(&html, "b").as_deref(), Some("#same"));
+
+    // The only document link lives in the title, beside a `t` key.
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "---\ntitle: \"See [two](/manuscript/b.md)\"\nt: auxiliary value\n---\n\nBody.",
+            ),
+            doc("manuscript/b.md", "Second."),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let two = href_of(&html, "two").unwrap();
+    assert!(ids(&html).contains(two.trim_start_matches('#')), "{two}");
+
+    // A `t` key inside a nested map, next to an identifier the body shares.
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "---\nextra:\n  t: nested\n  more: \"[Aside]{#same}\"\n---\n\n# Head {#same}\n\nBare [b](#same) and [two](b.md#S1).",
+            ),
+            doc("manuscript/b.md", "# Two {#S1}"),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        href_of(&html, "b").as_deref(),
+        Some("#same"),
+        "the heading kept `same` because the nested metadata duplicate counted: {html}"
+    );
+}
