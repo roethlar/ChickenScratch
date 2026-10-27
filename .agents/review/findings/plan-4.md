@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 22 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; twenty-third
-revision committed, round 23 pending
+**Status**: In progress — rounds 1 to 23 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; twenty-fourth
+revision committed, round 24 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -870,8 +870,39 @@ Declined: none.
 
 Declined: none.
 
+## Round 23 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17ee5-8d60-7bb0-b03f-fe62e94bc330`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `2683ba36c03b355e2768b1c44a62617a93ef6fb3` (twenty-third
+  revision)
+- **Base SHA**: `bd0f61842ee39b0ae54da81fcf3df9593ec40b91` (round-22 head)
+- **Dispatched**: 2026-10-27 19:45 UTC; finished 19:49 UTC; exit 0;
+  84,927 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `2683ba3…`; both succeeded. The reviewer probed a duplicated identifier
+  (main text and footnote) in both document orders with today's
+  `cs-footnotes.lua` on Pandoc 3.11 across HTML, EPUB, DOCX, ODT and LaTeX:
+  HTML resolves to the main text in both orders, EPUB follows chapter
+  order, DOCX and ODT emit duplicate bookmarks in document order, LaTeX
+  emits duplicate labels at the reference positions; no office viewer or
+  TeX engine to verify viewer behaviour. Six core compile tests passed. No
+  repository file changed; no remote contacted.
+- **Verdict**: `reopened` on one finding. Not closed: R22-1, R21-2 (the
+  finding below).
+
+## Round 23 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R23-1 | Main-text-first precedence matches HTML but changes EPUB's destination when the note comes first; the DOCX, ODT and LaTeX claims were unverified | MEDIUM | reviewer's five-writer table on Pandoc 3.11 | Admitted: compile predicts no writer; duplicate identifiers targeted by a bare link keep their original strings and the link is left as written, so each writer gets today's input; document-qualified links to such elements use their own `Span` |
+
+Declined: none.
+
 ## Closeout
 
-Pending: round 23 review of the twenty-third revision (same reviewer,
-fresh session, pins base = round-22 head `bd0f618`, head = the revision
+Pending: round 24 review of the twenty-fourth revision (same reviewer,
+fresh session, pins base = round-23 head `2683ba3`, head = the revision
 commit).

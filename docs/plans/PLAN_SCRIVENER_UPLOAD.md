@@ -519,19 +519,21 @@ gap is in scope here, with the design below.
      unchanged); so two elements that Pandoc left with the same string (an
      explicit `{#introduction-1}` beside a generated `introduction-1`,
      R9-3) end with distinct bookmarks, and nothing can collide with a
-     document anchor. Every link whose target was a bare `#id` is resolved
-     the way the output resolves it today and rewritten to that element's
-     final identifier, so native navigation keeps exactly the target it has
-     today. "The way the output resolves it" is not plain document order
-     (R22-1): the writers place footnote contents after the main text, so
-     when a main-text element and a footnote element share `id` the first
-     element in document order *outside any note* wins, and only when no
-     element outside a note carries `id` does the first one inside a note
-     win. Which writer is in use does not change this choice: HTML and EPUB
-     emit notes at the end, DOCX and ODT give duplicate bookmarks the same
-     main-text-first precedence, and LaTeX duplicate labels resolve to the
-     first defined, which is the main text once notes are emitted as
-     `\footnote` bodies after their anchors.
+     document anchor. Bare `#id` links keep exactly the destination they
+     have today, by construction rather than by prediction (R22-1, R23-1):
+     when the combined parse holds exactly one element with identifier
+     `id`, that element is renamed and the bare link is rewritten to its
+     final identifier (one destination, no ambiguity); when it holds two or
+     more elements with identifier `id` and at least one bare link targets
+     `id`, those elements **keep their original identifier string
+     unchanged** and the bare link is left as written, so every writer
+     meets the same duplicate identifiers in the same order as today and
+     resolves them exactly as it does today (HTML's first-in-document,
+     EPUB's chapter routing, DOCX's and ODT's duplicate bookmarks, LaTeX's
+     duplicate labels; compile does not model any of them). A
+     document-qualified link to one of those duplicate-identifier elements
+     does not use the kept identifier: it gets a fresh materialised `Span`
+     destination by step 6's table, so it stays unambiguous.
   6. **Destinations every writer emits, placed where the target is.** The
      writer table from round 7, re-run and recorded at the start of the
      slice, decides how a resolved target is materialised: a `Header`
@@ -999,9 +1001,13 @@ coding.
       and the split output compiles with today's bare-link behaviour and no
       warning (R21-2), including when another document has a main-text
       heading `{#spot}` and a separate document link activates the renaming
-      path: the bare link lands on the main-text heading, as today's HTML
-      output does (asserted on the actual destination in HTML and DOCX,
-      R22-1); a footnote referenced in chapter one and
+      path: in both document orders and in all five writers, the bare link's
+      destination in the new output equals its destination in today's
+      output for the same input (HTML and EPUB by following the link to the
+      element it reaches; DOCX, ODT and LaTeX by the identical sequence of
+      duplicate bookmark or label names), and a document-qualified link to
+      either `spot` element lands on that element through its own `Span`
+      (R22-1, R23-1); a footnote referenced in chapter one and
       defined after chapter two stays in chapter one, and the two chapters
       compile to two distinct notes; a reference-style link shared by two
       chapters resolves in both; a link from chapter one to a heading in
@@ -1379,3 +1385,12 @@ coding.
   footnotes are emitted after the main text (R22-1: main-text elements
   take precedence over elements inside notes; fixture asserts the actual
   destination).
+- 2026-10-27 review round 23 (`plan-4`, `2683ba3`): reopened on one
+  finding: the main-text-first rule matches HTML but not EPUB's chapter
+  routing, and the per-writer claims for DOCX, ODT and LaTeX were
+  unverified (R23-1). Compile no longer predicts any writer: duplicate
+  identifiers targeted by a bare link keep their original strings and the
+  link is left as written, so each writer sees today's input and produces
+  today's destination; document-qualified links to such elements get their
+  own `Span`. The fixture compares destinations with today's output in
+  both orders across all five writers.
