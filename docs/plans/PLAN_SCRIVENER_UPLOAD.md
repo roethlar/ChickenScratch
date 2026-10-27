@@ -68,6 +68,12 @@ app runs on still goes in through the existing folder picker, untouched.
 
 ## [MODEL] Approach
 
+**Order of landing: 3, 1, 2, 4, 5.** Slice 3 (what the editor and compile
+must keep) lands first, because slice 1's Markdown-folder import and slice
+4's Import File both write footnote elements and anchor elements that slice
+3 teaches the editor and compile to preserve; with that order no slice's
+tests depend on a later one (R13-1).
+
 ### Slice 1 — the project door on the server
 
 `POST /api/import-project-upload` (`crates/web/src/project_upload.rs`); the
@@ -259,7 +265,13 @@ existing `/api/import-upload` (one document into an open project) stays.
   a link to a file that was not imported is left as it was and named in
   the warnings. The rewrite happens in Pandoc's model (read to JSON,
   rewrite `Link` targets, write with `formats::MARKDOWN_WRITER`) so link
-  syntax inside code is untouched.
+  syntax inside code is untouched. Because that round trip renumbers a
+  file's footnotes to `[^1]`, `[^2]`, two files' notes would collide when
+  compile concatenates them (R13-1); so, after the link rewrite and before
+  writing, the same note filter Import File uses (`cs-import-notes.lua`,
+  slice 4's description, landed with this slice) turns every `Note` into
+  the editor's footnote element with an entity-encoded body, and a file
+  whose links needed no rewrite is still copied byte for byte.
 - Route body limit 512 MiB (research folders hold PDFs); over it, 413 and
   the UI points at the on-this-machine folder path, which stays.
 - Answers the tagged `ImportOutcome` above (`Opened` carries `{ project,
@@ -288,12 +300,12 @@ existing `/api/import-upload` (one document into an open project) stays.
   how-to lines; troubleshooting covers "too large", "not a project" and
   "not an archive we read" (encrypted or RAR archives: re-save as zip).
 
-### Slice 3 — what imports create survives the editor and compile (lands before slice 4)
+### Slice 3 — what imports create survives the editor and compile (lands first)
 
 Four gaps the reviews found are not in the importers but in what receives
 their output (R3-8, R3-10, R3-11, R3-12). Without this slice the promises
-of slice 4 would be broken the first time a writer saved or compiled, so it
-lands first. The owner ruled (2026-10-27) that links between documents must
+of slices 1 and 4 would be broken the first time a writer saved or
+compiled, so it lands first. The owner ruled (2026-10-27) that links between documents must
 work in compiled output for the import to ship as a feature, so the fourth
 gap is in scope here, with the design below.
 
@@ -487,8 +499,8 @@ gap is in scope here, with the design below.
 
 Core changes stay inside `crates/core/src/core/compile.rs`,
 `cs-footnotes.lua` and the new `publish_imported`; no format change. This
-slice lands **before** Import File (R4-8): slice 4's acceptance tests run
-imported content through this editor and this compile.
+slice lands **first** (R4-8, R13-1): the acceptance tests of slices 1 and 4
+run imported content through this editor and this compile.
 
 ### Slice 4 — Import File reads everything Pandoc reads, split optional
 
@@ -664,7 +676,7 @@ coding.
 | `crates/web/src/project_upload.rs` (new), `app.rs`, `tests/http.rs` | streaming to a temp file, unpack, detector call, handler, own body limit |
 | `crates/cli/src/archive.rs` (new), `unpack.rs` (new), `detect.rs` (new), `lib.rs`, `main.rs`, `Cargo.toml` (+ `zip`, `sevenz-rust2`, `tar`, `flate2`), `Cargo.lock` | `unpack_archive` (format sniffing, header pre-checks, path/kind/size checks), the unpack worker (`--unpack-worker`, `BudgetAlloc` counting allocator, per-platform supplementary limits, JSON outcome with peak), `detect_project` |
 | `crates/core/src/core/project/publish.rs` (new), `compile.rs`, `cs-footnotes.lua` | `publish_imported` (read, exclusive rename, no fallback), `--resource-path`, document-link resolution (gate, block-count alignment with per-document parses, identifier renaming, target materialisation, rewrite), anchor elements as `Span`s, `data-format="markdown"` note bodies, entity decoding of the body attribute |
-| `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new), `cs-import-notes.lua` (new); `crates/web/src/commands.rs`, `main.rs`, `assets.rs` (new); `src-tauri/src/commands/*.rs`, `main.rs` | `import_project` (lock, existence check, temporary destination, core publication), recursive Markdown-folder import with warnings, the format registry with handlers, worker dispatch honoured first in every `main`, media extraction and attachment, notes to the editor's form with Markdown bodies, `.doc` step, model-level `split_headings`, the gated asset route |
+| `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new), `cs-import-notes.lua` (new, lands with slice 1); `crates/web/src/commands.rs`, `main.rs`, `assets.rs` (new); `src-tauri/src/commands/*.rs`, `main.rs` | `import_project` (lock, existence check, temporary destination, core publication), recursive Markdown-folder import with link rewrite and note conversion, the format registry with handlers, worker dispatch honoured first in every `main`, media extraction and attachment, notes to the editor's form with Markdown bodies, `.doc` step, model-level `split_headings`, the gated asset route |
 | `ui/src/components/editor/Editor.tsx`, `ImageNode.ts` (new), `AnchorNode.ts` (new), `FootnoteNode.ts`, `ui/src/platform.ts`; `src-tauri/src/assets.rs` (new), `tauri.conf.json`, `main.rs` | image node and serialisation, anchor node, project-relative links accepted and opened, project-asset URL resolver per shell, `data-format` round trip and entity-encoded body attribute, the `chikn-asset` scheme handler and CSP |
 | `ui/src/commands/web.ts`, `io.ts`, `project.ts`, `stores/projectStore.ts`, `ui/src/importFormats.json` (generated) | `importProjectUpload`, `importProject`, `split` flag, shared format and archive suffix lists |
 | `ui/src/components/welcome/ImportProjectDialog.tsx` (new), `Welcome.tsx`, `editor.css`, `platform.ts` | the chooser; desktop archive pick |
@@ -742,7 +754,11 @@ coding.
       fails; `one.md` linking to `two.md#second`, a nested `part/ch.md`
       linking to `../intro.md`, and a link into a disambiguated file all
       compile to working links after import, and a link to a file that was
-      not imported is left as written and named in the warnings (R12-2).
+      not imported is left as written and named in the warnings (R12-2);
+      two files with distinct footnotes `[^alpha]` and `[^beta]` and links
+      needing rewrite import, survive an editor save and reopen, and
+      compile to two distinct note bodies (R13-1); a file with no link to
+      rewrite is byte-identical after import.
 - [ ] `crates/services` import content: a DOCX with an embedded image
       imports with the image as an attachment and a project-relative
       target after the upload is deleted; a DOCX with two footnotes imports
@@ -1142,3 +1158,9 @@ coding.
   tests named splitter behaviour (R12-3: moved to slice 4, handwritten
   fixtures stay in slice 3). Definition lists and line blocks join the
   section-start fixtures.
+- 2026-10-27 review round 13 (`plan-4`, `5c87703`): reopened on one
+  finding; R12-1 to R12-3 closed (12 editor cases and 60 writer checks
+  passed). Admitted: the folder import's link rewrite renumbers footnotes,
+  so two files' notes collide at compile (R13-1: the shared note filter
+  runs after the rewrite, and the landing order becomes 3, 1, 2, 4, 5 so
+  the editor and compile already keep those elements when slice 1 lands).

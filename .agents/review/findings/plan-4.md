@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 12 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; thirteenth
-revision committed, round 13 pending
+**Status**: In progress — rounds 1 to 13 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; fourteenth
+revision committed, round 14 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -561,7 +561,37 @@ form.
 Declined: none. Carried into the plan: definition lists and line blocks
 join the section-start fixtures.
 
+## Round 13 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17e96-ca0c-78d2-b777-60c08c27b4e8`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `5c8770391ed12f6cf8b2510c5b763195e6c29dcc` (thirteenth
+  revision)
+- **Base SHA**: `92eca42d8ff785357cb0f9259ead2eb7760bd4ef` (round-12 head)
+- **Dispatched**: 2026-10-27 18:19 UTC; finished 18:26 UTC; exit 0;
+  100,181 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `5c87703…`; both succeeded. The reviewer ran 12 editor cases (anchor
+  elements through two save/reopen cycles, read back as explicit `Span`s)
+  and 60 writer-destination checks, the folder link rewrite (code literals
+  and fragments kept, `../` and disambiguated names handled, gate passed
+  against core-loaded paths), and found the footnote renumbering below with
+  a Pandoc 3.11 compile probe. No repository file changed; no remote
+  contacted.
+- **Verdict**: `reopened` on one finding. Closed: R12-1, R12-2 (original
+  failure), R12-3.
+
+## Round 13 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R13-1 | The folder import's JSON → Markdown round trip renumbers footnotes to `[^1]`, so two files' notes collide when compile concatenates them | HIGH | reviewer's compile probe | Admitted: the shared note filter runs after the link rewrite; landing order 3, 1, 2, 4, 5 so the consumer slice is in place first |
+
+Declined: none.
+
 ## Closeout
 
-Pending: round 13 review of the thirteenth revision (same reviewer, fresh
-session, pins base = round-12 head `92eca42`, head = the revision commit).
+Pending: round 14 review of the fourteenth revision (same reviewer, fresh
+session, pins base = round-13 head `5c87703`, head = the revision commit).
