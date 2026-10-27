@@ -512,12 +512,10 @@ fn classify(link: &LinkNode, origin: Option<&KnownDoc>, docs: &[KnownDoc]) -> Ta
         if hits.iter().all(|hit| hit.is_none()) {
             return TargetKind::Other;
         }
-        let first = hits.first().cloned().flatten();
-        if first.is_some() && hits.iter().all(|hit| *hit == first) {
-            return TargetKind::Document {
-                path: first.expect("checked"),
-                fragment,
-            };
+        if let Some(path) = hits.first().cloned().flatten() {
+            if hits.iter().all(|hit| hit.as_deref() == Some(path.as_str())) {
+                return TargetKind::Document { path, fragment };
+            }
         }
         return TargetKind::Refused(format!(
             "footnote link {target} could be read from more than one document; anchor it as /<path>"
