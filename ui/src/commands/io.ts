@@ -50,7 +50,9 @@ export async function compileProject(
   title?: string,
   author?: string,
   options?: CompileOptions
-): Promise<void> {
+): Promise<string[]> {
+  // Resolves to compile's warnings: links between documents that became
+  // text, and why (PLAN_SCRIVENER_UPLOAD slice 3, review finding s3-5).
   return invoke("compile_project", {
     projectPath,
     outputPath,

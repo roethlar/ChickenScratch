@@ -18,7 +18,7 @@ pub fn compile_project(
     section_separator: Option<String>,
     include_title_page: Option<bool>,
     manuscript_format: Option<bool>,
-) -> Result<(), ChiknError> {
+) -> Result<Vec<String>, ChiknError> {
     svc::compile_project(
         project_path,
         output_path,

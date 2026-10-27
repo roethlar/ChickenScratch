@@ -5,7 +5,7 @@ import { compileProject, getCompileFormats } from "../../commands/io";
 import { pickSaveFile } from "../../platform";
 import { isWeb } from "../../commands/transport";
 import { exportManuscript, downloadBlob } from "../../commands/web";
-import { toastSuccess, toastError } from "../shared/Toast";
+import { toast, toastSuccess, toastError } from "../shared/Toast";
 import { flushPendingEditorSave } from "../editor/editorRef";
 import { useModalFocusTrap } from "../shared/Dialog";
 import { exportDefaultPath } from "../../utils/exportPath";
@@ -13,6 +13,17 @@ import { exportDefaultPath } from "../../utils/exportPath";
 interface CompileDialogProps {
   open: boolean;
   onClose: () => void;
+}
+
+/**
+ * Compile's warnings name the links between documents that became text and
+ * why; the export succeeded, so they are shown as information after it
+ * (PLAN_SCRIVENER_UPLOAD slice 3, review finding s3-5).
+ */
+function reportCompileWarnings(warnings: string[] | undefined): void {
+  if (!warnings || warnings.length === 0) return;
+  const noun = warnings.length === 1 ? "warning" : "warnings";
+  toast(`Export finished with ${warnings.length} ${noun}:\n${warnings.join("\n")}`, "info");
 }
 
 export function CompileDialog({ open, onClose }: CompileDialogProps) {
@@ -57,7 +68,7 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
     setCompiling(true);
     try {
       await flushPendingEditorSave();
-      const { blob, fileName } = await exportManuscript({
+      const { blob, fileName, warnings } = await exportManuscript({
         projectPath: project.path,
         format,
         title: title || undefined,
@@ -68,6 +79,7 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
       });
       downloadBlob(blob, fileName);
       toastSuccess("Export ready: " + fileName);
+      reportCompileWarnings(warnings);
       onClose();
     } catch (e) {
       toastError("Export failed: " + e);
@@ -94,12 +106,13 @@ export function CompileDialog({ open, onClose }: CompileDialogProps) {
     const ext = outputPath.split(".").pop() || "docx";
     try {
       await flushPendingEditorSave();
-      await compileProject(project.path, outputPath, ext, title || undefined, author || undefined, {
+      const warnings = await compileProject(project.path, outputPath, ext, title || undefined, author || undefined, {
         sectionSeparator: separator,
         includeTitlePage: titlePage,
         manuscriptFormat,
       });
       toastSuccess("Export complete: " + outputPath);
+      reportCompileWarnings(warnings);
       onClose();
     } catch (e) {
       toastError("Export failed: " + e);

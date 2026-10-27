@@ -31,7 +31,12 @@ vi.mock("../components/shared/Dialog", () => ({
 }));
 const toastSuccessMock = vi.hoisted(() => vi.fn());
 const toastErrorMock = vi.hoisted(() => vi.fn());
-vi.mock("../components/shared/Toast", () => ({ toastSuccess: toastSuccessMock, toastError: toastErrorMock }));
+const toastMock = vi.hoisted(() => vi.fn());
+vi.mock("../components/shared/Toast", () => ({
+  toast: toastMock,
+  toastSuccess: toastSuccessMock,
+  toastError: toastErrorMock,
+}));
 
 const storeState = vi.hoisted(() => ({
   project: { path: "/srv/root/Scratch.chikn", name: "Scratch", metadata: { title: "Scratch Notes", author: "Me" } },
@@ -77,5 +82,31 @@ describe("Compile dialog in the browser shell", () => {
       )
     );
     expect(downloadMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("compile warnings reach the writer (s3-5)", () => {
+  it("shows the server's compile warnings after a web export", async () => {
+    exportMock.mockResolvedValueOnce({
+      blob: new Blob(["<p>hi</p>"], { type: "text/html" }),
+      fileName: "Scratch.html",
+      warnings: ["b.md#nowhere was not found in manuscript/b.md; the link became text"],
+    } as never);
+    render(<CompileDialog open onClose={vi.fn()} />);
+    await screen.findByLabelText("Format");
+    fireEvent.click(screen.getByText("Export"));
+    await waitFor(() => expect(downloadMock).toHaveBeenCalled());
+    expect(toastMock).toHaveBeenCalledWith(
+      "Export finished with 1 warning:\nb.md#nowhere was not found in manuscript/b.md; the link became text",
+      "info"
+    );
+  });
+
+  it("stays quiet when there are no warnings", async () => {
+    render(<CompileDialog open onClose={vi.fn()} />);
+    await screen.findByLabelText("Format");
+    fireEvent.click(screen.getByText("Export"));
+    await waitFor(() => expect(downloadMock).toHaveBeenCalled());
+    expect(toastMock).not.toHaveBeenCalled();
   });
 });

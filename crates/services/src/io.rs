@@ -23,7 +23,7 @@ pub fn compile_project(
     section_separator: Option<String>,
     include_title_page: Option<bool>,
     manuscript_format: Option<bool>,
-) -> Result<(), ChiknError> {
+) -> Result<Vec<String>, ChiknError> {
     let settings = super::settings::get_app_settings();
     let (pandoc_path, _) = super::settings::resolve_pandoc(&settings)?;
     let ms_format = manuscript_format.unwrap_or(false);
@@ -38,14 +38,18 @@ pub fn compile_project(
         pandoc_path: Some(pandoc_path.to_string_lossy().into_owned()),
     };
 
-    compile::compile(
+    // The warnings (links between documents that became text, and why) go
+    // back to the shell, which shows them after the export (review finding
+    // s3-5).
+    Ok(compile::compile_with_report(
         Path::new(&project_path),
         Path::new(&output_path),
         &format,
         title.as_deref(),
         author.as_deref(),
         Some(options),
-    )
+    )?
+    .warnings)
 }
 pub fn get_compile_formats() -> Vec<(String, String)> {
     compile::FORMATS

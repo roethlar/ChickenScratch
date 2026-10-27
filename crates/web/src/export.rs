@@ -88,10 +88,10 @@ pub async fn export(
         });
     let file_name = download_name(&title_for_name, &format);
 
-    let (bytes, file_name) = tokio::task::spawn_blocking(move || {
+    let (bytes, file_name, warnings) = tokio::task::spawn_blocking(move || {
         let dir = tempfile::tempdir().map_err(chickenscratch_services::ChiknError::from)?;
         let out = dir.path().join(&file_name);
-        io::compile_project(
+        let warnings = io::compile_project(
             project_path,
             out.to_string_lossy().into_owned(),
             format,
@@ -102,7 +102,7 @@ pub async fn export(
             args.manuscript_format,
         )?;
         let bytes = std::fs::read(&out).map_err(chickenscratch_services::ChiknError::from)?;
-        Ok::<_, CmdError>((bytes, file_name))
+        Ok::<_, CmdError>((bytes, file_name, warnings))
     })
     .await
     .map_err(|_| CmdError::Internal)??;
@@ -120,15 +120,53 @@ pub async fn export(
                 HeaderValue::from_str(&disposition)
                     .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
             ),
+            (
+                // The body is the file, so compile's warnings travel in a
+                // header the UI reads after the download (review finding
+                // s3-5).
+                WARNINGS_HEADER,
+                HeaderValue::from_str(&warnings_header(&warnings))
+                    .unwrap_or_else(|_| HeaderValue::from_static("%5B%5D")),
+            ),
         ],
         Body::from(bytes),
     )
         .into_response())
 }
 
+/// Compile's warnings, as a JSON array percent-encoded so any text fits a
+/// header's visible-ASCII rule. The UI decodes it with `decodeURIComponent`.
+pub const WARNINGS_HEADER: header::HeaderName =
+    header::HeaderName::from_static("x-cs-compile-warnings");
+
+pub fn warnings_header(warnings: &[String]) -> String {
+    let json = serde_json::to_string(warnings).unwrap_or_else(|_| "[]".to_string());
+    let mut out = String::with_capacity(json.len());
+    for byte in json.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::download_name;
+    use super::{download_name, warnings_header};
+
+    /// Any warning text, non-ASCII included, becomes a visible-ASCII header
+    /// value that decodes back to the JSON array (s3-5).
+    #[test]
+    fn warnings_travel_as_a_percent_encoded_json_array() {
+        assert_eq!(warnings_header(&[]), "%5B%5D");
+        let value = warnings_header(&["b.md#café was not found; the link became text".to_string()]);
+        assert!(value.bytes().all(|b| b.is_ascii_graphic()), "{value}");
+        assert!(value.contains("%C3%A9"), "{value}");
+        assert!(value.starts_with("%5B%22b.md%23caf"), "{value}");
+    }
 
     #[test]
     fn download_names_are_header_safe() {

@@ -45,6 +45,8 @@ export interface ExportRequest {
 export interface ExportResult {
   blob: Blob;
   fileName: string;
+  /** Compile's warnings: links between documents that became text, and why. */
+  warnings: string[];
 }
 
 /** Compile on the server and receive the file; nothing is written under the projects root. */
@@ -57,7 +59,22 @@ export async function exportManuscript(req: ExportRequest): Promise<ExportResult
   const disposition = res.headers.get("Content-Disposition") ?? "";
   const match = /filename="([^"]+)"/.exec(disposition);
   const fileName = match?.[1] ?? `Manuscript.${req.format}`;
-  return { blob: await res.blob(), fileName };
+  return {
+    blob: await res.blob(),
+    fileName,
+    warnings: decodeWarnings(res.headers.get("X-CS-Compile-Warnings")),
+  };
+}
+
+/** The server's percent-encoded JSON array of compile warnings (s3-5). */
+export function decodeWarnings(header: string | null): string[] {
+  if (!header) return [];
+  try {
+    const parsed: unknown = JSON.parse(decodeURIComponent(header));
+    return Array.isArray(parsed) ? parsed.filter((w): w is string => typeof w === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 /** Hand a received file to the browser's download flow. */
