@@ -482,11 +482,14 @@ fn classify(link: &LinkNode, origin: Option<&KnownDoc>, docs: &[KnownDoc]) -> Ta
     if target.is_empty() || has_scheme(target) || target.starts_with("//") {
         return TargetKind::Other;
     }
+    // The editor writes a non-ASCII fragment percent-encoded
+    // (`b.md#caf%C3%A9`); Pandoc's identifier is `café`, so fragments are
+    // decoded like paths before any lookup (review finding s3-1).
     if let Some(frag) = target.strip_prefix('#') {
-        return TargetKind::Bare(frag.to_string());
+        return TargetKind::Bare(percent_decode(frag));
     }
     let (path_part, fragment) = match target.find('#') {
-        Some(i) => (&target[..i], Some(target[i + 1..].to_string())),
+        Some(i) => (&target[..i], Some(percent_decode(&target[i + 1..]))),
         None => (target, None),
     };
     let decoded = percent_decode(path_part);
