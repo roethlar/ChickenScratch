@@ -23,6 +23,10 @@ keyring = { version = "3.6.3", features = [
   "crypto-rust",
 ] }
 
+[target.'cfg(unix)'.dependencies]
+# Handle-based traversal for project assets (openat with O_NOFOLLOW).
+libc = "0.2"
+
 [dev-dependencies]
 # Re-declare core with the test-only fixture surface (feature unification
 # turns it on for this crate's tests without touching release builds).
