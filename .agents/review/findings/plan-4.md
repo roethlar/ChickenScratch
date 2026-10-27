@@ -3,8 +3,8 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 4 reopened (2026-10-27); fourth
-revision committed, round 5 pending
+**Status**: In progress — rounds 1 to 5 reopened (2026-10-27); fifth
+revision committed, round 6 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -206,7 +206,51 @@ Job Object before resume, so the Windows launch uses `CreateProcessW`
 directly; final-path token re-acquisition is necessary and recents use the
 returned path; no other persisted creation-path dependency was found.
 
+## Round 5 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17e21-d1c5-7430-aaa3-9a9c632e0298`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `5ca2e2f54aa8d56243fb0b0efab1f71a53dace41` (fourth
+  revision)
+- **Base SHA**: `20ffe17496b60e8f8fa9756d2ca0d8a582c09cd4` (round-4 head)
+- **Dispatched**: 2026-10-27 16:11 UTC; finished 16:23 UTC; exit 0;
+  118,797 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `5ca2e2f…`; both succeeded. The reviewer ran Pandoc 3.11 probes (the
+  three-inline element under `markdown-raw_attribute` read back by Pandoc
+  and the editor; the split writer's `` `…`{=html} `` output; `--file-scope`
+  targets for `two.md`, `two.md#id`, `#id` and an excluded file; a native
+  reference definition and a bare fragment link breaking under
+  `--file-scope`), locked-editor probes (anchor node and `isAllowedUri`
+  relative links preserved; a multi-paragraph `data-body` with the new
+  attribute lost on the second open), a Linux post-exec `RLIMIT_AS` probe
+  with a 2 GiB parent, and read the locked Tauri 2.10.3 scope source. No
+  macOS/Windows runs; Tauri not built. No repository file changed; no
+  remote contacted.
+- **Verdict**: `reopened`. Closed: R1-1, R3-2, R3-5, R3-9, R4-2, R4-4,
+  R4-7, R4-8. Not closed: R1-3, R2-3, R2-11, R2-13, R3-10, R3-11, R4-1,
+  R4-3, R4-5, R4-6 (each mapped to a round-5 finding below).
+
+## Round 5 findings and dispositions
+
+Each checked against the working tree or the cited source before
+acceptance (orchestrator, 2026-10-27).
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R5-1 | A 250 ms RSS watchdog bounds neither overshoot nor allocations freed between samples | HIGH | reasoning on the algorithm | Admitted: counting `#[global_allocator]` in worker mode, budget enforced before each allocation; OS limits supplementary |
+| R5-2 | `FootnoteNode` writes literal newlines into the attribute; a blank line ends the inline HTML for the editor's parser on the next open | HIGH | `FootnoteNode.ts:21–37`; reviewer's reopen probe | Admitted: entity-encode the body (`&#10;`) in every writer, decode in `cs-footnotes.lua`; noted as pre-existing for Scrivener imports |
+| R5-3 | The split command named plain `markdown`, restoring `` `…`{=html} `` | HIGH | plan text; Pandoc probe | Admitted: one shared `formats::MARKDOWN_WRITER` |
+| R5-4 | Notes decoded after the file-scope rewrite lose their source document | MEDIUM | reasoning on filter order | Admitted (superseded with R5-5): notes decoded in the combined filter before the link walk; imported links are document-qualified |
+| R5-5 | `--file-scope` breaks native cross-document reference definitions and bare fragment links | MEDIUM | reviewer's Pandoc 3.11 probe | Admitted: compile keeps the single combined parse; per-document solo parses matched by header position give the identifier map |
+| R5-6 | Tauri's fs scope is additive; revoke-then-reallow is impossible | MEDIUM | Tauri 2.10.3 `scope/fs.rs` as cited | Admitted: app-owned `chikn-asset` scheme handler checking the open project per request |
+
+Declined: none. Reviewer note carried into the plan: the store assertion
+for `PublishedNotOpened` belongs with slice 2.
+
 ## Closeout
 
-Pending: round 5 review of the fourth revision (same reviewer, fresh
-session, pins base = round-4 head `20ffe17`, head = the revision commit).
+Pending: round 6 review of the fifth revision (same reviewer, fresh
+session, pins base = round-5 head `5ca2e2f`, head = the revision commit).

@@ -100,25 +100,33 @@ existing `/api/import-upload` (one document into an open project) stays.
   wall clock, kills the child on timeout or when the HTTP request is
   cancelled (the request future's drop guard kills and waits), removes the
   staging folder, and releases the slot only after the child has exited.
-  **The worker's memory is bounded per platform, by what each platform can
-  actually enforce** (R3-2, R4-1). Linux: the worker calls
-  `setrlimit(RLIMIT_AS, 1 GiB)` as its first act after `exec` (its own
-  baseline is a few tens of MiB) and refuses to proceed if the call fails.
-  macOS: `RLIMIT_AS` cannot be used at all (every process maps the 6 GiB
-  shared region, and XNU refuses a limit below the current map size), so
-  the bound is a **parent-side watchdog**: the parent samples the child's
-  resident size every 250 ms (`proc_pidinfo`, the same call `ps` uses) and
-  kills it above 1 GiB; the watchdog runs on Linux too as a second line.
-  Windows: the parent creates the child suspended through `CreateProcessW`
-  (the `windows` crate, already a Tauri dependency; stable `std::process`
-  cannot hand back the primary thread), assigns it to a Job Object with a
-  1 GiB process-memory limit, then resumes it. Every binary performs the
-  worker dispatch in a plain synchronous `main` before any runtime starts
-  (the web server's `#[tokio::main]` becomes an explicit runtime built
-  after the dispatch). The child reports the outcome as one JSON line on
-  stdout; a killed or crashed child is a refusal with "This archive could
-  not be unpacked safely". The in-process checks below are defence in
-  depth, not the only line. macOS and Windows behaviour cannot be run on
+  **The worker's memory is bounded by its own allocator, on every
+  platform** (R3-2, R4-1, R5-1). The decoders are pure Rust (`zip`,
+  `sevenz-rust2`, `tar`, `flate2` with its default `miniz_oxide` backend),
+  so every byte they take comes through Rust's global allocator. In worker
+  mode the binary installs a counting `#[global_allocator]` wrapper around
+  the system allocator (`chikn_converter::unpack::BudgetAlloc`): a budget
+  of 1 GiB is armed as the worker's first act, every allocation adds its
+  size to an atomic counter, every free subtracts it, and an allocation
+  that would cross the budget returns null, which Rust turns into
+  `handle_alloc_error` and an abort; the parent reads the abort as a
+  refusal. Outside worker mode the budget is disarmed and the wrapper is a
+  pass-through, so the application's own memory use is unaffected. The
+  budget is enforced *before* the allocation happens, so there is no
+  overshoot window and no sampling gap. Supplementary, per platform: Linux
+  additionally sets `setrlimit(RLIMIT_AS, 1 GiB)` after `exec` (its own
+  baseline is a few tens of MiB; on macOS that call cannot be used because
+  every process maps the 6 GiB shared region), and Windows runs the child
+  inside a Job Object with a 1 GiB process-memory limit, created suspended
+  through `CreateProcessW` (the `windows` crate, already a Tauri dependency;
+  stable `std::process` cannot hand back the primary thread) and resumed
+  after assignment. Every binary performs the worker dispatch in a plain
+  synchronous `main` before any runtime starts (the web server's
+  `#[tokio::main]` becomes an explicit runtime built after the dispatch).
+  The child reports the outcome as one JSON line on stdout, including its
+  peak counted allocation; a killed or crashed child is a refusal with
+  "This archive could not be unpacked safely". The in-process checks below
+  are defence in depth, not the only line. macOS and Windows behaviour cannot be run on
   the development machine (Linux); the slice is not called done until the
   worker has unpacked a real archive and refused a bomb on each, in CI's
   Tauri Bundles jobs or by the owner, and the record says which.
@@ -275,14 +283,20 @@ lands first.
   shells gain an image node (`@tiptap/extension-image`, serialised back to
   `![alt](path)` by `tiptap-markdown`), and a resolver that turns a
   project-relative target (`research/figure.png`) into something the shell
-  can display. Desktop: Tauri's asset protocol is enabled in
-  `tauri.conf.json` (`app.security.assetProtocol.enable`), its scope is
-  granted at runtime to the open project's folder only
-  (`asset_protocol_scope().allow_directory`, revoked when the project
-  closes), the CSP `img-src` lists `asset:` and both `http://asset.
-  localhost` and `https://asset.localhost`, and the resolver uses
-  `convertFileSrc`. Web: `GET /api/asset?project=…&path=…`, gated to files
-  inside the open project (same gate as the other project routes).
+  can display. Desktop: Tauri's built-in asset protocol cannot do this
+  safely, because its scope is additive (an allow entry cannot be removed,
+  and a `forbid` outlives a later `allow`, so a project closed and reopened
+  in one session would lose its images, R5-6). The shell instead registers
+  its own URI scheme handler (`register_uri_scheme_protocol("chikn-asset",
+  …)`) that answers each request by checking, at request time, the
+  currently open project held in shared state: the path must resolve inside
+  that project's folder, else 403; closing the project makes every URL
+  refuse at once, reopening makes it work again, with no scope mutation.
+  The CSP `img-src` lists `chikn-asset:` and both `http://chikn-asset.
+  localhost` and `https://chikn-asset.localhost` (the origins the two
+  platforms use), and the resolver builds those URLs. Web:
+  `GET /api/asset?project=…&path=…`, gated to files inside the open project
+  (same gate as the other project routes).
   Imported images therefore display, survive an edit and a save, and
   reopen. This also fixes the same loss for Markdown a writer brings in
   today. The desktop part is verified in the built shell (CI's Tauri
@@ -302,24 +316,42 @@ lands first.
   `compile` passes `--resource-path=<project root>` and the stored
   project-relative convention is the one it resolves; DOCX/ODT output
   embeds the image.
-- **Compile resolves links between documents, per document** (R3-10,
-  R4-5). Links from one document to another (`manuscript/two.md#two`, the
-  converter's form and the split's) stay literal paths in the compiled
-  output, and a global fragment lookup would land on the first `#
-  introduction` of two. Compile therefore stops concatenating text: each
-  included document is written under its project-relative path inside the
-  temporary compile folder (title page and separators as further files)
-  and Pandoc is run with `--file-scope`, which parses each file on its own,
-  prefixes every identifier with its file name so two documents' `#
-  introduction` stay distinct, and adjusts links to other files'
-  identifiers (`manuscript/two.md#two`) to the prefixed internal anchor.
-  Slice 3's first task is to confirm that behaviour on the installed
-  Pandoc 3.11 against links to a file, to a file's fragment, and to a file
-  not included in the compile; whatever `--file-scope` does not do, the
-  compile Lua filter does with the same per-file prefixes, and a link to a
-  document outside the compile becomes its text alone. A native project
-  with no imports compiles to the same output as before (regression test
-  on an existing sample).
+- **Compile resolves document-qualified links, without changing what
+  native projects get today** (R3-10, R4-5, R5-4, R5-5). Links from one
+  document to another (`manuscript/two.md#two`, the converter's form and
+  the split's) stay literal paths in the compiled output, and a global
+  fragment lookup would land on the first `#introduction` of two. Pandoc's
+  `--file-scope` would fix that but breaks two things native projects rely
+  on: a reference definition (`[book]: https://…`) in another document
+  stops resolving, and a bare `[later](#later)` to another document's
+  heading is rewritten to a prefixed anchor that does not exist. Compile
+  therefore keeps today's single combined parse, with these additions:
+  1. Each included document is also parsed on its own to JSON (one Pandoc
+     run per document, `-f markdown -t json`, with the same filters), to
+     learn the identifiers Pandoc gives its headers in isolation.
+  2. The combined document opens each section with an anchor element
+     (`<span class="anchor" id="doc-<index>"></span>`, index = position in
+     the compile order, so same-named files in different folders cannot
+     collide).
+  3. A compile Lua filter walks the combined AST section by section. Pandoc
+     assigns identifiers in document order, so the k-th header of section
+     d in the combined parse is the k-th header of document d's solo parse;
+     that positional match gives a (document, solo identifier) → combined
+     identifier map without re-implementing Pandoc's identifier rules.
+     Every link whose target is `<document>.md#id` becomes `#<combined
+     id>`; `<document>.md` alone becomes `#doc-<index>`; a link to a
+     document outside the compile becomes its text alone. Bare `#id` links
+     and reference definitions keep today's global behaviour, untouched.
+  4. Notes are decoded (the `data-format="markdown"` reading) in that same
+     combined filter before the link walk, so links inside notes are real
+     `Link` nodes and are resolved by the section they sit in (R5-4);
+     imported notes carry document-qualified links by construction.
+  A native project with no imports compiles to the same output as before,
+  including a reference definition used from another document and a bare
+  fragment link across documents (regression fixtures, not just the Corn
+  sample); the anchor elements add no paragraphs to DOCX (the filter emits
+  them as empty `Span`s inside the first block, never as blocks of their
+  own).
 - **Markdown-bodied footnotes** (R3-8): the `data-format="markdown"`
   reading in `cs-footnotes.lua` and the attribute round trip in
   `FootnoteNode`, as described in slice 4.
@@ -369,9 +401,23 @@ Inside a project, both shells:
   element, emitted exactly as Pandoc's Markdown reader would produce it
   from the editor's own file: three inlines, `RawInline("<sup class=
   \"footnote\" data-body=\"…\">")`, `Str("●")`, `RawInline("</sup>")`,
-  so compile's filter finds the closing tag it expects. The Markdown writer
-  runs as `markdown-raw_attribute` so raw HTML is written literally rather
-  than as `` `…`{=html} ``, which the editor would show as code (R4-3). Today that element's `data-body` is plain text, so a note with
+  so compile's filter finds the closing tag it expects. **The body
+  attribute is entity-encoded, newlines included** (R5-2): `"`, `&`, `<`,
+  `>` as their named entities and every newline as `&#10;`, because a
+  literal blank line inside an inline HTML tag ends the paragraph for the
+  editor's Markdown parser, which then loses the footnote and shows its
+  body as text on the next open. The same rule applies to every writer of
+  the element: the import filter, the editor's `FootnoteNode` serialiser
+  (today it writes the attribute raw, so a multi-paragraph note from the
+  Scrivener converter already suffers this on its second open) and the
+  converter's `footnote_element`; every reader already decodes entities
+  (the browser's DOM parser for the editor, Pandoc's HTML reader) except
+  compile's `cs-footnotes.lua`, which reads the attribute text itself and
+  gains the decode. The Markdown writer runs as the one shared
+  configuration `formats::MARKDOWN_WRITER` (`markdown-raw_attribute`, used
+  by the unsplit path, the split path and the media rewrite alike, R5-3) so
+  raw HTML is written literally rather than as `` `…`{=html} ``, which the
+  editor would show as code (R4-3). Today that element's `data-body` is plain text, so a note with
   emphasis, a link or a list would be flattened (R3-8). The element gains
   an optional `data-format="markdown"` attribute: when present, the body is
   Markdown (the note's blocks written with `pandoc.write(…, "markdown")`)
@@ -397,11 +443,14 @@ Inside a project, both shells:
   save, R3-9, R4-4). The block list is cut at each level-one
   `Header` at that level only (headings inside block quotes, lists or notes
   are not boundaries). Each part is written back with `pandoc -f json -t
-  markdown`. Before writing, a map of *every* identifier in each part
-  (headers, Divs, Spans, code blocks, images, tables) → destination
-  document rewrites every `#id` link whose target now lives in another part
-  to the converter's document-link form (`<other-document>.md#id`); a link
-  whose target identifier exists nowhere is left as it was. Document
+  <formats::MARKDOWN_WRITER>` (the shared `markdown-raw_attribute`
+  configuration, R5-3). Before writing, a map of *every* identifier in each
+  part (headers, Divs, Spans, code blocks, images, tables) → destination
+  document rewrites every `#id` link to the document-qualified form
+  `<document>.md#id`, whether the target ends up in another part or in the
+  same one, so compile can resolve each imported link against the document
+  it names (R5-4); a link whose target identifier exists nowhere is left as
+  it was. Document
   metadata (`meta`: title, author,
   date, anything else) is not dropped: title, author and date open the
   "Front matter" document as a heading and lines, and the full metadata is
@@ -464,10 +513,10 @@ coding.
 | File / area | Change |
 |-------------|--------|
 | `crates/web/src/project_upload.rs` (new), `app.rs`, `tests/http.rs` | streaming to a temp file, unpack, detector call, handler, own body limit |
-| `crates/cli/src/archive.rs` (new), `unpack.rs` (new), `detect.rs` (new), `lib.rs`, `main.rs`, `Cargo.toml` (+ `zip`, `sevenz-rust2`, `tar`, `flate2`), `Cargo.lock` | `unpack_archive` (format sniffing, header pre-checks, path/kind/size checks), the unpack worker (`--unpack-worker`, self-applied memory limit, JSON outcome), `detect_project` |
-| `crates/core/src/core/project/publish.rs` (new), `compile.rs`, `cs-footnotes.lua` | `publish_imported` (read, exclusive rename, no fallback), `--resource-path`, document anchors and link resolution, `data-format="markdown"` note bodies |
+| `crates/cli/src/archive.rs` (new), `unpack.rs` (new), `detect.rs` (new), `lib.rs`, `main.rs`, `Cargo.toml` (+ `zip`, `sevenz-rust2`, `tar`, `flate2`), `Cargo.lock` | `unpack_archive` (format sniffing, header pre-checks, path/kind/size checks), the unpack worker (`--unpack-worker`, `BudgetAlloc` counting allocator, per-platform supplementary limits, JSON outcome with peak), `detect_project` |
+| `crates/core/src/core/project/publish.rs` (new), `compile.rs`, `cs-footnotes.lua` | `publish_imported` (read, exclusive rename, no fallback), `--resource-path`, per-document solo parses and the positional identifier map, document anchors and link resolution, `data-format="markdown"` note bodies, entity decoding of the body attribute |
 | `crates/services/src/project.rs`, `io.rs`, `formats.rs` (new), `cs-import-notes.lua` (new); `crates/web/src/commands.rs`, `main.rs`, `assets.rs` (new); `src-tauri/src/commands/*.rs`, `main.rs` | `import_project` (lock, existence check, temporary destination, core publication), recursive Markdown-folder import with warnings, the format registry with handlers, worker dispatch honoured first in every `main`, media extraction and attachment, notes to the editor's form with Markdown bodies, `.doc` step, model-level `split_headings`, the gated asset route |
-| `ui/src/components/editor/Editor.tsx`, `ImageNode.ts` (new), `FootnoteNode.ts`, `ui/src/platform.ts` | image node and serialisation, project-asset URL resolver per shell, `data-format` round trip |
+| `ui/src/components/editor/Editor.tsx`, `ImageNode.ts` (new), `AnchorNode.ts` (new), `FootnoteNode.ts`, `ui/src/platform.ts`; `src-tauri/src/assets.rs` (new), `tauri.conf.json`, `main.rs` | image node and serialisation, anchor node, project-relative links accepted and opened, project-asset URL resolver per shell, `data-format` round trip and entity-encoded body attribute, the `chikn-asset` scheme handler and CSP |
 | `ui/src/commands/web.ts`, `io.ts`, `project.ts`, `stores/projectStore.ts`, `ui/src/importFormats.json` (generated) | `importProjectUpload`, `importProject`, `split` flag, shared format and archive suffix lists |
 | `ui/src/components/welcome/ImportProjectDialog.tsx` (new), `Welcome.tsx`, `editor.css`, `platform.ts` | the chooser; desktop archive pick |
 | `ui/src/components/binder/Binder.tsx`, a small `ImportFileOptions` dialog | the split checkbox, wider accept list |
@@ -499,8 +548,12 @@ coding.
       expands to 2 GiB and a zip declaring ten million entries are refused
       under the worker's memory limit without the parent's memory growing
       (asserted through the child's exit status, not by surviving the
-      allocation in-process); the same two pass/refuse correctly when the
-      parent has first mapped 2 GiB of address space (R3-2); a worker made
+      allocation in-process, and with the worker's reported peak counted
+      allocation recorded in the test log); a direct test of `BudgetAlloc`
+      shows an allocation that would cross the budget refused and the
+      counter returning to zero after frees; the same two archives
+      pass/refuse correctly when the parent has first mapped 2 GiB of
+      address space (R3-2); a worker made
       to sleep past the wall clock is killed, the staging folder is gone
       and the admission slot is free afterwards; dropping the request
       future mid-unpack kills the worker; a crashed worker is a refusal,
@@ -531,8 +584,9 @@ coding.
       names the final folder, no `.importing-*` entry remains, and the
       project can be opened, edited and a revision saved; with the
       post-commit token failure injected, the web route answers the tagged
-      `PublishedNotOpened` and the UI store (mocked command) adds the path
-      to recents, opens nothing and shows the message. Markdown folder:
+      `PublishedNotOpened`, and (with slice 2) the UI store (mocked
+      command) adds the path to recents, opens nothing and shows the
+      message. Markdown folder:
       nested folders become binder folders in sorted order; duplicate names
       are disambiguated; one unreadable file among three is reported in the
       warnings and the other two import; a tree with no readable file
@@ -542,10 +596,14 @@ coding.
       target after the upload is deleted; a DOCX with two footnotes imports
       as two editor footnote elements and no `[^n]` label, and the
       importer's actual Markdown output, saved through the editor, still
-      compiles to two notes (no `` `…`{=html} `` code spans); a footnote
-      with emphasis, a link and a list imports with
-      `data-format="markdown"` and compiles (core) to a note with that
-      emphasis, link destination and list; a footnote in chapter one whose
+      compiles to two notes (no `` `…`{=html} `` code spans), and the same
+      holds for the split path's output; a footnote with emphasis, a link
+      and a list imports with `data-format="markdown"` and compiles (core)
+      to a note with that emphasis, link destination and list; a note with
+      two paragraphs and a list survives import → editor save → fresh
+      editor open → second save → compile with its note count, body
+      structure and surrounding text intact (the attribute newline
+      encoding); a footnote in chapter one whose
       link targets chapter two is rewritten like any other link and
       compiles correctly with chapter two excluded; a plain-text note without the attribute compiles exactly
       as today; two imported chapters each holding a footnote compile to
@@ -558,19 +616,28 @@ coding.
       document becomes its text; two included documents each headed
       `# Introduction` keep two distinct anchors and a link to the second
       lands on the second (asserted on the destination's text, not on the
-      existence of some anchor); an existing sample project compiles to the
-      same DOCX structure as before the change (no added empty paragraphs).
+      existence of some anchor); two such documents whose Markdown-bodied
+      notes each link to their own `two.md#introduction` resolve to their
+      own heading; native fixtures: a reference definition in document two
+      used from document one still resolves, a bare `[later](#later)` to
+      document two's heading still works, and an existing sample project
+      compiles to the same DOCX structure as before the change (no added
+      empty paragraphs).
 - [ ] UI editor (slice 3): a document with `![Figure](research/figure.png)`
       opens, the image node is present, an edit and a save keep the image
       line byte-for-byte, and the resolver produces the asset URL for each
       shell; the web asset route refuses a path outside the project; a
-      footnote with `data-format="markdown"` round-trips its attribute and
-      body unchanged through parse and serialise; an anchor element and a
-      link to `manuscript/two.md#two` survive open, edit and save
-      byte-for-byte, and clicking the link opens that document; the Tauri
-      asset scope is granted for the open project and refused for a path
-      outside it (unit test on the scope call; display verified in the
-      built shell).
+      footnote with `data-format="markdown"` and a two-paragraph body
+      round-trips its attribute and body through parse, serialise, parse
+      again and serialise again (newlines encoded as `&#10;`, decoded on
+      read); an anchor element and a link to `manuscript/two.md#two`
+      survive open, edit and save byte-for-byte, and clicking the link
+      opens that document; the desktop asset handler (unit test on the
+      request function with a fake state): serves a file inside the open
+      project, refuses a path outside it, refuses everything once the
+      project is closed, serves again after reopening, and serves project
+      B's files after switching from A (display verified in the built
+      shell).
 - [ ] `crates/services` split: three top-level headings → three documents
       in order plus front matter; a footnote referenced in chapter one and
       defined after chapter two stays in chapter one, and the two chapters
@@ -636,7 +703,8 @@ coding.
   (via Zettlr). yWriter deferred; Ulysses library files not read (export
   instead).
 - Taken unless told otherwise: upload limit 512 MiB; unpacked ceiling 4 GiB
-  and 50 000 entries; the unpack worker gets 1 GiB of memory and 120 s; 7z
+  and 50 000 entries; the unpack worker gets a 1 GiB allocation budget and
+  120 s; compile keeps its single combined parse (no `--file-scope`); 7z
   header above 16 MiB or dictionary above 256 MiB refused; encrypted
   archives refused rather than prompting for a password; the split option
   is off by default and remembered; imported footnotes take the editor's
@@ -729,3 +797,19 @@ coding.
   encoding notes before the link walk hides their links (R4-7: notes
   encoded last); slice 3's tests needed slice 4 (R4-8: the consumer slice
   is now slice 3 and lands first).
+- 2026-10-27 review round 5 (`plan-4`, `5ca2e2f`): reopened; R1-1, R3-2,
+  R3-5, R3-9, R4-2, R4-4, R4-7, R4-8 closed; six findings, all admitted
+  after checking: a sampled watchdog is not a memory bound (R5-1: a
+  counting allocator inside the worker, budget enforced before each
+  allocation, on every platform); the footnote element's attribute carried
+  literal newlines, so a multi-paragraph note breaks on the editor's second
+  open (R5-2: entity-encoded attribute, `&#10;`, in every writer and the
+  compile reader; a pre-existing defect for Scrivener imports); the split
+  command still named the plain `markdown` writer (R5-3: one shared writer
+  constant); links inside notes were decoded after the file-scope rewrite
+  (R5-4); `--file-scope` breaks native projects' cross-document reference
+  definitions and bare fragment links (R5-5: compile keeps the single
+  combined parse and maps document-qualified links through per-document
+  solo parses matched by position); Tauri's asset scope cannot be revoked
+  and re-allowed (R5-6: an app-owned `chikn-asset` scheme handler that
+  checks the open project per request).
