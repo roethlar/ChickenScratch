@@ -62,8 +62,14 @@ pub fn import_scrivener(
     output_path: String,
     write_locks: State<'_, ProjectWriteLocks>,
     tokens: State<'_, ProjectTokens>,
+    open: State<'_, OpenProject>,
 ) -> Result<ImportedProject, ChiknError> {
-    svc::import_scrivener(scriv_path, output_path, &write_locks, &tokens)
+    let imported = svc::import_scrivener(scriv_path, output_path, &write_locks, &tokens)?;
+    // The UI opens the imported project straight from this result, without
+    // a `load_project` call: the asset scheme must know it is open too
+    // (review finding s3-6).
+    open.set(Some(PathBuf::from(&imported.project.path)));
+    Ok(imported)
 }
 
 #[tauri::command]
