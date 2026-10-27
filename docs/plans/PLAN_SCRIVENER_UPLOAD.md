@@ -512,11 +512,18 @@ gap is in scope here, with the design below.
      by explicit identifiers, through (a).
   5. **Final identifiers are allocated per element, not per name.** Every
      element that carries an identifier in the combined parse, or that a
-     link resolved to, receives a fresh final identifier: `d<index>_<n>`
-     for the n-th such element of document `index`, `g<n>_<m>` on generated
-     blocks (letters, digits and underscores only, the form Word documents
-     accept for bookmark names; Pandoc writes identifiers into bookmarks
-     unchanged); so two elements that Pandoc left with the same string (an
+     link resolved to, receives a fresh final identifier of the form
+     `d<index>_<n>` for document `index`, `g<n>_<m>` on generated blocks
+     (letters, digits and underscores only, the form Word documents accept
+     for bookmark names; Pandoc writes identifiers into bookmarks
+     unchanged). Before any identifier is allocated, every identifier that
+     will be *kept* unchanged (the duplicate, bare-linked ones below) is
+     reserved, and the allocator takes the next `n` whose name is not
+     already in use anywhere in the final document, for element
+     identifiers, section anchors and auxiliary `Span`s alike (R24-1: a
+     native heading literally called `d0_1` that is kept cannot be captured
+     by a generated `d0_1`). So two elements that Pandoc left with the same
+     string (an
      explicit `{#introduction-1}` beside a generated `introduction-1`,
      R9-3) end with distinct bookmarks, and nothing can collide with a
      document anchor. Bare `#id` links keep exactly the destination they
@@ -531,14 +538,22 @@ gap is in scope here, with the design below.
      resolves them exactly as it does today (HTML's first-in-document,
      EPUB's chapter routing, DOCX's and ODT's duplicate bookmarks, LaTeX's
      duplicate labels; compile does not model any of them). A
-     document-qualified link to one of those duplicate-identifier elements
-     does not use the kept identifier: it gets a fresh materialised `Span`
-     destination by step 6's table, so it stays unambiguous.
+     document-qualified or whole-document link to one of those
+     duplicate-identifier elements does not use the kept identifier: it
+     gets a fresh, collision-free alias by step 6's table, and when that
+     element is a heading (or the destination was redirected into a
+     heading) the alias is an empty `Plain` holding an identified `Span`
+     placed **immediately after the heading**, not inside it and not
+     before it: inside, LaTeX gives it no label; before, EPUB puts it in
+     the previous chapter; after, every writer emits a destination that
+     stays with the heading (R24-2).
   6. **Destinations every writer emits, placed where the target is.** The
      writer table from round 7, re-run and recorded at the start of the
      slice, decides how a resolved target is materialised: a `Header`
      target uses its own final identifier (bookmark in DOCX and ODT, `id`
-     in HTML and EPUB, `\label` in LaTeX); a `Span` elsewhere than a
+     in HTML and EPUB, `\label` in LaTeX), except a heading whose
+     identifier is kept unchanged under step 5, which gets the after-heading
+     alias described there; a `Span` elsewhere than a
      heading is used where it stands; any other inline target (image, link,
      inline code) gets an empty identified `Span` immediately before it,
      since the writers emit no bookmark for those elements (R10-4); a `Div`
@@ -1005,9 +1020,16 @@ coding.
       destination in the new output equals its destination in today's
       output for the same input (HTML and EPUB by following the link to the
       element it reaches; DOCX, ODT and LaTeX by the identical sequence of
-      duplicate bookmark or label names), and a document-qualified link to
-      either `spot` element lands on that element through its own `Span`
-      (R22-1, R23-1); a footnote referenced in chapter one and
+      duplicate bookmark or label names), a document-qualified link to the
+      main-text `spot` lands on it through its alias and one to the footnote
+      `spot` becomes text with the footnote warning (R22-1, R23-1, R24-3);
+      documents A and B both opening with `# Start {#spot}` while a bare
+      `#spot` keeps both: qualified links to A's heading, to B's heading and
+      to B itself each reach the right place in all five writers through
+      aliases placed after the headings, in both document orders (R24-2);
+      a native heading literally called `d0_1`, kept because duplicated and
+      bare-linked, is never captured by a generated identifier or a section
+      anchor (R24-1); a footnote referenced in chapter one and
       defined after chapter two stays in chapter one, and the two chapters
       compile to two distinct notes; a reference-style link shared by two
       chapters resolves in both; a link from chapter one to a heading in
@@ -1394,3 +1416,13 @@ coding.
   today's destination; document-qualified links to such elements get their
   own `Span`. The fixture compares destinations with today's output in
   both orders across all five writers.
+- 2026-10-27 review round 24 (`plan-4`, `1d4334a`): reopened on three
+  findings after the kept-identifier rule was confirmed to preserve
+  today's destinations: a generated `d0_0` or section anchor could collide
+  with a kept identifier (R24-1: kept identifiers reserved first,
+  allocation skips names in use); a kept heading targeted by a qualified
+  or whole-document link reused its duplicate identifier (R24-2: alias as
+  `Plain`+`Span` immediately after the heading, the placement verified in
+  all five writers); the fixture asked a link into a footnote to resolve
+  (R24-3: it becomes text with the warning; two main-text duplicates test
+  qualification).

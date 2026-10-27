@@ -3,9 +3,9 @@
 **Type**: plan review (the doc-review adaptation used for plan-1..plan-3:
 no branch, no guard proof; the reviewer verifies the plan's factual claims
 against the code, the installed tools and the third-party formats' sources)
-**Status**: In progress — rounds 1 to 23 reopened (2026-10-27); the
-deferral in the seventh revision was refused by the owner; twenty-fourth
-revision committed, round 24 pending
+**Status**: In progress — rounds 1 to 24 reopened (2026-10-27); the
+deferral in the seventh revision was refused by the owner; twenty-fifth
+revision committed, round 25 pending
 **Subject**: `docs/plans/PLAN_SCRIVENER_UPLOAD.md`
 **Owner go**: "set the push policy to always, push, then go" (2026-10-27),
 after the two plan decisions were answered the same day ("let's keep it
@@ -901,8 +901,42 @@ Declined: none.
 
 Declined: none.
 
+## Round 24 dispatch
+
+- **Reviewer**: same harness and incantation, fresh session
+  `01a17eeb-370c-7293-af69-43349e160bc2`; transcript header `model:
+  gpt-6-astra`, `reasoning effort: xhigh`, `sandbox: workspace-write`.
+- **Tier**: frontier (T5 at the ceiling: fresh frontier session)
+- **Reviewed SHA**: `1d4334afea4d02505859f8900dc12730823771a1` (twenty-fourth
+  revision)
+- **Base SHA**: `2683ba36c03b355e2768b1c44a62617a93ef6fb3` (round-23 head)
+- **Dispatched**: 2026-10-27 19:51 UTC; finished 19:57 UTC; exit 0;
+  102,235 tokens.
+- **Capability proof**: read the plan and ran `git rev-parse HEAD` →
+  `1d4334a…`; both succeeded. The reviewer confirmed on Pandoc 3.11 with
+  today's `cs-footnotes.lua` that the kept-identifier rule preserves HTML
+  and EPUB destinations and DOCX/ODT/LaTeX bookmark and label sequences in
+  both document orders and with a document included twice, then
+  constructed the collision and heading cases below; a `Plain`+`Span`
+  placed immediately after a heading emitted a LaTeX label and stayed in
+  the heading's EPUB chapter, one placed before it landed in the previous
+  chapter. Nine core compile tests passed. No repository file changed; no
+  remote contacted.
+- **Verdict**: `reopened` on three findings. Not closed: R23-1, R22-1,
+  R21-2 (mapped below).
+
+## Round 24 findings and dispositions
+
+| # | Finding | Severity | Checked | Disposition |
+|---|---------|----------|---------|-------------|
+| R24-1 | A generated `d0_0`, a section anchor or an auxiliary `Span` can collide with a kept original identifier | MEDIUM | reviewer's HTML/EPUB probe | Admitted: every kept identifier is reserved first and allocation skips any name in use |
+| R24-2 | A heading whose identifier is kept (duplicate, bare-linked) is also a document-qualified or whole-document target; reusing its identifier reaches the wrong document and a `Span` inside it has no LaTeX label | MEDIUM | reviewer's five-writer probe | Admitted: such headings get a fresh alias as a `Plain`+`Span` immediately after the heading, the placement the reviewer verified |
+| R24-3 | The fixture required a document-qualified link into a footnote to resolve | MEDIUM | plan text | Admitted: the footnote-qualified link becomes text with the warning; two main-text duplicates test successful qualification |
+
+Declined: none.
+
 ## Closeout
 
-Pending: round 24 review of the twenty-fourth revision (same reviewer,
-fresh session, pins base = round-23 head `2683ba3`, head = the revision
+Pending: round 25 review of the twenty-fifth revision (same reviewer,
+fresh session, pins base = round-24 head `1d4334a`, head = the revision
 commit).
