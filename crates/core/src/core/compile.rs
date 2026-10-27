@@ -535,4 +535,117 @@ mod tests {
             .sum();
         assert_eq!(in_code, 14, "examples inside code are left alone");
     }
+
+    /// Pandoc with the filter from a chosen input format (the diagnostic
+    /// run of PLAN_SCRIVENER_UPLOAD slice 3 uses `markdown-auto_identifiers`).
+    fn ast_from(markdown: &str, from: &str) -> Value {
+        let mut child = Command::new("pandoc")
+            .args(["-f", from, "-t", "json", "--lua-filter", FILTER_PATH])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("pandoc starts");
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(markdown.as_bytes())
+            .unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert!(
+            out.status.success(),
+            "pandoc failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_str(&String::from_utf8(out.stdout).unwrap()).expect("pandoc json")
+    }
+
+    /// The identifier of every Header, in document order.
+    fn header_ids(value: &Value) -> Vec<String> {
+        let mut found = Vec::new();
+        nodes(value, "Header", &mut found);
+        found
+            .iter()
+            .map(|h| h["c"][1][0].as_str().unwrap_or("").to_string())
+            .collect()
+    }
+
+    /// The identifier of every Span, in document order.
+    fn span_ids(value: &Value) -> Vec<String> {
+        let mut found = Vec::new();
+        nodes(value, "Span", &mut found);
+        found
+            .iter()
+            .map(|s| s["c"][0][0].as_str().unwrap_or("").to_string())
+            .collect()
+    }
+
+    /// `data-format="markdown"` bodies are read as Markdown; the same body
+    /// without the attribute stays plain text (plan-4 R3-8, R5-2).
+    #[test]
+    fn markdown_bodied_footnotes_keep_their_formatting() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let body =
+            "Has *emphasis*, a [link](https://example.com/x) and a list:&#10;&#10;- one&#10;- two";
+        let rich = format!(
+            "Text<sup class=\"footnote\" data-format=\"markdown\" data-body=\"{body}\">●</sup> end."
+        );
+        let doc = ast(&rich);
+        assert_eq!(count(&doc, "Note"), 1);
+        assert_eq!(count(&doc, "Emph"), 1, "emphasis inside the note");
+        assert_eq!(count(&doc, "BulletList"), 1, "the list inside the note");
+        let mut links = Vec::new();
+        nodes(&doc, "Link", &mut links);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0]["c"][2][0].as_str(), Some("https://example.com/x"));
+
+        let plain = format!("Text<sup class=\"footnote\" data-body=\"{body}\">●</sup> end.");
+        let doc = ast(&plain);
+        assert_eq!(count(&doc, "Note"), 1);
+        assert_eq!(count(&doc, "Emph"), 0, "plain bodies keep their asterisks");
+        assert_eq!(count(&doc, "Link"), 0);
+        assert_eq!(count(&doc, "BulletList"), 0);
+        assert_eq!(count(&doc, "Para"), 3, "two body paragraphs plus the text");
+    }
+
+    /// The diagnostic run (`-auto_identifiers`) must reach the Markdown
+    /// inside a note: a generated heading identifier is empty there and an
+    /// explicit one is kept (plan-4 R10-2).
+    #[test]
+    fn diagnostic_run_classifies_identifiers_inside_markdown_notes() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let md = "Text<sup class=\"footnote\" data-format=\"markdown\" \
+                  data-body=\"# Generated&#10;&#10;# Real {#generated}\">●</sup>.";
+        let normal = ast(md);
+        assert_eq!(header_ids(&normal), vec!["generated", "generated"]);
+        let diagnostic = ast_from(md, "markdown-auto_identifiers");
+        assert_eq!(header_ids(&diagnostic), vec!["", "generated"]);
+    }
+
+    /// The editor's anchor element (`AnchorNode`) needs no filter work:
+    /// Pandoc's Markdown reader already reads an HTML span, empty or not, as
+    /// a Span carrying its identifier, which every writer turns into a
+    /// destination (plan-4 R4-4, R12-1). This guards that reading, which
+    /// the import and compile designs rely on.
+    #[test]
+    fn anchor_elements_arrive_as_identified_spans() {
+        if !pandoc_present() {
+            eprintln!("Skipping test: Pandoc not installed");
+            return;
+        }
+        let doc = ast(
+            "Before <span class=\"anchor\" id=\"part-two\"></span>after \
+             <span class=\"other\" id=\"keep\"></span> and \
+             <span class=\"anchor\" id=\"full\">text</span>.",
+        );
+        assert_eq!(span_ids(&doc), vec!["part-two", "keep", "full"]);
+        assert_eq!(count(&doc, "RawInline"), 0, "no span is left as raw HTML");
+    }
 }
