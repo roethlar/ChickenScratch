@@ -26,6 +26,31 @@ in the same change; never leave a stub, never summarize.
 
 ## Decisions
 
+### 2026-10-27 - Push without asking
+
+Status: Active
+
+Decision:
+`.agents/push-policy.md` is set to `always`: once a commit lands with its
+verification green, agents push the branch to every configured remote
+(`github`, `origin`) without asking and report what went where. The 2026-07-16
+decision's note that pushing still required an ask is superseded on that
+point only; the rest of it stands.
+
+Not changed by this decision:
+
+- History rewrites (amend, rebase, squash, force-push) remain forbidden
+  without explicit owner approval per `AGENTS.md` Git Safety; a refused push
+  is reported, never forced.
+- One concern per commit, commit without asking, and the approved-plan gate
+  for code are untouched.
+
+Reason:
+Owner directive 2026-10-27 ("set the push policy to always, push, then go").
+Every push since 2026-10-25 had been made by the owner by hand after the
+agent asked; the ask added a round-trip without adding safety, since CI runs
+on every push and history is append-only.
+
 ### 2026-07-16 - Per-commit owner approval removed
 
 Status: Active
@@ -38,7 +63,8 @@ in `.agents/repo-guidance.md` (Earned Practices, "Commit without asking").
 
 Not changed by this decision:
 
-- Pushing still follows `.agents/push-policy.md` (always ask).
+- Pushing still follows `.agents/push-policy.md` (always ask at the time;
+  set to `always` by the 2026-10-27 decision above).
 - History rewrites (amend, rebase, squash, force-push, reordering or
   collapsing existing commits) remain forbidden without explicit owner
   approval per `AGENTS.md` Git Safety.

@@ -94,10 +94,10 @@ lives in `.agents/push-policy.md`, not here.
   declared verification for the touched area is green, commit it — do not
   announce the commit and wait for owner approval. Owner directive
   2026-07-16 (`.agents/decisions.md`) removed the earlier per-commit
-  approval convention. Unchanged: pushing still follows
-  `.agents/push-policy.md` (always ask), history rewrites remain forbidden
-  per `AGENTS.md` Git Safety, and one-concern-per-commit above still
-  applies.
+  approval convention. Pushing follows `.agents/push-policy.md` (set to
+  `always` on 2026-10-27: push after a green commit without asking);
+  history rewrites remain forbidden per `AGENTS.md` Git Safety, and
+  one-concern-per-commit above still applies.
 - **Deprecated trees get no new features.** `macos/`, `windows/`, `linux/`
   were deprecated native experiments
   (`docs/adr/ADR-004-deprecated-native-engines.md`), deleted from the
