@@ -647,3 +647,40 @@ fn metadata_identifiers_and_links_take_part() {
     let two = href_of(&html, "two").unwrap();
     assert!(ids(&html).contains(two.trim_start_matches('#')), "{two}");
 }
+
+/// A percent-encoded bare link relies on duplicated identifiers just as a
+/// plain one does: both duplicates keep their string and the link is left
+/// as written (review finding s3-1, repair review).
+#[test]
+fn encoded_bare_links_keep_duplicated_identifiers() {
+    if !pandoc_present() {
+        eprintln!("skipping: pandoc not installed");
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "# Start {#café}\n\nBare [b](#caf%C3%A9) and a document link [two](b.md#S1).",
+            ),
+            doc(
+                "manuscript/b.md",
+                "# Start {#café}\n\n## Inner {#S1}\n\nText.",
+            ),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        html.matches("id=\"café\"").count(),
+        2,
+        "both duplicates keep `café`"
+    );
+    assert_eq!(
+        href_of(&html, "b").as_deref(),
+        Some("#caf%C3%A9"),
+        "the bare link is left as written"
+    );
+}

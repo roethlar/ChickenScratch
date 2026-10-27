@@ -721,7 +721,7 @@ impl Analysis {
         let bare_targets: HashSet<String> = scanned
             .links
             .iter()
-            .filter_map(|l| l.target.strip_prefix('#').map(|s| s.to_string()))
+            .filter_map(|l| l.target.strip_prefix('#').map(percent_decode))
             .collect();
 
         let mut resolutions: Vec<Resolved> = Vec::with_capacity(scanned.links.len());
