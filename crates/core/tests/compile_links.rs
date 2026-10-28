@@ -927,3 +927,42 @@ fn unique_links_to_kept_identifiers_get_an_unambiguous_alias() {
         );
     }
 }
+
+/// A kept target inside a footnote whose reference sits in a heading gets
+/// its own destination in the note, not the heading's (review finding s3-1,
+/// repair review 6).
+#[test]
+fn a_kept_target_inside_a_footnote_is_reached_in_the_footnote() {
+    if !pandoc_present() {
+        eprintln!("skipping: pandoc not installed");
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    let p = project(
+        dir.path(),
+        &[
+            doc(
+                "manuscript/a.md",
+                "# Heading[^n]\n\n# Other {#café}\n\n[^n]: [One]{id=\"caf%C3%A9\"}\n\n[b](#caf%C3%A9) [c](#caf%25C3%25A9) [two](b.md#S1)",
+            ),
+            doc("manuscript/b.md", "## Inner {#S1}\n\nText."),
+        ],
+    );
+    let (html, warnings) = compile_html(&p, dir.path());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let ids = ids(&html);
+    assert!(ids.contains("café") && ids.contains("caf%C3%A9"), "{html}");
+    let c = href_of(&html, "c").unwrap();
+    let id = c.trim_start_matches('#');
+    assert!(ids.contains(id), "{c}: {html}");
+    assert!(
+        !follows_heading(&html, id, "Heading"),
+        "c must not be sent to the heading that carries the footnote reference: {c} in {html}"
+    );
+    let notes = html.find("id=\"footnotes\"").expect("a footnotes section");
+    let at = html.find(&format!("id=\"{id}\"")).unwrap();
+    assert!(
+        at > notes,
+        "c's destination lies inside the footnotes: {c} in {html}"
+    );
+}

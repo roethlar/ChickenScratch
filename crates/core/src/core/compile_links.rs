@@ -358,11 +358,16 @@ fn visit(
             }
             if kind == "Note" {
                 let was = ctx.in_note;
+                // A footnote's contents are not inside the heading that
+                // carries its reference: a target in the note must get its
+                // own destination, not the heading's (s3-1 repair review 6).
+                let header = ctx.inside_header.take();
                 ctx.in_note = true;
                 path.push(Step::Key("c"));
                 visit(&c["c"], &d["c"], path, &mut None, ctx, out);
                 path.pop();
                 ctx.in_note = was;
+                ctx.inside_header = header;
                 return;
             }
             if kind == "Header" {
