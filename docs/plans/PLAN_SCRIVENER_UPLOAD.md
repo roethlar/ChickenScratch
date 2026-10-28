@@ -1438,3 +1438,19 @@ coding.
   invocation (no stray comment line in the output); the desktop keeps the
   open project in a small shared state set by load/create and cleared by a
   new `close_project` command. Codex defect review next.
+- 2026-10-28: slice 3 Codex defect review closed. Ten findings
+  (`.agents/review/index.md` s3-1..s3-10), each fixed in one commit and
+  re-reviewed one at a time until accepted; s3-1 (encoded fragments) took
+  six repairs, each round a new spelling or placement of an identifier a
+  bare link could reach, ending with the rule that a bare link resolving
+  uniquely to a kept element takes that element's alias and that a
+  footnote's contents never inherit the heading context of their reference.
+  Other repairs of note: compile warnings travel as a count plus a fetchable
+  report (`GET /api/compile-report`) and stay on screen in the compile
+  dialog, which cannot be dismissed mid-export; project assets are read
+  through the directory handles that were checked (Unix; Windows keeps the
+  path-based walk, a recorded gap); metadata maps are walked by position,
+  never guessed from a `t` key. Side repairs: the desktop crate's tests
+  declare `tempfile` (CI had been red on every slice-3 push); three closed
+  Scrivener-review records the intake had overwritten are restored as
+  `scriv-s3-1..3`. Slice 1 next.
