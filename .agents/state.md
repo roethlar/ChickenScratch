@@ -62,17 +62,21 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
   **Slice 3 Codex defect review 2026-10-27** (`efde2de..13c55fa`): ten
   findings `s3-1..s3-10` (`.agents/review/index.md`), each fixed in its own
   commit and sent back one at a time for a repair review; several repairs
-  were themselves reopened and repaired again (s3-1 twice, s3-5 three
-  times, s3-9 twice). By 23:30 UTC seven were closed (s3-2, s3-3, s3-4,
-  s3-6, s3-7, s3-8, s3-10) and three awaited a third review (s3-1
-  `b4e6e77`, s3-9 `064077b`, s3-5 `22a852b`). Side repairs the reviews
+  were themselves reopened and repaired again (s3-1 six times, each round
+  a new spelling or placement of an identifier that a bare link could
+  reach; s3-5 three times; s3-9 twice). **All ten accepted by 2026-10-28
+  00:07 UTC**; the last, s3-1, at its seventh review (`2e073fb`: a
+  footnote's contents no longer inherit the heading context of their
+  reference). Side repairs the reviews
   surfaced: the desktop crate's asset tests lacked `tempfile`, so CI had
   been red on every slice-3 push (`eeb8a83`); the slice-3 intake had
   overwritten three closed Scrivener-review records that reused the `s3-`
   ids, restored as `scriv-s3-1..3` (`5585596`; ids are now unique across
   plans). Known gaps left open on purpose: Windows keeps the path-based
   asset walk (s3-9); the desktop import guard runs on CI only (s3-6).
-  Slice 1 follows once the three are closed.
+  **Slice 1 is next** (archive upload door, unpack worker in the converter
+  crate, format detection, the transaction through core `publish_imported`,
+  folder import byte-exact at mirrored paths with `source_path`).
   Latent bug noted there: `io.rs` maps legacy `.doc` to the Pandoc `docx`
   reader, which cannot read `.doc`.
 - **Scrivener import is not perfected** (owner asked 2026-10-25; checked by
