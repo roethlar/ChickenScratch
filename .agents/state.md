@@ -205,8 +205,15 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
    Codex-reviewed before the next; slice 5 (Scrivener 2) optional.
 3. **Import anything** (`PLAN_SCRIVENER_UPLOAD.md`): owner go 2026-10-27;
    plan accepted (`plan-4`, 25 rounds). Landing order 3, 1, 2, 4, 5:
-   slice 3 landed (`efde2de..a1e9ca2`, Codex review pending), then 1 (archive upload door, unpack worker,
-   detection, transaction), 2 (Import Project button in both shells), 4
+   slice 3 landed and its Codex review closed 2026-10-28 (all ten findings
+   accepted, verified head `7a6180e` on both remotes). **Next action: start
+   slice 1** per the plan's "Slice 1 — the project door on the server"
+   section (archive upload door, unpack worker in the converter crate,
+   detection, transaction through core `publish_imported`, folder import
+   byte-exact at mirrored paths with `source_path`), one concern per
+   commit with bite proofs, then its Codex defect review (same harness:
+   `codex exec` in the disposable clone, gpt-6-astra xhigh, one finding ↔
+   one commit ↔ one verdict). Then 2 (Import Project button in both shells), 4
    (Import File for every Pandoc reader with optional split), 5 (one slice
    per app format: novelWriter, Manuskript, TextBundle); each slice
    Codex-reviewed before the next.
@@ -233,6 +240,17 @@ decisions; `DEVLOG.md` holds history. Completed state entries live in
 ## Verification
 
 - Declared suite: `.agents/repo-guidance.md` Verification section.
+- **2026-10-27/28 slice 3 review repairs (through `7a6180e`)**: every
+  repair commit ran fmt, the touched crate's clippy `-D warnings` and
+  tests (core `compile_links` 20 integration + 7 unit, compile-roundtrip 4;
+  services 61; web 46), UI lint/build/vitest for UI changes, and a bite
+  proof (mutation named in each commit and in the finding's Guard proof);
+  the full declared suite was not rerun locally after the last repair.
+  GitHub Validation and Tauri Bundles green on every push from `eeb8a83`
+  through `2e073fb` (the Validation run on `6448d35` compiled and ran the
+  desktop crate's new import test); runs for the final records commits were
+  in progress at handoff. Tauri crate still not compiled locally (Known
+  drift); shellcheck not installed here.
 - **2026-10-25 reload safety + phone layout (slices 1–4, pushed in
   `529d4df`)**: fmt,
   clippy `-D warnings` and tests green for core, services, web, tui,
